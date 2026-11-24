@@ -15,14 +15,19 @@ namespace Kimi.Compiler;
 // Output (PLAN G492-a (ii); R7-O2 A1): a `let` local's region has a value, the Origin its declaration fixes for the slot
 // (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region,
 // an inclusion (the value outlives the region); a slot that the local's equality fixes, `let` or `var`, is a region whose value is the
-// equality's other end, an equality (FixedRegion, LocalRegion.Equality; SPEC 15.3.6 "Unless fixed by equality", PLAN G1369). Its
+// equality's other end as the body reads it, an equality, or an inclusion where that end holds a region published as one (FixedRegion,
+// LocalRegion.Equality; SPEC 15.3.6 "Unless fixed by equality", PLAN G1369). Its
 // readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type),
 // RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
 // one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
 // body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
 // proved it, and before as a reading with no answer yet (the deferral fact).
-// Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
+// Invariants: a value holds no region of its own body that has a value (each is read through once, when published), so a read at a use
+// is one step; it may hold a `var` region of its own body with none (a `let` initializer, or an equality, naming a `var` local), which a
+// use in that body reads as the region and RegionValue as its candidate, whose walk reads each bound's region with a value through it
+// and the body's `var` regions that reach back to the region through their bounds, so each further read moves down that body's
+// definitions or one body outward and ends (DECISIONS R8-M56 (ii) fact (a), as amended); values and bounds are reset each pass
 // (ResetLocalRegions); a `var` region publishes no value unless its slot is fixed by equality (SPEC 15.3.6): a use in its own body
 // reads the region, and only RegionValue (where a body carries it, or its own body's oracle) reads its candidate over its recorded
 // bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
@@ -230,7 +235,8 @@ public sealed partial class Binding
     // value, which its declaration fixes (the initializer's Origin at that slot, or the slot's solved annotation candidate): a body nested
     // in that body, or a nested signature, reads the region itself, fixed there (15.3.4; DECISIONS BU-28; equal to its value where the body
     // carries it, which the oracle and ValueIn read, not this). A value holds no region of its
-    // own body (PublishRegionValue reads it once), so a read is one step per region and a meet's operands are read once each. A Callable
+    // own body with a value (PublishRegionValue reads each through once), so a read is one step per region and a meet's operands are read
+    // once each. A Callable
     // comparison's relation does not call it: it reads the region (the owner's O-363 (a); the contract above).
     internal BoundOrigin RegionValueAtUse(BoundOrigin origin, Koto use)
         => this.regionValues == 0 || origin.Kind is not (OriginKind.Inference or OriginKind.Intersection) ? origin : this.RegionValueIn(origin, BodyOwner(use));
@@ -585,7 +591,7 @@ public sealed partial class Binding
     // A `let` region's value (RegionValueAtUse), published by its declaration once per binding of it, read through the earlier regions of
     // the same body; also the region's one bound, so a nested body that reads the region through its sources (DECISIONS BU-127) reads
     // that value's. A re-binding publishes the same region again (the same slot) with its value read anew. Published as an inclusion;
-    // FixedRegion makes an equality-fixed slot's an equality (LocalRegion.Equality).
+    // FixedRegion sets an equality-fixed slot's relation (LocalRegion.Equality).
     private LocalRegion PublishRegionValue(BoundOrigin region, BoundOrigin value, Koto evidence)
     {
         var record = this.WrittenRegion(region);
@@ -843,7 +849,9 @@ public sealed partial class Binding
 
         // How the value is published (DECISIONS R8-M56 as amended, PLAN G1369, C-548): an inclusion (false: the value outlives the region,
         // which may lie inside it), or an equality (true: a slot fixed by equality, FixedRegion, bounded both ways, SPEC 15.3.6 "Unless
-        // fixed by equality"). Written with the value (PublishRegionValue, FixedRegion); read by O-400 (b)'s limit alone (ReadsLetValue).
+        // fixed by equality", where no inclusion is read through the equality's end; an end that holds an inclusion makes it one).
+        // Written with the value (PublishRegionValue resets it, FixedRegion sets it); read through ReadsLetValue alone (O-400 (b)'s limit,
+        // and FixedRegion's reading of an equality's end).
         internal bool Equality { get; set; }
 
         internal Koto? Body { get; set; }

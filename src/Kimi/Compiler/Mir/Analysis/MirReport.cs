@@ -1,12 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the problems the MIR analyses find in one program version and its construction and collection records (A6; DECISIONS R4-M3a, R5-M23,
-// R4-M71; R6-check H3-1); their records are MirProblem and ProblemFact (MirProblem.cs, Core/ProblemFact.cs).
+// R4-M71; R6-check H3-1), and the least use of each use over a limit per declaration, the collection records of R5-M171's limit table;
+// their records are MirProblem and ProblemFact (MirProblem.cs, Core/ProblemFact.cs).
 // Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body (a record's MirRecordClass,
 // through MirProgram.Report) and its facts (related sites, added by their first producer); a round's problems, held until it commits
 // (Rounds below); and a library segment's rows, which their owner keeps as data (Keep, Kept) and replays at the step where it first added
-// them (Replay; PLAN G950), Cause values moved by the offset.
-// Output: one problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
+// them (Replay; PLAN G950), Cause values moved by the offset; the limit table's uses (MirReport.Limits.cs; DECISIONS R5-M171, PLAN G651
+// U2b R6), each a key (its record's code, an erased Type or none, a forming site, a MirDefKey declaration) with its subject and fallback
+// bit and its producer's round: the instance collector's held with its run's round and dropped with a missed run; a MIR body site's (Uses)
+// added at once in every round.
+// Output: the limit table's records, one Collection-class ControlFlow record per key at its least use (SourceRef order), flushed at
+// each clean collector run's end (the round's least merged into the committed least, the flush, then Commit; a repeated clean run of a
+// version writes each key's row again) and, with no collector run, on the first read of Merged after a committed least changed; one
+// problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
 // D18: an Origin problem's relation, the default for other problems) with the views that have it merged, in insertion order (bodies in
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and
 // facts included, and ORs the views; merged problems name one requirement, and a disagreement is a recording rule's defect, reported as
@@ -30,7 +37,9 @@
 // record of a body a lookup builds during the round, is added at once. Commit adds the held problems in order as Add adds them; Drop
 // discards them, so a round that missed commits nothing; Clear closes a round. A kept row (Keep, Replay) was committed when it was kept
 // and is replayed outside any round, so a round holds only its own version's problems.
-// Must not publish, decide acceptance, derive a requirement from a code, or keep a problem a rule of Add drops.
+// Must not publish, decide acceptance, derive a requirement from a code, or keep a problem a rule of Add drops; flush the limit table
+// on a read of All or Records (MirAnalysis and A5's rule W read them while producers still run), take the collector's limit use outside
+// its round, or take a body site's use after the table flushed outside a Collection round or from a library body.
 
 using System.Runtime.InteropServices;
 using Kimi.Diagnostics;
@@ -112,11 +121,13 @@ internal sealed partial class MirReport
         return slot;
     }
 
-    /// <summary>Removes every problem, keeping the storage.</summary>
+    /// <summary>Removes every problem and least use, keeping the storage.</summary>
     internal void Clear()
     {
-        (this.isMerged, this.round) = (false, null);
+        (this.isMerged, this.round, this.unflushed, this.flushed) = (false, null, false, false);
         this.held.Clear(0);
+        this.limits.Clear();
+        this.roundLimits.Clear();
         this.index.Clear();
         this.problems.Clear();
         this.facts.Clear();
@@ -142,11 +153,12 @@ internal sealed partial class MirReport
         this.held.Clear(0);
     }
 
-    /// <summary>Ends a round that missed: drops the problems it held.</summary>
+    /// <summary>Ends a round that missed: drops the problems it held and its least uses.</summary>
     internal void Drop()
     {
         this.End();
         this.held.Clear(0);
+        this.roundLimits.Clear();
     }
 
     /// <summary>Keeps the problems added from an index on as data, each with its facts as Add left them: a library segment's rows

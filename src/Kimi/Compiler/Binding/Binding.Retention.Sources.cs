@@ -83,7 +83,9 @@ public sealed partial class Binding
             if (inputs[i] is not { IsPointer: true })
             {
                 this.storageSeen.Clear();
+                var site = this.OpenRetentionSite(this.retentionCallee, i); // PLAN G651 U2b R11 OP1: the input's storage walk.
                 this.StorageWalk(environment, inputs[i], StorageAt.Input(i) with { Signature = this.SignatureInput(i) });
+                this.Restore(site);
             }
         }
     }

@@ -377,7 +377,11 @@ public sealed partial class Binding
             return written;
         }
 
-        // A name already visible names that Origin; only the remaining names are introduced by the signature (SPEC 15.3.4).
+        // SPEC 15.3.4: a name already bound in an enclosing scope (an Origin or a set of that scope's declaration, a parameter, a capture,
+        // or a local declared before the owner) introduces no Origin; only the remaining names are introduced by the signature. Bound is
+        // not visible: a later parameter of a function whose default holds the owner is bound here though no lookup may select it (SPEC
+        // 7.2.3, ParameterVisible), the reading the owner's D-1236 (A) requires: its name introduces nothing and selects nothing, so it
+        // fails where it is written.
         for (var i = names.Count - 1; i >= 0; i--)
         {
             var name = names[i];
@@ -570,10 +574,12 @@ public sealed partial class Binding
 
     // Equalities are substitutions before result defaulting. Revisit equations after each substitution so chains are independent of
     // clause order. A local's slots are its regions (DECISIONS R8-M56) and its clause a check that assumes nothing (SPEC 15.3.3): an
-    // equality of a slot with an Origin that is no slot of the local substitutes the slot's region, numbered first (FixedRegions), whose
-    // value is that Origin (SPEC 15.3.6 "Unless fixed by equality", 15.4.4), so its own body reads the Origin and a nested signature or
-    // body the region, fixed there with no premise (SPEC 15.3.4, 15.6.1, 15.6.5); an equality of two of its slots substitutes nothing,
-    // each slot completing as its own region. The clause is judged against the initializer (ValidateOriginRelations).
+    // equality of an unfixed slot (for a local, an Unbound Origin: Flexibility above 0) with an Origin that is no unfixed slot
+    // substitutes the slot's region, numbered first (FixedRegions), whose value is that Origin as the body reads it (FixedRegion; SPEC
+    // 15.3.6 "Unless fixed by equality", 15.4.4), so its own body reads the value and a nested signature or body the region, fixed there
+    // with no premise (SPEC 15.3.4, 15.6.1, 15.6.5); an equality of two unfixed slots substitutes nothing in a pass, and once a later pass
+    // has fixed one of them, it fixes the other to that one's region; a slot no equality fixes completes as its own region. The clause is
+    // judged against the initializer (ValidateOriginRelations).
     private void SubstituteOriginEqualities(OriginDeclaration declaration)
     {
         var regions = 0;
@@ -639,13 +645,16 @@ public sealed partial class Binding
     }
 
     // A local's slot `pending` an equality fixes to `value` (SubstituteOriginEqualities): its region at `slot`, its row the slot's in the
-    // local's Type (invariant for a slot of an initializer's written Type), publishing `value` as the region's value, an equality (DECISIONS
-    // R8-M56 as amended, C-548).
+    // local's Type (invariant for a slot of an initializer's written Type), publishing `value` as the region's value (DECISIONS R8-M56 as
+    // amended, C-548). The region is `value`, so the published value, `value` as the body reads it, is an equality, unless `value` holds a
+    // region of the body published as an inclusion (ReadsLetValue), which the region then is: an inclusion (`origin k.at == r` with
+    // `let r = p` publishes p as an inclusion, as r's region does; with an equality-fixed region the equality composes to an equality).
     private BoundOrigin FixedRegion(Koto local, BoundOrigin pending, BoundOrigin value, int slot)
     {
         var row = (local as VariableKoto)?.TypeKoto?.BoundType is { } type ? this.OccurrenceVariance(type, pending, this) : OriginVariance.Unused;
         var region = this.LocalRegionSlot(local, slot, row == OriginVariance.Unused ? OriginVariance.Invariant : row);
-        this.PublishRegionValue(region, value, local).Equality = true;
+        var published = this.PublishRegionValue(region, value, local);
+        published.Equality = !this.ReadsLetValue(value, local);
         return region;
     }
 

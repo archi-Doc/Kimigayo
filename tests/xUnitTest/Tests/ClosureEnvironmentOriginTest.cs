@@ -129,10 +129,8 @@ public class ClosureEnvironmentOriginTest
 
     private const string Read = "func read(x: ref/i32) -> i32 => x@follow\n";
 
-    // PLAN G1369's rows: the Cursor a local's Type names, and a `let` local whose clause equates its set's slot with f's input.
-    private const string CursorType = "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n";
-
-    private const string CursorLocal = CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n";
+    // PLAN G1369's rows: a `let` local whose clause equates its set's slot with f's input (the Cursor: LocalOriginClauseTest.CursorType).
+    private const string CursorLocal = LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n";
 
     // C-537's t7 family: a nested `pass` naming the `let` local r, called in r's own body; the block's `inner` kept past its end.
     private const string LetPass = "func f(p: ref/i32) -> i32\n    let r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n";
@@ -648,13 +646,13 @@ public class ClosureEnvironmentOriginTest
     [InlineData(CursorLocal + "    func lift(v: ref/i32 during k.at) -> ref/i32 during p => v\n    return lift(c.item)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // t4_clause
     [InlineData(CursorLocal + "    func lift(v: ref/i32 during k.at) -> ref/i32 during p\n        origin k.at outlives p\n        return v\n    return lift(c.item)\npublic func main() => ()\n")] // t4_sig
     [InlineData(
-        CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(q)\n    let w = lift(c.item)\n" +
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(q)\n    let w = lift(c.item)\n" +
             "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n",
         "Unsupported_Kd k.at\n",
         "Unsupported_Kd k.at outlives",
         "UnprovenOriginRelation_Kd v\n")] // t4_fwd
     [InlineData(
-        CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n    let w = lift(c.item)\n" +
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n    let w = lift(c.item)\n" +
             "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n",
         "Unsupported_Kd k.at\n",
         "Unsupported_Kd k.at outlives",
@@ -664,15 +662,41 @@ public class ClosureEnvironmentOriginTest
     // (t4_q) is valid (k.at's value is q's, p, in f's body) but stays rejected as on dev: lift's header completes c before f's statements
     // type q (header order, PLAN G230's family), so q is no binding there and lift's `k.at` rests on it.
     [InlineData(
-        CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    var c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n" +
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    var c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n" +
             "    func lift(v: ref/i32 during k.at) -> ref/i32 during p => v\n    return lift(c.item)\npublic func main() => ()\n",
         "UnprovenOriginRelation_Kd v\n")] // t4_clause_var
     [InlineData(
-        CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let q = p\n    let c: Cursor{k} = Cursor.init(q)\n        origin k.at == q\n" +
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let q = p\n    let c: Cursor{k} = Cursor.init(q)\n        origin k.at == q\n" +
             "    func lift(v: ref/i32 during k.at) -> ref/i32 during k.at => v\n    return lift(c.item)\npublic func main() => ()\n",
         "InvalidOriginBinding_Kd q\n",
         "Unsupported_Kd k.at) ->",
         "Unsupported_Kd k.at => v")] // t4_q
+    // Other forms of the same rule (SPEC 15.3.3's Local row, 15.6.1, 15.6.5): a Closure's signature (t4_clo_sig); an equality of two
+    // unfixed slots, which fixes neither, so lift reads two regions with no premise (t4_two); an equality with another local's
+    // equality-fixed slot (rv_chain_x: m.at is k.at's region, read in lift with no premise); a top-level local that a Closure literal's
+    // signature names, no environment binding of it carrying c (rv_root_clo; lift's own `=> v` needs no relation). A Closure carrying a
+    // slot an equality fixes to a `var` local's region reads it at its candidate (SPEC 15.6.5's Closure sentence; DECISIONS R8-M56 (ii)
+    // fact (a): the value holds that `var` region, read through its bounds), so rvi_var_carry is valid and accepted.
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> i32\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n" +
+            "    let g = func [] (v: ref/i32 during k.at) -> ref/i32 during p => v\n    return g(c.item)@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n")] // t4_clo_sig
+    [InlineData(
+        LocalOriginClauseTest.TwoType + "func f(p: ref/i32) -> i32\n    let t: Two{s} = Two.init(p, p)\n        origin s.a == s.b\n" +
+            "    func lift(v: ref/i32 during s.a) -> ref/i32 during s.b => v\n    return lift(t.x)@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n")] // t4_two
+    [InlineData(
+        CursorLocal + "    let b: Cursor{m} = Cursor.init(c.item)\n        origin m.at == k.at\n" +
+            "    func lift(v: ref/i32 during m.at) -> ref/i32 during p => v\n    return lift(b.item)\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n")] // rv_chain_x
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func make() -> ref/i32 during static => $abort(\"unused\")\nlet c: Cursor{k} = Cursor.init(make())\n    origin k.at == static\n" +
+            "func lift(v: ref/i32 during k.at) -> ref/i32 during k.at => v\nlet g = func [] (v: ref/i32 during k.at) -> ref/i32 during static => v\n" +
+            "Console.writeLine(\"\\(g(c.item)@follow)\")\n",
+        "UnprovenOriginRelation_Kd v\n")] // rv_root_clo
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    let c: Cursor{k} = Cursor.init(r)\n        origin k.at == r\n" +
+            "    r = c.item\n    let h = func [c@move] () -> ref/i32 during p => c.item\n    return h()\npublic func main() => ()\n")] // rvi_var_carry
     public void ANestedSignatureNamingABodyLocalNamesItsRegion(string source, params string[] records)
     {
         var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
