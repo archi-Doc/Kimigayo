@@ -13268,7 +13268,7 @@ resumed by R4-M86 (2026-10-20).
     requires `LimitedCount == 0`, so "complete" still means "rejected no part" (BU-38, BU-102, DIAGNOSTICS rule 8 unchanged), and
     rule 4 is unchanged (a limit sets no state). Before G254c a Defect at a node without a failure was published nowhere; it now is,
     and it makes the Bind incomplete.
-- **BU-126 R7-E1c Several problems at one node** (2026-11-08; plan §5.1 E1; design §1 row 3; DIAGNOSTICS rule 4). A node's records beyond its first are problems of `BindingReport`, one channel: `furtherOriginRecords` with its lists, `CountStates`' role issue and `operatorOperands` go. The pass summary's walk (`CollectProblems`) makes each problem of a failed node but its slot's own an issue with its own code and condition, whichever way the slot stands. An Origin record beyond the first stays out of `Binding.Issues`, whose one row per relation node the test MIR side compares, and is published with the node's first record, as before (temporary until E5, when `Binding.Issues` is the problem list). `ReportProblem` answers from a problem's facts before any table of the node's first failure can, since those tables explain that failure only. `FailOperator`'s fields are rows: `Operand` and `Terminal` (kept Types) and `Constraint` (a kept interned proposition, written for an Unknown or Refuted proof, the failure telling which), with no second path. An Origin record beyond the first is one `OriginRecord` fact, an index in the report's kept records, numbered after the chain's conditions and published under the requirement of the node's first record: temporary until E4's relation fact, which takes both phases' records. A second report of a linked key must equal the first in code and facts, a Type by identity (DIAGNOSTICS 4.3); a differing one is `InternalInvariant_Kd` at its subject, as `MirReport.Add`'s. An import's records (G155): each Type without a C counterpart is `InvalidImportSignature_Kd` with its ordinal among them as the condition, a Type outside the table the located `Unsupported_Kd` beside them, and the symbol table's conflicts stand beside a failed supply; the dependency module's limit stays a `Fail` (BU-92). A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type: `OperatorApplicabilityOf`'s failure is the node's other problem. Rejected: a `Detail` fact (boxes per warm pass, measured), two `FailOperator` paths, a dedupe index beside the chain (`Unlink` would have to keep it; the walk costs what the list's `Contains` cost), the route through `CompleteBinary` (its mismatch would need `RecordTypeMismatch`'s guard lifted for one path; E3 lifts it for the family).
+- **BU-126 R7-E1c Several problems at one node** (2026-11-08; plan §5.1 E1; design §1 row 3; DIAGNOSTICS rule 4). A node's records beyond its first are problems of `BindingReport`, one channel: `furtherOriginRecords` with its lists, `CountStates`' role issue and `operatorOperands` go. The pass summary's walk (`CollectProblems`) makes each problem of a failed node but its slot's own an issue with its own code and condition, whichever way the slot stands. An Origin record beyond the first stays out of `Binding.Issues`, whose one row per relation node the test MIR side compares, and is published with the node's first record, as before (temporary until E5, when `Binding.Issues` is the problem list). `ReportProblem` answers from a problem's facts before any table of the node's first failure can, since those tables explain that failure only. `FailOperator`'s fields are rows: `Operand` and `Terminal` (kept Types) and `Constraint` (a kept interned proposition, written for an Unknown or Refuted proof, the failure telling which), with no second path. An Origin record beyond the first is one `OriginRecord` fact, an index in the report's kept records, numbered after the chain's conditions and published under the requirement of the node's first record: temporary until E4's relation fact, which takes both phases' records. A second report of a linked key must equal the first in code and facts, a Type by identity (DIAGNOSTICS 4.3); a differing one is `InternalInvariant_Kd` at its subject, as `MirReport.Add`'s. An import's records (G155): each Type without a C counterpart is `InvalidImportSignature_Kd` with its ordinal among them as the condition, a Type outside the table the located `Unsupported_Kd` beside them, and the symbol table's conflicts stand beside a failed supply; the dependency module's limit stays a `Fail` (BU-92). A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type: `OperatorApplicabilityOf`'s failure is the node's other problem. Rejected: a `Detail` fact (boxes per warm pass, measured), two `FailOperator` paths, a dedupe index beside the chain (`Unlink` would have to keep it; the walk costs what the list's `Contains` cost), the route through `CompleteBinary` (its mismatch would need `RecordTypeMismatch`'s guard lifted for one path; E3 lifts it for the family). Superseded in part by R7-M75's E3d line (Q-764): the failed destination's route sentence (`FailRoute`) and the rejected route through `CompleteBinary`, now taken (E3a-2, Q-635, removed the guard).
 - **BU-127 A local region at a fixed longer end is A5's** (2026-11-08; PLAN G572, U1 round 2 and U3's rows; Major; RP17 consent C-131; the owner's O-57 (a), verbatim 「両方とも(a)でお願いします。」, O-59 (a) 「すべて (a)」, O-61 (a) 「O-61 a」, O-63 (a) 「(a) もう 1 回設計」 and O-77 (a) 「a」) SPEC 15.3.6, 15.4.4, 15.6.1, 15.6.5.
   - Cause. A local region is an inference variable, solved over all its bounds (15.3.6). In a Closure's body an enclosing region is fixed
     (BU-28), so a relation over it was a fixed-fixed one: Binding judged it while bodies were being bound, and A5's oracle had no premise
@@ -27184,6 +27184,57 @@ R8-M* and R9-M* by the stage of the recording unit.
       the TypeMismatch_Kd sites: guard (g1), construction (e1, e2a-e2c at 883), floating-point literal plain and signed (x1, x1b). No
       move at Enums 883 beside TransferRequired_Kd: a kept acquisition beside a misfit takes FitsValueAt's condition arm, never 883,
       so that pair is unreached.
+  - **E3d (Q-764; G361, G502/G509 cause A, G1130; Major).** Three independent requirements, each judged whatever the other gave.
+    - **Array elements (G361; SPEC 4.3.1, 12.3.1).** A contextual array literal checks each element against the expected element Type
+      by the fit's structural part (`FitsStructuralPartAt`) on the Type its adaptation gave, its misfit recorded at the element through
+      `FailMismatch(.., ComparisonFailure.Shape)` (`RecordMismatch`'s Owned-conversion arm stays the one path); only fitting elements
+      meet (`CommonOriginType`), for the Origin evidence a local's omitted Origins are inferred from. The element-to-element comparison
+      goes; a misfit names the expected element Type, never the first element's.
+    - **A failed destination's route (G502/G509 cause A; SPEC 13.7.1, 13.7.2, 23.1.2).** A compound assignment's or update's route,
+      and the value fit of a plain write its destination check refuses, are judged by the path an admitted destination takes (the
+      decision, the counterpart, `CompleteBinary`: the counterpart's fit, the shift count, the pointer offset, the arithmetic
+      selection, the value fit's Origin part that A5 judges), their records beside the destination's; a refused node keeps no Type.
+      Only a target that designates a destination, a Place or a Property access (`DesignatesDestination`), has the destination and
+      read Types they are judged in; a target that designates neither (a call result, a literal, an element of a Never receiver) has
+      none (SPEC 13.7.1), so it gives the write's value no expected Type (E3d-5: `BindBinary` reads the predicate once, where the
+      decision's counterpart passes to the value) and a refused write's route and value fit over it rest on the destination's record
+      (E3d-4). A `=` refused by a reference binding's mode still returns before its value's fit (R7-E4 rulings 8, 9, 15). An update
+      of a reference binding computes in the binding's read Type (`UpdateOperand`; SPEC 15.1.6, 13.7.1, 13.3.4: a raw pointer is no read Type, so `item += 1` over `uniq/raw/i32` keeps the
+      no-provider `OperatorNotDefined_Kd`); `ReferenceBindingAssignment(target, targetType, operation)` folds the safe-layer guard and is
+      the one predicate a plain write, `CheckDestination` and `UpdateOperand` read (the Front's C1). Deleted: `FailRoute` (an
+      applicability-only second copy of the route, with its side write of an adaptation) and the reference-binding branch's binding of a
+      compound right operand at the referent (G502's false `TypeMismatch_Kd` at `1`).
+    - **A value call's argument match (G1130; SPEC 7.7.3, 10.1.1, 23.1.2).** `BindValueCall` judges `MapValueCallArguments` after the
+      callee's acquisition whatever it gave, `NoApplicableCandidate` beside the callee's record.
+    - **Rejected:** an applicability-only route on the read Type after a refused destination (BU-126's; another code than the admitted
+      path, G509's `n += b`); the referent as a reference binding's route operand (drops SPEC 13.3.4's no-provider record through a
+      layer); reordering the destination check after the route (an order dependence on slot-first recorders, R7-E4's);
+      `RequireAtPosition` for array elements (its Origin part would be judged before a local's omitted Origins are inferred).
+    - **Supersedes in part** BU-126's sentence "A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type:
+      `OperatorApplicabilityOf`'s failure is the node's other problem." and adopts its rejected option "the route through
+      `CompleteBinary`", whose reason ("its mismatch would need `RecordTypeMismatch`'s guard lifted for one path") no longer holds:
+      E3a-2 (Q-635) removed that guard for the family.
+    - **Moves (Q13; invalid programs only, no acceptance move; labels `e3d\LABELS.md`, `e3d\impl\probes.tsv`, `e3d\open\probes.tsv`), by code:**
+      - TypeMismatch_Kd: 6 moved to the element, naming the expected element Type (`let a: Array<i64> = [x, y]` with `x: i32` `y` ->
+        `x`; `[x, x]` one record at the literal -> one at each `x`; a fixed-array expectation the same; `[[1]]` at `Array<i32>` ->
+        `[1]`; `let y: T = [true]` with `T is Array<i32>` `[true]` -> `true`; `[c@move]`, a closure of the wrong arity, -> `c@move`);
+        4 added after a refused destination, the admitted path's (`u += n` i32/i64 and `u = n` at `n`; `p += n` on `raw/i32` with
+        `n: i32` at `n`, expected isize; `s[0] = true` on a `Slice<i64>` parameter at `true`, beside SharedPathAccess_Kd); 3 recoded
+        from NonNumericOperand_Kd (at the operand: `n += b` i32/bool, `item += n` over `uniq/Array<i32>` with `n: bool`; at the
+        operation: `s[0] += true` on a `Slice<i64>` parameter, now at `true` beside SharedPathAccess_Kd); 5 removed (the false one
+        at `1` in `item += 1` over `uniq/raw/i32`, the mode and OperatorNotDefined_Kd staying; the literal's at `5` in
+        `pair.indexUniq(0) = 5`, `view.indexUniq(0) = 5` and `values.indexUniq(0) = 5`, a value bound at a call result's
+        `uniq/i32`, and at `1.5` in `get() += 1.5`, `get` returning i32, a value bound at a call result's read Type:
+        InvalidAssignment_Kd alone).
+      - NonNumericOperand_Kd: 3 recoded to TypeMismatch_Kd (above); 1 removed over a target that designates no destination
+        (`get() += true`, `get` returning bool: dev's `FailRoute` read of the call result; InvalidAssignment_Kd alone).
+      - ArithmeticSelection_Kd: 1 added after a refused destination (`x += y` on T).
+      - NonIntegerOperand_Kd: 1 added (`x++` on a `ref/i32` parameter).
+      - InvalidShiftCount_Kd: 2 added (`u <<= s` with `s: bool`; `item <<= s` through a reference binding).
+      - UnprovenOriginRelation_Kd: added at `v` in `u = v` over `ref/i32 during a` and `during b` parameters (the Front's t16 and t8:
+        A5's record of the value fit's Origin part, its writable twin's; refused `=` writes onto a Place now form A5 rows).
+      - NoApplicableOverload_Kd: 2 added beside the callee's record (`v(1)` on `objuniq/F`; `f(1)` on `ref/F` with an Exclusive
+        Callable).
   - Superseded in part by R7-M95 (R7-E4 E4a-1, 2026-11-24), for E4's sites: the Rule's "a site converts only where its record is the
     node's first failure ...; a dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5". E4's B1
     statement is by input: a check that reads none of the node's failed inputs records beside the node's earlier failure (SPEC
