@@ -486,9 +486,18 @@ public sealed partial class Binding
     private BoundType? FailObjectAuthority(Koto node, Koto target)
         => this.RecordWrite(node, BindingFailure.SharedPathAccess, target);
 
-    // The one recorder of a denied write (AccessFailure's code, or the object authority's): the target related, or a located limit.
+    // The one recorder of a denied write (AccessFailure's code, or the object authority's): the target related; a write the implementation
+    // does not support yet is the located limit (SPEC 23.1.1), at the write as before.
     private BoundType? RecordWrite(Koto node, BindingFailure failure, Koto target)
-        => this.RecordNumbered(node, failure, failure == BindingFailure.Unsupported ? [] : [new(ProblemFactKind.Related, this.FactSite(target), 0)]);
+    {
+        if (failure == BindingFailure.Unsupported)
+        {
+            this.RecordLocated(node, node.Span);
+            return null;
+        }
+
+        return this.RecordNumbered(node, failure, [new(ProblemFactKind.Related, this.FactSite(target), 0)]);
+    }
 
     // A bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired), with the Place it names.
     private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
