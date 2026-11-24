@@ -74,7 +74,7 @@ public sealed partial class Binding
             // A bound Contract reference supplies its parameters; forming it judges only a clause's reference input condition, never its
             // implementation requirements, obligations of a conforming Self (SPEC 6.1.4, 8.4.3): an associated requirement whole, its
             // failed or unbound clause included, any other clause by its conditions (ReferenceInputCondition).
-            if (binder is ContractKoto && (constraint.IsAssociatedConstraint || (bound is not null && (bound = this.ReferenceInputCondition(bound)) is null)))
+            if (binder is ContractKoto && (constraint.IsAssociatedConstraint || (bound is { } stated && (bound = this.ReferenceInputCondition(stated)) is null)))
             {
                 continue;
             }
