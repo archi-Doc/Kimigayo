@@ -11184,6 +11184,12 @@ resumed by R4-M86 (2026-10-20).
     a top-down chain, O(N²) checks. Alternation changes no record or verdict against forward rounds. Any remaining quadratic case
     (dependencies running against both directions) is C3's, removed by its scheduler (PLAN G170). `SourceCheckWork` publishes a pass's
     checks to the scaling test.
+  - Amended by R7-M100 (R7-C2e2 e2-6, PLAN G838): the Order bullet's alternation (and the heading's "each in the reverse of the
+    previous round's order") is replaced: the first round runs in declaration order, each later one in the post-order of the Pending
+    states the previous round's checks read. The 2P + 1 bound, the epoch, the fixpoint and every record stay. When every read the
+    next round needs was recorded, acyclic reads settle in three rounds in any declaration order (four with a limit); the quadratic
+    case left to C3 narrows to a chain of reads that each appear only after another source settles and a limit carried around a
+    cycle of reads.
   - Readers: `AvailableContractPremise` (the Contract and each ancestor: declaration context, then the state) and
     `VerifyConformance`'s prerequisite, each through `ReadSourceState`, `EndProof(BeginProof(), ReadVerdict(state, cause))`, the
     proof scope the check had (BU-22). Since the performance unit's P2, a read inside an open proof scope is `ReadVerdict` into
@@ -28075,6 +28081,57 @@ R8-M* and R9-M* by the stage of the recording unit.
     silently); `MirBuildTest.ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft`, `AnInterpolationCopyPastTheHeightIsARecordAtItsCall`
     and `APartPastTheHeightIsNoPart` (its read in main's body site); `MirAnalysisTest.AReadOfAllOrRecordsNeverFlushesTheLimitTable`;
     `IntrinsicCapabilityTest.AnEndlessCopyGrowthAskedAfterThePassIsTheWorksUnknown`.
+- **R7-M100 The source states' rounds follow the reads: each round after the first runs in the order of the Pending states the previous
+  round's checks read (R7-C2e2 e2-6, PLAN G838)** (Front, 2026-11-25; Major; F's rulings E26-1..4, `artifacts/units/r7-e26/`;
+  design `design.md` there; independent design review ACCEPT WITH CONDITIONS, its C1-C5 applied; prototype `proto/f-e26` c6bcb97e1;
+  Q-759, D-1258) SPEC 8.3.3 Finality and Recursion, 8.3.2. Amends BU-59's Order bullet; BU-59's states, writer, rule, epoch,
+  readers, staging and records are unchanged.
+  - **Order.** The first round runs over the Pending declarations in declaration order. `ReadSourceState`, the one read of a
+    published state, records each Pending state a publication's check reads as (reader, source), grouped by reader in check order.
+    After each round `OrderPendingSources` orders the next one: the declarations still Pending, each after the Pending ones its check
+    read, by a depth-first post-order walk in the round's order; a read back into the walk's own path is skipped. The order holds
+    exactly the Pending declarations, each once, so every Pending declaration is still checked in every round. The alternation is
+    deleted.
+  - **Bound.** BU-59's 2P + 1 rounds stays, whatever the order. When every read the next round needs was recorded, acyclic reads
+    settle in three rounds in any declaration order (one discovers the reads, one settles, one confirms; four with a limit, since the
+    round after the last state change restarts the limits), so such a chain costs O(P) checks whatever its direction. A read the
+    order misses costs one more round, never a result, and such reads can chain: an answer the round's epoch kept from an earlier
+    check hides that answer's reads, and a read can appear only after another source settles, since `AvailableContractPremise` returns
+    at the first Contract or ancestor not Proven (a later ancestor's read appears once the earlier ones are Proven). The quadratic case
+    BU-59 left to C3 therefore narrows to a chain of reads that each appear only after another source settles and a limit presence
+    carried around a cycle of Pending reads; each can still take a round per link, and C3's scheduler removes both. The ordering
+    costs O(P + reads) per round; its lists and table are cleared and reused, so a warm Bind allocates nothing.
+  - **Removal.** The order's record (`sourceOrder`, `sourceReads`, `sourceReadStarts`, `sourceWalk`, `sourceReader`) goes with the
+    rounds when C3's scheduler replaces them (BU-59, PLAN G170).
+  - **Records.** BU-59's order-freedom argument does not use the order: every Pending declaration is checked in every round, an
+    answer computed from a Pending read dies with its round, and the last round changes nothing, so the result is the least
+    fixpoint in any order, as BU-59 argues, its one unconstructed exception (contradictory evidence hidden by a Pending premise)
+    included; the read order shows a reader its settled sources sooner, so it does not widen that exception. Which of several limits
+    a final Unknown rests on may follow the new order as it followed alternation (BU-22's first read); no record depends on it.
+  - **Why no worklist** (the plan's C2 row: "one worklist or the recorded reason none is needed"). A worklist re-checking only the
+    readers whose recorded sources changed needs complete reads, and they are not complete: a check can take an answer the epoch kept
+    from an earlier check, whose reads are not recorded again for it. Skipping such a reader would leave it Pending, a final Unknown
+    where the fixpoint proves it (a wrong `UnprovenConstraint_Kd`). Recording reads per kept answer is the Provisional capability
+    node BU-59 rejected (a second scheduler before C3's). The order needs no completeness, since every Pending declaration is still
+    checked; a worklist would save at most the re-checks of declarations whose sources did not change, a constant factor of the
+    rounds (the confirming round).
+  - **Rows.** `ClosedConformancePrerequisiteBindingTest.AChainOfClosedClausesSettlesInBoundedRounds`: forward, reverse and spiral
+    (the chain's direction turns at every link; at most 5x the checks for 4x the links, which alternation fails); BU-59's every-order
+    rows unchanged; `WarmFinitePrerequisiteVerificationAllocatesNothing`, whose program records a Pending read.
+  - **G838.** The a-deep programs of the Middle's C-304 were rebuilt (its generator is lost) in the C2 value rows' shape at N links.
+    They run no round (their clauses are Self or associated clauses, which `ClosedClause` excludes), and their work counters, the
+    same on dev and head, grow x4 per doubling in three per-query walks over N prefixes (BU-19: a part once per query):
+    `OperandContexts`, `NormalizeProofType` and Closure(view)'s index. C2c3 owns that cost for all three walks (the plan's C2 row,
+    "the remaining quadratic term"); the plan's owner table gives `NormalizeProofType` to c2 for its first-premise substitution
+    (R7-M41's Temporary item), not for its cost. Which phase issues the prefixes' queries is not traced. C-304's 10.9 -> 78.7 s
+    (x7.2 per doubling, not re-measured) is explained by neither counter (the rebuilt process ran all six sizes in about 17 s), so the
+    time's cause stays open: C2c3's RP8 times the rebuilt programs per N. PLAN G838 is restated accordingly.
+  - **ch2** (PLAN G170: `ErasureOwnedDiagnosticTest`'s ch2 joined "C3's remainder (e2-3, e2-6; ...)"). ch2 has no closed clause
+    (each clause is a Self or associated clause or depends on a parameter), so no round runs for it and e2-6 cannot move it; its
+    order dependence is `VerifyConformance`'s on-demand verification, BU-59's staging to C3. G170's sentence drops e2-6 (F's
+    ruling E26-5; `ErasureOwnedDiagnosticTest` passes on the head, ch2 included).
+  - Rejected: a worklist over changed readers (above); a Provisional node per kept answer (BU-59); another fixed or random order
+    (no fixed order bounds a chain whose direction turns at every link); leaving the case to C3 (the plan gives it to e2-6).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
