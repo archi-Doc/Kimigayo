@@ -96,9 +96,11 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     // the reference binds. Each published error as Code@line:column, in source order. A reference erased at a call argument keeps the
     // record of the call's trial, which folds the callee's verdict into its proof (7:17; PLAN G375's site, not this rule's). With an
     // overload the selection runs first, as a call's does (10.1): a valid candidate that wins keeps its own records (7.6: an unsafe one
-    // taken as a value, 9:30), and only when none applies does the reference rest on the failed one. Controls: the reference without a
-    // Function Type (its Item's own records, unchanged), a valid callee (none), a valid callee under a failed annotation (the
-    // annotation's record and its dependent mismatch, unchanged).
+    // taken as a value, 9:30), and only when none applies does the reference rest on the failed one. It rests only on a candidate whose
+    // own check read that signature: one that fails step 1 (written Type arguments: no candidate, 10.5.3) or the arity check reads
+    // none, so the reference keeps its own record (8:27, 7:24). Controls: the reference without a Function Type (its Item's own records,
+    // unchanged), a valid callee (none), a valid callee under a failed annotation (the annotation's record and its dependent mismatch,
+    // unchanged).
     [Theory]
     [InlineData("() -> Box<string>", "", "    let f: () -> Box<string> = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:18")]
     [InlineData("() -> Box<string>", "func take(f: () -> Box<string>) -> i32 => 0", "    return take(g)", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@5:20 | UnsatisfiedConstraint_Kd@7:17")]
@@ -106,6 +108,8 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     [InlineData("() -> Box<string>", "", "    let f = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:13")]
     [InlineData("(x: Box<string>) -> i32", "/// - safety: none.\nunsafe func g(x: string) -> i32 => 0\n", "    let f: (string) -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:11 | DirectCallFunctionValue_Kd@9:30")]
     [InlineData("(x: Box<string>) -> i32", "func g(x: bool, y: bool) -> i32 => 0\n", "    let f: (i32) -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:11")]
+    [InlineData("(x: Box<string>) -> i32", "func g<U>(x: U) -> i32 => 0\n", "    let f: (i32) -> i32 = g<bool>\n    return 0", "UnsatisfiedConstraint_Kd@4:11 | NoApplicableOverload_Kd@8:27")]
+    [InlineData("(x: Box<string>) -> i32", "", "    let f: () -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:11 | TypeMismatch_Kd@7:24")]
     [InlineData("() -> Box<i32>", "", "    let f: () -> Box<i32> = g\n    return 0", "")]
     [InlineData("() -> Box<i32>", "", "    let f: () -> Box<string> = g\n    return 0", "UnsatisfiedConstraint_Kd@7:18 | TypeMismatch_Kd@7:32")]
     public void AFailedSignatureIsTheReferencesFailedInput(string signature, string declaration, string body, string expected)

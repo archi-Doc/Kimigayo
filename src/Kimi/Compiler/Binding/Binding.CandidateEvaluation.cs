@@ -27,6 +27,7 @@ public sealed partial class Binding
         Waiting,
         Pending,
         Error,
+        FailedSignature, // A reference's candidate whose own declared signature failed (FunctionReferenceApplicability): never selected.
     }
 
     // DECISIONS BU-86: the closed vocabulary of PendingJudgment (UnformedSplit: the temporary BU-240 fact, PLAN G886).

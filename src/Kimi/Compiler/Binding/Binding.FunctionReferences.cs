@@ -8,6 +8,8 @@ namespace Kimi.Compiler;
 // SPEC 7.3 and 10.5-10.6: forms a function-group reference under a required Function Type.
 // Existing candidate inference and comparison select the reference and publish its binding or failure. Per-candidate slot facts
 // keep their existing reset/read lifetime; Function Type structure and shared contract comparison stay in Binding.FunctionTypes.
+// A candidate past step 1 and the arity check whose own declared signature failed is FailedSignature (FunctionReferenceApplicability,
+// its one read of that verdict): never selected; a reference with no applicable candidate rests on the first one (SPEC 23.1.2, rule W).
 public sealed partial class Binding
 {
     // SPEC 10.6: the last reference slot that only per-call Origins of S would satisfy, as (Type parameter, parameters of S as bits,
@@ -104,6 +106,7 @@ public sealed partial class Binding
             ReferenceConstraintFailure? pending = null;
             var pendingProof = false;
             Koto? invalid = null;
+            FunctionKoto? failedSignature = null;
             var error = false;
             var resting = false;
             this.failedCause = null;
@@ -155,6 +158,11 @@ public sealed partial class Binding
                     invalid ??= this.InvalidDeclarationContextCause(function) ?? this.FailedSignaturePart(function);
                 }
 
+                if (state == CandidateApplicability.FailedSignature)
+                {
+                    failedSignature ??= function;
+                }
+
                 if (state == CandidateApplicability.Applicable)
                 {
                     applicable++;
@@ -186,22 +194,17 @@ public sealed partial class Binding
                 return pending is { } fact ? this.FailClauseRecord(use, fact, unresolved: false) : this.RecordConstraint(use, ConstraintProof.Unknown, []);
             }
 
+            if (applicable == 0 && failedSignature is not null)
+            {
+                // SPEC 10.1, 23.1.2 (rule W): no candidate applies, and one read its own failed signature (FailedSignature, never selected
+                // nor ambiguous): the reference rests on the first such, at its declaration, whatever the states of the written Types its
+                // verdict restates when the reference binds (they are judged after the bodies, ValidateConstraintUses).
+                return this.CompleteDependent(use, failedSignature);
+            }
+
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
             if (winner < 0)
             {
-                // SPEC 10.1, 23.1.2 (rule W): a candidate whose own declared signature failed (its SignatureVerdict not Proven, recorded
-                // where the signature is written) is judged as any other, as a call's is, and its proof holds that verdict
-                // (ReferenceArgumentProof), so it is never selected nor ambiguous: only when no candidate applies does the outcome rest on
-                // it, at its declaration, whatever the states of the written Types it restates when the reference binds (they are judged
-                // after the bodies, ValidateConstraintUses).
-                for (var i = 0; i < count && applicable == 0; i++)
-                {
-                    if (evaluated[i].Symbol!.Declaration is FunctionKoto failed && this.CheckSignatureTypeConstraints(failed, use) is ConstraintProof.Refuted or ConstraintProof.Error)
-                    {
-                        return this.CompleteDependent(use, failed);
-                    }
-                }
-
                 if (count == 1 && evaluated[0].ConstraintFailure is { } failure)
                 {
                     return this.FailClauseRecord(use, failure, unresolved: false);
@@ -368,7 +371,8 @@ public sealed partial class Binding
                 state = this.SplitState(use, candidate, required, scope, unformedMark, state);
             }
 
-            if (state != CandidateApplicability.Inapplicable)
+            // One that read its own failed signature fits no parameter, as an inapplicable one: the call's trial judges that verdict (PLAN G375).
+            if (state is not (CandidateApplicability.Inapplicable or CandidateApplicability.FailedSignature))
             {
                 return true; // One that rests on the split leaves its writes: the trial that fits this part rests on it too.
             }
@@ -792,6 +796,15 @@ public sealed partial class Binding
             (explicitReference is not null && explicitReference.TypeArguments.Count != function.GenericArguments.Count))
         {
             return CandidateApplicability.Inapplicable;
+        }
+
+        // SPEC 10.5.3, 23.1.2 (DECISIONS Q13 rule W): past step 1 and the arity check, the comparison against S and the proof both read
+        // the candidate's declared signature; its verdict is read once, here. One that failed where it is written (Refuted or Error,
+        // recorded there) is their failed input: the candidate is FailedSignature and neither runs, so no proof forms it again. A Proven
+        // verdict is kept (DeclQueryKind.SignatureVerdict), so the proof's own read of it walks nothing after the gate.
+        if (this.CheckSignatureTypeConstraints(function, use) is ConstraintProof.Refuted or ConstraintProof.Error)
+        {
+            return CandidateApplicability.FailedSignature;
         }
 
         var generic = function.GenericArguments.Count;
