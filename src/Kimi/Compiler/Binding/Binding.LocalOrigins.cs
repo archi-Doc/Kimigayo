@@ -22,23 +22,6 @@ public sealed partial class Binding
     // are kept apart from declared Origin contracts, which are completed before bodies bind; entries are reused across binds.
     private readonly InitializerOriginRows initializerOrigins;
 
-    // SPEC 15.3.6 ("Unless fixed by equality"), DECISIONS R8-M56 (PLAN G1369): the Origin a `let` local's clause equates its omitted slot
-    // with, when that end is no Origin the local's Type omits (InferredEnd, Substitution): the value the slot's region publishes. Null when
-    // none does.
-    private static BoundOrigin? EqualityEnd(OriginDeclaration local, BoundOrigin slot)
-    {
-        foreach (var relation in local.Relations)
-        {
-            var other = !relation.Equality ? null : ReferenceEquals(relation.Longer, slot) ? relation.Shorter : ReferenceEquals(relation.Shorter, slot) ? relation.Longer : null;
-            if (other is not null && InferredEnd(local, other) is null && local.Substitution(other) is null)
-            {
-                return other;
-            }
-        }
-
-        return null;
-    }
-
     // One bound of an Origin a local's initializer omits (SPEC 15.4.4), met with its earlier bounds.
     private void MeetInitializerBound(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound)
     {
@@ -157,19 +140,8 @@ public sealed partial class Binding
 
             foreach (var pending in solved)
             {
-                var variance = this.OccurrenceVariance(declared, pending, this);
-                var region = this.LocalRegionSlot(owner, slot--, variance);
-                var value = declaration.Forming.Replacements[pending];
-
-                // SPEC 15.3.6 ("Unless fixed by equality"), DECISIONS R8-M56 (PLAN G1369): a clause equating the slot with another Origin
-                // fixes the value; the initializer's candidate fits it there, a fit's row at the initializer, and the clause holds by it.
-                var fixedValue = EqualityEnd(declaration, pending);
-                if (fixedValue is not null && owner.InitializerKoto is { } initializer)
-                {
-                    this.AddOriginFit(value, fixedValue, declared, initializer, variance);
-                }
-
-                this.PublishRegionValue(region, fixedValue ?? value, owner);
+                var region = this.LocalRegionSlot(owner, slot--, this.OccurrenceVariance(declared, pending, this));
+                this.PublishRegionValue(region, declaration.Forming.Replacements[pending], owner);
                 declaration.Forming.Replacements[pending] = region;
             }
 

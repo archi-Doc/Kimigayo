@@ -635,7 +635,7 @@ public class ArchitectureRulesTest
     // PLAN G1369: one of `Binding.OriginDeclarations.Failures.cs`'s is BindFailedClausesInBody's, which binds a named nested function's
     // failed clauses once more in its declaring body (formation of that declaration), in place of FailOriginClause's second (the removed
     // first-failure copy: FailedClauses is a failed clause's one record).
-    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=28;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
     // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
     // number is reached, its holder and a member returning it included:

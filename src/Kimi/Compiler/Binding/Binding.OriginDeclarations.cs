@@ -85,6 +85,24 @@ public sealed partial class Binding
     // SPEC 15.3.1, 23.1.2: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
     private static bool RepeatedSet(TypeSemanticsKoto set) => set.BindingFailure == BindingFailure.Duplicate;
 
+    // The regions a local's equalities fixed at its completion (SubstituteOriginEqualities, FixedRegion), numbered first: BindVariableCore
+    // numbers the local's other regions after them.
+    private static int FixedRegions(OriginDeclaration? local)
+    {
+        var count = 0;
+        if (local is null)
+        {
+            return count;
+        }
+
+        foreach (var value in local.Forming.Replacements.Values)
+        {
+            count += IsLocalRegion(value) && ReferenceEquals(value.Binder, local.Owner) ? 1 : 0;
+        }
+
+        return count;
+    }
+
     // SPEC 15.3.5: the variance of a Type's component within it, which ComposeVariance composes: a layer's target invariant where the
     // layer is (IsInvariantLayer), else covariant; a Function Type's inputs contravariant and its result covariant; a declared Type
     // argument by its slot's inferred variance; any other component covariant. A comparison without a Binding sees only the concrete
@@ -551,22 +569,19 @@ public sealed partial class Binding
         this.originStateVersion++;
     }
 
-    // A contract's equalities are substitutions before result defaulting. Revisit equations after
-    // each substitution so chains are independent of clause order. A local's clause is a check that assumes nothing (SPEC 15.3.3): it
-    // substitutes nothing, so its set's slots complete as without it (the local's regions, InferLocalOrigins), a nested signature or body
-    // naming one reads the region, fixed there with no premise (SPEC 15.3.4, 15.6.1, 15.6.5), and the clause is judged against the
-    // initializer (ValidateOriginRelations).
+    // Equalities are substitutions before result defaulting. Revisit equations after each substitution so chains are independent of
+    // clause order. A local's slots are its regions (DECISIONS R8-M56) and its clause a check that assumes nothing (SPEC 15.3.3): an
+    // equality of a slot with an Origin that is no slot of the local substitutes the slot's region, numbered first (FixedRegions), whose
+    // value is that Origin (SPEC 15.3.6 "Unless fixed by equality", 15.4.4), so its own body reads the Origin and a nested signature or
+    // body the region, fixed there with no premise (SPEC 15.3.4, 15.6.1, 15.6.5); an equality of two of its slots substitutes nothing,
+    // each slot completing as its own region. The clause is judged against the initializer (ValidateOriginRelations).
     private void SubstituteOriginEqualities(OriginDeclaration declaration)
     {
-        if (declaration.IsLocal)
-        {
-            return;
-        }
-
-        for (var pass = 0; pass <= declaration.Forming.Relations.Count; pass++)
+        var regions = 0;
+        for (var pass = 0; pass <= declaration.Relations.Length; pass++)
         {
             var changed = false;
-            foreach (var relation in declaration.Forming.Relations)
+            foreach (var relation in declaration.Relations)
             {
                 if (!relation.Equality)
                 {
@@ -587,9 +602,9 @@ public sealed partial class Binding
                     (a, b) = (b, a);
                 }
 
-                if (Flexibility(a) != 0 && !ContainsOrigin(b, a))
+                if (Flexibility(a) != 0 && !ContainsOrigin(b, a) && !(declaration.IsLocal && Flexibility(b) != 0))
                 {
-                    declaration.Forming.Replacements[a] = b;
+                    declaration.Forming.Replacements[a] = declaration.IsLocal ? this.FixedRegion(declaration.Owner, a, b, -1 - regions++) : b;
                     this.originStateVersion++;
                     changed = true;
                 }
@@ -622,6 +637,16 @@ public sealed partial class Binding
             return ReferenceEquals(origin.Binder, declaration.Owner) && declaration.Owner is FunctionKoto or PropertyAccessorKoto &&
                 origin.Kind is OriginKind.Parameter or OriginKind.Input ? 1 : 0;
         }
+    }
+
+    // A local's slot `pending` an equality fixes to `value` (SubstituteOriginEqualities): its region at `slot`, its row the slot's in the
+    // local's Type (invariant for a slot of an initializer's written Type), publishing `value` as the region's value (DECISIONS R8-M56).
+    private BoundOrigin FixedRegion(Koto local, BoundOrigin pending, BoundOrigin value, int slot)
+    {
+        var row = (local as VariableKoto)?.TypeKoto?.BoundType is { } type ? this.OccurrenceVariance(type, pending, this) : OriginVariance.Unused;
+        var region = this.LocalRegionSlot(local, slot, row == OriginVariance.Unused ? OriginVariance.Invariant : row);
+        this.PublishRegionValue(region, value, local);
+        return region;
     }
 
     // The pending slots no equality substituted and no failed clause rests (RestsOnFailedClause) complete: a result slot a nontrivial
