@@ -98,11 +98,14 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     // overload the selection runs first, as a call's does (10.1): a valid candidate that wins keeps its own records (7.6: an unsafe one
     // taken as a value, 9:30), and only when none applies does the reference rest on the failed one. It rests only on a candidate whose
     // own check read that signature: one that fails step 1 (written Type arguments: no candidate, 10.5.3) or the arity check reads
-    // none, so the reference keeps its own record (8:27, 7:24). A failed part is a wildcard and every other part and clause is still
-    // judged, whatever its position (no order, 10.7): a mismatch at a part that did not fail (7:33 before or after the failed part, 7:32
-    // under `g<bool>`, 8:33 in a group) or a refuted clause of the callee's own (11:33, `U is Marker` for bool) keeps the reference's
-    // record. Controls: the reference without a Function Type (its Item's own records, unchanged), a valid callee (none), a valid callee
-    // under a failed annotation (the annotation's record and its dependent mismatch, unchanged).
+    // none, so the reference keeps its own record (8:27, 7:24). A parameter or result whose own Type failed is a wildcard and every other
+    // part and clause is still judged, whatever its position (no order, 10.7): a mismatch at a part that did not fail (7:33 before or
+    // after the failed part, 7:32 under `g<bool>`, 8:33 in a group) or a refuted clause of the callee's own (11:33, `U is Marker` for
+    // bool; 13:38 beside a signature whose verdict is Error, an independent record where a proof combining both rested) keeps the
+    // reference's record. A part whose failed Type is nested in it (`Result<Box<string>, i32>`) is compared as a whole, so a mismatch
+    // of its other component keeps the reference's record (7:38 with the failed Type first or second, 7:47 at a generic callee's
+    // parameter). Controls: the reference without a Function Type (its Item's own records, unchanged), a valid callee (none), a valid
+    // callee under a failed annotation (the annotation's record and its dependent mismatch, unchanged).
     [Theory]
     [InlineData("() -> Box<string>", "", "    let f: () -> Box<string> = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:18")]
     [InlineData("() -> Box<string>", "func take(f: () -> Box<string>) -> i32 => 0", "    return take(g)", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@5:20 | UnsatisfiedConstraint_Kd@7:17")]
@@ -117,6 +120,10 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     [InlineData("<U>(x: U, y: Box<string>) -> i32", "", "    let f: (i32, i32) -> i32 = g<bool>\n    return 0", "UnsatisfiedConstraint_Kd@4:20 | TypeMismatch_Kd@7:32")]
     [InlineData("(x: i32, y: Box<string>) -> i32", "func g(x: bool) -> i32 => 0\n", "    let f: (bool, i32) -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:19 | NoApplicableOverload_Kd@8:33")]
     [InlineData("_unused() -> i32", "contract Marker\nfunc g<U>(x: U, y: Box<string>) -> i32\n    U is Marker\n    return 0\n", "    let f: (bool, i32) -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@6:20 | UnsatisfiedConstraint_Kd@11:33")]
+    [InlineData("_unused() -> i32", "struct Bad<T>\n    T is Missing\ncontract Marker\nfunc g<U>(x: U, y: Bad<i32>) -> i32\n    U is Marker\n    return 0\n", "    let f: (bool, Bad<i32>) -> i32 = g\n    return 0", "InvalidConstraint_Kd@5:1 | UnresolvedBinding_Kd@6:10 | InvalidConstraint_Kd@8:20 | InvalidConstraint_Kd@13:19 | UnsatisfiedConstraint_Kd@13:38")]
+    [InlineData("() -> Result<Box<string>, i32>", "", "    let f: () -> Result<i32, bool> = g\n    return 0", "UnsatisfiedConstraint_Kd@4:20 | TypeMismatch_Kd@7:38")]
+    [InlineData("() -> Result<i32, Box<string>>", "", "    let f: () -> Result<bool, i32> = g\n    return 0", "UnsatisfiedConstraint_Kd@4:25 | TypeMismatch_Kd@7:38")]
+    [InlineData("<U>(x: U, y: Result<Box<string>, i32>) -> i32", "", "    let f: (bool, Result<i32, bool>) -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:27 | TypeMismatch_Kd@7:47")]
     [InlineData("() -> Box<i32>", "", "    let f: () -> Box<i32> = g\n    return 0", "")]
     [InlineData("() -> Box<i32>", "", "    let f: () -> Box<string> = g\n    return 0", "UnsatisfiedConstraint_Kd@7:18 | TypeMismatch_Kd@7:32")]
     public void AFailedSignatureIsTheReferencesFailedInput(string signature, string declaration, string body, string expected)

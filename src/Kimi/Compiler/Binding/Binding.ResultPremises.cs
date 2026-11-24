@@ -30,7 +30,8 @@ public sealed partial class Binding
     // use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a fixed Origin of an enclosing
     // function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same solution. A required signature
     // over an open evidence region (SPEC 10.8) is compared the same way, under the same premises, row sink and well-formedness proof, for
-    // both definitions (board D-822's B1: no premise-free known-signature comparison beside it).
+    // both definitions (board D-822's B1: no premise-free known-signature comparison beside it). None of its readers reads the definition's
+    // signature verdict, so every part is compared, one that failed where written too (no wildcard; DECISIONS Q13 rule W, ContractFits).
     internal bool DefinitionContractFits(BoundType item, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
@@ -52,7 +53,7 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            var fits = this.ContractFits(use, symbol, function, ContractComparison(required, rows), null, item, null, default, origins, inputs);
+            var fits = this.ContractFits(use, symbol, ContractComparison(required, rows), null, item, null, default, origins, inputs, 0);
             failure = fits ? default : this.contractFailure;
             return fits;
         }

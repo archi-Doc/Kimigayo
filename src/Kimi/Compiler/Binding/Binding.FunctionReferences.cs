@@ -8,10 +8,11 @@ namespace Kimi.Compiler;
 // SPEC 7.3 and 10.5-10.6: forms a function-group reference under a required Function Type.
 // Existing candidate inference and comparison select the reference and publish its binding or failure. Per-candidate slot facts
 // keep their existing reset/read lifetime; Function Type structure and shared contract comparison stay in Binding.FunctionTypes.
-// Rule W (SPEC 23.1.2, DECISIONS Q13): a part of a candidate's declared signature that failed where it is written is a wildcard of
-// its comparison against S, and every other part and clause is still judged; a candidate that fails nowhere else and whose signature
-// is Refuted is FailedSignature (FunctionReferenceApplicability, which reads that verdict last): never selected; a reference with no
-// applicable candidate rests on the first one.
+// Rule W (SPEC 23.1.2, DECISIONS Q13): a parameter or result of a candidate's declared signature whose own written Type failed
+// (RefutedSignatureParts: its root, not a Type nested in it) is a wildcard of its comparison against S, and every other part and
+// clause is still judged; a candidate that fails nowhere else and whose signature is Refuted is FailedSignature
+// (FunctionReferenceApplicability, which reads that verdict last): never selected; a reference with no applicable candidate rests on
+// the first one. The wildcards are the reference's alone, the reader of that verdict: every other comparison takes none.
 public sealed partial class Binding
 {
     // SPEC 10.6: the last reference slot that only per-call Origins of S would satisfy, as (Type parameter, parameters of S as bits,
@@ -518,6 +519,7 @@ public sealed partial class Binding
         // writes them, so the signature is matched again while a pass that met an open application fixed something.
         var parameters = required.Components[0];
         var binder = new SolveBinder(function);
+        ulong? wildcards = null; // The parts that failed where written (RefutedSignatureParts), asked at the first misfit.
         bool open;
         int sourced;
         do
@@ -541,10 +543,11 @@ public sealed partial class Binding
                     return false;
                 }
 
-                // SPEC 23.1.2 (rule W): a part that failed where it is written is a wildcard: its misfit fails nothing (RefutedSignaturePart).
+                // SPEC 23.1.2 (rule W): a part whose own written Type failed is a wildcard: its misfit fails nothing; the reference reads the
+                // candidate's verdict after its comparison (FunctionReferenceApplicability).
                 open |= this.HasOpenApplication(part, binder.SlotOwner, frame);
                 if (!this.InferReferencePart(part, last ? required.Components[1] : parameters.Components[i], binder, frame, commonOrigins) &&
-                    !this.RefutedSignaturePart(function, i))
+                    !RefutedPart(wildcards ??= this.RefutedSignatureParts(function), i))
                 {
                     return false;
                 }
@@ -826,9 +829,10 @@ public sealed partial class Binding
             else
             {
                 // SPEC 15.6.1: an Origin relation never changes a selection, so the reference's applicability takes the comparison's
-                // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction).
+                // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction). The candidate reads its
+                // signature's verdict below, so its parts that failed where written are wildcards of the comparison (rule W).
                 var rows = this.comparisonRows.Count;
-                var fits = this.ContractFits(use, symbol, function, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs);
+                var fits = this.ContractFits(use, symbol, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs, this.RefutedSignatureParts(function));
                 this.DropComparisonRows(rows);
                 if (!fits)
                 {
@@ -848,9 +852,11 @@ public sealed partial class Binding
                 failure = ClauseFailure(this.TakeClauseFact(use), null); // The fact ReferenceArgumentProof left at the trial's verdict.
             }
 
-            // SPEC 10.5.3, 23.1.2 (DECISIONS Q13 rule W): the declared signature, read last, once every part that did not fail fits S (a
-            // part that failed where it is written is a wildcard there) and every other clause holds. One Refuted where it is written is
-            // then the only failure, read from the failed input: FailedSignature, never selected; an Error is the candidate's Error.
+            // SPEC 10.5.3, 23.1.2 (DECISIONS Q13 rule W): the declared signature, read last, once every part whose own Type did not fail
+            // fits S (one whose own Type failed is a wildcard there) and every clause holds. One Refuted where it is written is then the
+            // only failure, read from the failed input: FailedSignature, never selected; an Error is the candidate's Error. A clause
+            // refuted beside a failed signature fails the candidate first, so the reference keeps that clause's record, beside an Error
+            // verdict too (an independent record, where a proof combining both was Error and rested).
             if (proof == ConstraintProof.Proven && (proof = this.CheckSignatureTypeConstraints(function, use)) == ConstraintProof.Refuted)
             {
                 return CandidateApplicability.FailedSignature;
