@@ -44,6 +44,10 @@ public sealed partial class Binding
     // recorded too), and AccumulateRequirements and ClosureArgumentVariance's Occurrences (a bit per polarity).
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
 
+    // The constructed parts OperandContexts found clear, whose query spans a capability request (R7-C6 a; Binding.ConstraintOperands'
+    // ClearQuery): the one table whose query is not one walk's, its fixed inputs the declaration contexts' states during the request.
+    private readonly TypeMemo<BoundType, byte> clearParts = new();
+
     // The query number after a query's: the one step every query-stamped memo advances by (TypeMemo.Begin, StructuralCompletion.Clear;
     // R7-N5 B6b, the Front's C6), the HIR publisher's publication number (FormReads, DECISIONS D-986) and the prerequisite walks' number
     // (PrerequisiteVisitRows, R7-N5 E). It skips 0, the number an absent row or entry carries, restarting at FirstQuery after

@@ -206,11 +206,17 @@ since `verify.ps1` does not resolve a Git Bash path such as `/c/...`.
 `test-scalars.ps1` writes `native-results.json` beside `results.json`: an environment key (hashes of the compiler's `tatara.dll`,
 the backend archive, kernel32, the native build's code under `src/Kimi/Build`, the `tatara` and `build` commands and the target
 profile, the runner scripts, `kernel32.def` and `profile.json`, and the deadline) and, per fixture, a key over its `.ll`,
-`.stdout`, `.stderr`, `.exit` and `.observation` files, its status and when it last executed. `verify.ps1 -NativeReuse
-<base>/native-results.json` (the runner's `-ReuseResults`) skips a fixture whose entry has both keys equal, status `passed` and an
-execution within `-ReuseHours` (24); every other fixture executes, so each fixture runs at least daily and at once when an input
-changes. The success line reports the split (`N fixtures run, M reused`); a base without the file means a full native run. The keys
-do not see machine load or the inherited environment, so a flaky observation or deadline failure can stay hidden for up to a day.
+`.stdout`, `.stderr`, `.exit` and `.observation` files, a run key over its two executables (the hash each linked record names,
+which its file has), the four sidecars (`.stdout` to `.observation`), the run scripts (`test-scalars.ps1`,
+`test-scalar-fixture.ps1`, `test-scalar-process.ps1`, `expected-output.ps1`) and the deadline, its status and when it last
+executed. `verify.ps1 -NativeReuse <base>/native-results.json` (the runner's `-ReuseResults`) takes the base's entries with status
+`passed` and an execution within `-ReuseHours` (24): a fixture whose environment and fixture keys equal its entry's is neither
+built nor run; every other fixture is built, and one whose run key then equals its entry's, executed within half of `-ReuseHours`
+(12), is not run (DECISIONS Q16). A reused fixture keeps its entry's execution time and log, so each fixture runs at least daily,
+again at a rebuild 12-24 h after its last execution, and at once when its executables, sidecars, run scripts or deadline change.
+The success line reports the split (`N fixtures run, M reused (K of them built; ...)`); a base without the file, or with entries
+written before run keys, means every built fixture runs. The keys do not see machine load or the inherited environment, so a
+flaky observation or deadline failure can stay hidden for up to a day.
 
 ## Specification acceptance and support boundaries
 
@@ -286,7 +292,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 
 ## Native fixtures
 
-`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four; 1 runs serially. The runner (`test-scalars.ps1 -Configuration`) writes each fixture's two IR/manifest pairs (the manifest `kimi emit` writes for this compiler, once per run) and builds them in up to that many `kimi tatara` sessions of the configuration's `Kimi.dll` (`build --Manifest`, through Tatara: the input IR verified, O2 optimized and verified again, each object inspected as `kimi build` does), then runs O0 and O2. stdout, stderr, exit-code and dependency oracles are checked at each level. A build whose record is not linked is a failure, whatever stopped it. Use a fresh output folder: every pending pair is rewritten and its earlier record removed before the first session.
+`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four; 1 runs serially. The runner (`test-scalars.ps1 -Configuration`) writes each fixture's two IR/manifest pairs (the manifest `kimi emit` writes for this compiler, once per run) and builds them in up to that many `kimi tatara` sessions of the configuration's `Kimi.dll` (`build --Manifest`, through Tatara: the input IR verified, O2 optimized and verified again, each object inspected as `kimi build` does), then runs O0 and O2 of each fixture whose run the base does not reuse ([Shared heavy runs and bases](#shared-heavy-runs-and-bases)). stdout, stderr, exit-code and dependency oracles are checked at each level. A build whose record is not linked is a failure, whatever stopped it. Use a fresh output folder: every pending pair is rewritten and its earlier record removed before the first session.
 
 Each fixture owns its output names and log. Workers publish status (passed, failed or incomplete), completed optimization levels and per-level execution measurements; the parent waits for every worker, preserves failure logs and fails the step if any fixture fails, is incomplete or has no result. Verify stores per-fixture logs and `results.json` under its evidence directory, with generated binaries under `temp/`. Fixture patterns are still processed in order, and parallelism is bounded within each pattern.
 

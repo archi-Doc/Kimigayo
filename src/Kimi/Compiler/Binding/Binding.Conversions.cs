@@ -75,9 +75,9 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope, conversion) != ConstraintProof.Proven)
+        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope, conversion) is not ConstraintProof.Proven and var copyProof)
         {
-            return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+            return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
 
         conversion.ConversionBinding = ConversionBinding.Identity;
@@ -90,10 +90,14 @@ public sealed partial class Binding
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
-        if (!this.OffersTake(conversion.Left) ||
-            (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven))
+        if (!this.OffersTake(conversion.Left))
         {
             return this.FailTake(conversion, conversion.Left);
+        }
+
+        if (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
+        {
+            return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailTake(conversion, conversion.Left);
         }
 
         // SPEC 11.2: consuming var storage requires its accessible standard setter,
@@ -336,9 +340,9 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (this.ProveCopy(copied, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
+            if (this.ProveCopy(copied, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
             {
-                return this.Record(conversion, BindingFailure.NonCopyOperand, []);
+                return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.Record(conversion, BindingFailure.NonCopyOperand, []);
             }
 
             conversion.ConversionBinding = this.IsNeverValue(conversion.Left, copied) ? ConversionBinding.Abrupt : ConversionBinding.Identity;

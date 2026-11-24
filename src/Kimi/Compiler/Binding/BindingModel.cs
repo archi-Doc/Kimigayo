@@ -1039,10 +1039,12 @@ public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
     internal int Problem { get; init; } = -1;
 }
 
-/// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>
-public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount)
+/// <summary>Summarizes the current pass. Provisional completion never certifies a final program; a Final pass is complete when it rejected
+/// no part: no node Unresolved or Invalid and no Resolved node with a published problem of its own (LimitedCount: a located limit beside
+/// its Resolved node, PLAN G254c, or a report's Defect, an Internal record).</summary>
+public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount, int LimitedCount = 0)
 {
-    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
+    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0 && this.LimitedCount == 0;
 }
 
 /// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol, the supply kind

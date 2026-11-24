@@ -4,11 +4,10 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
-#include "llvm/Support/FileSystem.h"
 
 using namespace llvm;
 
-int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, TataraText optimizedIr, TataraResult** result)
+int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, TataraResult** result)
 {
     return tatara::run(result, [&](TataraResult& outcome) -> int32_t {
         raw_string_ostream message(outcome.message);
@@ -32,14 +31,6 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
             module->setDataLayout(machine->createDataLayout());
         }
 
-        // As opt, a failure after the file is opened leaves none (tatara::removeOutput; a return of 2: tatara::run).
-        int descriptor = tatara::openOutput(outcome, tatara::view(optimizedIr), sys::fs::OF_TextWithCRLF, "opt: ", message);
-        if (descriptor < 0) {
-            return 1;
-        }
-
-        raw_fd_ostream text(descriptor, true);
-
         LoopAnalysisManager loops;
         FunctionAnalysisManager functions;
         CGSCCAnalysisManager components;
@@ -58,8 +49,23 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
         ModulePassManager passes = builder.buildPerModuleDefaultPipeline(OptimizationLevel::O2);
         passes.addPass(VerifierPass());
         passes.run(*module, modules);
-        module->print(text, nullptr);
-        bool closed = tatara::closeOutput(outcome, text, "opt: ", message);
-        return closed && !context.getDiagHandlerPtr()->HasErrors ? 0 : tatara::removeOutput(tatara::view(optimizedIr), message);
+        if (context.getDiagHandlerPtr()->HasErrors) {
+            return 1;
+        }
+
+        // The text as opt -S writes it on Windows (OF_TextWithCRLF: each "\n" as "\r\n"; LLVM prints no raw "\r").
+        std::string text;
+        raw_string_ostream printed(text);
+        module->print(printed, nullptr);
+        outcome.output.reserve(text.size() + StringRef(text).count('\n'));
+        for (char c : text) {
+            if (c == '\n') {
+                outcome.output += '\r';
+            }
+
+            outcome.output += c;
+        }
+
+        return 0;
     });
 }
