@@ -1295,7 +1295,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("vd_bad", "func kd(f: (i32) -> i32, q: ref/i32) -> i32 => 0\n\n" + NestedHost + "    let g = kd\n    return g(func [] (x) => undefinedName2, undefinedName)\n", "UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2", null)]
     [InlineData("va_bad", ClosurePlace + "    return g(c, undefinedName)\n", "TransferRequired_Kd c; UnresolvedBinding_Kd undefinedName", null)]
     [InlineData("va2_bad", ClosurePlace + "    return g(c, s)\n", "TransferRequired_Kd c", null)]
-    [InlineData("r17_two_acq_bad", TwoAcquisitions, "TransferRequired_Kd values", null)]
+    [InlineData("r17_two_acq_bad", TwoAcquisitions, "TransferRequired_Kd c; TransferRequired_Kd values", null)]
     [InlineData("w04_cl", K6 + NestedHost + "    let g = k6\n    return g(s, undefinedName)\n", "UnprovenOriginRelation_Kd s; UnresolvedBinding_Kd undefinedName", null)]
     [InlineData("w12_fit", "func k9(q: ref/i32, f: (ref/i32) -> i32, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\nfunc hf2(x: ref/i32 during static) -> i32 => 5\n\n" + TwoHost + "    let g = k9\n    return g(s, hf2, p)\n", "UnprovenOriginContract_Kd hf2; UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s", null)]
     [InlineData("w17_case", "func k10(q: ref/i32, o: Option<i32>, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\n" + TwoHost + "    let g = k10\n    return g(s, .Some(undefinedName), p)\n", "UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s; UnresolvedBinding_Kd undefinedName", null)]
