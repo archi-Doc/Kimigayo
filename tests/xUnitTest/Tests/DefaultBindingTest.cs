@@ -281,8 +281,9 @@ public class DefaultBindingTest
             c.Binding.ReportDiagnostics();
             var span = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters[1].DefaultValue!.Span;
             var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-            Assert.True(record.Code == nameof(DiagnosticCode.MissingOriginBinding_Kd) && record.Text == "z" && record.Span.Start > span.Start &&
-                record.Span.End <= span.End, row + ": " + record);
+            var atZ = record.Code == nameof(DiagnosticCode.MissingOriginBinding_Kd) && record.Text == "z" && record.Span.Start > span.Start &&
+                record.Span.End <= span.End;
+            Assert.True(atZ, row + ": " + record);
         }
     }
 
