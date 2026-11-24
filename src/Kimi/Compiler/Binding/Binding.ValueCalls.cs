@@ -402,10 +402,10 @@ public sealed partial class Binding
                 this.RecordLocated(call, call.Method.Span);
                 return false;
             case CalleeOutcome.LendsCallee:
-                _ = this.JudgeSelectedInput(call.Method, ArgumentOperationKind.Borrow, receiver);
+                _ = this.JudgeSelectedInput(call.Method, ArgumentOperationKind.Borrow, receiver, null, null);
                 return true;
             case CalleeOutcome.LendsHandle:
-                _ = this.JudgeSelectedInput(receiverOperation.Source!, ArgumentOperationKind.PayloadProjection, receiver);
+                _ = this.JudgeSelectedInput(receiverOperation.Source!, ArgumentOperationKind.PayloadProjection, receiver, null, null);
                 return true;
             default: // Formed.
                 return true;
@@ -580,8 +580,9 @@ public sealed partial class Binding
                     continue;
                 }
 
-                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (JudgeSelectedInput).
-                if (!this.JudgeSelectedInput(at, operations[i].Kind, parameter.Semantics) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
+                // An input's located limits (JudgeSelectedInput): a Borrow of a static root fails it, its relations waiting for P42; a
+                // Shortened Reborrow is recorded beside it, its fit judged.
+                if (!this.JudgeSelectedInput(at, operations[i].Kind, parameter.Semantics, operations[i].SourceType, operations[i].AdaptedType) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
                 {
                     var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
                     if (failure.Kind == ComparisonFailureKind.Shape && !erasure)

@@ -152,16 +152,23 @@ public sealed partial class Binding
 
     private readonly record struct AcquisitionFailure(Koto Place, BindingFailure Kind, bool Object);
 
-    // SPEC 23.1.1, 23.1.2, 10.1 (PLAN P42): the located limits of a selected input, judged where its operation is final and nowhere else,
-    // so selection never depends on them; each limit is its owner's decision. An implicit Borrow of a static root (BorrowsStaticRoot) fails
-    // the input, before its Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged
-    // (BorrowFailure). True when the input fails.
-    private bool JudgeSelectedInput(Koto source, ArgumentOperationKind kind, SemanticsKind mode)
+    // SPEC 23.1.1, 23.1.2, 10.1 (PLAN P42, G254c): the located limits of a selected input, judged where its operation is final and nowhere
+    // else, so selection never depends on them; each limit is its owner's decision. An implicit Borrow of a static root (BorrowsStaticRoot)
+    // fails the input, before its Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged
+    // (BorrowFailure). Otherwise a Reborrow whose supplied Type `supplied` no one Type carries (BareReborrowLimit on `read`, the Type the
+    // operation adapted) is the bare Reborrow rule's limit, recorded beside its Resolved source (RecordLocatedLimit), so every other case's
+    // verdict stands (SPEC 8.15.2). True when the input fails.
+    private bool JudgeSelectedInput(Koto source, ArgumentOperationKind kind, SemanticsKind mode, BoundType? read, BoundType? supplied)
     {
         if (this.BorrowsStaticRoot(source, kind, mode))
         {
             this.Fail(source, BindingFailure.Unsupported);
             return true;
+        }
+
+        if (kind == ArgumentOperationKind.Reborrow && this.BareReborrowLimit(source, read, supplied))
+        {
+            this.RecordLocatedLimit(source, source.Span);
         }
 
         return false;
@@ -184,7 +191,7 @@ public sealed partial class Binding
 
         if (recordPair)
         {
-            _ = this.JudgeSelectedInput(node, operation, adapted.Semantics); // The selected destination's Borrow; a probe adapts a call result.
+            _ = this.JudgeSelectedInput(node, operation, adapted.Semantics, actual, adapted); // The selected destination's limits; a probe adapts a call result.
         }
 
         return operation switch

@@ -229,16 +229,17 @@ public sealed partial class Binding
         BoundType? declaringType)
         => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
-    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
-    // borrows a static root is first the located limit (JudgeSelectedInput), its relations (SPEC 11.8, a fit to static) waiting for P42,
-    // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
+    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input's
+    // located limits are judged first (JudgeSelectedInput): a Borrow of a static root fails it, its relations (SPEC 11.8, a fit to static)
+    // waiting for P42, and the bare Reborrow rule's Shortened Reborrow is recorded beside it, its fit judged.
+    // An implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
     // Origin relation problem (JudgeHolderPlace; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
         if (operation is { Source: { } source, ParameterType: { } mode })
         {
-            if (this.JudgeSelectedInput(source, operation.Kind, mode.Semantics))
+            if (this.JudgeSelectedInput(source, operation.Kind, mode.Semantics, operation.SourceType, operation.AdaptedType))
             {
                 return;
             }
