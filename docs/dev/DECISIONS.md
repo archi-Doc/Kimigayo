@@ -33046,29 +33046,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   windows, never closes them), detection by hashing (a write and a restore pass it), LLD reading memory (its driver takes paths);
   emitting from the optimized module (the plan's §8 candidate 1: about 2 % of a warm O2 build line, but 27 of 6,981 fixtures'
   objects change by the use-list order) stays a later unit on this ABI after an owner question (design §5, §11).
-- **T-M43 Tatara's inspect reads archives** (Tatara, 2026-11-24; PLAN G1329, D-1191, Q-748, D-1244; Major; design
-  `artifacts\handoff\tatara\units\LinkAmbiguity\design.md` Revisions 0-3a, phase A of §5; the Middle's C-514 and C-533, ACCEPT;
-  T's rulings (a), 19, 22, 32 and B7's rulings 1-2). `tatara_inspect` accepts an archive and reads each member as llvm-nm does (COFF
-  and ELF objects; COFF short import members by their import type, code `T X` and `T __imp_X`; bitcode members through
-  `IRObjectFile`, since lld-link links them), and a whole input in the same formats (one predicate: a lone short import member or
-  bitcode object is read as a member is); kinds 1 and 2 hold one block per member in archive order, each ended by an empty line (an
-  object is one member); text kinds **4** (each member's form: `o` relocatable, `i` short import member, `s` linked image), **5** (the
-  defined names whose section admits copies: COFF `IMAGE_SCN_LNK_COMDAT` selecting any, same size, exact match or largest; ELF a
-  `GRP_COMDAT` group's sections; a bitcode member's names in a comdat selecting any, exact match, largest or same size, from its IR
-  symbol table; a `nodeduplicate` bitcode comdat's names are ordinary definitions by T's reading (i) of ruling 32, not by a claim
-  about LLD), **6** (a COFF member's `.drectve` `/include:` and `/alternatename:` references, and a bitcode member's COFF linker
-  options, split by LLVM's Windows command-line tokenizer as lld-link splits them, with LLD's four prefixes `/`, `-`, `/?`, `-?` and
-  any case, a reference missing a name skipped, every other option LLD's: the archive's headers hold no `lld/COFF` parser or option
-  table) and **7** (the archive's symbol index, each entry's member by its position); flag kind **2** (archive). A thin archive fails
-  (1, "thin archive"); a malformed archive fails with LLVM's text (1, Tatara can run again); so do a short import member LLD calls
-  broken ("broken import library": LLD's size and name check, which `COFFImportFile` lacks) and a listed name that is empty or holds
-  a line break (the texts are lines; an empty line ends a block). The index names members by their position in archive order;
-  llvm-lib writes its members in reverse command-line order, so its index, naming the command line's last definer, names the first
-  definer in member order. `Tatara.ObjectFacts` is `(Members, Index, IsArchive, HasDefaultLibrary)`, one representation (an object
-  is `Members[0]`, which `NativeBuild.Inspect` reads). No build reads an archive yet: the read is a published fact whose reader, the
-  native build's dependency step, lands with G1329's phase B (removal condition of that temporary state: phase B lands). Phase B's
-  full entry supersedes this one. Rejected: LLD's private COFF directive parser declared in Tatara (a mirror of an internal ABI), a
-  second managed reader of archives, keeping `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact).
+- **T-M43 Tatara's inspect reads archives** (Tatara, 2026-11-24): superseded by T-M45 (2026-11-24); full text: 92de2b8fe.
 - **T-M44 Kimi's allocator keeps one spare run** (Tatara, 2026-11-24; PLAN G1311; the owner's O-508 (a) and O-518 (a); Q-756, D-1254;
   Major; design `artifacts\handoff\tatara\units\G1311\design.md` Revision 1; reviews C-515 (Revision 0: the Back, the Middle) and C-538
   (Revision 1: the Middle, the Back, both ACCEPT WITH CONDITIONS, taken); T's rulings 36-44). Amends T-M27's Algorithm and IMPL 21.4.3.
@@ -33104,3 +33082,60 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     (the inline blocks stay in the hot code), routines after the user functions (the intra-function shifts remain), an RP8
     exception, inlining the run path again (PartS +4-5%); `take_run` writing the header (it split the join and cost the pop path a
     fetch block).
+- **T-M45 A symbol two libraries define is an error at the link** (Tatara, 2026-11-24; PLAN G1329, D-1191, Q-748 (phase A),
+  Q-757 (phase B); Major; design `artifacts\handoff\tatara\units\LinkAmbiguity\design.md` Revisions 0-3a; the Middle's C-514 (B1-B3,
+  N1-N7, N-a to N-d) and C-533; T's rulings (i), (a), 19, 21-34 and B7's rulings 1-2; the Back's consent on C-514 with its two
+  conditions; supersedes T-M43). IMPL 20.4 makes an ambiguous native dependency an error, never resolved by link order; LLD resolves
+  a lazy symbol by the first library that defines it and reports only duplicates between loaded members, so no LLD option checks it.
+  - **The step.** `NativeBuild.CheckDependencies`, between the object's inspection and the link (both entry points), computes the
+    members the link may load, order-free across libraries and independent of the optimization level. It starts from the module's
+    declared references: the manifest's external declarations in their referenced form (`__imp_X` for dllimport), written before
+    optimization, and the row's fixed runtime references (`RuntimeReferences`: the backend supply's symbols, `__chkstk`, which LLVM's
+    code calls without a declaration). It never starts from the compiled object's undefined symbols (IMPL 21: "O0 and O2 ... never
+    change acceptance"; C-514 B3). It also starts from the references of the library files the link loads whole (an input that is no
+    archive, of form `o` or `i`).
+  - **The closure.** A referenced symbol (a joined unit's strong undefined symbol, `U`, or its `/include:`) that no whole file
+    defines (the module's object, a whole library file) joins each library's **pick** for it: the member its archive index names
+    first, which lld-link fetches. llvm-lib writes its members in reverse command-line order, so its index names the first definer in
+    member order (the command line's last); the code reads the index as lld-link does, whatever a writer does; the ELF pick comes with B7b7's probe. A weak reference loads nothing. An
+    `/alternatename:A=B` of a joined unit makes `B` referenced once the references are done, when `A` is referenced and neither a
+    whole file nor any library defines it.
+  - **The verdict.** Two or more libraries picking a symbol fail the build before the link: `InvalidDataException`, one line per
+    symbol in Ordinal order, the libraries in Ordinal order ("Ambiguous native symbol 'f': defined by the libraries alpha and
+    codec."), the record left incomplete and no executable; no source location, code or vocabulary. Copies of one COMDAT symbol
+    across libraries count as one (T's ruling (i), IMPL 20.4's "symbol resolution ... implementation-defined"), whatever their
+    selections (T's ruling 32 B3; known limit, PLAN G1373: a selection mix or a size or content mismatch LLD refuses together passes
+    when only one copy loads). A linked image given as a library defines nothing for the closure.
+  - **The facts.** Tatara reads, C# judges (decision 13). `tatara_inspect` accepts an archive and reads each member as llvm-nm does
+    (COFF and ELF objects; COFF short import members by their import type, code `T X` and `T __imp_X`; bitcode members through
+    `IRObjectFile`, since lld-link links them), and a whole input in the same formats (one predicate: a lone short import member or
+    bitcode object is read as a member is); kinds 1 and 2 hold one block per member in archive order, each ended by an empty line (an
+    object is one member); text kinds **4** (each member's form: `o` relocatable, `i` short import member, `s` linked image), **5**
+    (the defined names whose section admits copies: COFF `IMAGE_SCN_LNK_COMDAT` selecting any, same size, exact match or largest; ELF
+    a `GRP_COMDAT` group's sections; a bitcode member's names in a comdat selecting any, exact match, largest or same size, from its
+    IR symbol table; a `nodeduplicate` bitcode comdat's names are ordinary definitions by T's reading (i) of ruling 32, not by a claim
+    about LLD), **6** (a COFF member's `.drectve` `/include:` and `/alternatename:` references, and a bitcode member's COFF linker
+    options, split by LLVM's Windows command-line tokenizer as lld-link splits them, with LLD's four prefixes `/`, `-`, `/?`, `-?` and
+    any case, a reference missing a name skipped, every other option LLD's: the pinned archive's headers hold no `lld/COFF` parser or
+    option table) and **7** (the archive's symbol index, each entry's member by its position); flag kind **2** (archive). A thin
+    archive fails (1, "thin archive"); a malformed archive fails with LLVM's text (1, Tatara can run again); so do a short import
+    member LLD calls broken ("broken import library": LLD's size and name check, which `COFFImportFile` lacks) and a listed name that
+    is empty or holds a line break (the texts are lines; an empty line ends a block). `Tatara.ObjectFacts` is `(Members, Index,
+    IsArchive, HasDefaultLibrary)`, one representation (an object is `Members[0]`, which `NativeBuild.Inspect` reads once per build).
+    Each staged library's facts are kept per process by its staged SHA-256 (`NativeToolchain.LinkInputs` of `LinkInput`: the facts,
+    each symbol's pick and whether the file is loaded whole; content-keyed, never invalidated or evicted, one entry per distinct
+    input).
+  - **The runtime's imports (O9; rulings 21 (ii), 28, 32).** The manifest (schema 5) lists every external the module declares: the
+    program's imports, then the linked runtime's kernel32 imports that no import names (`GeneratedModule.RuntimeImports`, stated once
+    per row by `LlvmModuleText.ModuleFrame` from `TargetProfile.RuntimeDeclarations`; a `kimi test` build's are the test runtime's),
+    each once with one dllimport form; a schema-4 manifest fails the fixed-field check (`schemaVersion`) and is emitted again. The native build reads kernel32's imports from the
+    manifest only, for `Inspect`'s bound and the step's start; `RuntimeReferences` replaces `AllowedUndefined`.
+  - **A malformed program library** now fails the build in the read (Tatara's inspect returns 1; Tatara can run again) instead of
+    LLD's fatal error ending the process's Tatara. The session's fatal row keeps its premise on an object whose `.drectve` holds
+    `/merge:bad` (P-F1: LLD's `fatal`, "/merge: invalid argument").
+  - **P3 (speed).** Per build the step takes 0.025-0.043 ms warm (19.1-19.6 ms on a process's first build, JIT included) and the store keeps 10,808 bytes; `libc.a`'s read takes 6.1-6.9 ms and keeps 940-970 KB, once per process (T-354, `artifacts\benchmarks\linkambiguity-p3-20261125-0241`). Over 3 ms or 2 MB: the catalog-facts follow-up is PLAN G1374.
+  - Readings R1-R4 (design §7). Rejected: LLD's options or log, a managed reader of archives, LLD's private COFF directive parser
+    declared in Tatara (a mirror of an internal ABI), Binding, every-pair and module-only rules, ordering by rule, every definer of a
+    library (C-514 B1), every COMDAT copy a candidate (C-514 B2 (ii)), the compiled object's references (C-514 B3), keeping
+    `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact), a `testBuild` flag with a `TargetProfile`
+    column (ruling 21's fallback), the runtime's entries inside `Externals` (its `FunctionAbi`; ruling 32).
