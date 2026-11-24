@@ -178,7 +178,8 @@ public sealed class TataraExecutorTest : IDisposable
     // Tatara's inspect reads archives (LinkAmbiguity phase A, design §2 "Tatara's read"): per member in archive order its symbols, its
     // form (o, i, s), its definitions in sections that admit copies and its .drectve's references, and the archive's index naming each
     // entry's member (Describe); an object or a DLL is one member of no archive; a bitcode member is read as lld-link links it (P4), its
-    // copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32); a directive's option takes each of
+    // copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32: a nodeduplicate comdat's names are
+    // ordinary definitions, and a DEFAULTLIB among its linker options is the default-library flag; C-533 N-2); a directive's option takes each of
     // LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32). llvm-lib writes its members in reverse command-line order (as lib.exe does; its /list reverses them back), so its index, naming
     // the command line's last definer (P5), names the first in member order. A malformed archive fails with LLVM's text and Tatara runs
     // again; a thin archive fails. Libraries: the compiler's committed ones, or the pinned clang's objects archived by llvm-lib.
@@ -192,6 +193,8 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData("directives")]
     [InlineData("bitcode")]
     [InlineData("bitcodefacts")]
+    [InlineData("bitcodenodeduplicate")]
+    [InlineData("bitcodedefaultlib")]
     [InlineData("prefixes")]
     [InlineData("index")]
     [InlineData("malformed")]
@@ -236,6 +239,12 @@ public sealed class TataraExecutorTest : IDisposable
             "bitcodefacts" => Expect(
                 "archive\no W:?twice@@YAHH@Z W:g D:plain D:pointer comdat:?twice@@YAHH@Z comdat:g include:f alternatename:a=b\nindex 0:?twice@@YAHH@Z 0:g 0:plain 0:pointer",
                 this.Library("bitcodefacts.lib", ["-fms-extensions", "-flto"], ("bitcodefacts.cpp", BitcodeFacts))),
+            "bitcodenodeduplicate" => Expect(
+                "archive\no D:a D:n comdat:a\nindex 0:a 0:n",
+                this.Library("nodeduplicate.lib", ["-flto"], ("nodeduplicate.ll", "$n = comdat nodeduplicate\n@n = global i32 1, comdat\n$a = comdat any\n@a = global i32 2, comdat\n"))),
+            "bitcodedefaultlib" => Expect(
+                "archive, default library\no T:dl\nindex 0:dl",
+                this.Library("defaultlib.lib", ["-flto"], ("defaultlib.c", "#pragma comment(lib, \"foo\")\nint dl(void) { return 0; }\n"))),
             "prefixes" => Expect(
                 "archive\no T:prefixes include:f alternatename:a=b\nindex 0:prefixes",
                 this.Library("prefixes.lib", ["-fms-extensions"], ("prefixes.c", "#pragma comment(linker, \"/?include:f -?ALTERNATENAME:a=b /??include:x\")\nint prefixes(void) { return 0; }\n"))),

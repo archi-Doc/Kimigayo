@@ -1222,6 +1222,91 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(ArtifactPaths.Create(project).Executable));
     }
 
+    // LinkAmbiguity (IMPL 20.4: an ambiguous native dependency is an error, never resolved by link order; design §1, Revisions 0-3a, its
+    // labels and base cells; fail-before: artifacts\tatara\linkambiguity-b\fail-before.txt): a symbol the link depends on, which no file
+    // loaded whole defines and two or more libraries define (each library's pick: the member its index names), fails the build before
+    // the link with one line per symbol, the record left incomplete and no executable, whatever the names (before and after kernel32
+    // and kimi_backend in name order) and at either level (rows 29, 30). Each row's libraries are Dependency's.
+    [Theory]
+    [InlineData("3", "codec", "O2", "'GetLastError': defined by the libraries codec and kernel32.")]
+    [InlineData("3", "zlib", "O2", "'GetLastError': defined by the libraries kernel32 and zlib.")]
+    [InlineData("4", "codec", "O2", "'__imp_WriteFile': defined by the libraries codec and kernel32.")]
+    [InlineData("4", "zlib", "O2", "'__imp_WriteFile': defined by the libraries kernel32 and zlib.")]
+    [InlineData("6", "codec", "O2", "'__chkstk': defined by the libraries codec and kimi_backend.")]
+    [InlineData("6", "zlib", "O2", "'__chkstk': defined by the libraries kimi_backend and zlib.")]
+    [InlineData("7", "alpha", "O2", "'codec_add': defined by the libraries alpha and codec.")]
+    [InlineData("7", "zlib", "O2", "'codec_add': defined by the libraries codec and zlib.")]
+    [InlineData("22", "alpha", "O2", "'codec_add': defined by the libraries alpha and codec.")]
+    [InlineData("8", "alpha", "O2", "'f': defined by the libraries alpha and codec.")]
+    [InlineData("15", "alpha", "O2", "'f': defined by the libraries alpha and codec.")]
+    [InlineData("17", "codec", "O2", "'codec_add': defined by the libraries codec and codec2.\nAmbiguous native symbol 'codec_sub': defined by the libraries codec and codec2.")]
+    [InlineData("23", "codec", "O2", "'__imp_VirtualProtect': defined by the libraries codec and kernel32.")]
+    [InlineData("24", "codec", "O2", "'VirtualProtect': defined by the libraries codec and kernel32.")]
+    [InlineData("24", "zlib", "O2", "'VirtualProtect': defined by the libraries kernel32 and zlib.")]
+    [InlineData("25b", "codec", "O2", "'VirtualProtect': defined by the libraries kernel32 and zlib.")]
+    [InlineData("26", "alpha", "O2", "'g': defined by the libraries alpha and codec.")]
+    [InlineData("27", "alpha", "O2", "'f': defined by the libraries alpha and codec.")]
+    [InlineData("28", "alpha", "O2", "'b': defined by the libraries alpha and codec.")]
+    [InlineData("29", "alpha", "O0", "'codec_add': defined by the libraries alpha and codec.")]
+    [InlineData("29", "alpha", "O2", "'codec_add': defined by the libraries alpha and codec.")]
+    [InlineData("30", "codec", "O0", "'__chkstk': defined by the libraries codec and kimi_backend.")]
+    [InlineData("30", "codec", "O2", "'__chkstk': defined by the libraries codec and kimi_backend.")]
+    public async Task AnAmbiguousDependencyFailsBeforeTheLink(string row, string name, string level, string line)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Dependency(row, name, level);
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var text = this.console.Text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("Ambiguous native symbol " + line + "\n", text, StringComparison.Ordinal);
+        Assert.Equal(line.Split('\n').Length, Regex.Count(text, "Ambiguous native symbol"));
+        Assert.DoesNotContain("lld-link", text, StringComparison.Ordinal);
+        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project).Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        Assert.False(File.Exists(ArtifactPaths.Create(project).Executable));
+    }
+
+    // LinkAmbiguity's valid rows (design §1): an unreferenced definition (10), one library's two definers (11, its pick the member its
+    // index names, 25a), a weak reference (16), COMDAT copies across libraries (20, 21) and an /alternatename: whose source a library
+    // defines (28's twin) are no ambiguous dependency: each builds and runs.
+    [Theory]
+    [InlineData("10")]
+    [InlineData("11")]
+    [InlineData("16")]
+    [InlineData("20")]
+    [InlineData("21")]
+    [InlineData("25a")]
+    [InlineData("28t")]
+    public async Task AnUnambiguousDependencyBuilds(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Dependency(row, "alpha", "O2");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        await RunsOk(ArtifactPaths.Create(project).Executable);
+    }
+
+    // LinkAmbiguity's store (design §4, N5): a staged input's facts are read once per process and kept by its staged SHA-256, so a second
+    // build of the same library content, from another folder, reads the entry the first build kept. The store is process-wide and tests
+    // run in parallel: identity only, never absence or a count (T's ruling 4).
+    [Fact]
+    public async Task ASecondBuildReusesItsInputsFacts()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Dependency("10", "alpha", "O2");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var hash = ArtifactFiles.Hash(Path.Combine(this.directory, "native", "codec.lib"));
+        var first = NativeToolchain.LinkInputs[hash];
+        var copy = Path.Combine(this.directory, "copy");
+        Directory.CreateDirectory(Path.Combine(copy, "native"));
+        foreach (var file in new[] { "Hello.kimiproj", "main.kimi", Path.Combine("native", "codec.lib") })
+        {
+            File.Copy(Path.Combine(this.directory, file), Path.Combine(copy, file));
+        }
+
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, Path.Combine(copy, "Hello.kimiproj"), out var second));
+        Assert.True(await second.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Same(first, NativeToolchain.LinkInputs[hash]);
+    }
+
     [Fact]
     public async Task EmptySolutionFailsBuildAndEmitAndCannotRun()
     {
@@ -1336,6 +1421,16 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
     }
 
+    // The executable runs, writes "ok" and exits with 0.
+    private static async Task RunsOk(string executable)
+    {
+        var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+        using var process = Process.Start(start)!;
+        Assert.Equal("ok\n", await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken));
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(0, process.ExitCode);
+    }
+
     // The toolchain refuses the run before launch with this reason (IMPL 20.3, 20.3.2): exit 1, and the refusal, not another failure.
     private async Task AssertRunRefused(Project project, string reason)
     {
@@ -1390,6 +1485,169 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
         project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = "static", Input = $"native/{name}.lib" } };
         return project;
+    }
+
+    // LinkAmbiguity's rows (design §1): Hello.kimiproj at the level, whose main.kimi calls each import (int name(void)) and writes "ok",
+    // and its program libraries, static unless named, each native/<library>.lib built by Archive. name: the row's variant, the name of
+    // the library that holds codec's or alpha's part (before or after kernel32 and kimi_backend in name order). Rows 29 and 30 are
+    // P9's programs (an import called only under a condition O2 folds; codec_add(int, int)).
+    private async Task<Project> Dependency(string row, string name, string level)
+    {
+        const string Add = "int codec_add(void) { return 3; }\n";
+        const string X = "int alpha_x(void) { return 1; }\n";
+        const string Helper = "int helper(void);\nint codec_add(void) { return helper(); }\n";
+        const string Directive = "#pragma comment(linker, \"/alternatename:a=b\")\nint a(void);\nint codec_add(void) { return a(); }\n";
+        (string, string) m1 = ("m1", Add), alpha = ("m1", X);
+        (string Library, string Symbol)[] imports = [("codec", "codec_add")];
+        string[] libraries = ["codec"];
+        string? source = null;
+        switch (row)
+        {
+            case "3":
+                await Archive(name, ("m1", "unsigned GetLastError(void);\nint codec_add(void) { return (int)GetLastError(); }\n"), ("m2", "unsigned GetLastError(void) { return 0; }\n"));
+                (imports, libraries) = ([(name, "codec_add")], [name]);
+                break;
+            case "4":
+                await Archive(name, ("m1", "void *__imp_WriteFile = 0;\n" + Add));
+                (imports, libraries) = ([(name, "codec_add")], [name]);
+                break;
+            case "6":
+                await Archive(name, ("m1", "int codec_add(void) { volatile char buffer[8192]; buffer[0] = 3; return buffer[0]; }\n"), ("m2", "void __chkstk(void) { }\n"));
+                (imports, libraries) = ([(name, "codec_add")], [name]);
+                break;
+            case "7" or "22":
+                await Archive(name, alpha, ("m2", Add));
+                await Archive("codec", m1);
+                (imports, libraries) = ([(name, "alpha_x"), ("codec", "codec_add")], [name, "codec"]);
+                if (row == "22")
+                {
+                    await this.Image("zlib", "int zlib_f(void) { return 4; }\n" + Add);
+                    (imports, libraries) = ([.. imports, ("zlib", "zlib_f")], [.. libraries, "zlib"]);
+                }
+
+                break;
+            case "8" or "15":
+                await Archive("alpha", ("m1", (row == "15" ? "__attribute__((weak)) " : string.Empty) + "int f(void) { return 1; }\n" + X));
+                await Archive("codec", ("m1", "int f(void) { return 2; }\n" + Add), ("m2", "int f(void);\nint codec_use(void) { return f(); }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add"), ("codec", "codec_use")], ["alpha", "codec"]);
+                break;
+            case "17":
+                await Archive("codec", ("m1", Add + "int codec_sub(void) { return 1; }\n"));
+                (imports, libraries) = ([("codec", "codec_add"), ("codec2", "codec_sub")], ["codec", "codec2=codec"]);
+                break;
+            case "23":
+                await this.ImportLibrary("codec", "VirtualProtect");
+                (imports, libraries) = ([("codec", "VirtualProtect")], ["codec:import"]);
+                break;
+            case "24":
+                await Archive(name, ("m1", "int VirtualProtect(void) { return 1; }\n"));
+                (imports, libraries) = ([(name, "VirtualProtect")], [name]);
+                break;
+            case "25a" or "25b":
+                (string, string) m2 = ("m2", "int helper(void) { return 2; }\n"), m3 = ("m3", "int VirtualProtect(void);\nint helper(void) { return VirtualProtect(); }\n");
+                await Archive("codec", [("m1", Helper), .. row == "25a" ? [m3, m2] : new[] { m2, m3 }]);
+                await Archive("zlib", ("z1", "int zlib_crc(void) { return 4; }\n"), ("z2", "int VirtualProtect(void) { return 1; }\n"));
+                (imports, libraries) = ([("codec", "codec_add"), ("zlib", "zlib_crc")], ["codec", "zlib"]);
+                break;
+            case "26":
+                await Archive("alpha", ("m1", "__declspec(selectany) int g = 1;\nint alpha_x(void) { return g; }\n"));
+                await Archive("codec", ("m1", "extern int g;\nint codec_add(void) { return g; }\n"), ("m2", "int g = 2;\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "27":
+                await Archive("alpha", alpha, ("m2", "int f(void) { return 1; }\n"));
+                await Archive("codec", ("m1", "#pragma comment(linker, \"/include:f\")\n" + Add), ("m2", "int f(void) { return 2; }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "28" or "28t":
+                await Archive("alpha", [alpha, ("m2", "int b(void) { return 1; }\n"), .. row == "28t" ? [("m3", "int a(void) { return 5; }\n")] : Array.Empty<(string, string)>()]);
+                await Archive("codec", ("m1", Directive), ("m2", "int b(void) { return 2; }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "29":
+                await Archive("alpha", alpha, ("m2", "int codec_add(int a, int b) { return 0; }\n"));
+                await Archive("codec", ("m1", "int codec_add(int a, int b) { return a + b; }\n"));
+                libraries = ["alpha", "codec"];
+                source = "group Native\n    #LibraryImport(\"alpha\", \"alpha_x\")\n    public unsafe func alphaX() -> i32\n    #LibraryImport(\"codec\", \"codec_add\")\n" +
+                    "    public unsafe func add(a: i32, b: i32) -> i32\nfunc pick(flag: bool) -> i32\n    var s: i32 = 0\n    if flag\n        unsafe => s = Native.add(40, -2)\n" +
+                    "    return s\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.alphaX()\n    let y = pick(false)\n" +
+                    "    require x + y == 1 else => $abort(\"alpha\")\n    Console.writeLine(\"ok\")\n";
+                break;
+            case "30":
+                await Archive("codec", ("m1", "void __chkstk(void) { }\nint codec_add(int a, int b) { return a + b; }\n"));
+                source = "group Native\n    #LibraryImport(\"codec\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\npublic func main()\n" +
+                    "    var sum: i32 = 0\n    unsafe => sum = Native.add(40, -2)\n    require sum == 38 else => $abort(\"add\")\n    Console.writeLine(\"ok\")\n";
+                break;
+            case "10":
+                await Archive("codec", ("m1", Add + "int VirtualProtect(void) { return 1; }\n"));
+                break;
+            case "11":
+                await Archive("codec", ("m1", Helper), ("m2", "int helper(void) { return 2; }\n"), ("m3", "int helper(void) { return 3; }\n"));
+                break;
+            case "16":
+                await Archive("alpha", alpha, ("m2", "int f(void) { return 1; }\n"));
+                await Archive("codec", ("m1", "extern int f(void) __attribute__((weak));\nint codec_add(void) { return f ? f() : 3; }\n"), ("m2", "int f(void) { return 2; }\n"));
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add")], ["alpha", "codec"]);
+                break;
+            case "20" or "21":
+                await Archive("alpha", ("m1", "__declspec(selectany) int g = 1;\nint alpha_x(void) { return g; }\n"));
+                await Archive("codec", [("m1", "__declspec(selectany) int g = 1;\nint codec_add(void) { return g + 2; }\n"), .. row == "21" ? [("m2", "extern int g;\nint codec_use(void) { return g; }\n")] : Array.Empty<(string, string)>()]);
+                (imports, libraries) = ([("alpha", "alpha_x"), ("codec", "codec_add"), .. row == "21" ? [("codec", "codec_use")] : Array.Empty<(string, string)>()], ["alpha", "codec"]);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(row));
+        }
+
+        source ??= "group Native\n" + string.Concat(imports.Select(static (x, i) => $"    #LibraryImport(\"{x.Library}\", \"{x.Symbol}\")\n    public unsafe func i{i}() -> i32\n")) +
+            "public func main()\n    var v: i32 = 0\n" + string.Concat(imports.Select(static (_, i) => $"    unsafe => v = Native.i{i}()\n")) + "    Console.writeLine(\"ok\")\n";
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
+        var supplies = string.Concat(libraries.Select(static x => x.Split('=', ':') switch
+        {
+            [var library, var input] when x.Contains('=') => $"    {library}={{ Kind=\"static\" Input=\"native/{input}.lib\" }}\n",
+            [var library, var kind] => $"    {library}={{ Kind=\"{kind}\" Input=\"native/{library}.lib\" }}\n",
+            [var library] => $"    {library}={{ Kind=\"static\" Input=\"native/{library}.lib\" }}\n",
+            _ => throw new ArgumentOutOfRangeException(nameof(row)),
+        }));
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\" Optimization=\"{level}\"\nNativeLibraries=\n  \"{TargetProfile.Windows.Target}\"=\n{supplies}");
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
+        return project;
+
+        // native/<library>.lib: each member's C source compiled by the pinned clang (rows 27 and 28 keep their linker directives:
+        // -fno-autolink drops them; probes.md P8) and archived by llvm-lib in this command-line order (llvm-lib writes its members in
+        // reverse, so its index names the command line's last definer of a symbol; P5).
+        async Task Archive(string library, params (string Member, string Source)[] members)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(this.directory, "native", library + ".members")).FullName;
+            foreach (var (member, text) in members)
+            {
+                File.WriteAllText(Path.Combine(folder, member + ".c"), text);
+                string[] autolink = text.Contains("#pragma", StringComparison.Ordinal) ? [] : ["-fno-autolink"];
+                string[] compile = ["--target=" + TargetProfile.Windows.Target, "-O2", "-fno-builtin", .. autolink, "-fno-stack-protector", "-fms-extensions", "-c", member + ".c", "-o", member + ".obj"];
+                Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", folder, compile));
+            }
+
+            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", folder, ["/out:" + Path.Combine("..", library + ".lib"), .. members.Select(static x => x.Member + ".obj")]));
+        }
+    }
+
+    // native/<library>.lib, a linked image (design §1 row 22): a DLL linked by lld-link from a clang object, its COFF symbol table kept
+    // (/debug:symtab), so a reader of whole files would see its definitions.
+    private async Task Image(string library, string source)
+    {
+        var native = Path.Combine(this.directory, "native");
+        File.WriteAllText(Path.Combine(native, library + ".c"), source);
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", native, "--target=" + TargetProfile.Windows.Target, "-O2", "-fno-autolink", "-c", library + ".c", "-o", library + ".obj"));
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("lld-link", native, "/dll", "/noentry", "/nodefaultlib", "/debug:symtab", "/noimplib", "/out:" + library + ".dll", library + ".obj"));
+        File.Copy(Path.Combine(native, library + ".dll"), Path.Combine(native, library + ".lib"));
+    }
+
+    // native/<library>.lib, an import library exporting the symbol (llvm-lib /def; design §1 row 23).
+    private async Task ImportLibrary(string library, string symbol)
+    {
+        var native = Directory.CreateDirectory(Path.Combine(this.directory, "native")).FullName;
+        File.WriteAllText(Path.Combine(native, library + ".def"), $"LIBRARY {library}\nEXPORTS\n    {symbol}\n");
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, "/machine:x64", "/def:" + library + ".def", "/out:" + library + ".lib"));
     }
 
     // Hello.kimiproj at O2 into out/Hello.ll, its main.kimi writing the text, on the test's console.

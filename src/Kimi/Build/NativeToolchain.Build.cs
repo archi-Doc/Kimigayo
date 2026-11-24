@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -11,6 +12,11 @@ namespace Kimi.Build;
 
 internal static partial class NativeToolchain
 {
+    // The staged inputs' facts for the dependency step (LinkAmbiguity, design §4): keyed by the staged copy's SHA-256, the hash staging
+    // computes, so an entry states that content and never changes; never invalidated or evicted, one per distinct staged input per
+    // process. A build of an input already kept reads no archive.
+    internal static readonly ConcurrentDictionary<string, LinkInput> LinkInputs = new(StringComparer.Ordinal);
+
     // The row's fixed runtime references: what any module of the row may reference besides the external declarations its manifest
     // states, the backend supply's symbols, which LLVM's code calls without a declaration (__chkstk; IMPL 21.4.7). The runtime's kernel32
     // imports are no second list here: the manifest's declarations name them (publication writes them from the generation result;
@@ -172,9 +178,10 @@ internal static partial class NativeToolchain
     /// identity, with the input the manifest names, resolved as its other paths are (absent for a pair emitted from memory or by an
     /// earlier compiler), Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
     /// version), the libraries (each staged: the compiler's supplies found by their catalog hash or staged from their resources, a program's
-    /// from its input), the object, its inspection, the link to a private file, the report and the commit; the steps fill the record and
-    /// <see cref="Run"/> writes each of its states. The commit, after the report and the last cancellation point, writes the success record,
-    /// which names the private file's hash, and then moves the file to the executable's path, so an Application publishes its executable
+    /// from its input), the object, its inspection, the dependency check (an ambiguous native dependency fails before the link,
+    /// CheckDependencies, over the libraries' facts kept per process, LinkInputs), the link to a private file, the report and the commit;
+    /// the steps fill the record and <see cref="Run"/> writes each of its states. The commit, after the report and the last cancellation
+    /// point, writes the success record, which names the private file's hash, and then moves the file to the executable's path, so an Application publishes its executable
     /// only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the commit, the report included, throws and leaves the
     /// previous executable and the record at the last incomplete state written, and a failed move writes the invalidation again and rethrows
     /// the move's failure. The private file is deleted on every outcome. IMPL 20.3.2 states the two windows (the owner's decision 19, O-468
@@ -242,17 +249,19 @@ internal static partial class NativeToolchain
             var tatara = Tatara.Instance;
             tools.Add("tatara", new JsonObject { ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion });
 
-            // The staged libraries, each held with read sharing only from its check to the build's end, so LLD links the bytes the record
-            // names; the finally releases them with the private file on every outcome (StagedHold). The object is held from its creation
-            // (Compile) to the build's end, so the inspection and LLD read the object emit produced (Intermediates).
-            var libraries = new List<FileStream>();
+            // The staged libraries, each with its manifest name and staged hash and held with read sharing only from its check to the
+            // build's end, so the dependency step reads and LLD links the bytes the record names; the finally releases them with the
+            // private file on every outcome (StagedHold). The object is held from its creation (Compile) to the build's end, so the
+            // inspection and LLD read the object emit produced (Intermediates).
+            var libraries = new List<(string Name, string Sha256, FileStream Held)>();
             var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe"; // Private until the commit moves it into place.
             try
             {
                 this.ResolveLibraries(libraries);
                 WriteRecord(this.paths.Record, this.record);
                 using var obj = this.Compile(tatara);
-                var undefined = this.Inspect(tatara, obj.Name);
+                var (undefined, module) = this.Inspect(tatara, obj.Name);
+                this.CheckDependencies(tatara, module, libraries);
                 this.Link(tatara, obj.Name, libraries, undefined, executable);
                 this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
                 this.context.CancellationToken.ThrowIfCancellationRequested();
@@ -282,7 +291,7 @@ internal static partial class NativeToolchain
             {
                 foreach (var library in libraries)
                 {
-                    library.Dispose();
+                    library.Held.Dispose();
                 }
 
                 File.Delete(executable);
@@ -343,12 +352,13 @@ internal static partial class NativeToolchain
             }
         }
 
-        // The manifest's libraries in its order, each staged (the file the linker receives) and added, held, to Run's list as soon as it
-        // is staged, so Run releases it on every outcome; then checked against its assertions and identified in the record by its staged
-        // path and hash (IMPL 20.4). A reserved name is the compiler's supply: its entry the one this compiler writes (LinkManifest) and its
-        // bytes the compiler's (ToolchainIdentity.Supplies), found by their catalog hash or staged from its resource (StageSupply); any
-        // other is a program's, staged from its input and checked against the project's supply. Every compiler's supply is listed.
-        private void ResolveLibraries(List<FileStream> libraries)
+        // The manifest's libraries in its order, each staged (the file the linker receives) and added, held, with its name and staged
+        // hash, to Run's list as soon as it is staged, so Run releases it on every outcome; then checked against its assertions and
+        // identified in the record by its staged path and hash (IMPL 20.4). A reserved name is the compiler's supply: its entry the one
+        // this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies), found by their catalog hash or
+        // staged from its resource (StageSupply); any other is a program's, staged from its input and checked against the project's
+        // supply. Every compiler's supply is listed.
+        private void ResolveLibraries(List<(string Name, string Sha256, FileStream Held)> libraries)
         {
             var libraryIdentities = new JsonArray();
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -375,7 +385,7 @@ internal static partial class NativeToolchain
                     library = StageInput(input, this.paths.Native, out hash);
                 }
 
-                libraries.Add(library);
+                libraries.Add((name, hash, library));
                 if (supply is null && this.project is not null)
                 {
                     CheckSupply(this.project, name, kind, hash);
@@ -419,9 +429,9 @@ internal static partial class NativeToolchain
         // module declares (the manifest's, the runtime's imports among them) in the same form; one _fltused definition and no default library. Unwind information is not judged
         // here: IMPL 21.4's is the ABI's, which every definition's uwtable attribute (the profile's UnwindTables) asks of LLVM, an entry
         // for each function that allocates stack, saves a nonvolatile register or calls, and none for a frameless leaf, so an object
-        // whose functions are all leaves has none. Returns the record's form of the undefined symbols: llvm-nm's posix lines, in which an
-        // undefined symbol's value and size are 0.
-        private string Inspect(Tatara tatara, string obj)
+        // whose functions are all leaves has none. Returns the record's form of the undefined symbols, llvm-nm's posix lines, in which an
+        // undefined symbol's value and size are 0, and the object's facts, which the dependency step reads (one inspection).
+        private (string Undefined, ObjectMember Module) Inspect(Tatara tatara, string obj)
         {
             var facts = tatara.Inspect(this.context, obj);
             var module = facts.Members[0]; // Tatara's own object: one member
@@ -451,7 +461,41 @@ internal static partial class NativeToolchain
                 throw new InvalidDataException("Invalid _fltused definition or hidden default library.");
             }
 
-            return string.Join('\n', lines);
+            return (string.Join('\n', lines), module);
+        }
+
+        // IMPL 20.4: an ambiguous native dependency is an error, never resolved by link order (LinkAmbiguity; design Revisions 0-3a, its
+        // §2 and §3). Each library's facts are Tatara's inspection of its staged copy, read once per process (LinkInputs). The closure
+        // starts from the module's declared references, the manifest's external declarations in their referenced form and the fixed
+        // RuntimeReferences, the same at O0 and O2 (never the object's undefined symbols), and from the references of the library files
+        // the link loads whole (DependencyClosure); a symbol it references that two or more libraries define fails the build before the
+        // link, one line per symbol: the native build's input failure, the record left incomplete.
+        private void CheckDependencies(Tatara tatara, ObjectMember module, List<(string Name, string Sha256, FileStream Held)> libraries)
+        {
+            var inputs = new (string Name, LinkInput Input)[libraries.Count];
+            for (var i = 0; i < inputs.Length; i++)
+            {
+                var (name, sha256, held) = libraries[i];
+                var facts = LinkInputs.GetOrAdd(
+                    sha256, static (_, read) => LinkInput.Read(read.Tatara.Inspect(read.Context, read.Path)), (Tatara: tatara, Context: this.context, Path: held.Name));
+                inputs[i] = (name, facts);
+            }
+
+            var closure = new DependencyClosure(inputs, module);
+            foreach (var (symbol, dllimport) in ReadExternalDeclarations(this.manifest))
+            {
+                closure.Reference(dllimport ? "__imp_" + symbol : symbol); // SPEC 22.6: a dllimport external is referenced through __imp_.
+            }
+
+            foreach (var symbol in RuntimeReferences)
+            {
+                closure.Reference(symbol);
+            }
+
+            if (closure.Ambiguous() is { Length: > 0 } lines)
+            {
+                throw new InvalidDataException(string.Join('\n', lines));
+            }
         }
 
         // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
@@ -459,14 +503,14 @@ internal static partial class NativeToolchain
         // (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds no VC or
         // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1). LLD opens the held object and each
         // held library by its path, for reading, which the holds admit (StagedHold, Intermediates).
-        private void Link(Tatara tatara, string obj, List<FileStream> libraries, string undefined, string executable)
+        private void Link(Tatara tatara, string obj, List<(string Name, string Sha256, FileStream Held)> libraries, string undefined, string executable)
         {
             var link = new string[libraries.Count + 9];
             link[0] = "lld-link";
             link[1] = obj;
             for (var i = 0; i < libraries.Count; i++)
             {
-                link[i + 2] = libraries[i].Name;
+                link[i + 2] = libraries[i].Held.Name;
             }
 
             link[^7] = "/entry:" + TargetProfile.Windows.EntrySymbol;
@@ -482,6 +526,171 @@ internal static partial class NativeToolchain
             this.record["executable"] = Path.GetFileName(this.paths.Executable);
             this.record["executableSha256"] = Hash(executable);
             this.record["objectUndefinedSymbols"] = undefined;
+        }
+    }
+
+    /// <summary>A staged input's facts as the dependency step reads them (LinkAmbiguity, design §2): Tatara's inspection
+    /// (<c>Facts</c>); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, which lld-link loads
+    /// for it, and whether that member's definition of it is a copy (text kind 5; on COFF the index is the pick, ELF's comes with B7b7);
+    /// <c>Whole</c>, an input that is no archive and of form o or i, which the link loads whole (one of form s, a linked image, defines
+    /// nothing for it).</summary>
+    internal sealed record LinkInput(ObjectFacts Facts, Dictionary<string, (int Member, bool Copy)> Picks, bool Whole)
+    {
+        /// <summary>Reads an input's facts once.</summary>
+        /// <param name="facts">Tatara's inspection of the staged input.</param>
+        /// <returns>The facts in the step's form.</returns>
+        internal static LinkInput Read(ObjectFacts facts)
+        {
+            var picks = new Dictionary<string, (int Member, bool Copy)>(StringComparer.Ordinal);
+            foreach (var (member, symbol) in facts.Index)
+            {
+                if (!picks.ContainsKey(symbol))
+                {
+                    picks.Add(symbol, (member, facts.Members[member].Comdats.Contains(symbol)));
+                }
+            }
+
+            return new(facts, picks, !facts.IsArchive && facts.Members[0].Form != 's');
+        }
+    }
+
+    // One build's dependency closure (LinkAmbiguity, design §2 "The closure"; DECISIONS T-M<n>), order-free across libraries: the units
+    // are the files the link loads whole (the module's object, a whole library input) and the members it may load. A referenced symbol
+    // (a unit's strong undefined symbol, U; a weak one loads nothing; or its /include: directive) that no whole file defines joins each
+    // library's pick for it, one member per library, and two or more libraries picking it are an ambiguous dependency, the copies of one
+    // COMDAT symbol counting as one library. An /alternatename:A=B of a joined unit makes B referenced once the references are done when
+    // A is referenced and neither a whole file nor any library defines A (then the references resume).
+    private sealed class DependencyClosure
+    {
+        private readonly (string Name, LinkInput Input)[] inputs;
+        private readonly HashSet<string> whole = new(StringComparer.Ordinal); // The symbols the whole files define.
+        private readonly HashSet<string> referenced = new(StringComparer.Ordinal);
+        private readonly Stack<string> pending = new();
+        private readonly HashSet<(int Input, int Member)> joined = [];
+        private readonly List<(string From, string To)> alternates = []; // The joined units' unused /alternatename: pairs.
+        private readonly SortedDictionary<string, List<string>> ambiguous = new(StringComparer.Ordinal);
+
+        // The whole files: their definitions first, then their references.
+        internal DependencyClosure((string Name, LinkInput Input)[] inputs, ObjectMember module)
+        {
+            this.inputs = inputs;
+            this.whole.UnionWith(module.DefinedExternal.Select(static x => x.Name));
+            for (var i = 0; i < inputs.Length; i++)
+            {
+                if (inputs[i].Input.Whole)
+                {
+                    this.whole.UnionWith(inputs[i].Input.Facts.Members[0].DefinedExternal.Select(static x => x.Name));
+                }
+            }
+
+            for (var i = 0; i < inputs.Length; i++)
+            {
+                if (inputs[i].Input.Whole)
+                {
+                    this.Join(i, 0);
+                }
+            }
+        }
+
+        // A reference of the module's.
+        internal void Reference(string symbol) => this.pending.Push(symbol);
+
+        // The closure, then each ambiguous symbol's line in Ordinal order, its libraries in Ordinal order (design §3).
+        internal string[] Ambiguous()
+        {
+            do
+            {
+                while (this.pending.TryPop(out var symbol))
+                {
+                    this.Resolve(symbol);
+                }
+            }
+            while (this.UseAlternates());
+
+            return [.. this.ambiguous.Select(static x => $"Ambiguous native symbol '{x.Key}': defined by the libraries {Names(x.Value)}.")];
+        }
+
+        // "a and b", "a, b and c".
+        private static string Names(List<string> names)
+        {
+            names.Sort(StringComparer.Ordinal);
+            return string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
+        }
+
+        // A referenced symbol, once: unless a whole file defines it, each library's pick joins, and two or more candidates are recorded.
+        private void Resolve(string symbol)
+        {
+            if (!this.referenced.Add(symbol) || this.whole.Contains(symbol))
+            {
+                return;
+            }
+
+            List<string>? libraries = null;
+            var (candidates, copies) = (0, false);
+            for (var i = 0; i < this.inputs.Length; i++)
+            {
+                if (this.inputs[i].Input.Picks.TryGetValue(symbol, out var pick))
+                {
+                    candidates += pick.Copy && copies ? 0 : 1;
+                    copies |= pick.Copy;
+                    (libraries ??= []).Add(this.inputs[i].Name);
+                    this.Join(i, pick.Member);
+                }
+            }
+
+            if (candidates > 1)
+            {
+                this.ambiguous.Add(symbol, libraries!);
+            }
+        }
+
+        // A unit joins once: its strong references and /include: names are referenced, its /alternatename: pairs kept.
+        private void Join(int input, int member)
+        {
+            if (!this.joined.Add((input, member)))
+            {
+                return;
+            }
+
+            var unit = this.inputs[input].Input.Facts.Members[member];
+            foreach (var symbol in unit.Undefined)
+            {
+                if (symbol.Kind == 'U')
+                {
+                    this.pending.Push(symbol.Name);
+                }
+            }
+
+            foreach (var directive in unit.Directives)
+            {
+                if (directive.Kind == 'I')
+                {
+                    this.pending.Push(directive.Name);
+                }
+                else
+                {
+                    this.alternates.Add((directive.Name, directive.Target!));
+                }
+            }
+        }
+
+        // The pairs whose source is referenced and stays undefined (no whole file defines it, no library picks it) reference their
+        // target, each once; whether any did.
+        private bool UseAlternates()
+        {
+            var used = false;
+            for (var k = this.alternates.Count - 1; k >= 0; k--)
+            {
+                var (from, to) = this.alternates[k];
+                if (this.referenced.Contains(from) && !this.whole.Contains(from) && !Array.Exists(this.inputs, x => x.Input.Picks.ContainsKey(from)))
+                {
+                    this.pending.Push(to);
+                    this.alternates.RemoveAt(k);
+                    used = true;
+                }
+            }
+
+            return used;
         }
     }
 }
