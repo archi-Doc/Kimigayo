@@ -149,11 +149,11 @@ internal static class CompilationTestHelper
     internal static string[] RecordsAtLines(string program)
         => [.. PublishedErrors(MinimalEmissionTest.Analyze(program)).Select(x => $"{x.Code}: {LineAt(program, x.Span.Start)}").Distinct().Order(StringComparer.Ordinal)];
 
-    // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (the census pairs, MirCensusTest.Pairs).
+    // The problem codes of a Comparison Loan conflict: the conflicting access decides the code (DIAGNOSTICS' A6 code table, MirAnalysisTest.A6Rows).
     internal static bool IsLoanConflict(this DiagnosticCode code)
         => code is DiagnosticCode.ComparisonLoanConflict_Kd or DiagnosticCode.CallReservationConflict_Kd or DiagnosticCode.CallActivationConflict_Kd or DiagnosticCode.PlacementActivationConflict_Kd;
 
-    // The problem codes of an unproven Origin obligation: what is unproven decides the code (the census pairs, MirCensusTest.Pairs).
+    // The problem codes of an unproven Origin obligation: what is unproven decides the code (DIAGNOSTICS' A6 code table, MirAnalysisTest.A6Rows).
     internal static bool IsUnprovenOrigin(this DiagnosticCode code)
         => code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd;
 
