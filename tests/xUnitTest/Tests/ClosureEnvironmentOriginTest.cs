@@ -557,6 +557,11 @@ public class ClosureEnvironmentOriginTest
     // (4)): g, declared in a capture-free Closure literal that is f's default for `action`, has the Closure as its declaring body, whose
     // evaluating body is (f, 1): g's `during r` and `during q` name the Closure's local regions, fixed in g with no premise, so returning
     // x as `during q` is the relation's record (dt_lift4) and the pass-through twin is valid (dt_ok4); dev gave both the located limit.
+    // The counted moves pinned (F's O3-22 C5; labels from SPEC 15.3.4, 15.6.5 written before their runs, o3\labels.tsv, z9r and the
+    // review's rv-impl\labels.tsv): a name of the enclosing f's local reached through two named levels (nest2) or a Closure (clo), an
+    // annotated local (ann, a_ann_res), a function value (a_fval) and the borrowed local bl: each invalid twin is the relation's record at
+    // the returned value, each valid twin accepted. A member of a Type declared in a body (C6's form) is misplaced syntax, so the
+    // declaring-body chain is the only answer RegionBounded reads.
     [Theory]
     [InlineData("func f(a: i32, action: () -> i32 = func [] () -> i32\n    let y: i32 = 1\n    let q = y@ref\n    let r = q\n    func g(x: ref/i32 during r) -> ref/i32 during q => x\n    return 0\n) -> i32 => action()\npublic func main() => ()\n", "UnprovenOriginRelation_Kd x\n    return")]
     [InlineData("func f(a: i32, action: () -> i32 = func [] () -> i32\n    let y: i32 = 1\n    let q = y@ref\n    let r = q\n    func g(x: ref/i32 during r) -> ref/i32 during r => x\n    return 0\n) -> i32 => action()\npublic func main() => ()\n")]
@@ -579,6 +584,19 @@ public class ClosureEnvironmentOriginTest
             "    put(arr@uniq, inner@ref)\nlet old: i32 = arr[1]@follow\nConsole.writeLine(\"leak \\(old)\")\n",
         "Unsupported_Kd v)",
         "ComparisonLoanConflict_Kd let inner")]
+    [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during r => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n")] // a_nf_nest2
+    [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during p => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd w\n")] // a_nf_lift_nest2
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r: ref/i32 = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n")] // a_ann_res
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let g = pick\n    let w = g(r)\n    return w@follow\n")] // a_fval
+    [InlineData("func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during x) -> ref/i64 during q\n        return v\n    return 0\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // z_bl
+    [InlineData("func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during x) -> ref/i64 during x\n        return v\n    return 0\npublic func main() => ()\n")] // z_bl_ok
+    [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func g() -> i32\n        func h(v: ref/i32 during r) -> ref/i32 during p => v\n        return 0\n    return g()\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // nest2_lift
+    [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func g() -> i32\n        func h(v: ref/i32 during r) -> ref/i32 during r => v\n        return 0\n    return g()\npublic func main() => ()\n")] // nest2_ok
+    [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    let c = func [] () -> i32\n        func h(v: ref/i32 during r) -> ref/i32 during p => v\n        return 0\n    return c()\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // clo_lift
+    [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    let c = func [] () -> i32\n        func h(v: ref/i32 during r) -> ref/i32 during r => v\n        return 0\n    return c()\npublic func main() => ()\n")] // clo_ok
+    [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    let r: ref/i32 = p\n    func lift(v: ref/i32 during r) -> ref/i32 during p => v\n    return lift(r)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // ann_lift
+    [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    let r: ref/i32 = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pass(r)\n    return p\npublic func main() => ()\n")] // ann_ok
+    [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    struct S\n        public func get(self: ref/Self, x: ref/i32 during r) -> i32 => x@follow\n    return 0\npublic func main() => ()\n", "MisplacedSyntax_Kd struct S\n")] // mt_member
     public void ANestedSignatureNamingABodyLocalNamesItsRegion(string source, params string[] records)
     {
         var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)

@@ -304,7 +304,7 @@ public sealed partial class Binding
         this.nodes.Add(node);
         if (node.Parent is FunctionKoto { IsGenerated: false } template && DefaultIndex(template, node) is >= 0 and var index)
         {
-            this.EnterIndexBody(node, scope, new(this.symbols.GetValueOrDefault(template), index));
+            this.EnterIndexBody(node, scope, new(this.symbols[template], index));
         }
 
         if (context == IndexEntryKind.Pattern)
@@ -414,7 +414,7 @@ public sealed partial class Binding
                     this.DeclareFunction(function, scope);
                 }
 
-                this.EnterIndexBody(node, scope, function.IsGenerated ? default : FunctionBody(function, this.symbols.GetValueOrDefault(function)));
+                this.EnterIndexBody(node, scope, function.IsGenerated ? default : FunctionBody(function, this.symbols[function]));
 
                 scope = this.GetScope(node, scope);
                 for (var i = 0; i < function.Parameters.Count; i++)
