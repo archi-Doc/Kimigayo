@@ -118,10 +118,10 @@ public class ArchitectureRulesTest
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
     // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding
-    // is R7-N5's (B7c; ImplTable's left in B8a, TyCtxt's in B8b), MirBody and MirBuilder the Middle's, DiagnosticOwner the Diagnostics
-    // owner's, HoverBuilder and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands second takes
-    // the merged counts.
-    private const string NodeKeyedTableSites = "Binding=8;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
+    // is R7-N5's (B7c's left in W-359, ImplTable's in B8a, TyCtxt's in B8b), MirBody and MirBuilder the Middle's, DiagnosticOwner the
+    // Diagnostics owner's, HoverBuilder and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands
+    // second takes the merged counts.
+    private const string NodeKeyedTableSites = "Binding=7;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
 
     // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
