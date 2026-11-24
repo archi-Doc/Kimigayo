@@ -242,6 +242,7 @@ public enum DiagnosticCode
     NestingLimit_Kd,
     TypeHeightLimit_Kd,
     PremiseClosureLimit_Kd,
+    ResolutionWorkLimit_Kd,
 
     Count, // Last sentinel
 }

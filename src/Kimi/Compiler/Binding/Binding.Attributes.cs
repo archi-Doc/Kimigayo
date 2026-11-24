@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -12,7 +13,9 @@ public sealed partial class Binding
     // coinductively, so a revisit of a C-layout struct on its own path is eligible and ends the walk, and a finite nest has no limit.
     private const int CLayoutFieldBound = 32;
 
-    private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
+    // IMPL 21.2's one final symbol table: each external symbol's first import's providing library, the reserved supply it names (Module
+    // null), else its defining Kotonoha and logical name (SPEC 22.6, IMPL 20.4), and the first known physical signature (ImportAbi).
+    private readonly Dictionary<string, (string? Signature, Kotonoha? Module, string Library)> importSymbols = new(StringComparer.Ordinal);
     private readonly List<string?> importSignatures = new();
 
     // The running pass's import declarations: its part (PassPart, EnterPass).
@@ -92,6 +95,15 @@ public sealed partial class Binding
         var row = TargetProfile.Find(this.compilation.TargetTriple.Value); // The selected row, or none (a target without a row).
         var symbols = this.importSymbols;
         symbols.Clear();
+
+        // The composed compilation's one table (IMPL 21.2): the frozen library's imports first, so a program's import carries the record;
+        // empty in the library pass, whose part ResetPass cleared.
+        foreach (var import in this.Library.Layer.Part.Imports)
+        {
+            var (module, library) = Provider(import.Library, import.Decl.Declaration.CodeContext.Kotonoha);
+            symbols.TryAdd(import.Symbol, (import.Signature, module, library));
+        }
+
         var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -108,6 +120,8 @@ public sealed partial class Binding
                 this.Record(attribute, BindingFailure.InvalidLibraryImport, []);
                 continue;
             }
+
+            var identity = Provider(name, attribute.CodeContext.Kotonoha);
 
             // IMPL 20.4/21.4.7: a reserved supply is any target row's supply of the name, with its fixed kind; an import of a symbol no
             // row's supply of that name provides is an error on every target, and one only another row's supply provides is the selected
@@ -147,32 +161,41 @@ public sealed partial class Binding
                 // IMPL 21.2, 21.4.7: a runtime's own import declarations share the same final symbol table; an import joins one only
                 // through the declaring row's supply providing its symbol (its one providing library: a row's supplies' symbol sets are
                 // disjoint) with an equal physical Type, and never a declaration carrying an inexpressible ABI attribute. Judged against
-                // every row's declarations, so the error is target-independent (SPEC 22 ¶1; the Tatara plan's G1 (i)).
-                if (TargetProfile.TryGetRuntimeDeclaration(symbol, out var declared, out var provider) && (provider != name || declared != signature))
+                // every row's declarations, so the error is target-independent (SPEC 22 ¶1; the Tatara plan's G1 (i)). The provider is a
+                // reserved supply's name, which no program library carries (IMPL 20.4), so the identities compare as the names would.
+                if (TargetProfile.TryGetRuntimeDeclaration(symbol, out var declared, out var provider) && (declared != signature || identity != (null, provider)))
                 {
                     this.Record(attribute, BindingFailure.ConflictingRuntimeSymbol, []);
                 }
+            }
 
-                // SPEC 21.2: one final symbol table; same-named declarations share only an equal physical
-                // Type and dllimport setting. An unresolved kind already has its own diagnostic.
-                if (!symbols.TryAdd(symbol, (signature, kind)))
+            // IMPL 21.2: one final symbol table; the imports of one symbol agree in their physical signature and their providing library,
+            // two independent records (SPEC 23.1.2). Every import joins: a signature is compared only when both are known (an unknown one
+            // has its own record), the providing library always (it reads neither the requirement nor the Types).
+            ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(symbols, symbol, out var known);
+            if (!known)
+            {
+                entry = (signature, identity.Module, identity.Library);
+            }
+            else
+            {
+                if (signature is not null && entry.Signature is not null && entry.Signature != signature)
                 {
-                    var previous = symbols[symbol];
-                    if (previous.Signature != signature)
-                    {
-                        this.Record(attribute, BindingFailure.ConflictingImportSignature, []);
-                    }
-                    else if (kind is not null && previous.Kind is not null && previous.Kind != kind)
-                    {
-                        this.Record(attribute, BindingFailure.ConflictingImportSupply, []);
-                    }
+                    this.Record(attribute, BindingFailure.ConflictingImportSignature, []);
+                }
+
+                entry.Signature ??= signature;
+                if ((entry.Module, entry.Library) != identity)
+                {
+                    this.Record(attribute, BindingFailure.ConflictingImportSupply, []);
                 }
             }
 
             // The import's limits, the located Unsupported_Kd, after its own checks, so a failure above stays its record (DECISIONS BU-92):
             // a dependency module's supplies are not linked yet, but the reserved ones, which the compiler links for every module (IMPL
             // 20.4); the selected row links neither another row's reserved supply or symbol nor a kind outside its Kinds (IMPL 20.4, 21.2;
-            // SPEC 22 ¶1). A target without a row is never built, so it reports neither.
+            // SPEC 22 ¶1). A target without a row is never built, so it reports neither. A later import's conflict above replaces its
+            // limit, the edge's and the row's alike (T's ruling 1a, BU-92).
             if ((reserved is null && !ReferenceEquals(attribute.CodeContext.Kotonoha, this.compilation.Kotonoha)) ||
                 (row is not null && !RowLinks(row, reserved, symbol, kind)))
             {
@@ -183,9 +206,14 @@ public sealed partial class Binding
             Complete(attribute, BoundType.Unit);
             if (attribute.BindingState == BindingState.Resolved && signature is not null && kind is not null)
             {
-                this.libraryImports.Add(new(function.BoundSymbol!, name, symbol, kind));
+                this.libraryImports.Add(new(function.BoundSymbol!, name, symbol, kind, signature));
             }
         }
+
+        // IMPL 21.2's providing library (SPEC 22.6, IMPL 20.4): a reserved supply by name, every Kotonoha's and every row's; any other
+        // library its defining Kotonoha's logical name. Kotonoha has no == overload: tuple equality compares the module by reference.
+        static (Kotonoha? Module, string Library) Provider(string library, Kotonoha kotonoha)
+            => (TargetProfile.ReservedSupply(library) is null ? kotonoha : null, library);
 
         // SPEC 22.6: a direct group or receiverless struct type function without
         // generic/Origin parameters, specializations or argument defaults.

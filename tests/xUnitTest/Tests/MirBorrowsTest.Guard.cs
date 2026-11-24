@@ -1281,7 +1281,8 @@ public sealed partial class MirBorrowsTest
     // Item>` is `BaseI<raw/u8>`, completed before the mark) and a store into the Field such a base clause holds (derf, as its twin derg,
     // each a moved parameter), a holder whose declaration writes the subject's argument (hh2, also through a condition, hhc), a nested
     // binding (nest: `Item is S.Item`) and an enum subject (esrc). An enum holder's Case payload completes as a Field does, so `EH<Src>`'s
-    // verdict is its written twin ER's (eh, er: no Loan is held past `.A(null)`). Where the parameter's Type expression writes the subject's
+    // verdict is its written twin ER's (eh, er: `z = 5` errs, PLAN G841's rule 4 (4), the owner's O-373 (a): through A's payload layer,
+    // which the declaration states, `put` may store what a raw layer it writes retains, 5.7 Calls). Where the parameter's Type expression writes the subject's
     // argument and the binding is that argument (`Item is T`), the layer is the parameter's, so the store holds no Loan, as for its twin
     // Wrap<raw/u8> (src2, hpair2, nest2, hc, eh2). The old path, which read AdtDef's view, gave each form its twin's record (none: it
     // accepted the stated forms, DECISIONS BU-46) until R6-check H10b deleted it.
@@ -1392,7 +1393,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "derf: z = 5", "derg: z = 5", "ha: z = 5", "ha2: z = 5", "hha: z = 5", "inh: z = 5", "derq: z = 5", "hh2: z = 5", "hhc: z = 5",
-                "nest: z = 5", "esrc: z = 5", "hsrc: z = 5",
+                "nest: z = 5", "esrc: z = 5", "eh: z = 5", "er: z = 5", "hsrc: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
         var old = MinimalEmissionTest.Analyze(source);

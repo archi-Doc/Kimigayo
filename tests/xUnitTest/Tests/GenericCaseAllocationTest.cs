@@ -49,4 +49,22 @@ public sealed class GenericCaseAllocationTest
         Assert.True(success);
         Assert.Equal(0, bytes);
     }
+
+    // SPEC 8.15.2, 15.6.3 (G254b): the owner case's Reborrow of a nested layer reached through `h`, met and rebuilt under the owner case's
+    // assignment, which the containment walk reads in place, allocates nothing warm at one and two owner levels (`owner or ref`: no
+    // invariant case, so the rule names the Reborrow and the program binds).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBindOfAShortenedOwnerCaseReborrowAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "func f<s/T, U>(m: s/T, h: uniq/(s/(uniq/U during b) during a) during c) -> ()\n    s is owner or ref\n    let x = h@follow\n    _ = x\n" +
+            "func g<s/T, t/V, U>(m: s/T, n: t/V, h: uniq/(s/(t/(uniq/U during d) during b) during a) during c) -> ()\n    s is owner or ref\n" +
+            "    t is owner or ref\n    let x = h@follow\n    _ = x\npublic func main() => ()\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var success = true;
+        var bytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete);
+        Assert.True(success);
+        Assert.Equal(0, bytes);
+    }
 }

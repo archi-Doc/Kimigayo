@@ -3,8 +3,10 @@
 ###############################################################################
 * text=auto eol=lf
 
-# The compiler's adopted link libraries (src/backend/windows-x64), byte for byte.
+# The compiler's adopted link libraries and objects (src/backend/windows-x64, src/backend/linux-x64), byte for byte.
 *.lib binary
+*.o binary
+*.a binary
 
 ###############################################################################
 # Set default behavior for command prompt diff.
