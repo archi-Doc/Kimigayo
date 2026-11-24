@@ -18505,6 +18505,31 @@ resumed by R4-M86 (2026-10-20).
     options), a record at the Case Pattern, `RestOnPart` for it, binding the read siblings and resting them by a second walk, reading
     each payload twice; form L (`BoundMatch.Unheld` and the late recheck of the leaf's dropped positions: it kept only a dependent
     record; ruling 7, "Short").
+  - Amended by G1321 (option C, Q-771, 2026-11-25; F's G1321-3; Major; the Middle's C-551 read): D2's resting leaf also stands under a Subject whose Type
+    failed formation. The plan judges its Subject Type once, at its root position (the first arm's Pattern; a `try`'s first
+    synthesized Pattern, never the `try` or its operand), through the constraint family's recorder; a refutation there makes each
+    arm's Pattern one Invalid position, a leaf resting on that root record (`MarkPatternTree` with the root as the failure), as under
+    a failed Subject, so D3's leaf list reads "... or it rests on the failed Subject or on the Subject Type BindMatch refuted". Below
+    a root whose Subject Type holds, no position judges its part's Type: a part whose Type fails formation through a declaration that
+    failed with its own record (`A(Box<T>)` in `enum E<T>` with `Box<T>` requiring `T is i32`: UnprovenConstraint_Kd at the payload)
+    is bound with that Type and acquired as any part (Move for an owned part), where BindPattern's per-position judgment made it an
+    Invalid leaf whose bindings rested (`.A(let b) => b.nope` over `E<string>`: `b` typed `Box<string>`, its member record reported;
+    the late walk's restating records at `b` are G1278's family). The
+    late recheck judges the same root once; a refutation there keeps every position's kind and test, leaves a root-level Binding the
+    Check acquires (Owned access) unacquired (Acquisition None, HIR Failed, BU-103; one reached through a reference layer keeps the
+    Borrow BindMatch gave it) and acquires a Binding below the root without a proof (AcquireBinding: Move for an owned part), where
+    the per-position recheck left one whose own Type it refuted unacquired; D3's "a Binding position there" reads "a root-level
+    Binding the Check acquires there". Only the root's refutation sets the coverage Invalid: under a proven root, a nested part whose
+    Type's declaration fails late leaves the coverage the Patterns' (a missing Case is an independent NonExhaustiveMatch_Kd, twin
+    caselatenonex). Deleted: the
+    per-position judgment (`BindPattern`'s and the recheck's), which recorded a failed Subject Type at every position (two equal
+    records at a `try`'s one span: `CheckFaulted_Kd`); its records are removed as dependent (Q13; F's G1321-4): a written match's
+    later arms' under BindMatch's refutation, which read the failed root directly (D-1163's rows min, nouse, matchinvloop), and under
+    the late one, where the later arm keeps its kind and test and its record read the failed clause of the Subject Type's declaration
+    (c1t, c1tloop, c1tguard; PropertyBindingTest c1r, c1rloop: InvalidConstraint_Kd at `.B`), and a nested payload position's of a Type whose clause failed (caselatesibtwin), the kind caselatesib's
+    is. Reason: under rule W (SPEC 23.1.2) every arm's Pattern reads the one Subject
+    Type the plan judges at its root, so its refutation is one failed input of every arm, recorded once. Removal condition: D1
+    (PLAN G1387, after G1278's relation) rests no arm on a refuted Subject Type and replaces this line.
 - **BU-252 A part checked against the expected Type is checked at each candidate's Type, closed or open, once per distinct Type
   (PLAN G924 AF-3b)** (Front, 2026-11-24; Binding; Major, an acceptance mover (Q-731, D-1215); designs
   `front\notes\ArgFlow\design-af3.md` Revision 2 with its short check ACCEPT WITH NOTES (C1-C3, F's ArgFlow ruling 42),
