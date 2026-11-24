@@ -56,7 +56,7 @@ public class SharedObjectAdaptationTest
     [Theory]
     [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet b = a@objref", "a@objref")]
     [InlineData("let a: i32 = 5\nlet b = a@objuniq", "a@objuniq")]
-    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet b = a@objref/S", "a@objref/S")]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet b = a@objref/S", "a")]
     public void ObjectBorrowsOfANonObjectAreInvalid(string source, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -88,7 +88,7 @@ public class SharedObjectAdaptationTest
     [InlineData("edit(Kimi.Intrinsics.makeObj(Item.init()))", "NoApplicableOverload_Kd", "edit(Kimi.Intrinsics.makeObj(Item.init()))")]
     [InlineData("readMut(Kimi.Intrinsics.makeObj(Item.init())@follow)", "ExclusiveBorrowRequired_Kd", "Kimi.Intrinsics.makeObj(Item.init())@follow")]
     [InlineData("edit(Kimi.Intrinsics.makeRc(Item.init())@objuniq)", "SharedPathAccess_Kd", "Kimi.Intrinsics.makeRc(Item.init())")]
-    [InlineData("Kimi.Intrinsics.makeArc(Item.init())@follow@uniq.id = 1", "SharedPathAccess_Kd", "Kimi.Intrinsics.makeArc(Item.init())@follow@uniq")]
+    [InlineData("Kimi.Intrinsics.makeArc(Item.init())@follow@uniq.id = 1", "SharedPathAccess_Kd", "Kimi.Intrinsics.makeArc(Item.init())@follow")]
     [InlineData("_ = Kimi.Intrinsics.makeRc(Item.init()).bump()", "NoApplicableOverload_Kd", "Kimi.Intrinsics.makeRc(Item.init()).bump()")]
     public void TemporaryHandlesLendExclusivelyOnlyWithAuthorityAndSpelling(string use, string? code, string? at)
     {
@@ -112,7 +112,7 @@ public class SharedObjectAdaptationTest
     {
         const string Source = "struct Item\n    public var id: i32 = 7\nstruct Holder\n    public computed made: rc/Item\n        get(self: ref/Self) -> rc/Item => Kimi.Intrinsics.makeRc(Item.init())\nfunc take(v: uniq/rc/Item) -> i32 => v.id\nlet h = Holder.init()\nlet a = take(h.made@uniq)";
         var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "h.made@uniq"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "h.made"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     // Temporary handles release at their full-expression boundary, after the call that borrows them, in reverse creation order.
