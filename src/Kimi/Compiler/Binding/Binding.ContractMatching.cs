@@ -103,8 +103,10 @@ public sealed partial class Binding
 
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
     // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
-    // its published source state.
-    private ConstraintProof VerifyConformance(BoundConformancePath conformance, QuerySite site, ConstraintProof? inheritedProof = null)
+    // its published source state. The verification is the path's own judgment, whichever reader asks (its conformance check, an
+    // agreement, a resolution's disjunction): its verdict is kept on the path and its records are at the path's use, so every query it
+    // asks names conformance.Use (QuerySite; R7-C6 a, F's C8 ruling 22: one site source, not the first reader's).
+    private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
         // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance). Stored only on
         // a change, so a verified frozen path, never Unsupported (FreezeLibrary's UnsettledPath check), is never written (PLAN G949
@@ -121,7 +123,7 @@ public sealed partial class Binding
 
         if (conformance.InheritedFrom is not null)
         {
-            return this.VerifyInheritedConformance(conformance, site);
+            return this.VerifyInheritedConformance(conformance);
         }
 
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid ||
@@ -170,7 +172,7 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ConformanceSelf(conformance);
-            var declarationProof = this.ReadSourceState(conformance.Type, site, out _);
+            var declarationProof = this.ReadSourceState(conformance.Type, conformance.Use, out _);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
                 return ConstraintProof.Error;
@@ -208,7 +210,7 @@ public sealed partial class Binding
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
                 {
                     var identity = shape.AssociatedTypes[i];
-                    if (this.SpecificationPart(conformance, identity, site) is { } part)
+                    if (this.SpecificationPart(conformance, identity, conformance.Use) is { } part)
                     {
                         // SPEC 23.1.2: an identity whose explicit specification did not bind is never inferred; its absence rests on
                         // that specification, while every other missing identity still reports.
@@ -223,7 +225,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.InferenceHole(conformance, identity, site))
+                    if (this.InferenceHole(conformance, identity, conformance.Use))
                     {
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
@@ -279,7 +281,7 @@ public sealed partial class Binding
                             }
                         }
 
-                        ancestorProofs[i] = this.VerifyConformance(this.impls.Path(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract), site, prerequisites);
+                        ancestorProofs[i] = this.VerifyConformance(this.impls.Path(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract), prerequisites);
                         proof = CombineProof(proof, ancestorProofs[i], true);
                     }
                 }
@@ -325,7 +327,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    this.SpecifiesContract(clause, conformance.Type, conformance.Contract, site))
+                    this.SpecifiesContract(clause, conformance.Type, conformance.Contract, conformance.Use))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -412,7 +414,7 @@ public sealed partial class Binding
             // Q13). Every other reader rested at the first branch.
             if (proof == ConstraintProof.Proven)
             {
-                this.BeginProof(site);
+                this.BeginProof(conformance.Use);
                 proof = this.EndProof(this.ConsultsFailedPremise(conformance.Scope.Parent) is null ? ConstraintProof.Proven : ConstraintProof.Unknown);
             }
 

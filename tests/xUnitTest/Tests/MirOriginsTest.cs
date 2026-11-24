@@ -302,8 +302,12 @@ public sealed partial class MirOriginsTest
     // a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3); and a `$tryWrite`
     // whose writer operand is Never, a transfer or `$abort`: it supplies no value, so its writer names no Origin of Utf8Writer's own
     // declaration (SPEC 14.10.3, 15.3.4; PLAN G410); and MeetTrans in a function and in both parts of a constructor's slice, whose call
-    // regions satisfy every row (U3-design.md's twelfth amendment: valid, the located limit before).
+    // regions satisfy every row (U3-design.md's twelfth amendment: valid, the located limit before); and a Closure's and a local Function
+    // Type's result `ref/(ref/i32 during q)` during the per-call Origin of an input naming `q` (PLAN G216 (b)'s r1 and r2, SPEC 15.3.4): the
+    // nested signature's declaration row, judged by Binding from its inputs (R7-O3 U-O3; the located limit before, an Unclassed end).
     [Theory]
+    [InlineData(NestedResult + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n")]
+    [InlineData(NestedFunctionType + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> = func (p) => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n")]
     [InlineData(MeetTrans)]
     [InlineData(MeetTransBothParts)]
     [InlineData("func pass(x: ref/i32) -> ref/i32 during x\n    let y = x\n    return y\n")]
@@ -340,22 +344,6 @@ public sealed partial class MirOriginsTest
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         Assert.Empty(Origins(c));
     }
-
-    // 2a0-D §3 row 9 and D19: a row with an Unclassed end forms no edge and is the located limit at its Site, whatever Binding's
-    // completeness (DECISIONS R4-M113); a callee's own Parameter atoms no longer reach a caller's rows (I-1, closed by G216 (a) U3a-r: a call's Origins
-    // are its call regions, AValidChainHasNoOriginProblem). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested
-    // result's row with a per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
-    // 15.3.4, R4-M162: before H5 the invalid ones were Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front,
-    // R7-O3).
-    [Theory]
-    [InlineData(NestedResult + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
-    [InlineData(NestedResult + "ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
-    [InlineData(
-        NestedFunctionType + "ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> = func (p) => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n",
-        "ref/(ref/i32 during q)")]
-    [InlineData(NestedFunctionType + "ref/i32) -> Option<ref/(ref/i32 during q)> = func (p) => Option.None\n    let o = h(n@ref)\n    return 0\n", "ref/(ref/i32 during q)")]
-    public void AnUnclassedEndIsTheLocatedLimit(string source, params string[] sites)
-        => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
     // PLAN G215 (DECISIONS R4-M168): a layer whose rows no constructor body's slice includes is judged by no MIR body, so each of its rows
     // is the located limit until the layer has a body of its own, valid or not: an omitted base clause that selects no constructor (the

@@ -98,6 +98,14 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         "func pairc2(b: uniq/(ref/i32 during o), a: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k)) -> i32\n    origin k outlives o\n    return 0\n" +
         "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: uniq/(ref/i32 during w)) -> i32\n";
 
+    // PLAN G1078 (SPEC 8.6.1, 8.6.4): pairk's and pairc's shapes as a requirement of a generic Contract, which a caller bound twice
+    // reaches as one declaration under two candidates; its `n: i32` selects Swap<i32>'s, the other is rejected after its evidence.
+    private const string SwapK = "contract Swap<X>\n    func sw(a: uniq/(ref/i32 during o), b: uniq/(ref/(ref/i32 during k) during o), v: X) -> ()\n\n" +
+        "func caller<T>(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/(ref/i32 during w) during y), n: i32) -> ()\n";
+
+    private const string SwapC = "contract Swap<X>\n    func sw(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k), v: X) -> ()\n        origin k outlives o\n\n" +
+        "func caller<T>(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: uniq/(ref/i32 during w), n: i32) -> ()\n";
+
     private const string PairW = "func pairw(a: uniq/(ref/i32 during o), b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
         "func pairw2(b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), a: uniq/(ref/i32 during o), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
         "func caller(x: ref/i32, y: ref/i32, z: ref/i32, p: uniq/(ref/i32 during x), q: (uniq/(ref/i32 during y) during v, ref/(ref/i32 during w) during u), s: uniq/(ref/i32 during u), t: ref/i32 during z) -> ()\n";
@@ -336,7 +344,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // again over the other variables and publishes the failure (OriginInference.Marked), so every clause and input premise of the call
     // that reads it, or a variable the solve formed from it, rests on that record in either argument order: o-inv's `y` and pairk's inner
     // `w outlives o` (whatever `o` is), pairc's clause `k outlives o` (rule W: it reads `o` directly). A failure independent of `o` stays
-    // (pairw's `z outlives u`). Valid controls: `origin b outlives a`, and a construction whose partners are equal.
+    // (pairw's `z outlives u`). Valid controls: `origin b outlives a`, and a construction whose partners are equal. The same holds at a
+    // requirement that a group offers as two candidates (SwapK, SwapC; PLAN G1078): each candidate's solve state is its own, so the
+    // rejected candidate's solve leaves the winner's published failure in place, whichever candidate is tried last (fail-before: the
+    // winner tried first gave 2 and 3 records).
     [Theory]
     [InlineData(InvO + "    invo(x, y)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(InvO + "    origin b outlives a\n    invo(x, y)\n", "clean")]
@@ -351,6 +362,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(PairW + "    pairw2(q@move, p, s, t)\n", "2*UnprovenOriginRelation_Kd")]
     [InlineData(PairW + "    origin z outlives u\n    pairw(p, q@move, s, t)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(EnumTwo + "    origin x == y\n    let e = E.Two(p, q, w)\n    return 0\n", "clean")]
+    [InlineData(SwapK + "    T is Swap<i32>\n    T is Swap<i64>\n    T.sw(p, q, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapK + "    T is Swap<i64>\n    T is Swap<i32>\n    T.sw(p, q, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapC + "    T is Swap<i32>\n    T is Swap<i64>\n    T.sw(p, q, r, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapK + "    T is Swap<i32>\n    T is Swap<i64>\n    origin x == y\n    origin w outlives x\n    T.sw(p, q, n)\n", "clean")]
     public void AFailedEqualityIsTheRecordItsReadersRestOn(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
@@ -627,7 +642,7 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // required Origin, here one the required contract keeps apart from the shared one: a Function Item argument, a conversion and a
     // conformance witness.
     [Theory]
-    [InlineData("func apply(h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t, y: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return h(m@ref, y)\nfunc g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t => apply(f, q)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("func apply(h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t, y: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return h(m@ref, y)\nfunc g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t => apply(f, q)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData("func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t = f\n    let m: i32 = 5\n    return h(m@ref, q)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData("contract Picker\n    func pick(self: ref/Self, x: ref/i32 during p, y: ref/Box<ref/i32 during q> during r) -> ref/i32 during r\nstruct Chooser\n    Self is Picker\n    public init() => ()\n    public func pick(self: ref/Self, x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c => x\n", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
     public void AComparisonProvesTheImplementationsInputs(string body, string code)
@@ -924,8 +939,9 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // ja1 (the Middle's RP17 C2, ja2's invalid twin): `m = 5` while r, carrying the payload's Loan on m through the opened region, is
     // used: A5's conflict at the write (the base: BU-156's located Unsupported_Kd at the payload).
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    m = 5\n    return sink(r)\n", "ComparisonLoanConflict_Kd@m = 5")]
-    // j13 (R2's structure twin): a waiting source of another structure is its own Type mismatch, whatever the region.
-    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, y: ref/(ref/i32 during b), n: ref/(i64)) -> i32\n    let r = keep(if flag => .Some(n) else => .None, y)\n    return 0\n", "TypeMismatch_Kd@.Some(n) else => .No")]
+    // j13 (R2's structure twin): a waiting source of another structure fails its check at the one candidate's Type (SPEC 10.5.1; PLAN
+    // G924 AF-3b, design R1.7): the call's NoApplicableOverload_Kd, with the source's reason, whatever the region.
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, y: ref/(ref/i32 during b), n: ref/(i64)) -> i32\n    let r = keep(if flag => .Some(n) else => .None, y)\n    return 0\n", "NoApplicableOverload_Kd@keep(if flag => .Som")]
     // rv18
     [InlineData("func keepO<T>(x: Option<T>, y: T) -> i32\n    T is Owned\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    return keepO(.Some(p), one())\n", "UnprovenOriginRelation_Kd@p), one())")]
     public void AWaitedVariableKeepsItsOtherBounds(string body, string records)
@@ -948,6 +964,89 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     {
         var check = DiagnosticCorpus.Check(body + Main);
         Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // R7-O3 O3-B (F's rulings O3-10, O3-17 to O3-19; SPEC 15.3.4, 15.6.4 step 1, 15.3.6, 10.2 row 2): a callee Origin that only a
+    // classified composite's waiting part names (a join's, a Case's, a Tuple or array literal's) is opened to the call's own region by
+    // the solve, after the trial that fitted the composite at the parameter; the composite's value Type is derived again from the completed
+    // parameter Type (ExpectedValueType, ValueAtParameter), so its parts never relate the callee's own atom in the caller's body. The base
+    // gave A5's located Unsupported_Kd (O3-B's c1: UnprovenOriginRelation_Kd) on the first 19; the last five (a call in the callee's own
+    // body whose images are the callee's atoms) pin that nothing is substituted twice (G2's B1, the delta read of 11-24).
+    [Theory]
+    // s11g_jroot_someshort_same: W-338's G-O program: a join beside a waiting `.None`
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(if c => .Some(short@ref) else => .None)\n    return 0\n")]
+    // s11g_jroot_someshort_same_ok: W-338's G-O program (`.Some(r)`)
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(if c => .Some(r) else => .None)\n    return 0\n")]
+    // s11g_tuple_someshort: W-338's G-O program: a Tuple literal
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: (Option<ref/i32 during s>, i32)) -> i32 => 0\n    let short = 2\n    return f((.Some(short@ref), 1))\n    return 0\n")]
+    // s11g_tuple_someshort_ok: W-338's G-O program (`.Some(r)`)
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: (Option<ref/i32 during s>, i32)) -> i32 => 0\n    let short = 2\n    return f((.Some(r), 1))\n    return 0\n")]
+    // t_case_short: a Case join
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(match c\n        true => .Some(short@ref)\n        false => .None\n    )\n")]
+    // t_case_r: a Case join (`.Some(r)`)
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(match c\n        true => .Some(r)\n        false => .None\n    )\n")]
+    // t_top_join_short: a top-level callee
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc f(w: Option<ref/i32 during s>) -> i32 => 0\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    let short = 2\n    return f(if c => .Some(short@ref) else => .None)\n")]
+    // t_top_tuple_short: a top-level callee, a Tuple literal
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc f(w: (Option<ref/i32 during s>, i32)) -> i32 => 0\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    let short = 2\n    return f((.Some(short@ref), 1))\n")]
+    // t_ret_local: the result relates `s`, kept in a local
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: Option<ref/i32 during s>) -> Option<ref/i32 during s> => w\n    let short = 2\n    let o = f(if c => .Some(short@ref) else => .None)\n    return 0\n")]
+    // t_arr_short: an array literal
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: [2 of Option<ref/i32 during s>]) -> i32 => 0\n    let short = 2\n    return f([.Some(short@ref), .None])\n")]
+    // t_jmk_short: a waiting generic call in the join
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(if c => .Some(short@ref) else => mkNone())\n")]
+    // t_reftuple_short: a Tuple literal at `ref/U`: the borrowed owner temporary
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: ref/(Option<ref/i32 during s>, i32)) -> i32 => 0\n    let short = 2\n    return f((.Some(short@ref), 1))\n")]
+    // t_jtuple_short: a join of Tuple literals
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: (Option<ref/i32 during s>, i32)) -> i32 => 0\n    let short = 2\n    return f(if c => (.Some(short@ref), 1) else => (.None, 2))\n")]
+    // t_jtuple_r: a join of Tuple literals (`.Some(r)`)
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: (Option<ref/i32 during s>, i32)) -> i32 => 0\n    let short = 2\n    return f(if c => (.Some(r), 1) else => (.None, 2))\n")]
+    // x_nested_generic: a nested generic callee
+    [InlineData("func k(r: ref/i32, c: bool) -> i32\n    func f<T>(x: ref/T, w: Option<ref/T during s>) -> i32 => 0\n    let short = 2\n    return f(r, if c => .Some(short@ref) else => .None)\n")]
+    // x_method_recv: a method's receiver beside the join
+    [InlineData("struct H\n    public let v: i32\n    public func m(self: ref/Self, w: Option<ref/i32 during s>) -> i32 => 0\n\nfunc k(h: ref/H, c: bool) -> i32\n    let short = 2\n    return h.m(if c => .Some(short@ref) else => .None)\n")]
+    // x_closure_arg: a Closure argument beside the join
+    [InlineData("func k(r: ref/i32, c: bool) -> i32\n    func f(g: (i32) -> i32, w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(func [] (x: i32) -> i32 => x, if c => .Some(short@ref) else => .None)\n")]
+    // x_closure_s: a Closure whose Function Type names `s`
+    [InlineData("func k(r: ref/i32, c: bool) -> i32\n    func f(g: (ref/i32 during s) -> i32, w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(func [] (x: ref/i32) -> i32 => 0, if c => .Some(short@ref) else => .None)\n")]
+    // x_join3: an else-if chain
+    [InlineData("func k(r: ref/i32, c: bool, d: bool) -> i32\n    func f(w: Option<ref/i32 during s>) -> i32 => 0\n    let short = 2\n    return f(if c => .Some(short@ref) else if d => .Some(r) else => .None)\n")]
+    // x_swap_or_tuple: swapped Origins in f's own body, a Tuple literal (G2's B1: accepted on the base)
+    [InlineData("func f(a: ref/i32 during s, b: ref/i32 during t, w: (ref/i32 during s, i32), n: i32) -> i32\n    if n > 0 => return f(b, a, (b, 1), n - 1)\n    return 0\n")]
+    // x_swap_or_arr: swapped Origins in f's own body, an array literal (B1)
+    [InlineData("func f(a: ref/i32 during s, b: ref/i32 during t, w: [1 of ref/i32 during s], n: i32) -> i32\n    if n > 0 => return f(b, a, [b], n - 1)\n    return 0\n")]
+    // x_swap_or_nested: the swap inside a nested callee's own body (B1)
+    [InlineData("func k(r: ref/i32, q: ref/i32) -> i32\n    func f(a: ref/i32 during s, b: ref/i32 during t, w: (ref/i32 during s, i32), n: i32) -> i32\n        if n > 0 => return f(b, a, (b, 1), n - 1)\n        return 0\n    return f(r, q, (r, 1), 3)\n")]
+    // x_swap_ty_tuple2: swapped Type slots in g's own body, a Tuple literal (B1)
+    [InlineData("func g<T, U>(x: ref/T during a, y: ref/U during b, w: (ref/U during b, ref/T during a, i32), n: i32) -> i32\n    if n > 0 => return g(y, x, (x, y, 1), n - 1)\n    return 0\n")]
+    // x_swap_ty_join2: swapped Type slots in g's own body, a join (B1)
+    [InlineData("func g<T, U>(x: ref/T during a, y: ref/U during b, w: Option<(ref/U during b, ref/T during a)>, c: bool, n: i32) -> i32\n    if n > 0 => return g(y, x, if c => .Some((x, y)) else => .None, c, n - 1)\n    return 0\n")]
+    public void ACalleeOriginOnlyAWaitingCompositeNamesIsTheCallsOwnRegion(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // Their invalid twins (SPEC 15.6.4, 15.6.1): the call's region holds `short`'s Loan and the result is returned at `during r`, so each keeps
+    // its records, on the base as with the region (the Loan conflict at `short` and the unsatisfied relation at the argument).
+    [Theory]
+    // t_ret_escape: a join whose `s` holds `short`'s Loan, returned at `during r`
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> Option<ref/i32 during r>\n    func f(w: Option<ref/i32 during s>) -> Option<ref/i32 during s> => w\n    let short = 2\n    return f(if c => .Some(short@ref) else => .None)\n", "ComparisonLoanConflict_Kd@let short = 2|UnsatisfiedOriginRelation_Kd@short@ref) else => .")]
+    // i_join_escape_none: the same, f returning `.None`
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> Option<ref/i32 during r>\n    func f(w: Option<ref/i32 during s>) -> Option<ref/i32 during s> => .None\n    let short = 2\n    return f(if c => .Some(short@ref) else => .None)\n", "ComparisonLoanConflict_Kd@let short = 2|UnsatisfiedOriginRelation_Kd@short@ref) else => .")]
+    // i_tuple_escape: the same through a Tuple literal
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc mkNone<T>() -> Option<T> => .None\nfunc k(r: ref/i32, c: bool, d: bool) -> Option<ref/i32 during r>\n    func f(w: (Option<ref/i32 during s>, i32)) -> Option<ref/i32 during s> => .None\n    let short = 2\n    return f((.Some(short@ref), 1))\n", "ComparisonLoanConflict_Kd@let short = 2|UnsatisfiedOriginRelation_Kd@short@ref), 1))")]
+    // x_join3_escape: the same through an else-if chain
+    [InlineData("func k(r: ref/i32, c: bool, d: bool) -> Option<ref/i32 during r>\n    func f(w: Option<ref/i32 during s>) -> Option<ref/i32 during s> => w\n    let short = 2\n    return f(if c => .Some(short@ref) else if d => .Some(r) else => .None)\n", "ComparisonLoanConflict_Kd@let short = 2|UnsatisfiedOriginRelation_Kd@short@ref) else if d")]
+    // x_reftuple_escape: the same through a borrowed owner temporary at `ref/U`
+    [InlineData("func k(r: ref/i32, c: bool) -> ref/i32 during r\n    func f(w: ref/(ref/i32 during s, i32)) -> ref/i32 during s => w.0\n    let short = 2\n    return f((short@ref, 1))\n", "ComparisonLoanConflict_Kd@let short = 2|UnsatisfiedOriginRelation_Kd@f((short@ref, 1))")]
+    // x_reftuple_waitescape: the same with a waiting `.Some(short@ref)` in the temporary
+    [InlineData("func k(r: ref/i32, c: bool) -> Option<ref/i32 during r>\n    func f(w: ref/(Option<ref/i32 during s>, i32)) -> Option<ref/i32 during s> => w.0\n    let short = 2\n    return f((.Some(short@ref), 1))\n", "ComparisonLoanConflict_Kd@let short = 2|UnsatisfiedOriginRelation_Kd@short@ref), 1))")]
+    public void ACallsRegionHoldingALocalLoanKeepsItsRecords(string body, string records)
+    {
+        var source = body + Main;
+        var check = DiagnosticCorpus.Check(source);
+        Assert.Equal(records, string.Join("|", check.Diagnostics.Select(x => x.Code + "@" + At(source, x.Span))));
     }
 
     // The source from a span's start to the end of its line, at most 20 characters.

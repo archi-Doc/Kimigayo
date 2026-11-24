@@ -517,7 +517,7 @@ public sealed partial class Binding
             var conformance = this.impls.InPass.Paths[i];
             this.failedCause = null;
             var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
-            var proof = this.VerifyConformance(conformance, conformance.Use);
+            var proof = this.VerifyConformance(conformance);
             if (final && conformance.InheritedFrom is null && !(conformance.Unsupported && mode == BindingMode.Final))
             {
                 this.RequireConstraintInFrame(conformance.Use, proof, mode, frame);

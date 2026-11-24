@@ -1485,6 +1485,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 118 (2026-11-23, plan §14; the Back's D-1186, the owner's O-513 (c) and O-514 (a), R8's exit): X1's row records
   that R8 exited 2026-11-23 (DECISIONS R8-M60; the owner's O-513 (c), O-514 (a)). No other decision changes. No SPEC or IMPL
   text. Nothing frozen.
+- Revision 119 (2026-11-24, plan §14; the owner's adoption of the Coordinator's three process proposals in K's dialog, verbatim
+  「3案とも採用します。作業を開始してください。各セッションに意見を聞き、問題なければ適用してください。」; DECISIONS Q23): §3.3's RP17 bullet: an A5 or acceptance mover runs
+  the combined A5 oracle on its head merged with the newest dev before its Ready line; the Middle's consent labels the differing
+  programs from SPEC, builds at least three adversarial invalid twins and runs MIR codegen, without reading the change's code; the
+  window's G-O stays. §9: board cells and log lines of about three or four lines, linking files for detail. The rest of Q23 is
+  WORKFLOW's. For new units. No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
@@ -1816,6 +1822,17 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   correction: B10 Revision 1 split the evidence unit, and §7's B10 row already says OSF3c), and its "the interrupt entries (OSF3a)" reads "the interrupt declarations (OSF3a)
   and entries (OSF3b)" as B10 Revision 1's split and §7's row state (T's D-1203 cell (3)). No other decision changes. No SPEC or
   IMPL text. Nothing frozen.
+- Revision 20 (2026-11-24, T's D-1217; NV2 design Revisions 0-1 with M-N, T-340, and the U1 design): §8 gains candidate 5, the
+  native check's time by part (`artifacts/benchmarks/nv2-mn-20261124-0536`): a full rerun 200 s on a quiet machine, about 400 s in
+  K's windows; builds 53%, runs 40%, the fixture keys 77% of an all-reused step's 5.4 s. U1 adopted (the owner's O-519 (a), with
+  O-522 (a2): a run is reused only from an entry really run within the last 12 h); R3, K1, R1, B1, B3, B4 and K3 open, each a unit
+  of its own; four stopped. No decision changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 21 (2026-11-24, T's D-1217 revised; the owner in T's dialog, 11-24 10:1x, verbatim
+  「NV2はU1までにしてください。それ以上の最適化は、そこまで効果は大きくないため、いったん閉じてください。」): §8's candidate 5
+  ends NV2 with U1 (a2) (O-519 (a), O-522 (a2): a fixture whose executables, sidecars and run scripts did not change is not run
+  again, from an entry really executed within 12 hours). R3, K1, R1, B1, B3, B4 and K3, open in revision 20, are closed by the
+  owner's order; their designs stay in `artifacts/handoff/tatara/units/NV2/` as records, reopened only on the owner's word. The
+  measured split stands. No decision changes. No SPEC or IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 

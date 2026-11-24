@@ -143,7 +143,8 @@ public sealed partial class Binding
 
     // SPEC 15.3.2, 15.3.4, 15.6.1, 15.6.5 (DECISIONS BU-26, BU-62): the one judge of a declaration's rows, the Origin relations Binding
     // formed with no executable body (a Field's, payload's or base's declared Type, a signature's well-formedness, a clause's unrepresentable
-    // end), which consumes each in every pass. A row each call discharges (CallBorrows) is left to the calls, and one the published
+    // end, a nested signature's per-call relation formed in a body, SPEC 15.3.4, R7-O3 U-O3), which consumes each in every pass. A row
+    // each call discharges (CallBorrows) is left to the calls, and one the published
     // premises at its use entail is its declaration's premise, not an obligation (CollectDeclarationRows). Every other row goes to R4-M118's
     // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (JudgeDeclarationPosition; each failing
     // operand of a meet its own record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its

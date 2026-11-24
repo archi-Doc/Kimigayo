@@ -309,7 +309,7 @@ public sealed partial class Binding
     }
 
     // SPEC 14.6.2, 15.1.6: a user iteration's item bindings are acquired by the match's rule (AcquireBinding) at the same point, after the
-    // declaration checks its Copy proof reads; a loop's plan has no written Pattern Type to recheck.
+    // declaration checks (an owned item's part Moves and asks no Copy); a loop's plan has no written Pattern Type to recheck.
     private void CompleteIterationAcquisitions()
     {
         for (var i = 0; i < this.userIterations.Count; i++)
@@ -424,8 +424,9 @@ public sealed partial class Binding
 
         var plan = source.Iteration!;
         var some = match.PositionStorage[0];
-        var none = AdtDef.Case(some.MatchedType, this.Library.OptionNone);
-        match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, some.MatchedType, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
+        var option = some.MatchedType!; // The synthesized Some position's, the item's Option.
+        var none = AdtDef.Case(option, this.Library.OptionNone);
+        match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, option, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
         match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
         match.ArmStorage.Add(new(plan.Match.Arms[1], some.End));
     }

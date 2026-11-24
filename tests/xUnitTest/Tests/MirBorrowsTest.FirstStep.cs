@@ -1473,6 +1473,32 @@ public sealed partial class MirBorrowsTest
                 keepMix3B((cell@raw, null, hop2@uniq), w@raw@raw/u8)
                 y@follow = 5
             """,
+        ["xPairRawDeclBad"] = """
+            enum Slot
+                Has(raw/u8)
+                Empty
+
+            func viaPairP(p: (raw/Slot, i32), v: raw/u8) => ()
+
+            func xPairRawDeclBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: Slot = .Has(null)
+                viaPairP((s@raw, 0), spare)
+                kk = 2
+            """,
+        ["xPairRawU8Ok"] = """
+            func viaPairQ(p: (raw/(raw/u8), i32), v: raw/u8) => ()
+
+            func xPairRawU8Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: raw/u8 = null
+                viaPairQ((s@raw, 0), spare)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (U3b): the 17 forms the first step's reading newly rejects (12 of PLAN G784's 13, pPlainViewBad, F2 unit
@@ -1604,6 +1630,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("h1Mix3Bad", "mix3: y@follow = 5")] // I, three kinds of part: an unstated raw layer, a `static` one, an exclusive borrow
     [InlineData("h1Mix3Ok", "")] // V
     [InlineData("h1Mix3OnlyBorrowBad", "mix3B: y@follow = 5")] // I, the composition through the borrow element alone
+    [InlineData("xPairRawDeclBad", "xPairRawDeclBad: kk = 2")] // I, a by-value Tuple element's raw layer whose pointee's Case payload is a layer Slot states: the call may write its own pointer there and store spare through it (15.6.4; 5.7 Calls)
+    [InlineData("xPairRawU8Ok", "")] // V, its twin: past s's layer the parameter's Type expression admits only a u8 (oneLayer)
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");
