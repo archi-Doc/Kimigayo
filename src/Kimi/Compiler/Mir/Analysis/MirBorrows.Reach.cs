@@ -549,12 +549,12 @@ internal sealed partial class MirBorrows
 
     // Storage the body does not own under a punned reading (SPEC 15.6 Holders, example punnedRef; 5.5; 15.6.4's composition): a raw
     // pointer read at the reading's rows (Reading) over a Place of Type `place` reaches it, with the rows' record, where a Loan may
-    // be stored through a row (their guard steps) and a byte of the Place may be an `owner` Scalar's (Scalared: no raw pointer need
-    // have written it) or one that a punned write may not change (PlaceBytes: a reference's, a handle's; none can have), whatever
-    // else the holder carries; at the first step (Punned) and past a holder (ReadPart) alike.
+    // be stored through a row (their guard steps) and the pointer may have no provenance (MirBorrows.PunTypes' NoProvenance, not None: a
+    // byte of the Place may be an `owner` Scalar's or one that a punned write may not change, a reference's, a handle's), whatever else
+    // the holder carries; at the first step (Punned) and past a holder (ReadPart) alike. A call composes, so its "may" is exact.
     private void Unowned((MirWrites Guard, BoundType? Record) rows, BoundType place)
     {
-        if (this.walkComposes && rows.Guard is MirWrites.Through or MirWrites.Named && (this.PlaceBytes(place).Fixed != Extent.None || this.Scalared(place)))
+        if (this.walkComposes && rows.Guard is MirWrites.Through or MirWrites.Named && this.NoProvenance(place) != Extent.None)
         {
             this.Written(Escaped, -1, ViaPast, rows.Record);
         }

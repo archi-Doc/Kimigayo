@@ -436,7 +436,7 @@ public sealed partial class Binding
                 return Complete(enumeration, BoundType.Unit);
             case ParenthesizedTypeKoto:
                 // Grouped Types are bound by Type/qualifier entry points, never as runtime values.
-                return this.Fail(node, BindingFailure.InvalidTypeFormation);
+                return this.Record(node, BindingFailure.InvalidTypeFormation, []);
             case SyntaxFormKoto { Akind: KotoKind.ConstructorReference } constructorReference:
                 return this.BindBaseConstructor(constructorReference, scope);
             case TypeKoto:
@@ -507,7 +507,9 @@ public sealed partial class Binding
             case NumberLiteralKoto number:
                 if (this.TakesGenericLiterals(expected, scope, node))
                 {
-                    return !number.IsInteger ? this.Fail(node, BindingFailure.TypeMismatch) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Fail(node, BindingFailure.InvalidLiteral);
+                    // SPEC 12.3.1, 8.7.4: a generic literal position takes integer literals only (a floating-point literal adopts only an
+                    // expected f32 or f64); the mismatch names both sides.
+                    return !number.IsInteger ? this.RecordTypeMismatch(node, node, new(null, MismatchForm.FloatingPointLiteral), expected!) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Record(node, BindingFailure.InvalidLiteral, []);
                 }
 
                 var numberType = DefaultLiteralType(number, expected);
@@ -518,7 +520,7 @@ public sealed partial class Binding
                     return this.RecordMismatch(node, node, new(null, found), numberType, ComparisonFailure.Shape);
                 }
 
-                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
+                return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Record(node, BindingFailure.InvalidLiteral, []);
             case NullLiteralKoto:
                 return expected is { IsPointer: true } ? Complete(node, expected) : this.Record(node, BindingFailure.MissingType, [], unresolved: true);
             case BaseReferenceKoto baseReference:

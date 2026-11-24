@@ -33,7 +33,7 @@ public sealed class NativeToolchainTest : IDisposable
 
     public NativeToolchainTest() => Directory.CreateDirectory(this.directory);
 
-    public void Dispose() => Directory.Delete(this.directory, true);
+    public void Dispose() => TestFolder.Delete(this.directory);
 
     // IMPL 20.4: a staged copy is a snapshot named by its hash, held with read sharing only until its caller releases it (StagedHold): a
     // change of the original does not reach it, a damaged copy is staged again and an intact one reused, and no temporary copy remains.

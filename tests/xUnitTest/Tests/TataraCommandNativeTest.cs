@@ -22,7 +22,7 @@ public sealed class TataraCommandNativeTest : IDisposable
 
     public TataraCommandNativeTest() => Directory.CreateDirectory(this.directory);
 
-    public void Dispose() => Directory.Delete(this.directory, true);
+    public void Dispose() => TestFolder.Delete(this.directory);
 
     // In one process: build A, run B, run B --no-build, an edit that makes A fail, its fix and the rebuild. Each line's exit code and
     // products equal single-shot's (the files equal, the records equal but for tools, the text equal with the folder replaced), and the

@@ -76,12 +76,12 @@ public sealed partial class Binding
             {
                 if (!number.IsInteger)
                 {
-                    return this.Fail(unary, BindingFailure.TypeMismatch);
+                    return this.RecordTypeMismatch(unary, unary, new(null, MismatchForm.FloatingPointLiteral), expected!); // SPEC 12.3.1, 8.7.4.
                 }
 
                 if (!FitsGenericInteger(number, unary.Akind == KotoKind.PrefixMinus))
                 {
-                    return this.Fail(unary, BindingFailure.InvalidLiteral);
+                    return this.Record(unary, BindingFailure.InvalidLiteral, []);
                 }
 
                 Complete(number, expected);
@@ -97,7 +97,7 @@ public sealed partial class Binding
 
             if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus))
             {
-                return this.Fail(unary, BindingFailure.InvalidLiteral);
+                return this.Record(unary, BindingFailure.InvalidLiteral, []);
             }
 
             Complete(number, type);
