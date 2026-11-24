@@ -595,7 +595,7 @@ public partial class ResultPremiseTest
     [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok_ctl
     [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n")] // call_bad: invalid, accepted (PLAN's O3-B2 issue)
     [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/(ref/i32 during x) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad_ctl: the return's fit itself
-    public void AHeldFunctionTypeStoresItsFixedOriginsInEveryReader(string program, params string[] records)
+    public void AHeldFunctionTypesFixedOriginsAreItsDefinitionsPremises(string program, params string[] records)
     {
         var text = program + Main;
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
