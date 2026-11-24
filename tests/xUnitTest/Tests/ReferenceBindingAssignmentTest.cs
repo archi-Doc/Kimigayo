@@ -11,7 +11,6 @@ public class ReferenceBindingAssignmentTest
 {
     [Theory]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n += 1\n        yield n\n    .None => 0\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("func f(x: Option<i32>) => match x\n    .Some(var n) => n++\n    .None => ()\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("var values: Array<i32> = [1]\nfor var v in values\n    v += 1", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("var values: Array<i32> = [1]\nfor var v in values@uniq\n    v += 1", DiagnosticCode.ExclusiveBindingAssignment_Kd)]
@@ -22,6 +21,7 @@ public class ReferenceBindingAssignmentTest
     // `ref/i32` by the temporary borrow (SPEC 10.2, 12.3.1), which only a reassignable binding could be rebound to.
     [InlineData("func f(items: ref/Array<i32>, n: i32) -> ()\n    for item in items\n        item = n\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("func f(o: ref/Option<i32>, n: i32) -> ()\n    match o\n        .Some(let v) => v = n\n        .None => ()\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
+    [InlineData("func f(items: ref/Array<i32>) -> ()\n    for item in items\n        item = items[0]\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     public void ValueAssignmentsNameTheBindingMode(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -39,6 +39,12 @@ public class ReferenceBindingAssignmentTest
     [InlineData("let a = 1\nvar refs: Array<ref/i32> = [a@ref]\nfor var r in refs@move\n    r = 2", null)]
     [InlineData("let a = 1\nmatch (a@ref, 2)\n    (var r, _) => r = 3", null)]
     [InlineData("let a = 1\nlet b = 2\nmatch (a@ref, 2)\n    (var r, _) => r = b@ref", null)]
+
+    // R7-E4 ruling 9 (its review's C2): on a borrowed path a `var` binding is a reassignable reference too (SPEC 15.1.6), so a literal
+    // assigned to it at `ref/i32` is a temporary borrowed for the assignment (SPEC 10.2 Temporaries), a rebind, not the mode's record;
+    // `uniq/i32` takes no temporary, so `match count@uniq` / `var n => n = 5` keeps ExclusiveBindingAssignment_Kd.
+    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0\npublic func main() => ()", null)]
+    [InlineData("func f(items: ref/Array<i32>) -> ()\n    for var item in items\n        item = 5\npublic func main() => ()", null)]
     public void OwnedReferenceBindingsTakeALiteralAsABorrowedTemporary(string source, DiagnosticCode? limit)
     {
         var c = MinimalEmissionTest.Analyze(source);

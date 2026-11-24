@@ -173,27 +173,26 @@ public sealed partial class Binding
 
         var bound = this.BindNode(binary.Left, scope, context);
         var left = assignment ? bound : this.ReadReferent(binary.Left, bound);
-        // Keep a reference binding's authority failure ahead of literal fitting and compound applicability.
-        if (assignment && left?.SafeReferent is { } bindingReferent &&
-            (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
+        // Keep a reference binding's authority failure ahead of literal fitting and compound applicability: an update always names the
+        // binding's mode, an `=` of an unfitted literal unless the binding is reassignable, whose rebind the next arm judges.
+        if (assignment && left?.SafeReferent is { } bindingReferent && ReferenceBindingAssignment(binary.Left) is { } referenceBinding &&
+            (kind != KotoKind.Equals || (IsUnfittedLiteral(binary.Right) && !referenceBinding.Reassignable)))
         {
             var value = this.BindNode(binary.Right, scope, bindingReferent);
-            this.RecordWrite(binary, referenceBinding, binary.Left);
+            this.RecordWrite(binary, referenceBinding.Mode, binary.Left);
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
         }
 
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
-        // SPEC 15.1.6 (R7-E4 ruling 8): a value of its referent Type assigned to a reference binding names the binding's mode
-        // (ReferenceBindingAssignment's contract), whatever the value's form; only a reassignable binding, which a value fitting the
-        // binding's own Type rebinds (a temporary borrow, SPEC 10.2, 12.3.1), goes on to the write's own check.
-        if (assignment && kind == KotoKind.Equals && left?.SafeReferent is { } valueReferent &&
-            right is not null && this.FitsType(right, valueReferent) &&
-            (!this.FitsType(right, left) || KotoHelper.UnwrapParentheses(binary.Left).BoundSymbol is not { } bound || !Reassignable(bound)) &&
-            ReferenceBindingAssignment(binary.Left) is { } valueBinding)
+        // SPEC 15.1.6 (R7-E4 rulings 8, 9): an `=` to a reference binding names its mode (ReferenceBindingAssignment's one decision) unless
+        // the binding is reassignable and the value fits its own Type (a borrow, or a temporary borrowed for it, SPEC 10.2, 12.3.1), which
+        // rebinds it and goes on to the write's own check.
+        if (assignment && kind == KotoKind.Equals && left?.SafeReferent is not null && ReferenceBindingAssignment(binary.Left) is { } assigned &&
+            (!assigned.Reassignable || (right is not null && !this.FitsType(right, left))))
         {
-            return this.RecordWrite(binary, valueBinding, binary.Left);
+            return this.RecordWrite(binary, assigned.Mode, binary.Left);
         }
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
@@ -281,7 +280,7 @@ public sealed partial class Binding
         if (!write && type is { SafeReferent: not null } &&
             ReferenceBindingAssignment(target) is { } referenceBinding)
         {
-            this.RecordWrite(operation, referenceBinding, target);
+            this.RecordWrite(operation, referenceBinding.Mode, target);
             return false;
         }
 
