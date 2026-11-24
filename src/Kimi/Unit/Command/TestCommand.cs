@@ -17,9 +17,11 @@ namespace Kimi.Command;
 // directory, its startup, the run) is the runner's, exit 3, an output failure (ArtifactFiles.IsOutputFailure) printing its message.
 // Any other exception is the command's fault: one CheckFaulted_Kd without a location, rendered on standard error, and its code and
 // message as the result's errors entry, exit 2, or 3 in a runner step. Cancellation returns 130.
-[SimpleCommand("test")]
+[SimpleCommand(TestCommand.Name)]
 public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleCommand
 {
+    public const string Name = "test";
+
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
         var output = Console.Out;
@@ -27,7 +29,8 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
         var outcomes = new List<TestOutcome>();
         var prepared = new List<(Project Project, Compilation Compilation, TestSettings Settings)>();
         var pinnedExecutables = new List<FileStream>();
-        TestOptions? options = null;
+        var read = TestOptions.Read(args); // Read before any check: the result's form follows --Format also when an option is invalid.
+        TestOptions? options = null; // The options once valid.
         var exit = 0;
         string? runDirectory = null;
         FileStream? active = null;
@@ -35,7 +38,8 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
         {
             // Compiler diagnostics, a fault's record among them, must never corrupt the machine-readable result stream.
             Console.SetOut(Console.Error);
-            options = TestOptions.Parse(args);
+            read.Validate();
+            options = read;
             var snapshot = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (DictionaryEntry item in Environment.GetEnvironmentVariables())
             {
@@ -315,7 +319,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 }
             }
 
-            if (options?.Json == true || Enumerable.Range(0, Math.Max(0, args.Length - 1)).Any(i => args[i] == "--format" && args[i + 1] == "json"))
+            if (read.Json)
             {
                 using var buffer = new MemoryStream();
                 WriteJson(buffer);
