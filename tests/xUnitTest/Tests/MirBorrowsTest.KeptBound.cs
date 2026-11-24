@@ -64,6 +64,22 @@ public sealed partial class MirBorrowsTest
                 keepP(cell@raw, (0, w@raw@raw/u8))
                 y@follow = 5
             """,
+        ["tripleDuringShownBad"] = """
+            func keepQ<T>(slot: raw/(raw/T), value: (T, ref/i32 during a, raw/u8)) => ()
+            func tripleDuringShown(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/i32 = null
+                keepQ(cell@raw, (0, w, w@raw@raw/u8))
+                y@follow = 5
+            """,
+        ["tripleDuringCtlOk"] = """
+            func keepQ1(slot: raw/(raw/i32), value: (i32, ref/i32 during a, raw/u8)) => ()
+            func tripleDuringShownCtl(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/i32 = null
+                keepQ1(cell@raw, (0, w, w@raw@raw/u8))
+                y@follow = 5
+            """,
         ["keepRefTOk"] = """
             func keepR<T>(slot: raw/(raw/T), value: ref/T) => ()
             func refShown(y: uniq/i32)
@@ -393,6 +409,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("keepHalfTBad", "twoLayersHalfT: y@follow = 5")] // I, value a T = raw/u8 stored at T behind the call's own pointer (15.6.4 composition; O-353 (a))
     [InlineData("abstractBad", "abstractBad: y = 5")] // I, T = ref/i64: v, a T, stored in (T, u64).0 behind the call's own pointer (O-353 (a))
     [InlineData("keepPairTBad", "pairShown: y@follow = 5")] // I, the Value row: an i32 storage holds value's i32 part, so value's own value (w's address) is kept (15.6.4; O-359 (a))
+    [InlineData("tripleDuringShownBad", "tripleDuringShown: y@follow = 5")] // I, HiddenKinds' raw-input Value row at a binding that can carry nothing (T = i32): value holds T by value beside a borrow and a raw part, and its own value stays in the callee's terms (O-360 (a)'s first half, BU-231; Q1 (a) bounds reads only)
+    [InlineData("tripleDuringCtlOk", "")] // V, its non-generic control: the i32 storage is Origin-free as a whole, so it keeps none of an input whose Type states an Origin (O-435 (a))
     [InlineData("keepRefTOk", "")] // V, a borrowed input: i32 storage retains no read through value (15.6.4: no Origin inside i32); a move
     [InlineData("keepValueTBad", "valueShown: y@follow = 5")] // I, a by-value T read from a holder carries its Loans (15.6 Holders; 15.6.4 own value)
     [InlineData("tupShownBad", "tupShown: y@follow = 5")] // I, T = (ref/i32, i32): may retain an Origin inside value's pointee (15.6.4)
