@@ -568,6 +568,21 @@ public class IntrinsicCapabilityTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
+    // SPEC 8.3.3 Limits, 23.1.2 (R7-M38, R7-M94; C8 ruling 30, PLAN G651 U2b (5)): after the pass a capability work's own height refusal
+    // is the work's, the fourth after-run owner, as s-dlint-V's lint inside the lint walk's site: a Copy question no judgment of the pass
+    // asked, asked after Bind with no after-run site open, answers Unknown with no record, never a broken contract (no owner: R13.1's
+    // throw) or a mark at an enclosing owner.
+    [Fact]
+    public void AnEndlessCopyGrowthAskedAfterThePassIsTheWorksUnknown()
+    {
+        var c = CompilationTestHelper.ParseSuccess(GrowingCopy + Endless + "func f(x: G<W<i32>>) => ()\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var f = Function(c, "f");
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
+        c.Binding.ReportDiagnostics();
+        Assert.Empty(TestDiagnostics.Of(c));
+    }
+
     // SPEC 8.3.3 Limits, IMPL A.4 (R7-C6 a): a growth that ends at the limit's edge. W1 to W20 wrap their argument in 400 Option layers
     // a level, W21 in `last`, W22's Out is i32: G's Copy forms G<W22<Option^(8,000 + last)<i32>>>, under the height limit at 100 (Proven)
     // and past it at 300 (the limit's one Resource record at the first read; the second read on its line rests on it).

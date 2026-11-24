@@ -417,6 +417,7 @@ public class ArchitectureRulesTest
         "Binding.Structs.cs:PrepareTypeStorage=1 key",
         "Binding.Try.cs:TryFailure=1 record",
         "Binding.TypeArities.cs:AddTypeCandidates=1 declared",
+        "Binding.TypeHeight.cs:Mark=1 key",
         "Binding.TypeOrigins.cs:OriginFormationSite=2 record",
         "Binding.TypeRelations.Origins.cs:CommonOriginType=2 sufficient",
         "Binding.TypeRelations.Walk.cs:Discharged=1 formed",
