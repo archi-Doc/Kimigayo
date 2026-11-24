@@ -36,7 +36,8 @@
 // two, plus one where the resolution is ambiguous (else none applies), packed and unpacked by BindingReport only (KeepChecked, Checked),
 // at most one per party, after its Reason; a kind that names no value has -1; a problem has at most one fact of each kind but
 // its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order its site
-// records them, and its Count and Instance facts, in their row's order; a selection's record is the subject's facts, then per party its
+// records them, its Count and Instance facts, in their row's order, and an acquisition record's second Reason, a transfer's moving
+// cases after its packed Reason (R7-E4 E4a-2, read by position); a selection's record is the subject's facts, then per party its
 // Related (role 3 or 5) and that party's entries up to the next party Related, in the order its adapter renders them, read by position,
 // never by a kind's first fact.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
