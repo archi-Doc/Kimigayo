@@ -189,6 +189,16 @@ public partial class PropertyBindingTest
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
     public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 11's Type contract): a Property's Type holding a Function Type is formed without the nested
+    // signature (dev: UnprovenConstraint_Kd at the Property, c1pa), so a getter whose Function result differs gets SPEC's TypeMismatch_Kd
+    // at the getter alone (c1pm; dev: only that UnprovenConstraint_Kd, DECISIONS Q13: a SPEC-required record the Unknown formation hid), as
+    // its control without Origins (c1pmd).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n    public computed p: (Option<T during q>) -> i32\n        get() -> (Option<T during q>) -> i32 => func [] (o) => 0\n", "clean")] // c1pa
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n    public computed p: (Option<T during q>) -> i32\n        get() -> (Option<T during q>) -> i64 => func [] (o) => 0\n", "1*TypeMismatch_Kd")] // c1pm
+    [InlineData("struct H\n    public computed p: () -> i32\n        get() -> () -> i64 => func [] () => 0\n", "1*TypeMismatch_Kd")] // c1pmd
+    public void ANestedSignatureInAPropertyTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("let", false)]
     [InlineData("var", true)]

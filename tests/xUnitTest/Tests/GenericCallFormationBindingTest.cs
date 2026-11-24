@@ -9,6 +9,15 @@ namespace XunitTest;
 
 public class GenericCallFormationBindingTest
 {
+    // PLAN G464, O-8 (a) (SPEC 23.1.2, 15.3.4, 8.3): an explicit Type argument whose written occurrence inside a Function Type failed
+    // rests the call (no plan, InvalidExplicitArgumentCannotPublishCall) and the call records nothing of its own (DECISIONS Q13, rule W:
+    // dev's NoApplicableOverload_Kd at the call, from the call's own formation of the nested result, goes), inside an Option too (o8c2).
+    [Theory]
+    [InlineData("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<() -> Box<string>>()\n", "1*UnsatisfiedConstraint_Kd")] // o8c
+    [InlineData("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<Option<() -> Box<string>>>()\n", "1*UnsatisfiedConstraint_Kd")] // o8c2
+    [InlineData("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<() -> Box<i32>>()\n", "clean")] // o8v
+    public void AFailedOccurrenceInAnExplicitArgumentRestsTheCall(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("Box<string>")]
     [InlineData("(i32, Box<string>)")]

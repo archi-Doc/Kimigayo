@@ -11,6 +11,13 @@ namespace XunitTest;
 
 public class RuntimeTypeTest
 {
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 13.6.4, 13.6.5 row 1): a runtime test's operand Type holding a Function Type is formed without
+    // the nested signature, whose input is its premise (dev: UnprovenConstraint_Kd at the test); its control with `i32`.
+    [Theory]
+    [InlineData("open struct Animal\nstruct Dog<U>: Animal\nstruct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc host(s: ref/i32, x: objref/Dog<(Option<T during s>) -> i32>) -> bool => x is Animal\n", "clean")] // c1is
+    [InlineData("open struct Animal\nstruct Dog<U>: Animal\nfunc host(s: ref/i32, x: objref/Dog<i32>) -> bool => x is Animal\n", "clean")] // c1isd
+    public void ANestedSignatureInATestedTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("obj")]
     [InlineData("rc")]

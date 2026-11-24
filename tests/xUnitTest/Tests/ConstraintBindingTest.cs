@@ -181,11 +181,14 @@ public class ConstraintBindingTest
 
     // The owner's O-44: a conformance reads no signature's formation, so a declaration that fails after the bodies keeps its own record and fails
     // no conformance naming it. LateAssociated's goes through the binding's own formation (R7-V5's S3). DECISIONS Q13 for the removed records.
+    // PLAN G464 (SPEC 15.6.4 step 3, 8.2.3, 23.1.2; DECISIONS Q13, dependent): a call no longer forms its instantiated inputs, so a failed
+    // declaration named only in a call's input gives the call no record (LateClause, LateAfterItsReaders, LateThroughAClosedClause); one
+    // named in its result keeps its dependent record through the result's formation (LateWithUses, LateAssociated).
     [Theory]
-    [InlineData(LateClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateClauseValid, "clean")]
-    [InlineData(LateAfterItsReaders, "3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateThroughAClosedClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAfterItsReaders, "2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateThroughAClosedClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateWithUses, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateAssociated, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the user's record reads S's failed closed clause and rests (SPEC 23.1.2)
     public void ALateFailureStaysAtItsDeclaration(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
