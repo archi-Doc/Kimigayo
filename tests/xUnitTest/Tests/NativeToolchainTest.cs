@@ -179,6 +179,26 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
     }
 
+    // LinkAmbiguity (T's rulings 21 (ii) and 28 (1)): the manifest's external declarations are the native build's one list of the
+    // runtime's imports. Hello's manifest without WriteFile's declaration fails the object's inspection at its __imp_ reference, with the
+    // record left incomplete. Fail-before: the manifest declared no runtime import, and the build read them from the target row.
+    [Fact]
+    public async Task TheRuntimesImportsAreTheManifests()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = this.Hello("Hello");
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+        var declarations = manifest["externalDeclarations"]!.AsArray();
+        Assert.True(declarations.Remove(declarations.Single(static x => x!["symbol"]!.GetValue<string>() == "WriteFile")));
+        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken));
+        Assert.Equal("Unsupported actual object dependency: __imp_WriteFile U 0 0", error.Message);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+    }
+
     // Tatara G1203 (IMPL 20.3.2): build --Manifest takes a manifest named Name.link.json, as emit writes it. A manifest of another name
     // names no output and fails before any write: no record or lock beside it (dev 3245a057d built it, its record Native test.build.json).
     [Fact]

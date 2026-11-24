@@ -11,8 +11,11 @@ namespace Kimi.Build;
 
 internal static partial class NativeToolchain
 {
-    // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
-    private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
+    // The row's fixed runtime references: what any module of the row may reference besides the external declarations its manifest
+    // states, the backend supply's symbols, which LLVM's code calls without a declaration (__chkstk; IMPL 21.4.7). The runtime's kernel32
+    // imports are no second list here: the manifest's declarations name them (publication writes them from the generation result;
+    // LinkAmbiguity, T's rulings 21 (ii) and 28).
+    private static readonly HashSet<string> RuntimeReferences = new(ToolchainIdentity.Backend.Symbols, StringComparer.Ordinal);
 
     // A project's native build. A build reads no toolchain root and no LlvmBin: the options --ToolchainRoot and --LlvmBin (B6b4), a
     // project's LlvmBin and a link manifest's toolchain member (B6b5) are errors, and Kimi reads KIMI_TOOLCHAIN_ROOT nowhere (B6b3)
@@ -157,18 +160,6 @@ internal static partial class NativeToolchain
         }
 
         return declared;
-    }
-
-    // The backend supply's symbols, linked directly, and each runtime declaration in its dllimport form (kernel32's __imp_ symbol).
-    private static HashSet<string> CreateAllowedUndefined()
-    {
-        var allowed = new HashSet<string>(ToolchainIdentity.Backend.Symbols, StringComparer.Ordinal);
-        foreach (var (symbol, _) in TargetProfile.Windows.RuntimeDeclarations)
-        {
-            allowed.Add("__imp_" + symbol);
-        }
-
-        return allowed;
     }
 
     [GeneratedRegex(@"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$")]
@@ -424,8 +415,8 @@ internal static partial class NativeToolchain
             return Hold(obj, tatara.Emit(this.context, optimized.Name, obj, level));
         }
 
-        // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
-        // declares (the manifest's) in the same form; one _fltused definition and no default library. Unwind information is not judged
+        // The object's dependencies and shape: an undefined symbol is a fixed runtime reference (RuntimeReferences) or an external the
+        // module declares (the manifest's, the runtime's imports among them) in the same form; one _fltused definition and no default library. Unwind information is not judged
         // here: IMPL 21.4's is the ABI's, which every definition's uwtable attribute (the profile's UnwindTables) asks of LLVM, an entry
         // for each function that allocates stack, saves a nonvolatile register or calls, and none for a frameless leaf, so an object
         // whose functions are all leaves has none. Returns the record's form of the undefined symbols: llvm-nm's posix lines, in which an
@@ -440,7 +431,7 @@ internal static partial class NativeToolchain
             {
                 var symbol = module.Undefined[i].Name;
                 lines[i] = symbol + " " + module.Undefined[i].Kind + " 0 0";
-                if (AllowedUndefined.Contains(symbol))
+                if (RuntimeReferences.Contains(symbol))
                 {
                     continue;
                 }
