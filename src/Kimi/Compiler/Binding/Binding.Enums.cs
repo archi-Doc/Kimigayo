@@ -884,7 +884,9 @@ public sealed partial class Binding
             }
             else if (!fits)
             {
-                this.RecordTypeMismatch(use, use, adaptedType, type); // A Case construction reports its own failure, with its sides (ruling 14).
+                // A Case construction reports its own failure, with its sides (ruling 14). B1 none: a kept acquisition beside a misfit
+                // takes the condition arm above, never this one (the Front's C-439 c3a-c3c), so no record joins TransferRequired_Kd here.
+                this.RecordTypeMismatch(use, use, adaptedType, type);
             }
 
             if (!fits || acquisition is not null)
