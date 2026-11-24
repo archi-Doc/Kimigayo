@@ -52,6 +52,8 @@ public partial class TypeIdentityTest
 
     private const string Key = "struct Name\n    Self is Copy\n    public let id: isize\n    public init(id: isize) => self.id = id\n";
 
+    private const string ShortItem = "contract P<T>\n    associate Item\ncontract R\n    associate X\n";
+
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
     // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
     // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
@@ -82,7 +84,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "ar16", HasItem + "func f<T, U>(a: T, b: i32) -> T.Output\n    U is HasItem\n    T is Addable<i32>\n    T is Addable<U.(HasItem).Item>\n    return a + b\n", "AmbiguousBinding_Kd: func f<T, U>(a: T, b: i32) -> T.Output")]
     [InlineData("C3", "an1", HasItem + Holders + "func f<T, U>(x: ref/T, t: T.Item) -> ()\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Sub<i32, U.(HasItem).Item>\n    ()\n", "", Explicit = true)]
     [InlineData("guard", "an1n", HasItem + Holders + "func f<T, U>(x: ref/T, t: T.Item) -> ()\n    U is HasItem\n    T is Sub<i32, U.(HasItem).Item>\n    ()\n", "AmbiguousBinding_Kd: func f<T, U>(x: ref/T, t: T.Item) -> ()")]
-    [InlineData("C3", "an1c", HasItem + Holders + "func f<T>(x: ref/T, t: T.Item) -> ()\n    T is Sub<i32, SrcI.(HasItem).Item>\n    ()\n", "", Explicit = true)]
+    [InlineData("C3", "an1c", HasItem + Holders + "func f<T>(x: ref/T, t: T.Item) -> ()\n    T is Sub<i32, SrcI.(HasItem).Item>\n    ()\n", "")]
     [InlineData("guard", "an1cu", HasItem + Holders + "func f<T>(x: ref/T, t: T.Item) -> ()\n    T is Sub<i32, SrcU.(HasItem).Item>\n    ()\n", "AmbiguousBinding_Kd: func f<T>(x: ref/T, t: T.Item) -> ()")]
 
     // SPEC 8.6.4, 8.9.2, 10.2.1, 12.3.1: equal bound references give one requirement. Distinct ones are distinct candidates: a literal adopts no
@@ -194,6 +196,12 @@ public partial class TypeIdentityTest
     [InlineData("guard", "mg4o", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<S.(HasItem).Item>.Tag is bool\n", "")]
     [InlineData("guard", "mg4n", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is i64\n", "IncompatibleContractImplementation_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | InvalidConstraint_Kd: Self is Iter<S.(HasItem).Item>")]
     [InlineData("guard", "mg4m", HasItem + Tagged + Direct + "contract Marker\n" + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool and Marker\n", "UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+
+    // SPEC 8.5.2, 8.5.1, 8.4.3, 8.2.3 (PLAN G722): inside a Contract a short name means its own or an inherited associated Type, and paths to one
+    // declaration whose bindings are one under the Contract's premises count once, in either parent order; distinct bindings stay two (a01i).
+    [InlineData("guard", "a01", ShortItem + "contract Q: R, P<i32>, P<Self.(R).X>\n    Self.(R).X is i32\n    func get(self: ref/Self) -> Item\n", "")]
+    [InlineData("guard", "a01r", ShortItem + "contract Q: R, P<Self.(R).X>, P<i32>\n    Self.(R).X is i32\n    func get(self: ref/Self) -> Item\n", "")]
+    [InlineData("guard", "a01i", ShortItem + "contract Q: R, P<i32>, P<Self.(R).X>\n    Self.(R).X is i64\n    func get(self: ref/Self) -> Item\n", "AmbiguousBinding_Kd: func get(self: ref/Self) -> Item")]
 
     // SPEC 8.9.1: conformances that can collide are an error at the later clause, an unresolved projection included (step 4); the use is ambiguous.
     [InlineData("guard", "x2", "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "DuplicateBinding_Kd: Self is Indexable<i32> | AmbiguousBinding_Kd: let b = m[k]")]
