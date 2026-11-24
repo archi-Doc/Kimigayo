@@ -152,6 +152,21 @@ public sealed partial class Binding
 
     private readonly record struct AcquisitionFailure(Koto Place, BindingFailure Kind, bool Object);
 
+    // SPEC 23.1.1, 23.1.2, 10.1 (PLAN P42): the located limits of a selected input, judged where its operation is final and nowhere else,
+    // so selection never depends on them; each limit is its owner's decision. An implicit Borrow of a static root (BorrowsStaticRoot) fails
+    // the input, before its Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged
+    // (BorrowFailure). True when the input fails.
+    private bool JudgeSelectedInput(Koto source, ArgumentOperationKind kind, SemanticsKind mode)
+    {
+        if (this.BorrowsStaticRoot(source, kind, mode))
+        {
+            this.Fail(source, BindingFailure.Unsupported);
+            return true;
+        }
+
+        return false;
+    }
+
     // SPEC 10.2: fixed destinations and candidate result filtering use the argument adaptation rules. A probe
     // records no pair-follow plan; the selected destination records the one operation consumed by later phases.
     private BoundAdaptation? ExpectedAdaptation(Koto node, BoundType actual, BoundType expected, bool recordPair = true)
@@ -169,7 +184,7 @@ public sealed partial class Binding
 
         if (recordPair)
         {
-            _ = this.FailStaticBorrow(node, operation, adapted.Semantics); // The selected destination's Borrow; a probe adapts a call result.
+            _ = this.JudgeSelectedInput(node, operation, adapted.Semantics); // The selected destination's Borrow; a probe adapts a call result.
         }
 
         return operation switch

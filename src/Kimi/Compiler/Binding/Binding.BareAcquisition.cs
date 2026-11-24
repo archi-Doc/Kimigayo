@@ -21,6 +21,13 @@ namespace Kimi.Compiler;
 //   none); no branch per form.
 public sealed partial class Binding
 {
+    // How far ReborrowedType's limit holds: the Type and plan allow no one Type for the Reborrow (Possible).
+    private enum ReborrowLimit : byte
+    {
+        None,
+        Possible,
+    }
+
     // SPEC 3.5, 3.5.1, 10.2: the positions without a fixed expected Type that acquire any Place operand by bare acquisition, each
     // aggregate element separately: a Tuple's or array's element and a Dictionary literal's key and value (PLAN G256). Arguments,
     // assignment sources and results take their expected Type from the declaration and adapt there instead. A result source
@@ -68,6 +75,10 @@ public sealed partial class Binding
     private static bool StoresConcreteExclusive(BoundType stored)
         => stored is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
 
+    // A pair layer applied to a target (`s/X`, a Semantics application of one component), whose owner case's plan is the target's own
+    // (ReborrowedType's recursion); the original `s/T` and a family have none, so their Reborrow never limits.
+    private static bool AppliesToTarget(BoundType stored) => stored is { Kind: BoundTypeKind.SemanticsApplication, Components: [_] };
+
     // SPEC 3.5.1, 10.2.2, 8.14: whether a node is a bare Place whose bare acquisition may Reborrow in its own Semantics, at a bare
     // acquisition position (StoredReborrow) and at a fixed expected Type it fits alike: one storing `uniq/T` or `objuniq/T`, or a pair layer
     // of any form (TryAdaptationSelector), whose per-case plan the adaptation reads once (ReborrowedType). The Type is tested before the
@@ -90,14 +101,14 @@ public sealed partial class Binding
     //   its owner case's target Reborrows, that target replaced by the target's own Reborrow Type under `cases` extended by the owner case
     //   (BareAcquisition's recursion, in nested scratch); the stored Type where nothing is shortened;
     // - the limit: an owner case Reborrowing its target under a binder that also admits an invariant Semantics (InvariantAdmitted, SPEC
-    //   15.3.5), whose case keeps that target exactly, so no one Type carries the Reborrow once a reach shortens the target; `limit` is set
-    //   whatever the reach (a fact of the Type and plan, which G721's row (1) reads: Binding.Captures), and a shortened target is not
-    //   replaced: the Type is the layer's own Reborrow alone, null where no exclusive case Reborrows it (a known class-1 defect, PLAN G254c,
-    //   whose removal is a per-case Reborrow Type or the limit recorded at the selected input).
+    //   15.3.5), whose case keeps that target exactly, so no one Type carries the Reborrow once a reach shortens the target; `limit` is
+    //   Possible whatever the reach (a fact of the Type and plan, which G721's row (1) reads: Binding.Captures), and a shortened target is
+    //   not replaced: the Type is the layer's own Reborrow alone, null where no exclusive case Reborrows it (a known class-1 defect, PLAN
+    //   G254c, whose removal is a per-case Reborrow Type or the limit recorded at the selected input).
     // A family names no layer (OuterOrigin has no family row; PLAN G254's family limit).
-    private BoundType? ReborrowedType(BoundType stored, Koto node, BoundOrigin? reach, ReadOnlySpan<PairCase> cases, out bool limit)
+    private BoundType? ReborrowedType(BoundType stored, Koto node, BoundOrigin? reach, ReadOnlySpan<PairCase> cases, out ReborrowLimit limit)
     {
-        limit = false;
+        limit = ReborrowLimit.None;
         if (StoresConcreteExclusive(stored))
         {
             return this.Shortened(stored, stored.Origin!, reach ?? this.ReachOf(node, cases));
@@ -117,10 +128,12 @@ public sealed partial class Binding
 
         var result = (reborrow & mask & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 && this.OuterOrigin(stored) is { } slot
             ? this.Shortened(stored, slot, reach ?? this.ReachOf(node, cases)) : null;
-        if ((reborrow & mask & SemanticsMask.Owner) == 0 || stored is not { Kind: BoundTypeKind.SemanticsApplication, Components: [var target] })
+        if ((reborrow & mask & SemanticsMask.Owner) == 0 || !AppliesToTarget(stored))
         {
             return result;
         }
+
+        var target = stored.Components[0];
 
         var scratch = this.caseScratch.Rent(cases.Length + 1);
         BoundType? inner;
@@ -138,7 +151,7 @@ public sealed partial class Binding
 
         var outer = result ?? stored;
         var invariant = inner is not null && assigned is null && this.InvariantAdmitted(stored, node, default);
-        limit |= invariant;
+        limit = invariant ? ReborrowLimit.Possible : limit;
         if (inner is null || ReferenceEquals(inner, target))
         {
             return inner is null ? result : outer;

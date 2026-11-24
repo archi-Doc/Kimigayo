@@ -230,7 +230,7 @@ public sealed partial class Binding
         => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
-    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
+    // borrows a static root is first the located limit (JudgeSelectedInput), its relations (SPEC 11.8, a fit to static) waiting for P42,
     // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
     // Origin relation problem (JudgeHolderPlace; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
@@ -238,7 +238,7 @@ public sealed partial class Binding
         var operation = operations[index];
         if (operation is { Source: { } source, ParameterType: { } mode })
         {
-            if (this.FailStaticBorrow(source, operation.Kind, mode.Semantics))
+            if (this.JudgeSelectedInput(source, operation.Kind, mode.Semantics))
             {
                 return;
             }
