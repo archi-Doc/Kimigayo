@@ -4,11 +4,14 @@
 ; (k = 5 to 18), popped from its class's list or carved from the current 1 MiB region, whose rest is abandoned when a new region is
 ; mapped; its release pushes it on its class's list, and it is never split, merged or returned. A larger block is a run of whole
 ; pages of its own, mapped at its allocation and released at its release. Regions and runs are page-aligned and every class size is
-; a multiple of 32, so every payload is 16-aligned. No OS call: every page comes from the layer.
+; a multiple of 32, so every payload is 16-aligned. No OS call: every page comes from the layer. A branch leaving the small path
+; (class list, bump) for a path that calls the layer or a run routine is expected to stay (llvm.expect), so block placement puts
+; those paths after the hot blocks wherever the routines are inlined.
 @__kimi_heap_lists = internal global [14 x ptr] zeroinitializer, align 16
 @__kimi_heap_next = internal global ptr null, align 8
 @__kimi_heap_end = internal global ptr null, align 8
 declare i64 @llvm.ctlz.i64(i64, i1 immarg)
+declare i1 @llvm.expect.i1(i1, i1)
 
 ; A payload of at least the byte count, which is at most isize's maximum (the callers' check); null when the layer has no pages.
 ; Zero bytes take the smallest block, so every result is a fresh start.
@@ -16,7 +19,8 @@ declare i64 @llvm.ctlz.i64(i64, i1 immarg)
 entry:
   %size = add i64 %bytes, 16
   %small = icmp ule i64 %size, 262144
-  br i1 %small, label %class, label %large
+  %small_likely = call i1 @llvm.expect.i1(i1 %small, i1 true)
+  br i1 %small_likely, label %class, label %large
 class:
   %last = sub i64 %size, 1
   %zeros = call i64 @llvm.ctlz.i64(i64 %last, i1 true)
@@ -41,7 +45,8 @@ carve:
   %end_address = ptrtoint ptr %end to i64
   %room = sub i64 %end_address, %next_address
   %fits = icmp ule i64 %block_size, %room
-  br i1 %fits, label %bump, label %region
+  %fits_likely = call i1 @llvm.expect.i1(i1 %fits, i1 true)
+  br i1 %fits_likely, label %bump, label %region
 region:
   %fresh = call ptr @__kimi_pages(i64 1048576)
   %no_region = icmp eq ptr %fresh, null
@@ -79,7 +84,8 @@ entry:
   %start = getelementptr i8, ptr %block, i64 -16
   %word = load i64, ptr %start, align 16
   %small = icmp ule i64 %word, 18
-  br i1 %small, label %class, label %large
+  %small_likely = call i1 @llvm.expect.i1(i1 %small, i1 true)
+  br i1 %small_likely, label %class, label %large
 class:
   %index = sub i64 %word, 5
   %head = getelementptr [14 x ptr], ptr @__kimi_heap_lists, i64 0, i64 %index

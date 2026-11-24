@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
+using Kimi.Build;
 using Xunit;
 
 namespace XunitTest;
@@ -132,5 +134,48 @@ public class HeapRuntimeTest
         Assert.Contains(Release, ir, StringComparison.Ordinal);
         ir = ir.Replace(Release, "call i32 @VirtualFree(ptr %pages, i64 1, i32 32768)", StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("HeapRuntimeRefusedRelease", ir, string.Empty, 1, "Hello.kimi:2:11: abort KIMI_E_FREE: Failed to free memory (win32=87)\n");
+    }
+
+    // PLAN G1311 Revision 1: every path that calls the layer is unlikely. At O2 each inlined allocation and release still tests the
+    // template's `%small` (a class's block, not a large run) and the allocation its `%fits` (the current region, not a new one), and each
+    // such branch weights the small path's edge over the edge toward the layer, which has weight 1. The edge is read from the condition,
+    // since jump threading renames the blocks: the small path is the true edge, or the false edge when instcombine inverted the compare
+    // (`.not`) and swapped the weights. A loop allocates and releases blocks of 4^0 to 4^10 bytes, so no site's size is constant.
+    // Fail-before: the branches carry no weights.
+    [Fact]
+    public void PathsIntoTheLayerAreUnlikelyAtO2()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Tatara runs on Windows.");
+        var text = Optimized("var n: isize = 1\nwhile n < 2000000\n    let p = Raw.allocate<u8>(n)\n    unsafe => Raw.release(p)\n    n *= 4");
+        var weights = Regex.Matches(text, @"^!(\d+) = !\{!""branch_weights""(?:, !""expected"")?, i32 (\d+), i32 (\d+)\}", RegexOptions.Multiline)
+            .ToDictionary(static x => x.Groups[1].Value, static x => (First: long.Parse(x.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), Second: long.Parse(x.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture)));
+        var branches = Regex.Matches(text, @"\bbr i1 %((small|fits)(?:\.[\w.]*)?), label %[\w.$-]+, label %[\w.$-]+(.*)$", RegexOptions.Multiline);
+        Assert.True(branches.Count(static x => x.Groups[2].Value == "small") >= 2, "the allocation's and the release's small tests");
+        Assert.True(branches.Any(static x => x.Groups[2].Value == "fits"), "the allocation's region test");
+        Assert.All(branches, x =>
+        {
+            var profile = Regex.Match(x.Groups[3].Value, @"!prof !(\d+)");
+            Assert.True(profile.Success, x.Value);
+            var (first, second) = weights[profile.Groups[1].Value];
+            var (hot, cold) = x.Groups[1].Value.Contains(".not", StringComparison.Ordinal) ? (second, first) : (first, second);
+            Assert.True(cold == 1 && hot > cold, x.Value);
+        });
+    }
+
+    // A program's module after the product's O2 (Tatara's optimize, as NativeBuild calls it).
+    private static string Optimized(string source)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-heap-o2-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var ir = Path.Combine(directory, "Hello.ll");
+            File.WriteAllText(ir, CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)));
+            return Tatara.Instance.Optimize(TataraExecutorTest.Context, ir);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 }
