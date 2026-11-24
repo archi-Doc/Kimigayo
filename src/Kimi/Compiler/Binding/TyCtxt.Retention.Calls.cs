@@ -14,13 +14,13 @@ internal sealed partial class TyCtxt
     // HandedCallables' depth bound, MirTypes.Holding's: past it a growing recursive Type's parts are the Limit its hold walk reports.
     private const int HandedBound = 32;
 
-    // Per callee, signature or erased destruction's receiver, Type instantiation and the premise scope or binder the computation reads;
-    // kept across passes with no edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
-    // A contract reads its local regions' bounds (Binding.AddRegionMeet) and the Origin-atom borrows (Binding.RawOrigins.Borrows), so its
-    // key holds Binding.RetentionState: the region graph's and the borrows' versions until the pass's borrow writers have run, Complete
-    // afterwards, so a read while a body binds (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS:
-    // G570, as the publication amends it).
-    private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int State), CallRetention> retentions = new();
+    // Per callee, signature or erased destruction's receiver, Type instantiation, the premise scope or binder the computation reads and a
+    // Closure's call receiver (Retains; null for any other contract); kept across passes with no edit, whose contracts are the same, and
+    // discarded with the source analysis at an edit (Binding.Invalidate). A contract reads its local regions' bounds
+    // (Binding.AddRegionMeet) and the Origin-atom borrows (Binding.RawOrigins.Borrows), so its key holds Binding.RetentionState: the
+    // region graph's and the borrows' versions until the pass's borrow writers have run, Complete afterwards, so a read while a body binds
+    // (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS: G570, as the publication amends it).
+    private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
     private readonly List<Binding.ErasedSignature> retentionBounds = new();
@@ -42,13 +42,13 @@ internal sealed partial class TyCtxt
         var types = subst is null ? null : this.Intern(subst.Target, subst.Self, subst.Declaring, subst.Types, subst.Lengths, [], []);
         var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : null;
         var state = binding.RetentionState;
-        if (this.retentions.TryGetValue((callee, types, scope, state), out var known))
+        if (this.retentions.TryGetValue((callee, types, scope, state, null), out var known))
         {
             return known;
         }
 
         var retention = this.InstanceRetention(callee, types, scope, definition) ?? CallRetention.Limit;
-        this.retentions.Add((callee, types, scope, state), retention);
+        this.retentions.Add((callee, types, scope, state, null), retention);
         return retention;
     }
 
@@ -78,19 +78,22 @@ internal sealed partial class TyCtxt
     // C8: a Value callee's retention, read over the Callable signature it declares, whose abstract Origins are the call's fresh regions
     // (step 1). A closure's or item's is read under the premises of its declaration's body (Binding.SignatureOwner); any other is an
     // erased callable, which reads no declaration's premises: its key is the calling definition's scope, which only decides its pair
-    // layers' admitted cases. A Closure's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148),
-    // the Type its body is checked against (Binding.ClosureReceiver), whose environment the walk reads as the body sees it
-    // (ClosureEnvironment); its key holds the instance, its definition and closure context. A Closure whose definition did not bind is
-    // keyed as an item is, `(signature, null, owner)`, the shape of a bound one without a context, which is complete: a definition's bound
-    // state is fixed for one Binding result, whose edit discards the memo.
+    // layers' admitted cases. A Closure's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, 7.7.3, DECISIONS
+    // R4-M148 as Z4-M amends it): the receiver the callee's Type admits (ClosureReceiverIn: a view's case Type its case's, so a by-case
+    // call's Shared side reads its environment and writes none of it, SPEC 15.8.2) over the callee (Binding.ClosureReceiver), whose
+    // environment the walk reads as the body sees it (ClosureEnvironment); its key holds the instance, its definition, closure context and
+    // that receiver. A Closure whose definition did not bind is keyed as an item is,
+    // `(signature, null, owner)`, the shape of a bound one without a context, which is complete: a definition's bound state is fixed for
+    // one Binding result, whose edit discards the memo.
     internal CallRetention Retains(BoundType callee, BoundType signature, BindingSymbol? definition)
     {
         var closure = Closure(callee);
         var owner = closure is null ? (FunctionKoto?)Binding.SignatureOwner(callee) : (FunctionKoto)closure.Symbol!.Declaration!;
+        var receiver = closure is null ? default(SemanticsKind?) : this.ClosureReceiverIn(closure);
         var use = binding.DefinitionUse(definition);
-        (object Callee, Subst? Types, object? Scope, int State) key = closure is null
-            ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RetentionState)
-            : (signature, closure.InstanceContext, owner, binding.RetentionState);
+        (object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver) key = closure is null
+            ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RetentionState, null)
+            : (signature, closure.InstanceContext, owner, binding.RetentionState, receiver);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -104,7 +107,7 @@ internal sealed partial class TyCtxt
         }
         else
         {
-            inputs = closure is null ? inputs : [binding.ClosureReceiver(owner, closure), .. inputs];
+            inputs = receiver is { } kind ? [binding.ClosureReceiver(owner, kind, closure!), .. inputs] : inputs;
             retention = !binding.HandedSignatures(owner, [.. signature.Components], this.retentionBounds) ? CallRetention.Limit
                 : binding.Retains(owner, inputs, signature.Components[1], null, CollectionsMarshal.AsSpan(this.retentionBounds), premises: null);
         }
@@ -121,7 +124,7 @@ internal sealed partial class TyCtxt
     {
         var use = binding.DefinitionUse(definition);
         var receiver = this.DestructionReceiver(part);
-        (object Callee, Subst? Types, object? Scope, int State) key = (receiver, null, binding.ConstraintScope(use), binding.RetentionState);
+        (object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver) key = (receiver, null, binding.ConstraintScope(use), binding.RetentionState, null);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -161,8 +164,9 @@ internal sealed partial class TyCtxt
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the
     // instance: the definition's case-free receiver unless it is Shared, else Exclusive where a capture whose bare acquisition Reborrows
     // by case (BoundCapture.BareReborrows) has an exclusive layer as its component in this Type (`uniq`, `objuniq`, or a pair layer
-    // admitting one), else Shared; the instance gives Receiver. MirCases.Branch decides a by-case call's side by it, and MirValidator's
-    // case row checks that each view borrows a Closure callee in the receiver it admits (SPEC 7.7.3, PLAN G13).
+    // admitting one), else Shared; the instance gives Receiver. MirCases.Branch decides a by-case call's side by it, MirValidator's case
+    // row checks that each view borrows a Closure callee in the receiver it admits, and Retains takes it as a Closure contract's call
+    // receiver input (SPEC 7.7.3, 15.8.2, PLAN G13).
     internal SemanticsKind ClosureReceiverIn(BoundType closure)
     {
         var definition = BoundClosure.Of(closure)!;

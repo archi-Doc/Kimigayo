@@ -5,8 +5,9 @@
 // where Binding publishes one, else CallPlan.CalleeType; read below its acquisition layers, Binding.CallableCore) with the
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41), or a destroyed part whose `drop` is unknown; the calling
 // definition (null: top-level statements).
-// A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
-// by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as its body sees it, its
+// A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, 7.7.3, DECISIONS R4-M148, Z4-M):
+// `R/Env during ρ`, R the receiver Env's Type admits (ClosureReceiverIn), `Env` by value under `owner/Self`, its `let` bindings never
+// written (D1), its environment written only by an exclusive R; every Closure part of an input is read as its body sees it, its
 // definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit. A local
 // region is one form in signature and environment; one with BU-127's solved value equals it, any other reaches the meet of its sources
 // (Binding.AddRegionMeet; DECISIONS: G570, PLAN G492-a (ii), the owner's O-422 (a)).
@@ -15,9 +16,9 @@
 // names, without an Origin; an erased destruction, of a part whose `drop` the destruction walk cannot see (SPEC 16.3.3), retains as the
 // erased call `(uniq/P) -> ()` over the same receiver (RetainsErasedDestruction). The receiver, which cannot be stored, captured or
 // returned, publishes no Value row: it has no Origin a caller names, and rule A keeps only the written-through input's chain.
-// Output: an immutable CallRetention, one per callee, signature or erased destruction's receiver, Type instantiation and the premise
-// scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit (DECISIONS R4-M154): its Result
-// (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), the result read as an output
+// Output: an immutable CallRetention, one per callee, signature or erased destruction's receiver, Type instantiation, the premise
+// scope or declaration it reads and a Closure's call receiver, for the latest Binding pass and reused by later passes until an edit
+// (DECISIONS R4-M154): its Result (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), the result read as an output
 // (ResultWrites: Own the Result, Reached the storages past the result's written layers; null where it has none; G841's H2), per output it
 // may write (Writes, ascending) an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the
 // argument's direct Loans name, the referent of a borrowed input, a raw input's pointee, or what the exclusive layers and the raw
