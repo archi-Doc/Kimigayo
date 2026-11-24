@@ -17,20 +17,14 @@ internal static partial class NativeToolchain
     // process. A build of an input already kept reads no archive.
     internal static readonly ConcurrentDictionary<string, LinkInput> LinkInputs = new(StringComparer.Ordinal);
 
-    // The row's fixed runtime references: what any module of the row may reference besides the external declarations its manifest
-    // states, the backend supply's symbols, which LLVM's code calls without a declaration (__chkstk; IMPL 21.4.7). The runtime's kernel32
-    // imports are no second list here: the manifest's declarations name them (publication writes them from the generation result;
-    // LinkAmbiguity, T's rulings 21 (ii) and 28).
-    private static readonly HashSet<string> RuntimeReferences = new(ToolchainIdentity.Backend.Symbols, StringComparer.Ordinal);
-
     // A project's native build. A build reads no toolchain root and no LlvmBin: the options --ToolchainRoot and --LlvmBin (B6b4), a
     // project's LlvmBin and a link manifest's toolchain member (B6b5) are errors, and Kimi reads KIMI_TOOLCHAIN_ROOT nowhere (B6b3)
     // (Tatara designs A4 §2.1, B6b1).
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
-        ValidateManifest(document.RootElement);
-        new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken).Run();
+        var row = ValidateManifest(document.RootElement);
+        new NativeBuild(project, row, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken).Run();
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
@@ -44,19 +38,27 @@ internal static partial class NativeToolchain
         using var output = await Begin(ArtifactPaths.RecordOf(ir), report, cancellationToken);
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, cancellationToken));
         var manifest = document.RootElement;
-        ValidateManifest(manifest);
+        var row = ValidateManifest(manifest);
         var optimization = LinkManifest.Text(manifest, "optimization");
-        new NativeBuild(null, ArtifactPaths.Create(ir, optimization), manifest, Path.GetDirectoryName(path)!, optimization, report, cancellationToken).Run();
+        new NativeBuild(null, row, ArtifactPaths.Create(ir, optimization, row), manifest, Path.GetDirectoryName(path)!, optimization, report, cancellationToken).Run();
     }
 
-    // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
-    // O2 whose external declarations each state a nonempty symbol, once, and its dllimport form (the declarations' one rule, checked
-    // before any tool). Every read is LinkManifest's, so a malformed manifest fails here, naming its field.
-    internal static void ValidateManifest(JsonElement root)
+    // The manifest a native build takes: the fixed head of the row its target names, as this compiler writes it (LinkManifest), then an
+    // Application's output at O0 or O2 whose entry is the row's start's (IMPL 21.5.2: main when the libraries list the row's C runtime,
+    // else the row's entry symbol) and whose subsystem is the row's (null on a row without one), whose external declarations each state
+    // a nonempty symbol, once, and its dllimport form (the declarations' one rule, checked before any tool). Every read is LinkManifest's,
+    // so a malformed manifest fails here, naming its field. Returns the row.
+    internal static TargetProfile ValidateManifest(JsonElement root)
     {
-        LinkManifest.CheckFixed(root);
+        var row = LinkManifest.CheckFixed(root);
+        var main = false;
+        foreach (var library in LinkManifest.Items(root, "libraries"))
+        {
+            main |= LinkManifest.Text(library, "libraries.name") == row.CRuntime;
+        }
+
         if (LinkManifest.Text(root, "optimization") is not ("O0" or "O2") || LinkManifest.Text(root, "outputKind") != "Application" ||
-            LinkManifest.Text(root, "entry") != TargetProfile.Windows.EntrySymbol || LinkManifest.Text(root, "subsystem") != TargetProfile.Windows.Subsystem)
+            LinkManifest.Text(root, "entry") != (main ? TargetProfile.MainSymbol : row.EntrySymbol) || LinkManifest.NullableText(root, "subsystem") != row.Subsystem)
         {
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
@@ -76,6 +78,8 @@ internal static partial class NativeToolchain
                 throw new InvalidDataException("Duplicate external declaration.");
             }
         }
+
+        return row;
     }
 
     // IMPL 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable original; a staged copy is reused
@@ -168,12 +172,18 @@ internal static partial class NativeToolchain
         return declared;
     }
 
+    // A row's fixed runtime references: what any module of the row may reference besides the external declarations its manifest states,
+    // the backend supply's symbols on a row that reserves it, which LLVM's code calls without a declaration (__chkstk; IMPL 21.4.7; Linux:
+    // none, its functions probe the stack inline). The runtime's kernel32 imports are no second list here: the manifest's declarations
+    // name them (publication writes them from the generation result; LinkAmbiguity, T's rulings 21 (ii) and 28).
+    private static string[] RuntimeReferences(TargetProfile row) => row.Supply(ToolchainIdentity.Backend.Name)?.Symbols ?? [];
+
     [GeneratedRegex(@"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$")]
     private static partial Regex ModulePathPattern();
 
     /// <summary>One native build of a checked IR/manifest pair: its inputs, its record and its LLVM and LLD work, which Tatara's calls do in
     /// process (no tool is launched). The constructor takes the build's fixed inputs: the project whose supplies it checks (none for a
-    /// standalone manifest), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
+    /// standalone manifest), the manifest's target row (its values, supplies, float marker and format's link writer), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
     /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> runs the steps once, in order: the pair's
     /// identity, with the input the manifest names, resolved as its other paths are (absent for a pair emitted from memory or by an
     /// earlier compiler), Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
@@ -196,6 +206,7 @@ internal static partial class NativeToolchain
     private sealed class NativeBuild
     {
         private readonly Project? project;
+        private readonly TargetProfile row;
         private readonly ArtifactPaths paths;
         private readonly JsonElement manifest;
         private readonly string directory; // The root that published records and files redact.
@@ -206,6 +217,7 @@ internal static partial class NativeToolchain
 
         internal NativeBuild(
             Project? project,
+            TargetProfile row,
             ArtifactPaths paths,
             JsonElement manifest,
             string directory,
@@ -214,13 +226,13 @@ internal static partial class NativeToolchain
             CancellationToken cancellationToken)
         {
             this.project = project;
+            this.row = row;
             this.paths = paths;
             this.manifest = manifest;
             this.directory = directory;
             this.outputDirectory = Path.GetDirectoryName(paths.Manifest)!;
             this.optimization = optimization;
-            this.context = new TataraContext(
-                report, cancellationToken, TargetProfile.Windows.Target, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
+            this.context = new TataraContext(report, cancellationToken, row.Target, row.Cpu, row.Features, row.RelocationModel, row.CodeModel);
         }
 
         internal void Run()
@@ -255,7 +267,7 @@ internal static partial class NativeToolchain
             // private file on every outcome (StagedHold). The object is held from its creation (Compile) to the build's end, so the
             // inspection and LLD read the object emit produced (Intermediates).
             var libraries = new List<(string Name, string Kind, string Sha256, FileStream Held)>();
-            var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe"; // Private until the commit moves it into place.
+            var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + this.paths.ExecutableExtension; // Private until the commit.
             try
             {
                 this.ResolveLibraries(libraries);
@@ -301,11 +313,11 @@ internal static partial class NativeToolchain
 
         // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
         // requirement/supply hash assertions checked against the actual bytes that are linked.
-        private static void CheckSupply(Project project, string name, string? kind, string? hash)
+        private static void CheckSupply(Project project, string target, string name, string? kind, string? hash)
         {
             var settings = project.ProjectFile;
-            var supply = settings.NativeLibraries.TryGetValue(TargetProfile.Windows.Target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
-            var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(settings, TargetProfile.Windows.Target, name, supply);
+            var supply = settings.NativeLibraries.TryGetValue(target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
+            var (expectedKind, expectedHash) = supply is null ? (null, null) : NativeConfiguration.Expand(settings, target, name, supply);
             if (supply is null || expectedKind != kind || (expectedHash is not null && !expectedHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidDataException($"Native library '{name}' does not match its NativeLibraries Kind or Sha256 assertion.");
@@ -355,10 +367,11 @@ internal static partial class NativeToolchain
 
         // The manifest's libraries in its order, each staged (the file the linker receives) and added, held, with its name, Kind and
         // staged hash, to Run's list as soon as it is staged, so Run releases it on every outcome; then checked against its assertions and
-        // identified in the record by its staged path and hash (IMPL 20.4). A reserved name is the compiler's supply: its entry the one
-        // this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies), found by their catalog hash or
-        // staged from its resource (StageSupply); any other is a program's, staged from its input and checked against the project's
-        // supply. Every compiler's supply is listed.
+        // identified in the record by its staged path and hash (IMPL 20.4). A name of the row's reserved supply is the compiler's supply:
+        // its entry the one this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies, keyed by the
+        // row's supply), found by their catalog hash or staged from its resource (StageSupply); any other is a program's, staged from its
+        // input and checked against the project's supply under the row's key. Every compiler's supply of the row but its C runtime is
+        // listed.
         private void ResolveLibraries(List<(string Name, string Kind, string Sha256, FileStream Held)> libraries)
         {
             var libraryIdentities = new JsonArray();
@@ -372,7 +385,8 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException("Invalid or duplicate native library.");
                 }
 
-                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name);
+                var reserved = this.row.Supply(name);
+                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply == reserved);
                 FileStream library;
                 string hash;
                 if (supply is not null)
@@ -389,7 +403,7 @@ internal static partial class NativeToolchain
                 libraries.Add((name, kind, hash, library));
                 if (supply is null && this.project is not null)
                 {
-                    CheckSupply(this.project, name, kind, hash);
+                    CheckSupply(this.project, this.row.Target, name, kind, hash);
                 }
 
                 if (LinkManifest.OptionalText(item, "libraries.sha256") is { } assertion &&
@@ -401,7 +415,7 @@ internal static partial class NativeToolchain
                 libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(library.Name, this.directory), ["sha256"] = hash });
             }
 
-            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Supply.Name)))
+            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => this.row.Supply(x.Supply.Name) != x.Supply || x.Supply.Name == this.row.CRuntime || seen.Contains(x.Supply.Name)))
             {
                 throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
             }
@@ -426,8 +440,9 @@ internal static partial class NativeToolchain
             return Hold(obj, tatara.Emit(this.context, optimized.Name, obj, level));
         }
 
-        // The object's dependencies and shape: an undefined symbol is a fixed runtime reference (RuntimeReferences) or an external the
-        // module declares (the manifest's, the runtime's imports among them) in the same form; one _fltused definition and no default library. Unwind information is not judged
+        // The object's dependencies and shape: an undefined symbol is a fixed runtime reference of the row (RuntimeReferences) or an
+        // external the module declares (the manifest's, the runtime's imports among them) in the same form; one definition of the row's
+        // float marker where the row has one, none counted elsewhere, and no default library. Unwind information is not judged
         // here: IMPL 21.4's is the ABI's, which every definition's uwtable attribute (the profile's UnwindTables) asks of LLVM, an entry
         // for each function that allocates stack, saves a nonvolatile register or calls, and none for a frameless leaf, so an object
         // whose functions are all leaves has none. Returns the record's form of the undefined symbols, llvm-nm's posix lines, in which an
@@ -442,7 +457,7 @@ internal static partial class NativeToolchain
             {
                 var symbol = module.Undefined[i].Name;
                 lines[i] = symbol + " " + module.Undefined[i].Kind + " 0 0";
-                if (RuntimeReferences.Contains(symbol))
+                if (Array.IndexOf(RuntimeReferences(this.row), symbol) >= 0)
                 {
                     continue;
                 }
@@ -456,8 +471,8 @@ internal static partial class NativeToolchain
                 }
             }
 
-            var markers = module.DefinedExternal.Count(s => s.Name == TargetProfile.Windows.FloatMarker && s.Kind is 'B' or 'D');
-            if (markers != 1 || facts.HasDefaultLibrary)
+            var marker = this.row.FloatMarker;
+            if (module.DefinedExternal.Count(s => s.Name == marker && s.Kind is 'B' or 'D') != (marker is null ? 0 : 1) || facts.HasDefaultLibrary)
             {
                 throw new InvalidDataException("Invalid _fltused definition or hidden default library.");
             }
@@ -491,7 +506,7 @@ internal static partial class NativeToolchain
                 closure.Reference(dllimport ? "__imp_" + symbol : symbol); // SPEC 22.6: a dllimport external is referenced through __imp_.
             }
 
-            foreach (var symbol in RuntimeReferences)
+            foreach (var symbol in RuntimeReferences(this.row))
             {
                 closure.Reference(symbol);
             }
@@ -502,12 +517,29 @@ internal static partial class NativeToolchain
             }
         }
 
-        // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
-        // record's linked state, naming the private file's hash, which Run's commit publishes before the file. LLD reads no environment
-        // (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds no VC or
-        // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1). LLD opens the held object and each
-        // held library by its path, for reading, which the holds admit (StagedHold, Intermediates).
+        // The executable: linked by the row's format's link writer (Format, mapped once here; another format is a broken contract) to
+        // Run's private file, so neither a failed link nor any failure before the commit publishes it, then the record's linked state,
+        // naming the private file's hash, which Run's commit publishes before the file. LLD opens the held object and each held library by
+        // its path, for reading, which the holds admit (StagedHold, Intermediates).
         private void Link(Tatara tatara, string obj, List<(string Name, string Kind, string Sha256, FileStream Held)> libraries, string undefined, string executable)
+        {
+            var line = this.row.Format switch
+            {
+                "COFF" => this.CoffLine(obj, libraries, executable),
+                _ => throw new InvalidOperationException($"No link writer for the executable format '{this.row.Format}'."),
+            };
+            tatara.Link(this.context, line);
+            this.context.CancellationToken.ThrowIfCancellationRequested();
+            this.record["status"] = "linked";
+            this.record["executable"] = Path.GetFileName(this.paths.Executable);
+            this.record["executableSha256"] = Hash(executable);
+            this.record["objectUndefinedSymbols"] = undefined;
+        }
+
+        // COFF's line (lld-link): the object, the libraries in the manifest's order, the row's entry and subsystem. LLD reads no
+        // environment (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds
+        // no VC or Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1).
+        private string[] CoffLine(string obj, List<(string Name, string Kind, string Sha256, FileStream Held)> libraries, string executable)
         {
             var link = new string[libraries.Count + 9];
             link[0] = "lld-link";
@@ -517,19 +549,14 @@ internal static partial class NativeToolchain
                 link[i + 2] = libraries[i].Held.Name;
             }
 
-            link[^7] = "/entry:" + TargetProfile.Windows.EntrySymbol;
-            link[^6] = "/subsystem:" + TargetProfile.Windows.Subsystem;
+            link[^7] = "/entry:" + this.row.EntrySymbol;
+            link[^6] = "/subsystem:" + this.row.Subsystem;
             link[^5] = "/nodefaultlib";
             link[^4] = "/Brepro";
             link[^3] = "/lldignoreenv";
             link[^2] = "/winsysroot:" + this.paths.Native;
             link[^1] = "/out:" + executable;
-            tatara.Link(this.context, link);
-            this.context.CancellationToken.ThrowIfCancellationRequested();
-            this.record["status"] = "linked";
-            this.record["executable"] = Path.GetFileName(this.paths.Executable);
-            this.record["executableSha256"] = Hash(executable);
-            this.record["objectUndefinedSymbols"] = undefined;
+            return link;
         }
     }
 

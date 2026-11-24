@@ -17,8 +17,11 @@ namespace Kimi.Compiler;
 /// <param name="RuntimeImports">The imports the module's runtime (a test build's: the test runtime) declares and no external names, each
 /// a kernel32 import in its dllimport form (ModuleCodegen.RuntimeImports, by reference; LinkAmbiguity, T's ruling 32): with
 /// <c>Externals</c>, every external the module declares, each once.</param>
+/// <param name="Entry">The symbol the module's start defines, its entry (IMPL 21.4.2, 21.5.2; ModuleCodegen.Entry, the frame's one
+/// decision): <c>main</c> on the C path, else the row's entry symbol, a test build's included; null for a Library.</param>
 internal readonly record struct GeneratedModule(
     OutputKind OutputKind,
     IReadOnlyList<(string Library, string Kind)> Libraries,
     IReadOnlyList<ExternalFunction> Externals,
-    IReadOnlyList<string> RuntimeImports);
+    IReadOnlyList<string> RuntimeImports,
+    string? Entry);

@@ -24,7 +24,10 @@ public static class EmissionArtifacts
     /// <returns>Whether the complete matched pair was published.</returns>
     internal static bool Publish(Compilation compilation, ArtifactPaths? paths)
     {
-        if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64)
+        // The compilation's row: a compilation without one never reaches publication (the commands' gate), so reaching it is a broken
+        // contract, as a missing backend record is.
+        if (ToolchainIdentity.BackendVersion.Length == 0 || ToolchainIdentity.BackendSha256.Length != 64 ||
+            TargetProfile.Find(compilation.TargetTriple.Value) is not { } row)
         {
             return FailBeforeGeneration(compilation, DiagnosticCode.InternalInvariant_Kd, null);
         }
@@ -45,7 +48,7 @@ public static class EmissionArtifacts
                 destination = paths.Ir;
                 manifest = paths.Manifest;
                 outputDirectory = Path.GetDirectoryName(destination)!;
-                CheckLibraryInputs(settings);
+                CheckLibraryInputs(settings, row);
                 Directory.CreateDirectory(outputDirectory);
                 var unique = Guid.NewGuid().ToString("N");
                 tempIr = destination + "." + unique + ".tmp";
@@ -67,13 +70,13 @@ public static class EmissionArtifacts
                 }
 
                 var module = compilation.Generated;
-                var foreign = ResolveForeignSupplies(module.Libraries, settings);
+                var foreign = ResolveForeignSupplies(module.Libraries, settings, row);
                 var hash = Hash(tempIr);
                 using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
                 {
                     json.WriteStartObject();
-                    LinkManifest.WriteFixed(json);
+                    LinkManifest.WriteFixed(json, row);
                     json.WriteString("optimization", settings.Optimization);
                     if (compilation.Project.Input is { } input)
                     {
@@ -82,8 +85,8 @@ public static class EmissionArtifacts
                         json.WriteString("input", Path.GetRelativePath(outputDirectory, input));
                     }
 
-                    WriteOutput(json, Path.GetFileName(destination), hash, module);
-                    WriteLibraries(json, foreign, directory, outputDirectory);
+                    WriteOutput(json, Path.GetFileName(destination), hash, module, row);
+                    WriteLibraries(json, foreign, row, module.Libraries, directory, outputDirectory);
                     json.WriteEndObject();
                 }
 
@@ -157,20 +160,20 @@ public static class EmissionArtifacts
         return false;
     }
 
-    // Checks every configured library's input, even when unused (SPEC 20.4), of the configuration preparation validated (no supply
-    // names a reserved library: NativeConfiguration).
-    private static void CheckLibraryInputs(ProjectFile settings)
+    // Checks every configured library's input under the row's key, even when unused (SPEC 20.4), of the configuration preparation
+    // validated (no supply names a reserved library: NativeConfiguration).
+    private static void CheckLibraryInputs(ProjectFile settings, TargetProfile row)
     {
-        if (settings.NativeLibraries.TryGetValue(TargetProfile.Windows.Target, out var libraries))
+        if (settings.NativeLibraries.TryGetValue(row.Target, out var libraries))
         {
             foreach (var (_, library) in libraries)
             {
-                CheckLibraryPath(library.Input);
+                CheckLibraryPath(library.Input, row);
             }
 
             foreach (var library in libraries.Packaged)
             {
-                CheckLibraryPath(library.Input);
+                CheckLibraryPath(library.Input, row);
             }
         }
     }
@@ -180,24 +183,24 @@ public static class EmissionArtifacts
     // module's requirement, and combined-module native records are not generated, so Binding makes a dependency module's import, but
     // a reserved supply's, the located Unsupported_Kd (DECISIONS BU-92).
     private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(
-        IReadOnlyList<(string Library, string Kind)> required, ProjectFile settings)
+        IReadOnlyList<(string Library, string Kind)> required, ProjectFile settings, TargetProfile row)
     {
         List<(string Name, string Kind, string Input, string? Sha256)>? result = null;
         for (var i = 0; i < required.Count; i++)
         {
             var (name, kind) = required[i];
-            if (TargetProfile.Windows.Supply(name) is not null)
+            if (row.Supply(name) is not null)
             {
                 continue;
             }
 
-            var supply = settings.NativeLibraries.TryGetValue(TargetProfile.Windows.Target, out var libraries) ? libraries.GetValueOrDefault(name) : null;
+            var supply = settings.NativeLibraries.TryGetValue(row.Target, out var libraries) ? libraries.GetValueOrDefault(name) : null;
             if (supply is null)
             {
-                throw new InvalidDataException($"Native requirement '{name}' has no NativeLibraries supply for {TargetProfile.Windows.Target}.");
+                throw new InvalidDataException($"Native requirement '{name}' has no NativeLibraries supply for {row.Target}.");
             }
 
-            var (_, sha256) = NativeConfiguration.Expand(settings, TargetProfile.Windows.Target, name, supply);
+            var (_, sha256) = NativeConfiguration.Expand(settings, row.Target, name, supply);
             (result ??= new()).Add((name, kind, supply.Input, sha256));
         }
 
@@ -205,26 +208,26 @@ public static class EmissionArtifacts
         return result;
     }
 
-    private static void CheckLibraryPath(string input)
+    private static void CheckLibraryPath(string input, TargetProfile row)
     {
         CheckPath(input);
-        if (!Path.GetExtension(input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
+        if (!Path.GetExtension(input).Equals(row.InputExtension, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
+            throw new InvalidDataException($"NativeLibraries inputs must be {row.InputExtension} files.");
         }
     }
 
-    // The published module, from the generation result: the IR file with its hash, the output kind with an Application's entry and
-    // subsystem, and every external function it declares, its externals then its runtime's imports (dllimport), each once, which the
+    // The published module, from the generation result: the IR file with its hash, the output kind with the module's entry (the
+    // generation result's) and an Application's subsystem (the row's, null on a row without one), and every external function it declares, its externals then its runtime's imports (dllimport), each once, which the
     // native build's object inspection and dependency check read (SPEC 22.6; LinkAmbiguity, T's ruling 32).
-    private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, GeneratedModule module)
+    private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, GeneratedModule module, TargetProfile row)
     {
         var library = module.OutputKind == OutputKind.Library;
         json.WriteString("irFile", irFile);
         json.WriteString("irSha256", irHash);
         json.WriteString("outputKind", library ? "Library" : "Application");
-        json.WriteString("entry", library ? null : TargetProfile.Windows.EntrySymbol);
-        json.WriteString("subsystem", library ? null : TargetProfile.Windows.Subsystem);
+        json.WriteString("entry", module.Entry);
+        json.WriteString("subsystem", library ? null : row.Subsystem);
         json.WriteStartArray("externalDeclarations");
         foreach (var external in module.Externals)
         {
@@ -248,15 +251,26 @@ public static class EmissionArtifacts
         json.WriteEndObject();
     }
 
-    // The libraries in Ordinal name order (SPEC 20.3.2): the compiler's supplies, each its row's entry (LinkManifest), and the foreign
-    // supplies around them, an input with a directory relative to the output directory.
+    // The libraries in Ordinal name order (SPEC 20.3.2): the row's compiler supplies, each its row's entry (LinkManifest), every one but
+    // the row's C runtime always and the C runtime when the module requires it (IMPL 21.5.2; the generation result's decision), and the
+    // foreign supplies around them, an input with a directory relative to the output directory.
     private static void WriteLibraries(
-        Utf8JsonWriter json, List<(string Name, string Kind, string Input, string? Sha256)>? foreign, string projectDirectory, string outputDirectory)
+        Utf8JsonWriter json,
+        List<(string Name, string Kind, string Input, string? Sha256)>? foreign,
+        TargetProfile row,
+        IReadOnlyList<(string Library, string Kind)> required,
+        string projectDirectory,
+        string outputDirectory)
     {
         json.WriteStartArray("libraries");
         var next = 0;
         foreach (var supply in ToolchainIdentity.Supplies)
         {
+            if (row.Supply(supply.Supply.Name) != supply.Supply || (supply.Supply.Name == row.CRuntime && !Requires(supply.Supply.Name)))
+            {
+                continue;
+            }
+
             WriteForeign(supply.Supply.Name);
             LinkManifest.WriteCompilerSupply(json, supply);
         }
@@ -284,6 +298,19 @@ public static class EmissionArtifacts
         }
 
         string Relative(string input) => HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input;
+
+        bool Requires(string name)
+        {
+            foreach (var (library, _) in required)
+            {
+                if (library == name)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private static void DeleteTemporary(string? path)

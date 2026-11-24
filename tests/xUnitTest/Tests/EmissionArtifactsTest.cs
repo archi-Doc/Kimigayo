@@ -514,7 +514,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\npublic func main()\n" + Call);
         File.WriteAllText(Path.Combine(this.directory, "t.kimi"), "#Test\nfunc lastErrorIsRead()\n" + Call + "    $expect(true)\n");
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, file, out var project));
-        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "tests.ll"), project.ProjectFile.Optimization);
+        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "tests.ll"), project.ProjectFile.Optimization, TargetProfile.Windows);
         Assert.True(test
             ? project.PublishArtifacts(Assert.IsType<Compilation>(project.PrepareTests(TestContext.Current.CancellationToken)), paths, null)
             : await project.Generate(TestContext.Current.CancellationToken));
