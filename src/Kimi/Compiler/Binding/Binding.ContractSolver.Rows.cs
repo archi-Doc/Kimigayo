@@ -297,7 +297,7 @@ public sealed partial class Binding
             if (this.premiseRows[i] is { Available: true, Clause: { } clause } && RowAtom(clause) is { Kind: ConstraintKind.Callable } row &&
                 row.Mask == atom.Mask && this.SameCallableSignature(this.CallableContractType(row.RequiredType!, scope), atom.RequiredType!))
             {
-                var agrees = ReferenceEquals(row, clause) == ReferenceEquals(atom, proposition);
+                var agrees = (clause.Kind == ConstraintKind.Not) == (proposition.Kind == ConstraintKind.Not);
                 (positive, negative) = (positive || agrees, negative || !agrees);
             }
         }
@@ -722,8 +722,8 @@ public sealed partial class Binding
         }
 
         // An extension's walking round (Binding.ExtendClosed) reads its own table's keys alone: the pairs filed under another subject
-        // key than their fact's own (an earlier table's class-key pairs) go; the facts as written and their readings stay, each under
-        // its fact's own subject, in their order.
+        // key than their filing atom's (FilingAtom; an earlier table's class-key pairs) go; the facts as written and their readings
+        // stay, each under its filing atom's subject, in their order.
         internal void DropClassKeys()
         {
             foreach (var (key, list) in this.Buckets)
@@ -731,7 +731,7 @@ public sealed partial class Binding
                 var kept = 0;
                 for (var i = 0; i < list.Count; i++)
                 {
-                    var own = SubjectKey((RowAtom(list[i].Fact) ?? list[i].Fact).Subject!);
+                    var own = SubjectKey(FilingAtom(list[i].Fact).Subject!);
                     if (ReferenceEquals(own.Symbol, key.Symbol) && ReferenceEquals(own.Type, key.Type))
                     {
                         list[kept++] = list[i];
@@ -742,17 +742,17 @@ public sealed partial class Binding
             }
         }
 
-        // One fact of an environment of the view in its kind's row under the subject key of `at` (a projection's declaration and
-        // receiver, else the Type; the fact's subject or its class key): `raw` as the environment holds it (its availability), `fact`
-        // as the index reads it. A fact with a row atom (RowAtom) is in its atom's kind's row, a negated leaf atom too, and that row
-        // kind's bucket keeps one order whatever the premises' (the class header's Invariants: a row's Source): a fact whose own
-        // atom's subject has the bucket's key before one under its class key or its reading's subject, then Binding.TypeIdentity's
-        // Order of the atoms' subjects; equal subjects keep their arrival. Another kind's bucket keeps its environment's order, which
-        // its readers' pairs read (ValidateAssociatedOverlapAgreement: each identity with those before it).
+        // One fact of an environment of the view in its filing atom's kind's bucket (FilingAtom) under the subject key of `at` (a
+        // projection's declaration and receiver, else the Type; the fact's subject or its class key): `raw` as the environment holds
+        // it (its availability), `fact` as the index reads it. A fact with a row atom (RowAtom) is in its atom's kind's row, a
+        // negated leaf atom too, and that row kind's bucket keeps one order whatever the premises' (the class header's Invariants: a
+        // row's Source): a fact whose own atom's subject has the bucket's key before one under its class key or its reading's
+        // subject, then Binding.TypeIdentity's Order of the atoms' subjects; equal subjects keep their arrival. Another kind's bucket
+        // keeps its environment's order, which its readers' pairs read (ValidateAssociatedOverlapAgreement: each identity with those
+        // before it).
         internal void Add(BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
         {
-            var row = RowAtom(fact);
-            var key = (scope, (row ?? fact).Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
+            var key = (scope, FilingAtom(fact).Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
             if (!this.Buckets.TryGetValue(key, out var list))
             {
                 if (this.used == this.lists.Count)
@@ -765,7 +765,7 @@ public sealed partial class Binding
                 this.Buckets[key] = list;
             }
 
-            var position = row is not null ? 0 : list.Count;
+            var position = RowAtom(fact) is not null ? 0 : list.Count;
             for (var end = list.Count; position < end;)
             {
                 var middle = (position + end) >> 1;
@@ -788,5 +788,9 @@ public sealed partial class Binding
             static bool Own(BoundType subject, BoundType at)
                 => ReferenceEquals(SubjectKey(subject).Symbol, SubjectKey(at).Symbol) && ReferenceEquals(SubjectKey(subject).Type, SubjectKey(at).Type);
         }
+
+        // The atom a fact is filed by, Add's bucket kind and DropClassKeys' own subject: its row atom (RowAtom), else the fact itself
+        // (a TypeIdentity or Semantics fact, filed under its written subject: IndexWritten).
+        private static BoundConstraint FilingAtom(BoundConstraint fact) => RowAtom(fact) ?? fact;
     }
 }

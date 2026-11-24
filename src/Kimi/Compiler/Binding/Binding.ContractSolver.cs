@@ -323,7 +323,7 @@ public sealed partial class Binding
         {
             if (atom.Kind == kind)
             {
-                return kind != ConstraintKind.Contract || (atom.Contract is not null && ReferenceEquals(atom, constraint)) ? atom : null;
+                return kind != ConstraintKind.Contract || (atom.Contract is not null && constraint.Kind != ConstraintKind.Not) ? atom : null;
             }
         }
 
