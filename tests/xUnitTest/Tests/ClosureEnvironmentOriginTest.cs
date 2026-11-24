@@ -116,6 +116,19 @@ public class ClosureEnvironmentOriginTest
 
     private const string OtherStore = "    var other: Array<ref/i32> = []\n    put(other@uniq, a)\n    return 0\npublic func main() => ()\n";
 
+    // The root form's top-level local `r` (SPEC 6.1.1) and a getter's local `r` (SPEC 11.3), which the functions declared there name.
+    private const string RootLocal = "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r: ref/i32 = arr[0]\n";
+
+    private const string GetterLocal = "struct M\n    var n: i32 = 0\n    public computed v: i32\n        get() -> i32\n            let y: i32 = 1\n" +
+        "            let r = y@ref\n";
+
+    // T1's and T2's reborrow of a `during r` input passed to `read`.
+    private const string Peek = "func peek(v: ref/i32 during r) -> i32 => read(v@follow@ref)\nlet k = peek(r)\n";
+
+    private const string ReadInGetter = "            func h(x: ref/i32 during r) -> i32 => read(x@follow@ref)\n            return h(r)\npublic func main() => ()\n";
+
+    private const string Read = "func read(x: ref/i32) -> i32 => x@follow\n";
+
     // PLAN G1369's rows: the Cursor a local's Type names, and a `let` local whose clause equates its set's slot with f's input.
     private const string CursorType = "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n";
 
@@ -561,9 +574,13 @@ public class ClosureEnvironmentOriginTest
     // SPEC 15.3.4, 15.6.5 (PLAN G230 (A), R7-O3 O3-A; BU-56's interim removed, Q13): a named nested function's signature that names an
     // enclosing body local's set or annotated value names that local's region, a fixed Origin of the nested function with no premise. d6
     // (put stores its own input into `x.s`), the `w.s` and `r` forms: the relation's record at `v` in put; d6c (`v` during `x.s`): the
-    // call's store of the block's `inner` is the leak's Loan record; d6v and the reading `first` are valid. The root form (a top-level
-    // function naming a top-level statement's local, no nested function: F's O3-16 (1)) keeps the located limit at `v`, beside the leak's
-    // own Loan record (SPEC 23.1.2). dev accepted d6 and the root form (`leak 41`). The default template's edge (SPEC 7.2.3; F's O3-21
+    // call's store of the block's `inner` is the leak's Loan record; d6v and the reading `first` are valid. A function the walk declares in a
+    // module's top-level statements or an accessor body has that body as its declaring body (SPEC 6.1.1, 11.3; PLAN G230-R), so the root
+    // form (a top-level function naming a top-level statement's local: F's O3-16 (1)), a function nested in one (rf_nest) and one in a
+    // getter naming the getter's local (acc_inv) are d6's: the relation's record at the input alone, the root form's call storing no
+    // borrow of `inner` since put's signature relates `v` to nothing (SPEC 15.4, 15.6.5). A Reborrow through such an input passed on is
+    // valid (T1, T2b; SPEC 15.6.3, 15.6.4) and an independent error beside it is its own record alone (T1x; T2, whose getter sees no
+    // document-local `read`, SPEC 6.1.1). The default template's edge (SPEC 7.2.3; F's O3-21
     // (4)): g, declared in a capture-free Closure literal that is f's default for `action`, has the Closure as its declaring body, whose
     // evaluating body is (f, 1): g's `during r` and `during q` name the Closure's local regions, fixed in g with no premise, so returning
     // x as `during q` is the relation's record (dt_lift4) and the pass-through twin is valid (dt_ok4); dev gave both the located limit.
@@ -591,11 +608,19 @@ public class ClosureEnvironmentOriginTest
         NestedHead + "    func first(slot: ref/Array<ref/i32 during x.s>) -> i32 => slot[0]@follow\n    let got = first(w.items@ref)\n" +
             "    let items = w.items@move\n    return got + items[0]@follow\npublic func main() => ()\n")]
     [InlineData(
-        "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r: ref/i32 = arr[0]\n" +
-            "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\nif true\n    let inner: i32 = 41\n" +
+        RootLocal + "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\nif true\n    let inner: i32 = 41\n" +
             "    put(arr@uniq, inner@ref)\nlet old: i32 = arr[1]@follow\nConsole.writeLine(\"leak \\(old)\")\n",
-        "Unsupported_Kd v)",
-        "ComparisonLoanConflict_Kd let inner")]
+        "UnprovenOriginRelation_Kd v)")] // rf_d6
+    [InlineData(
+        RootLocal + "func put(n: i32) -> i32\n    func g(s: uniq/Array<ref/i32 during r>, w: ref/i32) => s@follow.append(w)\n    return n\nlet k = put(1)\n",
+        "UnprovenOriginRelation_Kd w)")] // rf_nest
+    [InlineData(
+        GetterLocal + "            func h(x: ref/i32 during r, q: ref/i32) -> ref/i32 during q => x\n            return 0\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd x\n")] // acc_inv
+    [InlineData(RootLocal + Read + Peek)] // T1_rf_reborrow
+    [InlineData(RootLocal + Read + Peek + "let bad: bool = 1\n", "TypeMismatch_Kd 1\n")] // T1x
+    [InlineData(GetterLocal + "            " + Read + ReadInGetter)] // T2b_acc_reborrow
+    [InlineData(Read + GetterLocal + ReadInGetter, "UnresolvedBinding_Kd read(x@follow@ref)")] // T2_acc_reborrow
     [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during r => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n")] // a_nf_nest2
     [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during p => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd w\n")] // a_nf_lift_nest2
     [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r: ref/i32 = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n")] // a_ann_res

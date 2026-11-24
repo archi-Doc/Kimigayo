@@ -42,7 +42,7 @@ public sealed partial class Binding
     // The executable body the walk is in (SPEC 15.3.4; Binding.ExecutableBodies.cs), with the value Binding enters it with: a function's
     // own body (FunctionBody: a module's top-level statements' included), a default template's (f, i), an accessor body (AccessorBody) or
     // a Property's initializer (InitializerBody); none in a Type's declaration. Entered where a body begins (EnterIndexBody) and restored
-    // by a Body step after its subtree. IndexNode records it as a local's declaring body, DeclareFunction as a named nested function's.
+    // by a Body step after its subtree. IndexNode records it as a local's declaring body, DeclareFunction as a named function's.
     private ExecutableBody indexBody;
 
     // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
@@ -702,10 +702,9 @@ public sealed partial class Binding
 
         var symbol = this.Declare(function, function.Name, BindingSymbolKind.Function, function, memberScope);
         symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
-        // SPEC 15.3.4 (DECISIONS BU-258): a named nested function's declaring body, a function's own body or a default template; none for
-        // any other, a function a module's top-level statements, an accessor body or a Property's initializer declares included: PLAN
-        // G230's root form and acc_lift, whose located Unsupported_Kd stays until G230 records these bodies here too.
-        symbol.DeclaringBody = this.indexBody.Definition?.Declaration is FunctionKoto ? this.indexBody : default;
+        // SPEC 15.3.4, 6.1.1, 11.3 (DECISIONS BU-258): a named function's declaring body is the body the walk declares it in, a module's
+        // top-level statements and an accessor body included; none for a Type's member.
+        symbol.DeclaringBody = this.indexBody;
         // The members of the fixed array and the integer Position witness are receiver functions of internal
         // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
         if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || this.Library.IsBuiltinMemberGroup(memberScope.Owner))
