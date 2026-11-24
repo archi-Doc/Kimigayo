@@ -559,7 +559,7 @@ fn attempt @62
       switch copy _29 [1: bb20, otherwise: bb19] @98 s1
   bb18:
       StorageLive(_28) @93 s2
-      _28 = copy (_26 as case 0).0 @93 s2
+      _28 = move (_26 as case 0).0 @93 s2
     * _25 = move _28 @96 s2
       StorageDead(_28) @93 s2
       goto bb16 @95 s1
@@ -567,7 +567,7 @@ fn attempt @62
       unreachable @85 s1
   bb20:
       StorageLive(_30) @102 s3
-      _30 = copy (_26 as case 1).0 @102 s3
+      _30 = move (_26 as case 1).0 @102 s3
       StorageLive(_31) @105 s3
       StorageLive(_32) @108 s3
     * _32 = move _30 @109 s3
