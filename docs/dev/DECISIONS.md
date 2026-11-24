@@ -23432,6 +23432,12 @@ structure is recorded here by the unit that first implements it.
   - Amended by R7-M54 (R7-T1 c3d, c3e, 2026-11-19): the Limit table's key is a use over a limit per declaration with its record's code
     and an erased Type (a Layout limit; for Layout's `HeightLimit`, `TypeHeightLimit_Kd`, the instance it names) or, where no Type is
     formed, a forming site (the collector's height record, `TypeHeightLimit_Kd` with its limit).
+  - Amended by R7-M99 (G651 U2b, 2026-11-25): the Rule's table is MirReport's (`MirReport.Limits.cs`: `Limit`, `Uses`,
+    `FlushLimits`; the collector keeps `Declaration` and `RecordOf`), with two producers: the collector's uses, held with its run's
+    round, and a MIR after-run body site's marks (a read of a refused instance, keyed by its erased Type, or of a refused substitution,
+    keyed by its subject as forming site), added at once. A body site's own subject is a fallback, ordered after every use subject
+    (`SourceRef.UseOrder`, then `SourceRef.Order`). The records are made at each clean collector run's end (`FlushLimits`, before
+    `Commit`) and, with no collector run, on the first `Merged` read after a committed least changed.
 - **R5-M172 The check path builds no code generation text; a cold scaling series is measured in one process state (G350)** (2026-11-01,
   PLAN G350; the owner's 「G350 の本実装 お願いします」 and 「(A) 共通の計測ヘルパー」, with R4's two conditions) AGENTS asks for equivalent workloads under
   fixed conditions and forbids a warm-up added to pass; code generation writes the runtime frame (`ModuleCodegen.Frame`).
@@ -25966,6 +25972,16 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Superseded in part by R7-M93 (R7-C8 C6a-1, 2026-11-24; F's C8 ruling 13 (A)): the Temporary bullet's answer frame and the G651
     U2a line's "a1's site kind covers it, else it goes with U2b": `Binding.answer` carries no Transitional attribute; it is the
     after-run form of the one frame mechanism, U2a's storage formation included, so no removal condition remains.
+  - Superseded in part by R7-M99 (G651 U2b, 2026-11-25): after Binding's run a formation (`Binding.OpenFormation`, now the one
+    opener: `OpenStorageFormation` is deleted) owns its refusal under every after-run owner, not only inside the frame, and every read
+    of its cause goes to the innermost after-run owner (a site's mark, the frame's reader, a capability work's Unknown; with none, the
+    broken contract, thrown). So the Formation bullet's "else G651's site-less record", the answer frame bullet's "else (Binding's run,
+    code generation, the MIR steps) to G651's site-less record" (after the run: the innermost after-run owner) and "A refusal in the
+    frame that no formation owns is the frame's: `CloseAnswer` records G651's site-less `InternalInvariant_Kd` at the frame's close"
+    (now R7-T1's broken contract: `CloseAnswer` returns it and `InstanceCollector.Run` throws after its `finally`), the collector
+    bullet's `RecordLimits` (`MirReport.FlushLimits`), and the G651 U2a line's `OpenStorageFormation`, its "G651's site-less record is
+    still made beside it" and its rejected option "making `OpenFormation` own after the run for all three owners" (taken: their callers'
+    reads now mark a site). The U2a line's N6 clause (G881b N6; U2c) stands.
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
@@ -27306,6 +27322,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     `ARejectedVerdictIsReadableOnlyBesideABindingFailure`; `InstanceCollectorTest.Rounds.ARecordMadeDuringAMissedRoundStays`, its
     witness moved to the body budget's `ExpansionLimit_Kd` in the erased function item's own body (a default template's record is
     made before any round, and a generic body it calls is built outside A4's missed round; the implementation review's B1).
+  - Amended by R7-M99 (G651 U2b, 2026-11-25): the one arm left. `Instantiates` reads each formation through `TyCtxt.Answered` and
+    gives its cause, so after Binding's run a copy's height refusal is that formation's `HeightLimit`, whose read marks the innermost
+    site: `TypeHeightLimit_Kd` at the omitting call (copy192; c495-nest, eager or built in a missed collector round), and `Defaults`
+    rests on it with an Opaque value and no record of its own. A body built during a collector or A4 round is its own body site. The
+    located `Unsupported_Kd` stays only for an `Incomplete` formation (BU-36's), removed by G651 U2c.
 - **R7-M86 A stored raw layer's members at its arm, and the named limits by the publication's limit marks (Z6-M: M3a with Revision 8
   on reading B)** (Middle, 2026-11-23; PLAN G148 (1), R7 plan Z6, G396 (3)'s M3a, Q-702, D-1159; Major; producer M3a, the Binding
   hunks read by the Front on C-462) SPEC 5.7 Origins, Authority, Fits and claims, Calls; 5.2.1 condition 3; 15.6.4 item 1. The
@@ -27958,6 +27979,77 @@ R8-M* and R9-M* by the stage of the recording unit.
   makes no request on dev since Q-640); it is closed by `CallableRegionScalingTest.ALiteralsComparisonOverManyInputsScales` and
   `NestedComparisonsOverManyInputsScale` (inputs alternating `ref/U` and a Function Type, nested once or twice): written edges +
   insertions + activations at most 2.25x per doubling, environments constant.
+- **R7-M99 After Binding's run a height refusal and every read of one go to the innermost after-run owner; R5-M171's limit table is
+  MirReport's (PLAN G651 U2b)** (Back, 2026-11-25; Q-734, D-1255; Major: design `back\notes\g651-u2b\design.md` Revision 2 with B's
+  rulings 1-34; design reviews C-495 (the Front, the Middle); implementation reviews and delta reads C-510 (the Front's Binding hunks,
+  the Middle's MIR hunks and RP17), last M ACCEPT and F ACCEPT WITH CONDITIONS, 2026-11-24) SPEC 23.1.2, 8.3.3; IMPL A.4, 21.3.2.
+  Carries out BU-161's "After the run" line; amends R5-M171, R7-M54 and R7-M85 (each entry's line states the change).
+  - **Owners.** After the run (`producing` over) a refusal past IMPL A.4's height goes to the innermost formation owning the Type
+    (`Binding.OpenFormation`, `(parent.Open || !producing, false)`, the one opener for `TyCtxt.Answered`, `TyCtxt.Witness` and
+    `Binding.Instance`; `OpenStorageFormation` is deleted), which publishes it as its cause (`Formation.HeightLimit`,
+    `RequirementTarget.Cause`, `AdtDef.InstanceStorage.HeightLimit`) and records nothing. Every read of a published refusal, and a
+    refusal no formation owns, goes through `Binding.AnswerSite` to the innermost after-run owner (`Binding.AfterRunOwner`, beside
+    `answer`): the collector's answer frame, whose readers record (R7-M54); a body site, or a node site inside it, which it marks
+    (`SiteMark(Refused, Subject, Fallback)`, folded at mark time to one per key in the open body site at its least use); a capability
+    work's evaluation (`OpenCapabilityOwner`; C8 ruling 30), which answers Unknown with no record (R7-M38); with none, a broken
+    contract, thrown (no pass-state test). Read points: `RefuseHeight`'s last arm after the run, `TyCtxt.Answered`, `TyCtxt.Witness`
+    (fresh or memoized), `Binding.Instance` outside a storage walk, and `PrepareTypeStorage`, which keeps the walk's first refused
+    instance in `storageMarks`' value so a memo hit reads it too (no known program has it as a key's only source; kept for the memo
+    path's completeness, covered by the gate trace). During the run nothing changes: the consultation node, `RefuseProof` in a
+    capability work, else the site-less record (G651 a4's arm).
+  - **Openers.** The collector's run alone opens its frame; a refusal the frame took that no formation owned is R7-T1's broken
+    contract: `CloseAnswer` records nothing and returns it, and `InstanceCollector.Run` throws after its `finally`. MIR's drivers open
+    the sites, a body site per element every path passes through and a node site at each node they visit: body sites at
+    `MirBuilder.Body` (eager and lazy builds alike; not inlined, a measured compiler-speed need: inlined, its try/finally cost
+    `MirBuilder.Library`'s walk about 10 µs a compilation), `MirBuilder.Name` per validated body, `MirAnalysis`' library step and A3,
+    each step's A3 and step 2, and A5, per body, A4 once per run of one body's consecutive nodes, and each A4 obligation row in the body
+    site of its premise definition (keyed by `MirProgram.Callee`'s body, a module's top-level statements when the row names none; an
+    owing body at its `Source`, a Callable row with a node site at its use; a row reading no body opens none); node sites at the
+    builder's nine node entries (`MirBuilder.Sites.cs`), the validator's statements and terminators, A2's locations and a
+    constructor's self local, A4's terminators and A5's location loops; a location without syntax opens none. A body site's close adds
+    its marks to MirReport's limit table (`MirReport.Uses`) under the body's `MirDefKey`. Binding's retention input site is a node site
+    at an input's written Type, opened only under the callee's own body site (A5's own-contract read). `WalkLints` and
+    `HoverBuilder.Create` open a body site whose marks they drop (lints precede MIR; a query follows publication, SPEC 23.4). Code
+    generation opens none: it runs on an accepted program, whose Types the collector formed, so a refusal there is the broken contract.
+    A node site saves and restores the owner alone (its openers are MIR drivers inside a body site, outside every formation); every
+    other owner's opener saves the whole `OwnerState`.
+  - **The limit table.** `MirReport.Limits.cs` (`Limit`, `Uses`, `FlushLimits`) holds R5-M171's least use per key (the record's code;
+    an erased Type, or none with the forming site, a substitution's refusal keyed by its subject as `Formed` keys its forming site; the
+    declaration), so the collector's and the sites' uses of one refused instance in one declaration are one record. Order:
+    `SourceRef.UseOrder`, a body site's own subject (a fallback) after every use subject, then `SourceRef.Order`, the one member the mark
+    fold and the table call. The collector's uses are held with its run's round (dropped with a missed run) and merged at a clean run's
+    end before `Commit`; a site's are added at once in every round; with no collector run the first `Merged` read after a committed
+    least changed flushes, and a read of `All` or `Records` never does (A5's rule W and `MirAnalysis` read them while producers run). A
+    repeated clean run rewrites each key's row through `Add`'s key. A collector use outside its round, or a site use from a library body
+    or after the flush outside a Collection round, throws.
+  - **Records (Q13): records only, no acceptance moves.** The site-less `InternalInvariant_Kd` after the run goes. A read becomes
+    `TypeHeightLimit_Kd` at its site, one per declaration (f-open at `noneD(p40)`; inlg, ictoru and hfv41 at the parameter; a Callable
+    obligation, p1 and p1-top, at the argument), or merges into the record Layout or the collector already makes for that instance and
+    declaration (stored250, raw192, copy250, clo250). A default's copy past the height (copy192; c495-nest, eager or built in a missed
+    collector round) is exactly `TypeHeightLimit_Kd` at the omitting call, where it was `Unsupported_Kd` and the site-less record.
+  - **Known limits.** A Callable use inside a Closure, a default template, a static initializer, a `#Test` body or a computed accessor
+    keeps a second record at that body (PLAN G1372). A substitution's refusal carries no refusal identity, so its fallback mark and a
+    node mark in one declaration would be two records; no program shows it, the gate trace keys it, and a program that does opens a
+    PLAN row whose fix is the formation's query identity on `SiteMark`.
+  - **Cost.** Stage 3 keeps a named, measured residue, about 3.8 µs a compilation plus about 2.4 ns a stage-3 site (GC-free; slot
+    T-348, `artifacts\benchmarks\g651-u2b\20261124-200308`), placement in `MirBuilder.Library`'s walk, whose source, callees and work
+    equal dev's (layout variant T-353, `DOTNET_JitAlignLoops=0`: the residue moves with layout, GC-free stage-3 B/A' 1.134 and 1.124 against T-348's 1.039 and 1.050 with A'/A within 0.01: code placement, not work); bytes a compilation: Binding +256 B, MirReport +216 B, the collector -120 B; O2 code
+    the same on 13 of 13 kernels (T-350).
+  - **Rejected.** Each reader recording (an instance is formed once and read by many: R7-M54's rejected per-reader cause); two limit
+    tables (two records of one refused instance in one declaration, R5-M171); a try/finally per node site (the body site's restores
+    after a throw; cost); a site around the whole `Binding.Retains` call (one subject for every input); a node site at the declaration
+    for a synthesized location (it beats every precise use); a flush on `All` or `Records`; one null key per declaration, or a fallback
+    null mark yielding to any node null mark (each drops an independent failure, SPEC 23.1.2); marking the enclosing site for a
+    capability work's refusal (R7-M38 rejects failing it wherever the answer settles); keying a Callable row by the body holding its use
+    now (Binding publishes none: PLAN G1372's fix).
+  - **Tests.** `InstanceCollectorTest`'s `OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal`,
+    `AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame`,
+    `AnOwnContractsReadOfARefusedInstanceIsARecordAtItsParameter`, `ACallableBindingsObligationReadsAtItsUse`,
+    `AWitnessResolutionIsTheCallsFormation`'s premiseTwo90, `ARefusedInstanceOfABodyBuiltInAMissedRoundIsItsRecord` and
+    `AnIncompleteSubstitutionIsABrokenContractInACompleteCompilation` (a collector use outside its round throws; it was dropped
+    silently); `MirBuildTest.ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft`, `AnInterpolationCopyPastTheHeightIsARecordAtItsCall`
+    and `APartPastTheHeightIsNoPart` (its read in main's body site); `MirAnalysisTest.AReadOfAllOrRecordsNeverFlushesTheLimitTable`;
+    `IntrinsicCapabilityTest.AnEndlessCopyGrowthAskedAfterThePassIsTheWorksUnknown`.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
