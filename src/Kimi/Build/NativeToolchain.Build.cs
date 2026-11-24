@@ -21,7 +21,7 @@ internal static partial class NativeToolchain
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
         ValidateManifest(document.RootElement);
-        await new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken).Run();
+        new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken).Run();
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
@@ -37,7 +37,7 @@ internal static partial class NativeToolchain
         var manifest = document.RootElement;
         ValidateManifest(manifest);
         var optimization = LinkManifest.Text(manifest, "optimization");
-        await new NativeBuild(null, ArtifactPaths.Create(ir, optimization), manifest, Path.GetDirectoryName(path)!, optimization, report, cancellationToken).Run();
+        new NativeBuild(null, ArtifactPaths.Create(ir, optimization), manifest, Path.GetDirectoryName(path)!, optimization, report, cancellationToken).Run();
     }
 
     // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
@@ -223,7 +223,7 @@ internal static partial class NativeToolchain
                 report, cancellationToken, TargetProfile.Windows.Target, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
         }
 
-        internal async Task Run()
+        internal void Run()
         {
             // The pair's IR, held with read sharing only from its hash to the build's end: no writer changes or replaces it before Tatara
             // reads it, so Tatara compiles the bytes the record names (G1202). The platform is checked after the hash, so a mismatched pair
@@ -258,7 +258,7 @@ internal static partial class NativeToolchain
             {
                 this.ResolveLibraries(libraries);
                 WriteRecord(this.paths.Record, this.record);
-                var obj = await this.Compile(tatara);
+                var obj = this.Compile(tatara);
                 var undefined = this.Inspect(tatara, obj);
                 this.Link(tatara, obj, libraries, undefined, executable);
                 this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
@@ -380,21 +380,20 @@ internal static partial class NativeToolchain
             this.record["libraries"] = libraryIdentities;
         }
 
-        // The object: the IR verified, for O2 optimized, its module paths redacted and verified again, then compiled.
-        private async Task<string> Compile(Tatara tatara)
+        // The object: the IR verified, for O2 optimized, its module paths redacted, written and verified again, then compiled and
+        // written. Tatara returns each output and the build writes it.
+        private string Compile(Tatara tatara)
         {
             var selectedIr = this.paths.Ir;
             if (this.optimization == "O2")
             {
                 selectedIr = this.paths.Stem + ".ll";
-                tatara.Optimize(this.context, this.paths.Ir, selectedIr);
-                var ir = await File.ReadAllTextAsync(selectedIr, this.context.CancellationToken);
-                ir = ModulePathPattern().Replace(ir, m => Redact(m.Value, this.directory));
-                await File.WriteAllTextAsync(selectedIr, ir, Utf8, this.context.CancellationToken);
+                var ir = ModulePathPattern().Replace(tatara.Optimize(this.context, this.paths.Ir), m => Redact(m.Value, this.directory));
+                File.WriteAllBytes(selectedIr, Utf8.GetBytes(ir));
             }
 
             var obj = this.paths.Stem + ".obj";
-            tatara.Emit(this.context, selectedIr, obj, this.optimization[1] - '0');
+            File.WriteAllBytes(obj, tatara.Emit(this.context, selectedIr, obj, this.optimization[1] - '0'));
             return obj;
         }
 
