@@ -34,6 +34,24 @@ public class GenericCallFormationBindingTest
         Assert.NotEqual(BindingState.Resolved, node.StateOf());
     }
 
+    // PLAN's open issue on a decision's inline-bound callee or reference path (E3e ruling 23; SPEC 23.1.2, 8.3): a static member's call
+    // (r2l) or reference (r2r) whose failed Type-application qualifier sits under its explicit-Type-argument name, a member access its
+    // binder binds inline, is read by no decision, so the use keeps its Type and its reader records a dependent TypeMismatch_Kd beside
+    // the written `Box<string>`'s record: today's records, pinned until the issue closes (then the reader rests: the record alone).
+    // Controls: without explicit Type arguments the call rests (r2bl); with a valid qualifier only the reader's mismatch (r2vl, r2rv).
+    [Theory]
+    [InlineData("Holder<() -> Box<string>>.make<i32>(v: 1)", "TypeMismatch_Kd x|UnsatisfiedConstraint_Kd Box<string>")] // r2l
+    [InlineData("Holder<() -> Box<string>>.make<i32>", "TypeMismatch_Kd x|UnsatisfiedConstraint_Kd Box<string>")] // r2r
+    [InlineData("Holder<() -> Box<string>>.make(v: 1)", "UnsatisfiedConstraint_Kd Box<string>")] // r2bl
+    [InlineData("Holder<() -> Box<i32>>.make<i32>(v: 1)", "TypeMismatch_Kd x")] // r2vl
+    [InlineData("Holder<() -> Box<i32>>.make<i32>", "TypeMismatch_Kd x")] // r2rv
+    public void AnInlineBoundQualifierUnderAnExplicitArgumentNameKeepsTheUsesType(string use, string records)
+    {
+        var source = "struct Box<T>\n    T is i32\nstruct Holder<U>\n    public let u: i32\n    public init(u: i32) => self.u = u\n" +
+            "    public func make<V>(v: V) -> i32 => 0\nfunc host() -> i32\n    let x = " + use + "\n    let y: bool = x\n    return 0\npublic func main() => ()\n";
+        Assert.Equal(records, string.Join('|', DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Span is { } span ? $"{x.Code} {source.Substring(span.Start, span.Length)}" : x.Code).Order(StringComparer.Ordinal)));
+    }
+
     // PLAN G464, E3e ruling 15 (a) (SPEC 23.1.2, 15.2.3; R7-C2e2 e2-5a): a use rests only on the written Type syntax under its own
     // syntax; a declaration's written Type keeps the states its occurrences' judgments give it. `needOwned(r)` proves R<i32> Owned by
     // reading R's stored Type, whose `S<R<Wrap<T>>>` is unproven under an Array layer, so the use keeps its own UnprovenConstraint_Kd
