@@ -27,8 +27,6 @@ public enum PatternAcquisition : byte
     Copy,
     Borrow,
     Move,
-    CopyOrMove,
-    Deferred,
 }
 
 public enum PatternAccessMode : byte
