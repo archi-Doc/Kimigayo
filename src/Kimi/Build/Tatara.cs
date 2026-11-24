@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -110,16 +111,18 @@ internal sealed unsafe partial class Tatara
         }
     }
 
-    // Verifies ir, optimizes it at default<O2> and writes the text to optimizedIr as opt -S does.
-    internal void Optimize(TataraContext context, string ir, string optimizedIr)
-        => this.Call("optimize", context, [.. Target(context), ir, optimizedIr], (texts, result) => NativeOptimize(texts, texts[5], texts[6], result));
+    // Verifies ir and optimizes it at default<O2>: the text opt -S writes, which the caller writes (tatara.h).
+    internal string Optimize(TataraContext context, string ir)
+        => Encoding.UTF8.GetString(this.Call("optimize", context, [.. Target(context), ir], (texts, result) => NativeOptimize(texts, texts[5], result)).Output);
 
-    // Verifies ir, then writes the object as llc -O0 or -O2 does (the level's digit).
-    internal void Emit(TataraContext context, string ir, string obj, int optimizationLevel)
-        => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => NativeEmit(texts, texts[5], texts[6], optimizationLevel, result));
+    // Verifies ir, then compiles it as llc -O0 or -O2 does (the level's digit): the object's bytes, which the caller writes; obj only
+    // names it (llc's -o, the name its debug information gives it) and is not opened (tatara.h).
+    internal byte[] Emit(TataraContext context, string ir, string obj, int optimizationLevel)
+        => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => NativeEmit(texts, texts[5], texts[6], optimizationLevel, result)).Output;
 
+    // An object's or an archive's facts (tatara.h's inspect: one member per archive member, an object one).
     internal ObjectFacts Inspect(TataraContext context, string obj)
-        => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result));
+        => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result)).Facts;
 
     // Links with LLD's arguments, as NativeBuild builds them: arguments[0] names the flavor, lld-link or ld.lld (tatara.h).
     internal void Link(TataraContext context, IReadOnlyList<string> arguments)
@@ -135,16 +138,55 @@ internal sealed unsafe partial class Tatara
     private static string[] Target(TataraContext context)
         => [context.Triple, context.Cpu, context.Features, context.RelocationModel, context.CodeModel];
 
-    // Inspect's symbol text: one "<llvm-nm's letter> <name>\n" per symbol.
-    private static List<ObjectSymbol> Symbols(string listing)
+    // Inspect's facts in a result (tatara.h): per member in archive order its form (text kind 4) and its blocks of kinds 1, 2, 5 and 6;
+    // the archive's index (kind 7); flags 1 and 2. Another operation sets none of them: no member.
+    private static ObjectFacts Facts(nint result)
     {
-        var symbols = new List<ObjectSymbol>();
-        foreach (var line in listing.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        var forms = NativeText(result, 4).Read();
+        var (undefined, defined) = (Blocks(NativeText(result, 1).Read()), Blocks(NativeText(result, 2).Read()));
+        var (comdats, directives) = (Blocks(NativeText(result, 5).Read()), Blocks(NativeText(result, 6).Read()));
+        var members = new ObjectMember[forms.Length / 2];
+        for (var i = 0; i < members.Length; i++)
         {
-            symbols.Add(new ObjectSymbol(line[2..], line[0]));
+            members[i] = new ObjectMember(forms[2 * i], [.. undefined[i].Select(Symbol)], [.. defined[i].Select(Symbol)], comdats[i], [.. directives[i].Select(Directive)]);
         }
 
-        return symbols;
+        var index = NativeText(result, 7).Read().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        return new ObjectFacts(members, [.. index.Select(Entry)], NativeFlag(result, 2) == 1, NativeFlag(result, 1) == 1);
+    }
+
+    // A per-member text (kinds 1, 2, 5 and 6): each member's lines, ended by an empty line.
+    private static List<string[]> Blocks(string text)
+    {
+        var lines = text.Split('\n');
+        var blocks = new List<string[]>();
+        for (int i = 0, start = 0; i < lines.Length - 1; i++)
+        {
+            if (lines[i].Length == 0)
+            {
+                blocks.Add(lines[start..i]);
+                start = i + 1;
+            }
+        }
+
+        return blocks;
+    }
+
+    // "<llvm-nm's letter> <name>" (kinds 1 and 2).
+    private static ObjectSymbol Symbol(string line) => new(line[2..], line[0]);
+
+    // "I <name>" or "A <from>=<to>" (kind 6; <from> holds no '=').
+    private static ObjectDirective Directive(string line)
+    {
+        var equals = line.IndexOf('=', 2);
+        return line[0] == 'A' ? new(line[0], line[2..equals], line[(equals + 1)..]) : new(line[0], line[2..], null);
+    }
+
+    // "<member> <name>" (kind 7).
+    private static ArchiveSymbol Entry(string line)
+    {
+        var space = line.IndexOf(' ');
+        return new(int.Parse(line.AsSpan(0, space), CultureInfo.InvariantCulture), line[(space + 1)..]);
     }
 
     // tatara.h's nine functions. The search (the managed form's; kimi.exe's link binds them without one): the assembly's directory
@@ -159,7 +201,7 @@ internal sealed unsafe partial class Tatara
 
     [LibraryImport("tatara", EntryPoint = "tatara_optimize")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
-    private static partial int NativeOptimize(Text* target, Text ir, Text optimizedIr, nint* result);
+    private static partial int NativeOptimize(Text* target, Text ir, nint* result);
 
     [LibraryImport("tatara", EntryPoint = "tatara_emit")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
@@ -186,8 +228,9 @@ internal sealed unsafe partial class Tatara
     private static partial void NativeRelease(nint result);
 
     // One call: its inputs encoded into one buffer and pinned, the result's texts copied and the result released, all inside the lock.
-    // A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is.
-    private ObjectFacts Call(string operation, TataraContext context, string[] values, Invocation invocation)
+    // A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is. Returns the
+    // inspection's facts (no member for another operation) and the output (text kind 3; empty for inspect and link).
+    private (ObjectFacts Facts, byte[] Output) Call(string operation, TataraContext context, string[] values, Invocation invocation)
     {
         context.CancellationToken.ThrowIfCancellationRequested();
         var lengths = new int[values.Length];
@@ -198,8 +241,9 @@ internal sealed unsafe partial class Tatara
         }
 
         int code;
-        string message, undefined, defined;
-        bool hasUnwind, hasDefaultLibrary;
+        string message;
+        ObjectFacts facts;
+        byte[] output;
         lock (Gate)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
@@ -218,10 +262,8 @@ internal sealed unsafe partial class Tatara
                 }
 
                 message = NativeText(result, 0).Read();
-                undefined = NativeText(result, 1).Read();
-                defined = NativeText(result, 2).Read();
-                hasUnwind = NativeFlag(result, 0) == 1;
-                hasDefaultLibrary = NativeFlag(result, 1) == 1;
+                facts = code == 0 ? Facts(result) : default;
+                output = NativeText(result, 3).Bytes();
                 if (code == 2)
                 {
                     this.Refusal ??= message;
@@ -246,10 +288,10 @@ internal sealed unsafe partial class Tatara
             context.Report(DiagnosticSeverity.Warning, message.Trim());
         }
 
-        return new ObjectFacts(Symbols(undefined), Symbols(defined), hasUnwind, hasDefaultLibrary);
+        return (facts, output);
     }
 
-    // TataraText: UTF-8 bytes and their length, not NUL-terminated.
+    // TataraText: bytes and their length, not NUL-terminated; UTF-8 text but emit's output (an object's bytes).
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct Text
     {
@@ -263,6 +305,8 @@ internal sealed unsafe partial class Tatara
         }
 
         internal string Read() => this.length == 0 ? string.Empty : Encoding.UTF8.GetString((byte*)this.bytes, (int)this.length);
+
+        internal byte[] Bytes() => new ReadOnlySpan<byte>((byte*)this.bytes, (int)this.length).ToArray();
     }
 }
 
@@ -280,7 +324,22 @@ internal sealed record TataraContext(
 /// <summary>A symbol of an object: its name and llvm-nm's letter for its kind (U, T, D, B, R, ...).</summary>
 internal readonly record struct ObjectSymbol(string Name, char Kind);
 
-/// <summary>What <see cref="Tatara.Inspect"/> reads from an object; NativeBuild judges them, but <c>HasUnwind</c>, and writes the record's
-/// form. <c>HasUnwind</c>: the object has unwind entries, which no build judges (an object of frameless leaves has none, IMPL 21.4); its
-/// removal is staged with tatara.h's flag kind 0. <c>HasDefaultLibrary</c>: it names a default library.</summary>
-internal readonly record struct ObjectFacts(IReadOnlyList<ObjectSymbol> Undefined, IReadOnlyList<ObjectSymbol> DefinedExternal, bool HasUnwind, bool HasDefaultLibrary);
+/// <summary>What <see cref="Tatara.Inspect"/> reads from an object or an archive (tatara.h's inspect texts and flags): <c>Members</c>, one
+/// per archive member in archive order, an object's one; <c>Index</c>, the archive's symbol index in its order (text kind 7; empty for
+/// an object or an archive without one); <c>IsArchive</c> (flag kind 2); <c>HasDefaultLibrary</c>, a member names a default library
+/// (flag kind 1). NativeBuild judges its module object's and writes the record's form.</summary>
+internal readonly record struct ObjectFacts(IReadOnlyList<ObjectMember> Members, IReadOnlyList<ArchiveSymbol> Index, bool IsArchive, bool HasDefaultLibrary);
+
+/// <summary>A member of an inspected input (an object is one): <c>Form</c> (text kind 4: <c>o</c> a relocatable object, <c>i</c> a COFF
+/// short import member, <c>s</c> a linked image); <c>Undefined</c> and <c>DefinedExternal</c>, its symbols in llvm-nm's order (kinds 1
+/// and 2); <c>Comdats</c>, the defined names whose section admits copies (kind 5); <c>Directives</c>, its .drectve's references in
+/// their order (kind 6).</summary>
+internal readonly record struct ObjectMember(char Form, IReadOnlyList<ObjectSymbol> Undefined, IReadOnlyList<ObjectSymbol> DefinedExternal, IReadOnlyList<string> Comdats, IReadOnlyList<ObjectDirective> Directives);
+
+/// <summary>A reference a COFF member's .drectve makes (text kind 6): <c>Kind</c> <c>I</c>, /include:'s <c>Name</c> (no
+/// <c>Target</c>); <c>A</c>, /alternatename:'s <c>Name</c>=<c>Target</c>.</summary>
+internal readonly record struct ObjectDirective(char Kind, string Name, string? Target);
+
+/// <summary>An entry of an archive's symbol index (text kind 7): the <c>Member</c> it names, by position in
+/// <see cref="ObjectFacts.Members"/>, and the symbol's <c>Name</c>.</summary>
+internal readonly record struct ArchiveSymbol(int Member, string Name);

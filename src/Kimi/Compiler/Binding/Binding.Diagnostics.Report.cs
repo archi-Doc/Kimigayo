@@ -41,23 +41,6 @@ public sealed partial class Binding
         }
     }
 
-    // The target of the plain numeric conversion whose direct literal operand failed to fit, if the node is such a literal.
-    private static BoundType? LiteralConversionTarget(Koto node)
-    {
-        if (KotoHelper.SignedNumber(node, out _) is null)
-        {
-            return null;
-        }
-
-        var parent = node.Parent;
-        while (parent is ParenthesizedKoto)
-        {
-            parent = parent.Parent;
-        }
-
-        return parent is ConversionKoto { Right: not TypeSemanticsKoto { ConversionOperation: not null } } conversion ? conversion.Right.BoundType : null;
-    }
-
     // SPEC 7.7.3: the call a closure's minimum receiver needs, and the calls a Callable receiver permits.
     private static string CallReceiverText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "an Exclusive call", _ => "a Consuming call" };
@@ -67,7 +50,13 @@ public sealed partial class Binding
 
     // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row.
     private static long? ImplementationLimit(BindingFailure failure)
-        => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
+        => failure switch
+        {
+            BindingFailure.TypeHeightLimit => TypeHeightLimit,
+            BindingFailure.PremiseClosureLimit => PremiseClosureLimit,
+            BindingFailure.ResolutionWorkLimit => ResolutionWorkLimit,
+            _ => null,
+        };
 
     // SPEC 4.3.4: a noinit directive's closed reason, with the declaration it initializes.
     private static void ReportNoInit(Koto directive, DiagnosticCollection? store, in BindingProblem problem, NoInitProblem reason)
@@ -163,16 +152,6 @@ public sealed partial class Binding
         {
             this.ReportQualification(issue.Node, store, requirement);
         }
-        else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
-        {
-            this.ReportMatchCoverage((MatchKoto)issue.Node, store, requirement);
-        }
-        else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
-        {
-            // SPEC 13.5.4: a direct literal is converted at compile time, so its range failure is explained at the literal.
-            var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
-            issue.Node.ReportIn(store, requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4)");
-        }
         else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
         {
             var (code, evidence, note) = this.TryFailure(issue.Node);
@@ -186,15 +165,6 @@ public sealed partial class Binding
                 requirement,
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
-        }
-        else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
-        {
-            // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
-            issue.Node.ReportIn(store, requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
-        }
-        else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
-        {
-            this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
         }
         else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, store, requirement, issue.Code))
         {
@@ -215,11 +185,6 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, store, requirement, issue.Code))
         {
             // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
-        }
-        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd or DiagnosticCode.DefaultArgumentMove_Kd &&
-            this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
-        {
-            this.ReportAcquisition(issue.Node, store, acquisition.Place, acquisition.Object, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
         {
@@ -244,14 +209,6 @@ public sealed partial class Binding
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
             this.ReportCaptureEntry(issue.Node, store, entry, requirement, issue.Code);
-        }
-        else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
-        {
-            this.ReportWrite(issue.Node, store, target, requirement, issue.Code);
-        }
-        else if (this.takeLayers?.TryGetValue(issue.Node, out var takeCases) == true)
-        {
-            this.ReportTake(issue.Node, store, takeCases, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {

@@ -367,53 +367,99 @@ internal sealed class DependencyResolver
     }
 
     // Loads one project; each failure is recorded and the node is not created (its children depend on it). A failed load is
-    // remembered, so a project that several references reach is reported once (SPEC 23.1.2).
+    // remembered, so a project that several references reach is reported once (SPEC 23.1.2). Only the load's own calls are classified,
+    // each where it reads (SPEC 23.2.3, PLAN G1010): the path's naming and each read (CheckInputSource.IsReadFailure), and the
+    // configuration's parse and rules (ProjectFile.Load); any other exception is the compiler's and ends the project's own result.
     private DependencyInput? Load(string path, List<ResolutionFailure> failures)
     {
         this.cancellationToken.ThrowIfCancellationRequested();
         try
         {
             path = Path.GetFullPath(path);
-            if (this.inputs.TryGetValue(path, out var input))
-            {
-                return input;
-            }
+        }
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+        {
+            return Unloaded(ex);
+        }
 
-            var bytes = this.rootConfiguration is not null && this.inputs.Comparer.Equals(path, this.rootPath)
-                ? this.rootConfiguration : this.source.ReadAllBytes(path);
-            if (ProjectFile.Load(bytes) is not { } file)
-            {
-                failures.Add(new("InvalidConfiguration", $"Empty Project configuration: '{path}'."));
-                return this.inputs[path] = null;
-            }
-
-            var directory = Path.GetDirectoryName(path)!;
-            if (Invalid(path, DependencyConfiguration.Validate(file, directory, out var tests), failures))
-            {
-                return this.inputs[path] = null;
-            }
-
-            var listed = this.source.GetFiles(directory, "*.kimi");
-            var sources = new List<DependencySource>(listed.Length);
-            foreach (var source in listed)
-            {
-                this.cancellationToken.ThrowIfCancellationRequested();
-                if (tests?.Contains(source) != true)
-                {
-                    sources.Add(new(Path.GetFileName(source), this.source.ReadSource(source)));
-                }
-            }
-
-            input = new(path, file, bytes, sources.ToArray());
-            this.inputs.Add(path, input);
+        if (this.inputs.TryGetValue(path, out var input))
+        {
             return input;
+        }
+
+        byte[] bytes;
+        ProjectFile? file;
+        try
+        {
+            bytes = this.rootConfiguration is not null && this.inputs.Comparer.Equals(path, this.rootPath)
+                ? this.rootConfiguration : this.source.ReadAllBytes(path);
+        }
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+        {
+            return Unloaded(ex);
+        }
+
+        try
+        {
+            file = ProjectFile.Load(bytes);
         }
         catch (ProjectConfigurationException ex)
         {
             Invalid(path, ex.Failures, failures);
             return this.inputs[path] = null;
         }
-        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex) || ex is TinyhandException)
+        catch (TinyhandException ex)
+        {
+            return Unloaded(ex);
+        }
+
+        if (file is null)
+        {
+            failures.Add(new("InvalidConfiguration", $"Empty Project configuration: '{path}'."));
+            return this.inputs[path] = null;
+        }
+
+        var directory = Path.GetDirectoryName(path)!;
+        if (Invalid(path, DependencyConfiguration.Validate(file, directory, out var tests), failures))
+        {
+            return this.inputs[path] = null;
+        }
+
+        string[] listed;
+        try
+        {
+            listed = this.source.GetFiles(directory, "*.kimi");
+        }
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+        {
+            return Unloaded(ex);
+        }
+
+        var sources = new List<DependencySource>(listed.Length);
+        foreach (var source in listed)
+        {
+            this.cancellationToken.ThrowIfCancellationRequested();
+            if (tests?.Contains(source) != true)
+            {
+                SourceContent content;
+                try
+                {
+                    content = this.source.ReadSource(source);
+                }
+                catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+                {
+                    return Unloaded(ex);
+                }
+
+                sources.Add(new(Path.GetFileName(source), content));
+            }
+        }
+
+        input = new(path, file, bytes, sources.ToArray());
+        this.inputs.Add(path, input);
+        return input;
+
+        DependencyInput? Unloaded(Exception ex)
         {
             failures.Add(new("InvalidProjectInput", ex.Message));
             return this.inputs[path] = null;

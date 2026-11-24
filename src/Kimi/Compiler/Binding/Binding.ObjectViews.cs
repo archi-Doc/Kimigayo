@@ -220,9 +220,9 @@ public sealed partial class Binding
                 return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
-            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
             {
-                return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+                return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
 
             result = target;
@@ -231,7 +231,7 @@ public sealed partial class Binding
         {
             if (!this.AdaptObjectBorrow(conversion.Left, target, actual, scope, true, out var borrowed, out _, out _))
             {
-                return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, target.Semantics == SemanticsKind.ObjUniq));
+                return this.RecordWrite(conversion, this.BorrowFailure(conversion.Left, scope, target.Semantics == SemanticsKind.ObjUniq), conversion.Left);
             }
 
             result = this.types.Intern(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);

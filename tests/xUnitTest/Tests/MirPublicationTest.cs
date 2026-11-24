@@ -165,6 +165,7 @@ public sealed class MirPublicationTest
     [InlineData((byte)ProblemFactKind.Reason)]
     [InlineData((byte)ProblemFactKind.Key)]
     [InlineData((byte)ProblemFactKind.Instance)]
+    [InlineData((byte)ProblemFactKind.Checked)]
     public void AMirRecordCarryingABindingKindIsABrokenContract(byte kind)
     {
         var (c, program) = Program(Valid);

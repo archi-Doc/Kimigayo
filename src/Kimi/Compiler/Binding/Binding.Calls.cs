@@ -241,7 +241,15 @@ public sealed partial class Binding
                 return this.Fail(call, BindingFailure.Unsupported, true);
             }
 
+            // SPEC 10.6 (ArgFlow ruling 188): the call's resolution, its selection and every run of it on BU-240's split, is one count,
+            // read after each: past the limit no candidate is selected (RefusesResolution).
+            var outermost = this.BeginResolution();
             var (selection, winnerIndex) = this.SelectAt(ref evaluation, candidates);
+            if (this.RefusesResolution(call, outermost))
+            {
+                return null;
+            }
+
             var count = evaluation.Count;
             if (selection == CallSelection.InvalidDeclaration)
             {
@@ -277,6 +285,11 @@ public sealed partial class Binding
                 // DECISIONS BU-240 (temporary, PLAN G886; ClassifySelection; G812 rulings 139, 141): judged case by case; a candidate every
                 // case selects, whose own trial reads no split, is the selection (SelectionOnSplit), else the call rests or fails there.
                 var split = this.SelectionOnSplit(in evaluation);
+                if (this.RefusesResolution(call, outermost))
+                {
+                    return null;
+                }
+
                 if (split.Selected < 0)
                 {
                     return this.FailUnformedCall(ref evaluation, split.Fails, split.Canonical);
@@ -552,8 +565,8 @@ public sealed partial class Binding
     // SPEC 10.1, 15.1.5 (R7-P2 commit 4, folded into R7-E3 E3b-1): the NoneApplicable outcome. A bare Place that was the only obstacle names
     // its missing spelling; otherwise each candidate the selection considered is a party of the record, with the facts its row and columns
     // hold: one pair (the first argument's range shape or refused call signature, else the receiver's authority: the precedence dev's
-    // rows showed), the closure receivers and the refuted clause. It reads rows, columns and LastAcquisition, and runs no fit, inference or
-    // proof.
+    // rows showed), the closure receivers, the checked part (SPEC 10.5.1) and the refuted clause. It reads rows, columns and
+    // LastAcquisition, and runs no fit, inference or proof.
     private BoundType? RecordNoneApplicable(in CallEvaluation evaluation)
     {
         var (call, evaluated) = (evaluation.Call, evaluation.Evaluated);
@@ -561,7 +574,8 @@ public sealed partial class Binding
         var failure = acquisition?.Kind ?? BindingFailure.NoApplicableCandidate;
         if (failure != BindingFailure.NoApplicableCandidate && acquisition is { } absent)
         {
-            return this.FailAcquisition(call, failure, absent.Place, absent.Object, true);
+            this.AcquisitionFacts(this.candidateFacts, call, failure, absent.Place, absent.Object);
+            return this.RecordSelection(call, failure); // The selection's one guard (R7-E4 ruling 6, D2).
         }
 
         var argumentCount = call.ArgumentNodes.Count;
@@ -591,7 +605,7 @@ public sealed partial class Binding
             }
 
             var receivers = evaluated[i].ClosureReceiver is { } closure ? (closure.Actual, closure.Required, closure.Parameter) : ((SemanticsKind, SemanticsKind, int)?)null;
-            this.CandidateFacts((FunctionKoto)evaluated[i].Symbol!.Declaration, evaluated[i].ConstraintFailure, flags, pair, receivers);
+            this.CandidateFacts((FunctionKoto)evaluated[i].Symbol!.Declaration, evaluated[i].ConstraintFailure, flags, pair, receivers, evaluated[i].CheckedFailure);
         }
 
         return this.FailWaitingSelection(call, failure);

@@ -75,9 +75,9 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope, conversion) != ConstraintProof.Proven)
+        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope, conversion) is not ConstraintProof.Proven and var copyProof)
         {
-            return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+            return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
 
         conversion.ConversionBinding = ConversionBinding.Identity;
@@ -90,10 +90,14 @@ public sealed partial class Binding
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
-        if (!this.OffersTake(conversion.Left) ||
-            (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven))
+        if (!this.OffersTake(conversion.Left))
         {
             return this.FailTake(conversion, conversion.Left);
+        }
+
+        if (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
+        {
+            return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailTake(conversion, conversion.Left);
         }
 
         // SPEC 11.2: consuming var storage requires its accessible standard setter,
@@ -304,7 +308,7 @@ public sealed partial class Binding
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
             {
                 return failure.IsCondition ? this.RecordMismatch(conversion, conversion, adapted, pattern, failure)
-                    : this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq));
+                    : this.RecordWrite(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq), conversion.Left);
             }
 
             var result = pattern.Origin is null ? adapted : pattern;
@@ -336,9 +340,9 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (this.ProveCopy(copied, this.ConstraintScope(conversion), conversion) != ConstraintProof.Proven)
+            if (this.ProveCopy(copied, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
             {
-                return this.Record(conversion, BindingFailure.NonCopyOperand, []);
+                return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.Record(conversion, BindingFailure.NonCopyOperand, []);
             }
 
             conversion.ConversionBinding = this.IsNeverValue(conversion.Left, copied) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
@@ -390,7 +394,7 @@ public sealed partial class Binding
                 var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
                 {
-                    return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.ObjUniq));
+                    return this.RecordWrite(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.ObjUniq), conversion.Left);
                 }
 
                 Complete(conversion.Right, adapted);
@@ -410,7 +414,7 @@ public sealed partial class Binding
                 var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
-                    return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.Uniq));
+                    return this.RecordWrite(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.Uniq), conversion.Left);
                 }
 
                 Complete(conversion.Right, adapted);
@@ -423,7 +427,7 @@ public sealed partial class Binding
             if (semantics == SemanticsKind.Owner)
             {
                 Complete(conversion.Right, operandType);
-                return this.Fail(conversion, BindingFailure.BareOwningShorthand);
+                return this.Record(conversion, BindingFailure.BareOwningShorthand, []);
             }
 
             // SPEC 13.5.6: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.

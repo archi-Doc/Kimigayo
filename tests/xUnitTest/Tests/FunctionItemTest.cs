@@ -106,22 +106,21 @@ public class FunctionItemTest
     public void AnItemIsOwnedOnlyWhenWhatItsSignatureNamesIs(string id, string body, string? at)
         => AssertOwnedRecord(id, Need + body + "public func main() -> () => ()\n", at);
 
-    // DECISIONS BU-56's interim (until PLAN G230 (A)), for a `let` local as for a `var` one (PLAN G492-a (ii), the owner's O-394 (a)): a
-    // nested function's written Origin naming an enclosing local's Origin (`during r`) is a located Unsupported_Kd there. y5local
-    // (invalid: pk is not Owned, SPEC 15.3.4) keeps its Owned record, at the Item, beside it, as its `var` twin's; y5ok2 (valid, SPEC
-    // 15.3.4, 10.8: r read at the call is its value) has the limit alone. An unannotated local's Origin (D-990, F's G147 ruling 46):
-    // a parameter keeps dev's binding (d990par, d990parv, valid, accepted); a result the header failed is the located Unsupported_Kd
-    // at its written Type, on which the call rests, with no InternalInvariant_Kd (d990let, d990var, d990nocall: valid, SPEC 15.3.4;
-    // d990inv: invalid, p outlives r's Origin unproven in pick, 15.6.1); a non-borrow local keeps its InvalidOriginBinding_Kd in either
-    // slot (d990nbp, d990nbr: SPEC 15.2.1); an Origin the header binds is accepted (d990ctl).
+    // SPEC 15.3.4 (PLAN G230 (A), R7-O3 O3-A; BU-56's and D-990's interims removed, Q13): a nested function's written Origin naming an
+    // enclosing local (`during r`), for a `let` local as for a `var` one, names that local's region, a fixed Origin of the nested function
+    // through its declaring body. y5local (invalid: pk is not Owned) keeps its Owned record alone, at the call as o1blk's, as its `var`
+    // twin; y5ok2 (valid, 10.8: r read at the call is its value) is accepted. An unannotated local's Origin (D-990): a parameter and a
+    // result bind alike (d990par, d990parv, d990let, d990var, d990nocall: valid, accepted; d990inv: invalid, p outlives r's region
+    // unproven in pick, 15.6.1); a non-borrow local keeps its InvalidOriginBinding_Kd in either slot (d990nbp, d990nbr: SPEC 15.2.1); an
+    // Origin the header binds is accepted (d990ctl).
     [Theory]
-    [InlineData("y5local", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "Unsupported_Kd r; UnprovenConstraint_Kd pk")]
-    [InlineData("y5localv", "func h(anchor0: ref/u8 during a) -> i32\n    var r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "Unsupported_Kd r; UnprovenConstraint_Kd pk")]
-    [InlineData("y5ok2", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    func pk(x: ref/u8 during r) -> i32 => 0\n    return pk(r)\n", "Unsupported_Kd r")]
-    [InlineData("d990let", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n", "Unsupported_Kd ref/i32 during r")]
-    [InlineData("d990var", "func f(p: ref/i32) -> i32\n    var r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n", "Unsupported_Kd ref/i32 during r")]
-    [InlineData("d990nocall", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    return 0\n", "Unsupported_Kd ref/i32 during r")]
-    [InlineData("d990inv", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during p) -> ref/i32 during r => v\n    return 0\n", "Unsupported_Kd ref/i32 during r")]
+    [InlineData("y5local", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "UnprovenConstraint_Kd need(pk)")]
+    [InlineData("y5localv", "func h(anchor0: ref/u8 during a) -> i32\n    var r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "UnprovenConstraint_Kd need(pk)")]
+    [InlineData("y5ok2", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    func pk(x: ref/u8 during r) -> i32 => 0\n    return pk(r)\n", "")]
+    [InlineData("d990let", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n", "")]
+    [InlineData("d990var", "func f(p: ref/i32) -> i32\n    var r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n", "")]
+    [InlineData("d990nocall", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    return 0\n", "")]
+    [InlineData("d990inv", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during p) -> ref/i32 during r => v\n    return 0\n", "UnprovenOriginRelation_Kd v")]
     [InlineData("d990par", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    let w = pick(r)\n    return w\n", "")]
     [InlineData("d990parv", "func f(p: ref/i32) -> i32\n    var r = p\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    let w = pick(r)\n    return w\n", "")]
     [InlineData("d990ctl", "func f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during p) -> ref/i32 during p => v\n    let w = pick(p)\n    return w@follow\n", "")]
@@ -314,7 +313,7 @@ public class FunctionItemTest
     [InlineData("func h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin a outlives b\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0", "UnprovenOriginContract_Kd pk: the 1st parameter requires b outlives a, which is not proven")]
     [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> ref/u8 during a => x\n        let f: (ref/u8 during b) -> ref/u8 during c = pk\n        let r = f(other)\n        return 0\n    return 0", "UnprovenOriginContract_Kd pk: the result requires a outlives c, which is not proven")]
     [InlineData("func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0", "UnprovenOriginContract_Kd pk: the 1st parameter requires b outlives a, which is not proven")]
-    [InlineData("func apply(g: (ref/u8 during q) -> i32, r: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return apply(pk, other)\n    return 0", "NoApplicableOverload_Kd apply(pk, other): none of 1 candidates applies")]
+    [InlineData("func apply(g: (ref/u8 during q) -> i32, r: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return apply(pk, other)\n    return 0", "UnprovenOriginContract_Kd pk: the 1st parameter requires b outlives a, which is not proven")]
     public void NestedItemsAreNotErasedWithoutTheEnclosingFunctionsClauses(string body, string record)
     {
         var source = "public func main() => ()\n" + body;

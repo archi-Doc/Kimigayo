@@ -1,10 +1,10 @@
 // tatara_emit: opt -passes=verify, then llc -O<level> -filetype=obj -mtriple -mcpu -mattr -relocation-model -code-model (tatara.h).
 #include "internal.h"
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 using namespace llvm;
@@ -90,7 +90,7 @@ int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, Tatar
         }
 
         // As llc: -mtriple overrides the module's triple and the target's data layout replaces the module's; the object's name for
-        // debug information is the -o name (the file name; llc runs in the object's directory).
+        // debug information is the -o name (the file name; llc runs in the object's directory), here obj's, which is not opened.
         Triple triple(Triple::normalize(tatara::view(target->triple)));
         StringRef cpu = tatara::view(target->cpu);
         StringRef features = tatara::view(target->features);
@@ -108,24 +108,22 @@ int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, Tatar
             setFunctionAttributes(function, cpu, features);
         }
 
-        // As llc, a failure after the object is opened leaves none (tatara::removeOutput; a return of 2: tatara::run).
-        int descriptor = tatara::openOutput(outcome, tatara::view(obj), sys::fs::OF_None, "llc: error: ", message);
-        if (descriptor < 0) {
-            return 1;
-        }
-
-        raw_fd_ostream object(descriptor, true);
-
+        // The object in memory (a raw_pwrite_stream, as llc's file); a failure leaves no output, as llc leaves no file.
+        SmallString<0> bytes;
+        raw_svector_ostream object(bytes);
         legacy::PassManager passes;
         passes.add(new TargetLibraryInfoWrapperPass(TargetLibraryInfoImpl(triple)));
         if (machine->addPassesToEmitFile(passes, object, nullptr, CodeGenFileType::ObjectFile, false)) {
             message << "llc: error: target does not support generation of this file type\n";
-            tatara::closeOutput(outcome, object, "llc: error: ", message);
-            return tatara::removeOutput(tatara::view(obj), message);
+            return 1;
         }
 
         passes.run(*module);
-        bool closed = tatara::closeOutput(outcome, object, "llc: error: ", message);
-        return closed && !context.getDiagHandlerPtr()->HasErrors ? 0 : tatara::removeOutput(tatara::view(obj), message);
+        if (context.getDiagHandlerPtr()->HasErrors) {
+            return 1;
+        }
+
+        outcome.output.assign(bytes.data(), bytes.size());
+        return 0;
     });
 }

@@ -7,16 +7,18 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("restore")]
-public sealed class RestoreCommand : ISimpleCommand<KimiOptions>
+[SimpleCommand(RestoreCommand.Name)]
+public sealed class RestoreCommand : ISimpleCommand
 {
+    public const string Name = "restore";
+
     private readonly Kimigayo kimigayo;
 
     public RestoreCommand(Kimigayo kimigayo) => this.kimigayo = kimigayo;
 
-    public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(string[] arguments, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, Name, arguments, (options, args) =>
         {
             if (args.Length != 1)
             {

@@ -137,6 +137,7 @@ public class ArchitectureRulesTest
     [
         "Binding.Access.cs:IsReceiverType=1 declared",
         "Binding.Aliases.cs:PrepareAliases=1 declared",
+        "Binding.ArgumentKinds.Checked.cs:CheckedClass=1 unchanged",
         "Binding.ArgumentKinds.Evidence.cs:InferBoundary=1 kind",
         "Binding.ArgumentKinds.Evidence.cs:InferClosureHeader=1 kind",
         "Binding.ArgumentKinds.Evidence.cs:InferComposite=3 unchanged",
@@ -178,6 +179,7 @@ public class ArchitectureRulesTest
         "Binding.AssociatedTypes.cs:ResolveAssociated=1 declared",
         "Binding.Attributes.cs:HasNoCCounterpart=1 kind",
         "Binding.Attributes.cs:ImportAbi=1 kind",
+        "Binding.BareAcquisition.cs:ReborrowedType=1 unchanged",
         "Binding.BoundContracts.cs:BoundContractReference=2 declared",
         "Binding.BoundContracts.cs:SubstituteRequirementContract=1 unchanged",
         "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",
@@ -186,7 +188,7 @@ public class ArchitectureRulesTest
         "Binding.CallSlots.cs:FittedPattern=1 unchanged",
         "Binding.CallSlots.cs:FormedApplication=1 unchanged",
         "Binding.CallSlots.cs:Infer=4 formed",
-        "Binding.CallSlots.cs:Infer=1 sufficient",
+        "Binding.CallSlots.cs:Infer=2 sufficient",
         "Binding.CallSlots.cs:Infer=1 unchanged",
         "Binding.CallSlots.cs:IsFormedLayer=1 finding", // PLAN G898 (D-next): a layer of a pair admitting only owner is its target by the pair row, read as written
         "Binding.CallSlots.cs:IsSource=1 finding", // PLAN G898 (D-next): two formed layers whose pairs admit one Semantics have one head, compared as written
@@ -200,7 +202,6 @@ public class ArchitectureRulesTest
         "Binding.CallableSelection.cs:SameProofPremise=1 key",
         "Binding.CallableSelection.cs:SelectValueCall=1 declared",
         "Binding.CandidateEvaluation.cs:BetterCandidate=1 declared",
-        "Binding.Capabilities.cs:RequestCapability=1 key",
         "Binding.Capabilities.cs:StructuralCapability=1 unchanged",
         "Binding.Capabilities.cs:TryLeafCapability=2 kind",
         "Binding.ClosureInstances.cs:ClosePartCore=1 unchanged",
@@ -261,7 +262,10 @@ public class ArchitectureRulesTest
         "Binding.ElementAccess.cs:IsSynthesizedAccess=2 unchanged",
         "Binding.Elements.cs:BindElement=3 kind",
         "Binding.Elements.cs:BindElement=1 unchanged",
-        "Binding.Enums.cs:BindEnumConstruction=2 kind",
+        "Binding.Enums.cs:BindEnumConstruction=1 declared",
+        "Binding.Enums.cs:BindEnumConstruction=1 kind",
+        "Binding.Enums.cs:FixConstructionSlots=1 kind",
+        "Binding.Enums.cs:QualifiedEnumAt=1 declared",
         "Binding.ExplicitAdaptations.cs:BindSemanticsAdaptation=1 kind",
         "Binding.ExplicitAdaptations.cs:BindSemanticsAdaptation=3 unchanged",
         "Binding.ExplicitAdaptations.cs:CheckAdaptationRows=2 unchanged",
@@ -311,6 +315,8 @@ public class ArchitectureRulesTest
         "Binding.OpenOrigins.cs:OpenSlotOrigins=1 unchanged",
         "Binding.OpenOrigins.cs:PerCallStandIn=1 unchanged",
         "Binding.OpenOrigins.cs:ReplaceOpenOrigins=1 unchanged",
+        "Binding.OpenSlots.cs:FillOpenSlots=1 sufficient",
+        "Binding.OpenSlots.cs:FillOpenSlots=1 unchanged",
         "Binding.OperatorApplicability.cs:ArithmeticPairApplicability=2 kind",
         "Binding.OperatorApplicability.cs:ComparisonApplicability=3 kind",
         "Binding.OperatorApplicability.cs:NumericApplicability=1 kind",
@@ -495,7 +501,7 @@ public class ArchitectureRulesTest
     // DECISIONS R4-M101 E8 (2a0-D D7, D8): only the C1-F4 view decodes an Origin's slot, binder or forming body, so no Mir source reads
     // them (G163); fixed-fixed entailment has one owner, so OriginPremiseClosure.AddEdge has one caller, the premise catalog's writer
     // (AddPremiseEdge, bu20's C0d).
-    [InlineData("Mir reads of an Origin's slot, binder or forming body", "src/Kimi/Compiler/Mir", "*.cs", @"(\b[Oo]rigin|[Aa]tom)\w*\??\.(Slot|Binder|Body)\b|\.EvaluatingBody\b", 0)]
+    [InlineData("Mir reads of an Origin's slot, binder or forming body", "src/Kimi/Compiler/Mir", "*.cs", @"(\b[Oo]rigin|[Aa]tom)\w*\??\.(Slot|Binder|Body)\b|\.DeclaringBody\b", 0)]
     [InlineData("Premise edges written outside the premise catalog's writer", "src/Kimi/Compiler", "*.cs", @"(?<!this)\.AddEdge\(", 1)]
     // DECISIONS BU-105 (R7-D1): BindingSymbol.Resolving is the variable binding's own Running flag until R7-D2 d4 makes the variable
     // binding a declaration query; the header's use of it went to Binding.DeclQuery. A property pattern reads it too.
@@ -504,7 +510,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. None is left: R7-E3 E3b-1 records the unbound slot as a related location (UnboundSlotFact.Note went).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 10)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 7)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 0)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]

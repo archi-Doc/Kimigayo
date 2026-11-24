@@ -424,15 +424,22 @@ public sealed partial class Binding
             return new(waiting, covariant, blocked);
         }
 
-        // Each operation's parameter Type with the solution substituted, where it is complete.
+        // Each operation's parameter Type with the solution substituted, where it is complete, and the source and adapted Types its fit
+        // derived from the parameter Type (ValueAtParameter) derived again from the completed one by the same rule (ExpectedValueType;
+        // SPEC 10.2 row 2, 15.6.4 step 1); any other operation's source and adapted Types are the source's own and stay.
         internal readonly void CompleteOperationTypes(Span<BoundArgumentOperation> operations)
         {
             for (var i = 0; i < operations.Length; i++)
             {
-                if (operations[i] is { Source: not null, ParameterIndex: >= 0 } operation &&
+                if (operations[i] is { Source: { } source, ParameterIndex: >= 0 } operation &&
                     this.Type(this.Function.Parameters[operation.ParameterIndex].Type.BoundType!) is { } completed)
                 {
                     operations[i] = operation with { ParameterType = completed };
+                    if (operation.ValueAtParameter)
+                    {
+                        var value = this.Binding.ExpectedValueType(source, completed, this.Scope, out _, out var borrow);
+                        operations[i] = operations[i] with { SourceType = value, AdaptedType = borrow };
+                    }
                 }
             }
         }
@@ -515,10 +522,7 @@ public sealed partial class Binding
                 return binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
             }
 
-            var rows = binding.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
-            var fits = binding.ErasureSignatureFits(actual, type, node, binding.comparisonRows, out _);
-            binding.DropComparisonRows(rows);
-            return fits;
+            return binding.ErasureSignatureFits(actual, type, node);
         }
 
         // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot

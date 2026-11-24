@@ -27,8 +27,6 @@ public partial class CallableOriginForwardingTest
 
     private const string PairArm = "func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)";
 
-    private const string PairUnsupported = "Unsupported_Kd ref/(ref/i32 during x) during static";
-
     private const string PairTargetUnsupported = "Unsupported_Kd ref/(ref/i32) during s";
 
     private const string UseStatic = "func use(f: (ref/i32) -> ref/i32 during static) -> i32 => 0\nfunc k() -> i32\n";
@@ -199,6 +197,14 @@ public partial class CallableOriginForwardingTest
     private const string OwnS = "func k(p: ref/i32, q: ref/i32, s: ref/i32) -> i32\n";
 
     private const string OwnStatic = "func k(p: ref/i32, q: ref/i32, s: ref/i32 during static) -> i32\n";
+
+    private const string R1aApply = "func apply(f: () -> i32) -> i32 => f()\n";
+
+    private const string R1aConstant = "func constant() -> ref/i32 during s => $abort(\"no\")\n";
+
+    private const string R1aPick = "func pick<T>(x: T, y: T) -> T => x@move\n";
+
+    private const string R1aSink = "func sink() -> uniq/(ref/i32 during s) during t => $abort(\"no\")\n";
 
     private const string RcvK = "func k(p: ref/i32, q: ref/i32) -> i32\n    var n: i32 = 0\n";
 
@@ -382,6 +388,14 @@ public partial class CallableOriginForwardingTest
 
     private const string OptionK = "func ko(q: ref/i32, p: Option<(ref/i32 during q) -> i32>) -> i32 => 0\n\n";
 
+    private const string OptionKd = "func kd(q: ref/i32, p: Option<(ref/i32 during q) -> i32>) -> i32 => 0\n\n" +
+        "func kd(q: ref/i32, p: Option<(ref/i32 during static) -> i32>, n: i32 = 0) -> i32 => 1\n\n";
+
+    private const string StaticOptionK = "func ks(p: Option<(ref/i32 during static) -> i32>) -> i32 => 0\n\n";
+
+    private const string DirectKd = "func kdd(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n\n" +
+        "func kdd(q: ref/i32, f: (ref/i32 during static) -> i32, n: i32 = 0) -> i32 => 1\n\n";
+
     private const string ArrayK = "func ka(q: ref/i32, p: [2 of (ref/i32 during q) -> i32]) -> i32 => 0\n\n";
 
     private const string EvidenceTupleK = "func kq(p: (ref/i32 during q, (ref/i32 during q) -> i32)) -> i32 => 0\n\n";
@@ -449,16 +463,16 @@ public partial class CallableOriginForwardingTest
     // give the relation (t1j_n, t1p_n, cz11, cz12, cz14_n; a header that differs from the target only in its Origins is judged by its
     // erasure, SPEC 7.7.4, design-r2 Amendment 3: cz14) or convert under `origin r outlives q` alone (c2b, c2d, c2e, c2f; inside a tuple or array
     // literal the conversion's own record at the converted value, c2, c4). A conversion at a call argument is the selected
-    // candidate's comparison record at the argument after selection (t1d_n; dev: NoApplicableOverload_Kd; landing review B1). A head
+    // candidate's comparison record at the argument after selection (t1d_n; dev: NoApplicableOverload_Kd; landing review B1), a Function
+    // Item's too (e1a_n, ArgFlow rulings 181, 182: its erasure fits by its structural part before selection). A head
     // whose result relates Origins no clause relates (WeakerHead, LoneInputs) is also its declaration's record (R4-M162); its
     // well-formed form is the valid twin (c2b_c, t1j). Since H5 the MIR decides and publishes its records directly (DECISIONS R5-M184,
     // until A6's 2g-1): rv1's body relation is at its declaration, the MIR's span; on rejected programs (class 4, counted by code under
-    // Q13) a located Unsupported_Kd at the annotation's written nested relation (e1n, e1f, e1fn; cz12 at the Closure's) and, at
+    // Q13) a record at the annotation's written nested relation (e1n, e1f, e1fn; cz12 at the Closure's; Binding's, below) and, at
     // t1j_n's annotation, the meet t1j's (e) row records (the body root's oracle lacks the nested inputs' premises; PLAN G216 (b)).
-    // F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN G216 (b)), the rows tagged F-a: Binding records nothing, so A5's
-    // located Unsupported_Kd at the written nested relation keeps the invalid program rejected where its UnprovenOriginRelation_Kd was
-    // (each record's text occurs once in its program, so it is the exact span); U-O3 (BU's R7-O3) moves the Language record to Binding at
-    // the same site and re-points these rows back.
+    // A written nested relation of a per-call Origin is its nested signature's declaration row, Binding's UnprovenOriginRelation_Kd at
+    // the written relation (R7-O3 U-O3; SPEC 15.3.4; each record's text occurs once in its program, so it is the exact span); from H5 until
+    // U-O3 it was A5's located Unsupported_Kd there (F-a, H5's (e) list, the owner's O-2, PLAN G216 (b)).
     [Theory]
     // rv1's local annotation fit is at its initializer (H11b D5, R7-O1 H).
     [InlineData("rv1", ClosureR3 + "    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
@@ -473,20 +487,20 @@ public partial class CallableOriginForwardingTest
     [InlineData("t1j_n", "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (" + LoneInputs + ") -> Option<ref/(ref/i32 during a) during c>) -> i32\n    let g: (" + LoneInputs + ") -> Option<ref/(ref/i32 during a) during (c and b)> = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during a) during (c and b); UnprovenOriginRelation_Kd ref/(ref/i32 during a) during c")]
     [InlineData("t1p", "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (Option<ref/(ref/i32 during a) during (b and c)>) -> i32) -> i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "")]
     [InlineData("t1p_n", "func k(a: ref/i32, b: ref/i32, c: ref/i32, f: (Option<ref/(ref/i32 during (a and c)) during b>) -> i32) -> i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
-    [InlineData("e1", LeakX + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: " + UseTarget + " = leak1\n    return 0\n", "Unsupported_Kd ref/(ref/i32) during q")] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
-    [InlineData("e1n", LeakX + "func k(q: ref/i32) -> i32\n    let g: " + UseTarget + " = leak1\n    return 0\n", "UnprovenOriginContract_Kd leak1; Unsupported_Kd ref/(ref/i32) during q")]
+    [InlineData("e1", LeakX + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: " + UseTarget + " = leak1\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
+    [InlineData("e1n", LeakX + "func k(q: ref/i32) -> i32\n    let g: " + UseTarget + " = leak1\n    return 0\n", "UnprovenOriginContract_Kd leak1; UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
     [InlineData("e1a", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    origin q outlives static\n    return use(q, leak1)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
-    [InlineData("e1a_n", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    return use(q, leak1)\n", "NoApplicableOverload_Kd use(q, leak1); UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
-    [InlineData("e1f", StaticValue + "i32\n    origin q outlives static\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static; Unsupported_Kd ref/(ref/i32) during q")]
-    [InlineData("e1fn", StaticValue + "i32\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32) during static; Unsupported_Kd ref/(ref/i32) during q")]
+    [InlineData("e1a_n", LeakX + "func use(q: ref/i32, g: " + UseTarget + ") -> i32 => 0\nfunc k(q: ref/i32) -> i32\n    return use(q, leak1)\n", "UnprovenOriginContract_Kd leak1; UnprovenOriginRelation_Kd ref/(ref/i32) during q")]
+    [InlineData("e1f", StaticValue + "i32\n    origin q outlives static\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("e1fn", StaticValue + "i32\n    let g: " + UseTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32) during q; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("e1r", StaticValue + UseTarget + "\n    origin q outlives static\n    return f@move\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during q; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("e1r_n", StaticValue + UseTarget + "\n    return f@move\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32) during q; UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
-    [InlineData("cz5", LeakQ + "func mk(b: ref/i32) -> i32\n    let g: " + StaticTarget + " = leak1\n    return 0\n", "Unsupported_Kd ref/(ref/i32) during static")] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
-    [InlineData("cz6", LeakQ + "func mk() -> i32\n    let fr = leak1\n    let g: " + StaticTarget + " = fr\n    return 0\n", "Unsupported_Kd ref/(ref/i32) during static")] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
+    [InlineData("cz5", LeakQ + "func mk(b: ref/i32) -> i32\n    let g: " + StaticTarget + " = leak1\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
+    [InlineData("cz6", LeakQ + "func mk() -> i32\n    let fr = leak1\n    let g: " + StaticTarget + " = fr\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("cz7", LeakQ + "func use(g: " + StaticTarget + ") -> i32 => 0\nfunc mk() -> i32\n    return use(leak1)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("cz13", LeakQ + "func mk() -> " + StaticTarget + "\n    return leak1\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("cz11", LeakQ + "func mk() -> i32\n    let g: " + StaticWeaker + " = leak1\n    return 0\n", "UnprovenOriginContract_Kd leak1")]
-    [InlineData("cz12", "func mk() -> i32\n    let g: " + StaticWeaker + " = func [] (q: ref/i32) -> Option<ref/(ref/i32 during q) during static> => .None\n    return 0\n", "UnprovenOriginContract_Kd func [] (q: ref/i32) -> Option<ref/(ref/i32 during q) during static> => .None; Unsupported_Kd ref/(ref/i32 during q) during static")]
+    [InlineData("cz12", "func mk() -> i32\n    let g: " + StaticWeaker + " = func [] (q: ref/i32) -> Option<ref/(ref/i32 during q) during static> => .None\n    return 0\n", "UnprovenOriginContract_Kd func [] (q: ref/i32) -> Option<ref/(ref/i32 during q) during static> => .None; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during static")]
     [InlineData("cz14", "func k(x: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/i32 during x> = func [] (q: ref/i32) -> Option<ref/i32 during static> => .None\n    return 0\n", "")]
     [InlineData("cz14_n", "func k(x: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/i32 during static> = func [] (q: ref/i32) -> Option<ref/i32 during x> => .None\n    return 0\n", "UnprovenOriginContract_Kd func [] (q: ref/i32) -> Option<ref/i32 during x> => .None")]
     [InlineData("c2b", WeakerHead + "    let g: " + WeakerTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
@@ -521,24 +535,23 @@ public partial class CallableOriginForwardingTest
     // NoApplicableOverload_Kd. The Callable proof of a Closure subject judges its well-formedness (cal2) and a whole-contract comparison's
     // Origin part is Unknown at the argument (q3_flat, q6_flat: the owner's G326 answer, 2026-10-31, 「すべて推奨の内容でお願いします」);
     // a conversion failing in several conditions is one record naming the first (two). Since H5 the MIR's records on these rejected
-    // programs are published directly (DECISIONS R5-M184, until A6's 2g-1; class 4, counted by code under Q13): a located Unsupported_Kd
-    // at the Closure's written nested relation (e1x to v1_c, cal2, e1c_n) and at the annotation's (e1x, e1x_c, e1c_n), and at nest1's
+    // programs are published directly (DECISIONS R5-M184, until A6's 2g-1; class 4, counted by code under Q13): a record at the
+    // Closure's written nested relation (e1x to v1_c, cal2, e1c_n) and at the annotation's (e1x, e1x_c, e1c_n; Binding's, below), and at nest1's
     // annotation the relation its head lacks, judged under the body root's oracle (PLAN G216 (b), as t1j).
-    // F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN G216 (b)), the rows tagged F-a: Binding records nothing, so A5's
-    // located Unsupported_Kd at the written nested relation keeps the invalid program rejected where its UnprovenOriginRelation_Kd was
-    // (each record's text occurs once in its program, so it is the exact span); U-O3 (BU's R7-O3) moves the Language record to Binding at
-    // the same site and re-points these rows back.
+    // A written nested relation of a per-call Origin is its nested signature's declaration row, Binding's UnprovenOriginRelation_Kd at
+    // the written relation (R7-O3 U-O3; SPEC 15.3.4; each record's text occurs once in its program, so it is the exact span); from H5 until
+    // U-O3 it was A5's located Unsupported_Kd there (F-a, H5's (e) list, the owner's O-2, PLAN G216 (b)).
     [Theory]
-    [InlineData("U2.1", "e1x", "func k(s: ref/i32) -> ref/i32 during static\n" + LeakClosure + "    let g: " + LeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginContract_Kd c; UnprovenOriginRelation_Kd (.None, x); " + PairUnsupported + "; Unsupported_Kd ref/(ref/i32) during s", LeakLabel)]
-    [InlineData("U2.1", "e1x_c", "func k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd (.None, x); " + PairUnsupported + "; Unsupported_Kd ref/(ref/i32) during static", null)]
-    [InlineData("U2.1", "e1ret", "func mk(s: ref/i32) -> " + LeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginContract_Kd c; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during s; " + PairUnsupported, LeakLabel)]
-    [InlineData("U2.1", "e1ret_c", "func mk(s: ref/i32) -> " + StaticLeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static; " + PairUnsupported, null)]
-    [InlineData("U2.1", "e1arg2", LeakApply + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during s; " + PairUnsupported, LeakLabel)]
-    [InlineData("U2.1", "e1arg2_c", "func apply(s: ref/i32 during static, g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\nfunc k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static; " + PairUnsupported, null)]
-    [InlineData("U2.1", "v1", "func k(s: ref/i32, h: (ref/i32, " + LeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during s; " + PairUnsupported, LeakLabel)]
-    [InlineData("U2.1", "v1_c", "func k(s: ref/i32 during static, h: (ref/i32, " + StaticLeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static; " + PairUnsupported, null)]
-    [InlineData("U2.1", "e1c", "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "Unsupported_Kd ref/(ref/i32 during x) during static; Unsupported_Kd ref/(ref/i32) during q", null)] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
-    [InlineData("U2.1", "e1c_n", "func k(q: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginContract_Kd " + ErasedClosure + "; Unsupported_Kd ref/(ref/i32 during x) during static; Unsupported_Kd ref/(ref/i32) during q", null)]
+    [InlineData("U2.1", "e1x", "func k(s: ref/i32) -> ref/i32 during static\n" + LeakClosure + "    let g: " + LeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginContract_Kd c; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during s", LeakLabel)]
+    [InlineData("U2.1", "e1x_c", "func k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "e1ret", "func mk(s: ref/i32) -> " + LeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginContract_Kd c; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during s", LeakLabel)]
+    [InlineData("U2.1", "e1ret_c", "func mk(s: ref/i32) -> " + StaticLeakTarget + "\n" + LeakClosure + "    return c\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "e1arg2", LeakApply + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during s", LeakLabel)]
+    [InlineData("U2.1", "e1arg2_c", "func apply(s: ref/i32 during static, g: " + StaticLeakTarget + ") -> ref/i32 during static\n    let pair = g(s)\n    return pair.1\nfunc k(s: ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return apply(s, c@move)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "v1", "func k(s: ref/i32, h: (ref/i32, " + LeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during s", LeakLabel)]
+    [InlineData("U2.1", "v1_c", "func k(s: ref/i32 during static, h: (ref/i32, " + StaticLeakTarget + ") -> ref/i32 during static) -> ref/i32 during static\n" + LeakClosure + "    return h(s, c@move)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "e1c", "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during q", null)]
+    [InlineData("U2.1", "e1c_n", "func k(q: ref/i32) -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during q> = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginContract_Kd func [] (x: ref/i32) -> Option<ref/(ref/i32 during x) during static> => .None; UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during q", null)]
     [InlineData("U2.1", "nest1", NestedHead + "Option<ref/(ref/i32 during b) during a>) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "Option<ref/(ref/i32 during b) during a> = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during b) during a; UnprovenOriginRelation_Kd ref/(ref/i32 during b) during a", null)]
     [InlineData("U2.1", "nest1_n", NestedHead + "i32) -> i32\n    origin c outlives b\n    let g: " + NestedTarget + "i32 = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move", "the 1st parameter's 1st parameter's well-formedness requires b outlives a, which is not proven")]
     [InlineData("U2.1", "nest2", MemberHead + MemberTarget, "UnprovenOriginContract_Kd f@move", null)]
@@ -559,7 +572,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("U2.1", "vo1_c", ABCHead + "o: Option<" + FnC + ">, h: (Option<" + FnB + ">) -> i32) -> i32\n" + CBA + "    return h(o@move)\n", "", null)]
     [InlineData("U2.1", "pg1", "struct S {a, b, c}\n" + CB + "    public computed p: Option<" + FnB + ">\n        get() -> Option<" + FnB + "> => self.mk()\n    public init() => ()\n    public func mk(self: ref/Self) -> Option<" + FnC + "> => .None\n", "UnprovenOriginContract_Kd self.mk()", null)] // the selected candidate's comparison record (landing review B1; closes PLAN G376)
     [InlineData("U2.1", "pg1_c", "struct S {a, b, c}\n" + CBA + "    public computed p: Option<" + FnB + ">\n        get() -> Option<" + FnB + "> => self.mk()\n    public init() => ()\n    public func mk(self: ref/Self) -> Option<" + FnC + "> => .None\n", "", null)]
-    [InlineData("U2.1", "cal2", CallableApply + "    let c = " + ErasedClosure + "\n    return apply(c@ref)\n", "UnprovenConstraint_Kd c@ref; Unsupported_Kd ref/(ref/i32 during x) during static", null)]
+    [InlineData("U2.1", "cal2", CallableApply + "    let c = " + ErasedClosure + "\n    return apply(c@ref)\n", "UnprovenConstraint_Kd c@ref; UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static", null)]
     [InlineData("U2.1", "cal2_c", CallableApply + "    let c = func [] (x: ref/i32) -> Option<ref/(ref/i32 during static) during x> => .None\n    return apply(c@ref)\n", "", null)]
     [InlineData("U2.1", "q3_flat", FlatApply + "func use()\n    var local: i32 = 1\n    let p = local@ref\n    let c = func [p] () => p\n    let r = apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
     [InlineData("U2.1", "q6_flat", FlatApply + "func use()\n    let n: i32 = 1\n    let c = func [n@ref] () => n\n    let r = apply(c@ref)\n", "UnprovenConstraint_Kd c@ref", null)]
@@ -586,9 +599,13 @@ public partial class CallableOriginForwardingTest
     // the `uniq` or the `a` candidate (rank2*, rank3*), its failing erasure then the record; the Front's twins put the Origin in the result
     // (tw-res), on another parameter (tw-osel2, tw-joinsel1; tw-osel2-ok's selection is AClosuresOriginPartNeverSelectsACandidate's
     // fixture) and the stand-in at one candidate only (tw-mixsel). Dev accepted clsel, clselif1, nb3b, nb3bif1, rank2bc, rank3i1, tw-res,
-    // tw-osel2, tw-joinsel1 and tw-mixsel and rejected clselctl1, nb1, r04n and z02n. The Item arm and a function reference are PLAN G379
-    // (b)'s: their invalid forms are Explicit until R7-P4 T2 (itsel, frsel, frselctl1n, and G514's t4q, u2, u2g); itselctl1 and G519's
-    // Item forms r06n and r06 are accepted already. The Middle's consent rows (C-387): the selected callee's result decides the Loan (d-selI
+    // tw-osel2, tw-joinsel1 and tw-mixsel and rejected clselctl1, nb1, r04n and z02n. A Function Item's erasure fits by its structural
+    // part alone too, its contract the conversion's after selection (R4-M213 for Items, ArgFlow ruling 181; PLAN G379 (b)'s Item arm):
+    // ambiguous where only an Origin differs (itsel, frsel; dev accepted them), and with a lone or the selected candidate the
+    // conversion's record at the Item (itselctl1n, frselctl1n, G514's t4q, kt_bad, the defaulted pair's kdd_bad, which dev accepted;
+    // dev's records were NoApplicableOverload_Kd), as at a Case payload (xd_bad, kd_bad; ks3, ks4, kd_ok, xd_ok and the Closure payload
+    // xcl_ok valid, xcl_bad its record); itselctl1 and G519's Item forms r06n and r06 are accepted. A function reference that needs S
+    // stays R7-P4 T2's (u2, u2g Explicit). The Middle's consent rows (C-387): the selected callee's result decides the Loan (d-selI
     // its conflict, d-selR none; dev selected the generic one), an erasure beside a generic `F` candidate is incomparable (e-owv; dev
     // accepted it; e-owu, a `var` region, is the located limit since Revision 4), and an Origin nested in an input's result or referent is proven by premises (c-nfnv, c-nrefv2). G379 (a)
     // Revision 3 (SPEC 7.7.4, 10.1 step 5, 10.2, 15.6.1, 15.6.5; the owner's O-404): an erasure's receiver and Owned conditions decide its
@@ -631,6 +648,41 @@ public partial class CallableOriginForwardingTest
     [InlineData("clselif", HPre + HStatic + KClReady + LetCl + LetCm + ClJoin, "AmbiguousBinding_Kd h(if ready => cl@move else => cm@move, 1, b)")]
     [InlineData("clselctl1if", HPre + KClReady + "    origin b outlives c\n" + LetCl + LetCm + ClJoin, "")]
     [InlineData("clselctl1nif", HPre + KClReady + LetCl + LetCm + ClJoin, "UnprovenOriginContract_Kd cl@move; UnprovenOriginContract_Kd cm@move")]
+    // ArgFlow rulings 184, 185 (B1, one level above cause A): before selection a Tuple, array or Dictionary literal part of a waiting
+    // join position is fitted by its own parts (rule A at every position kind), its erasure by the structural part (LateAdaptation
+    // reads ErasureSignatureFits), the contract the conversion's after selection, the join resting on its failure (ja3n, ja7n).
+    [InlineData("ja1", "func h(x: ((ref/i32 during b) -> i32, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc h(x: ((ref/i32 during static) -> i32, i32), n: i64, b: ref/i32) -> i32 => 1\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    return h(if ready => (cl@move, 1) else => mk(), 1, b)\n", "AmbiguousBinding_Kd h(if ready => (cl@move, 1) else => mk(), 1, b)")]
+    [InlineData("ja5", "func h(x: ((ref/i32 during b) -> i32, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc h(x: ((ref/i32 during static) -> i32, i32), n: i64, b: ref/i32) -> i32 => 1\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    func it(x: ref/i32 during c) -> i32 => 0\n    return h(if ready => (it, 1) else => mk(), 1, b)\n", "AmbiguousBinding_Kd h(if ready => (it, 1) else => mk(), 1, b)")]
+    [InlineData("ja1n", "func h(x: ((ref/i32 during b) -> i32, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    return h(if ready => (cl@move, 1) else => mk(), 1, b)\n", "UnprovenOriginContract_Kd cl@move")]
+    [InlineData("ja1v", "func h(x: ((ref/i32 during b) -> i32, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    origin b outlives c\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    return h(if ready => (cl@move, 1) else => mk(), 1, b)\n", "")]
+    [InlineData("ja2n", "func h(x: ((ref/i32 during b) -> i32, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    func it(x: ref/i32 during c) -> i32 => 0\n    return h(if ready => (it, 1) else => mk(), 1, b)\n", "UnprovenOriginContract_Kd it")]
+    [InlineData("ja2v", "func h(x: ((ref/i32 during b) -> i32, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    origin b outlives c\n    func it(x: ref/i32 during c) -> i32 => 0\n    return h(if ready => (it, 1) else => mk(), 1, b)\n", "")]
+    [InlineData("ja4n", "func h(x: [1 of (ref/i32 during b) -> i32], n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    return h(if ready => [cl@move] else => mk(), 1, b)\n", "UnprovenOriginContract_Kd cl@move")]
+    [InlineData("ja3n", "func h(x: (ref/i32 during b) -> i32, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    let cm = func [] (x: ref/i32 during c) -> i32 => 1\n    return h(if ready => (if ready => cl@move else => cm@move) else => mk(), 1, b)\n", "UnprovenOriginContract_Kd cl@move; UnprovenOriginContract_Kd cm@move")]
+    [InlineData("ja3v", "func h(x: (ref/i32 during b) -> i32, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    origin b outlives c\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    let cm = func [] (x: ref/i32 during c) -> i32 => 1\n    return h(if ready => (if ready => cl@move else => cm@move) else => mk(), 1, b)\n", "")]
+    [InlineData("ja3i", "func h(x: (ref/i32 during b) -> i32, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    func it(x: ref/i32 during c) -> i32 => 0\n    func it2(x: ref/i32 during c) -> i32 => 1\n    return h(if ready => (if ready => it else => it2) else => mk(), 1, b)\n", "UnprovenOriginContract_Kd it; UnprovenOriginContract_Kd it2")]
+    [InlineData("ja7n", "func h(x: ((ref/i32 during b) -> i32, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    let cm = func [] (x: ref/i32 during c) -> i32 => 1\n    return h(if ready => (if ready => cl@move else => cm@move, 1) else => mk(), 1, b)\n", "UnprovenOriginContract_Kd cl@move; UnprovenOriginContract_Kd cm@move")]
+    [InlineData("jo1", "func h(x: (ref/i32 during b, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc h(x: (ref/i32 during static, i32), n: i64, b: ref/i32) -> i32 => 1\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    return h(if ready => (c, 1) else => mk(), 1, b)\n", "AmbiguousBinding_Kd h(if ready => (c, 1) else => mk(), 1, b)")]
+    [InlineData("jo1v", "func h(x: (ref/i32 during b, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    return h(if ready => (c, 1) else => mk(), 1, b)\n", "")]
+    [InlineData("jo1n", "func h(x: (ref/i32 during b, i32), n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    return h(if ready => (c, 1) else => mk(), 1, b)\n", "Unsupported_Kd (c, 1)")] // BU-156's interim (PLAN G443), as dev
+    [InlineData("jo4n", "func h(x: [1 of ref/i32 during b], n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    return h(if ready => [c] else => mk(), 1, b)\n", "Unsupported_Kd [c]")] // BU-156's interim (PLAN G443), as dev
+    [InlineData("jo4v", "func h(x: [1 of ref/i32 during b], n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    return h(if ready => [c] else => mk(), 1, b)\n", "")]
+    [InlineData("jd1n", "func h(x: Dictionary<i32, (ref/i32 during b) -> i32>, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    return h(if ready => [1: cl@move] else => mk(), 1, b)\n", "UnprovenOriginContract_Kd cl@move")]
+    [InlineData("jd1v", "func h(x: Dictionary<i32, (ref/i32 during b) -> i32>, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n    origin b outlives c\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    return h(if ready => [1: cl@move] else => mk(), 1, b)\n", "")]
+    [InlineData("jo5", "func h(x: Option<ref/i32 during b>, n: i32, b: ref/i32) -> i32 => 0\nfunc h(x: Option<ref/i32 during static>, n: i64, b: ref/i32) -> i32 => 1\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, o: Option<ref/i32 during c>, ready: bool) -> i32\n    return h(if ready => o else => mk(), 1, b)\n", "AmbiguousBinding_Kd h(if ready => o else => mk(), 1, b)")]
+    // ArgFlow ruling 186 (jo2s): a borrowed owner temporary of a literal, an aggregate or a value join carries its borrow Type
+    // (TemporaryBorrow), so the selected call judges it at a fixed Origin (SPEC 10.2 Temporaries, 3.6, 14.9.2 step 3); a join
+    // whose Target Result Type step 1 fixed judges each source once, at its value (step 4: jo5s at o; jo5j, step 2, at the join).
+    [InlineData("jo2s", "func h(x: ref/i32 during static, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    return h(if ready => c else => mk(), 1, b)\n", "UnsatisfiedOriginRelation_Kd if ready => c else => mk()")]
+    [InlineData("jo2sv", "func h(x: ref/i32 during static, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives static\n    return h(if ready => c else => mk(), 1, b)\n", "UnsatisfiedOriginRelation_Kd if ready => c else => mk()")]
+    [InlineData("jt1", "func h(x: ref/i32 during static, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    return h(5, 1, b)\n", "UnsatisfiedOriginRelation_Kd 5")]
+    [InlineData("jt2", "func h(x: ref/i32 during static, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    return h(if ready => 5 else => mk(), 1, b)\n", "UnsatisfiedOriginRelation_Kd if ready => 5 else => mk()")]
+    [InlineData("jt6", "func h(x: ref/(i32, i32) during static, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    return h((1, 2), 1, b)\n", "UnsatisfiedOriginRelation_Kd (1, 2)")]
+    [InlineData("jt9", "func h(x: ref/[2 of i32] during static, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    return h([1, 2], 1, b)\n", "UnsatisfiedOriginRelation_Kd [1, 2]")]
+    [InlineData("jo5s", "func h(x: Option<ref/i32 during static>, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, o: Option<ref/i32 during c>, ready: bool) -> i32\n    return h(if ready => o else => mk(), 1, b)\n", "UnprovenOriginRelation_Kd o")]
+    [InlineData("jo5s0", "func h(x: Option<ref/i32 during static>, n: i32, b: ref/i32) -> i32 => 0\nfunc k(b: ref/i32, c: ref/i32, o: Option<ref/i32 during c>, ready: bool) -> i32\n    return h(o, 1, b)\n", "UnprovenOriginRelation_Kd o")]
+    [InlineData("jo5j", "func h(x: Option<ref/i32 during static>, n: i32, b: ref/i32) -> i32 => 0\nfunc k(b: ref/i32, c: ref/i32, o: Option<ref/i32 during c>, s: Option<ref/i32 during static>, ready: bool) -> i32\n    return h(if ready => o else => s, 1, b)\n", "UnprovenOriginRelation_Kd if ready => o else => s")]
+    [InlineData("jo5v", "func h(x: Option<ref/i32 during static>, n: i32, b: ref/i32) -> i32 => 0\nfunc mk<T>() -> T => $abort(\"x\")\nfunc k(b: ref/i32, c: ref/i32, o: Option<ref/i32 during c>, ready: bool) -> i32\n    origin c outlives static\n    return h(if ready => o else => mk(), 1, b)\n", "")]
     [InlineData("clselw", HPre + HStatic + KCl + ClWritten, "AmbiguousBinding_Kd h(func [] (x: ref/i32 during c) -> i32 => 0, 1, b)")]
     [InlineData("clselctl1w", HPre + KCl + "    origin b outlives c\n" + ClWritten, "")]
     [InlineData("clselctl1nw", HPre + KCl + ClWritten, "UnprovenOriginContract_Kd func [] (x: ref/i32 during c) -> i32 => 0")]
@@ -660,16 +712,27 @@ public partial class CallableOriginForwardingTest
     [InlineData("r06n", K3Named + PremiseHost + NestedHn + "    return k3(s, hn)\n", "")]
     [InlineData("r06", K3Named + PremiseHost + NestedHn + "    let g = k3\n    return g(s, hn)\n", "")]
     [InlineData("t4q_ok", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc host(s: ref/i32 during static) -> i32\n    func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n    return run(s, h3)\n", "")]
-    [InlineData("itsel [T2]", HPre + HStatic + KCl + "    func it(x: ref/i32 during c) -> i32 => 0\n    return h(it, 1, b)\n", "AmbiguousBinding_Kd h(it, 1, b)", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("itsel", HPre + HStatic + KCl + "    func it(x: ref/i32 during c) -> i32 => 0\n    return h(it, 1, b)\n", "AmbiguousBinding_Kd h(it, 1, b)")]
     [InlineData("itselctl1", HPre + KCl + "    origin b outlives c\n    func it(x: ref/i32 during c) -> i32 => 0\n    return h(it, 1, b)\n", "")]
+    [InlineData("itselctl1n", HPre + KCl + "    func it(x: ref/i32 during c) -> i32 => 0\n    return h(it, 1, b)\n", "UnprovenOriginContract_Kd it")]
     [InlineData("tw-res", "func h(f: (ref/i32 during a) -> ref/i32 during a, n: i32, a: ref/i32) -> i32 => 0\nfunc h(f: (ref/i32 during a) -> ref/i32 during static, n: i64, a: ref/i32) -> i32 => 1\nfunc k(a: ref/i32) -> i32\n    let c = func [] (z: ref/i32 during a) -> ref/i32 during a => z\n    return h(c@move, 1, a)\n", "AmbiguousBinding_Kd h(c@move, 1, a)")]
     [InlineData("tw-osel2", HOsel2 + "func k(a: ref/i32, b: ref/i32) -> i32\n" + LetCOsel2 + "    return h(c@move, a, b, v)\n", "UnprovenOriginContract_Kd c@move")]
     [InlineData("tw-osel2-ok", HOsel2 + "func k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n" + LetCOsel2 + "    return h(c@move, a, b, v)\n", "")]
     [InlineData("tw-joinsel1", HOsel2 + "func k(a: ref/i32, b: ref/i32, ready: bool) -> i32\n" + LetCOsel2 + "    return h(if ready => c@move else => $abort(\"x\"), a, b, v)\n", "UnprovenOriginContract_Kd if ready => c@move else => $abort(\"x\")")]
     [InlineData("tw-mixsel", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T, n: i32) -> i32 => 0\nfunc make(v: ref/i32 during x, action: (ref/i32 during x) -> ref/i32 during static, n: i64) -> i32 => 1\nfunc run()\n    let n: i32 = 6\n    let c = func (k: ref/i32) => k\n    let r = make(n@ref, c, 1)\n", "AmbiguousBinding_Kd make(n@ref, c, 1)")]
-    [InlineData("frsel [T2]", HPre + HStatic + Gs + KCl + "    return h(gs, 1, b)\n", "AmbiguousBinding_Kd h(gs, 1, b)", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
-    [InlineData("frselctl1n [T2]", HPre + Gs + KCl + "    return h(gs, 1, b)\n", "UnprovenOriginContract_Kd gs", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
-    [InlineData("t4q [T2]", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc host(s: ref/i32) -> i32\n    func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n    return run(s, h3)\n", "UnprovenOriginContract_Kd h3", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("frsel", HPre + HStatic + Gs + KCl + "    return h(gs, 1, b)\n", "AmbiguousBinding_Kd h(gs, 1, b)")]
+    [InlineData("frselctl1n", HPre + Gs + KCl + "    return h(gs, 1, b)\n", "UnprovenOriginContract_Kd gs")]
+    [InlineData("t4q", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc host(s: ref/i32) -> i32\n    func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n    return run(s, h3)\n", "UnprovenOriginContract_Kd h3")]
+    [InlineData("kdd_bad", PlainK + DirectKd + NestedHost + "    return kdd(s, h3)\n", "UnprovenOriginContract_Kd h3")]
+    [InlineData("kt_bad", PlainK + TupleK + NestedHost + "    return kt(s, (h3, 1))\n", "UnprovenOriginContract_Kd h3")]
+    [InlineData("xd_ok", PlainK + OptionK + NestedHost + "    return ko(s, .Some(h4))\n", "")]
+    [InlineData("xd_bad", PlainK + OptionK + NestedHost + "    return ko(s, .Some(h3))\n", "UnprovenOriginContract_Kd h3")]
+    [InlineData("kd_ok", PlainK + OptionKd + NestedHost + "    return kd(s, .Some(h4))\n", "")]
+    [InlineData("kd_bad", PlainK + OptionKd + NestedHost + "    return kd(s, .Some(h3))\n", "UnprovenOriginContract_Kd h3")]
+    [InlineData("ks3", PlainK + StaticOptionK + NestedHost + "    return ks(.Some(h3))\n", "")]
+    [InlineData("ks4", PlainK + StaticOptionK + NestedHost + "    return ks(.Some(h4))\n", "")]
+    [InlineData("xcl_ok", PlainK + OptionK + NestedHost + "    let c = func (x: ref/i32) -> i32 => 5\n    return ko(s, .Some(c@move))\n", "")]
+    [InlineData("xcl_bad", PlainK + OptionK + NestedHost + "    let c = func (x: ref/i32 during static) -> i32 => 5\n    return ko(s, .Some(c@move))\n", "UnprovenOriginContract_Kd c@move")]
     [InlineData("u2 [T2]", Pick + UseStaticResult + "    return use(pick)\n", "UnprovenOriginContract_Kd pick", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
     [InlineData("u2g [T2]", "func identity<T>(v: T) -> T => v@move\n" + UseStaticResult + "    return use(identity)\n", "UnprovenOriginContract_Kd identity", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
     [InlineData("d-selI", SelW + SelA + SelK, "ComparisonLoanConflict_Kd z = 2")]
@@ -694,7 +757,11 @@ public partial class CallableOriginForwardingTest
     [InlineData("e-owsinx", RunOne + OwnStatic + "    let x = s\n    let c = func [x] () -> i32\n        let d = func [x] () -> i32 => x@follow\n        let g: () -> i32 = d@move\n        return g()\n    return c()\n", "")]
     [InlineData("e-owsin", RunOne + OwnStatic + "    let x = s\n    let c = func [] (v: ref/i32 during x) -> i32\n        let d = func [v] () -> i32 => v@follow\n        let g: () -> i32 = d@move\n        return g()\n    return c(x)\n", "UnprovenConstraint_Kd d@move")] // R7-O2 A1 (Q13, a class-1 row of D-862): accepted before
     [InlineData("a_nf_lift_clo", "func f(p: ref/i32) -> ref/i32 during p\n    let r = p\n    let lift = func (v: ref/i32 during r) -> ref/i32 during p => v\n    return lift(r)\n", "UnprovenOriginRelation_Kd v")] // R7-O2 A1 (Q13, a class-1 row of D-862): accepted before
+    [InlineData("a_nf_lift", "func f(p: ref/i32) -> ref/i32 during p\n    let r = p\n    func lift(v: ref/i32 during r) -> ref/i32 during p => v\n    return lift(r)\n", "UnprovenOriginRelation_Kd v")] // R7-O3 O3-A (Q13, D-862's named form; dev accepted it): r is fixed in lift with no premise (SPEC 15.3.4), and the result fit is at `v`, inside lift.
+    [InlineData("a_nf_lift_blk", "func f(p: ref/i32) -> ref/i32 during p\n    let r = p\n    func lift(v: ref/i32 during r) -> ref/i32 during p\n        return v\n    return lift(r)\n", "UnprovenOriginRelation_Kd v")] // R7-O3 O3-A (Q13: dev's located Unsupported_Kd, the view's row 9, becomes SPEC 15.3.4's record through the declaring body).
     [InlineData("e-owe", RunPair + "func k(p: ref/i32, q: ref/i32) -> i32\n    let c = func [] (x: ref/i32 during p) -> i32 => 0\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")] // t_b5/t_b6's Closure form (shape from the 11-07 board, sources lost)
+    [InlineData("s2_runpair", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc h4(x: ref/i32) -> i32 => 5\nfunc h5(x: ref/i32) -> i32 => 6\nfunc run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\nfunc run<F>(q: ref/i32, f: F) -> i32 => 1\nfunc host(s: ref/i32, ready: bool) -> i32\n    return run(s, h3)\n", "AmbiguousBinding_Kd run(s, h3)")] // e-owe's Function Item form (t_b5); dev accepted it
+    [InlineData("s2_runpair_ok", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc h4(x: ref/i32) -> i32 => 5\nfunc h5(x: ref/i32) -> i32 => 6\nfunc run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\nfunc run<F>(q: ref/i32, f: F) -> i32 => 1\nfunc host(s: ref/i32, ready: bool) -> i32\n    return run(s, h4)\n", "AmbiguousBinding_Kd run(s, h4)")] // the fitting Item: incomparable too
     [InlineData("e-rcv", RunPair + RcvK + RcvP + "    return run(q, c@move)\n", "")]
     [InlineData("e-rcv0", RunPair + RcvK + RcvQ + "    return run(q, c@move)\n", "")]
     [InlineData("e-rcvg", RunF + RcvK + RcvP + "    return run(q, c@move)\n", "")]
@@ -863,6 +930,25 @@ public partial class CallableOriginForwardingTest
     // limited position is its own located limit, the element's as a direct argument's (x-order-i; cdb04ab61 located only e@move).
     [InlineData("x-order-q", RunOrder + OwnK + OwnCq + "    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (c@move, q))\n", "")]
     [InlineData("x-order-i", RunOrder + "func k(p: ref/i32, q: ref/i32) -> i32\n    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    var r3 = p\n    let e2 = func [r3] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (e2@move, q))\n", "Unsupported_Kd e2@move; Unsupported_Kd e@move")]
+    // R1-a (PLAN G1030's call-region part; SPEC 15.3.6, 15.4.4, 15.6.4, 10.1, 15.2.3, 8.3.1): a call's region that its bound call's result
+    // names only covariantly and that has no recorded bound is complete (CallRegionComplete): with no source it has no answer, so the
+    // erasure's Owned is Unknown, the candidate applicable, and its Constraint record at the argument after selection (the class: an
+    // erasure at a call argument over a call region complete at the use, G1030's located limit before: r1a-ocall, a covariant Type
+    // argument r1a-gen, a nested generic call r1a-idt, a recorded lower bound r1a-fill-ord); a later slot solve that keeps it beside
+    // another open region does not reopen it (r1a-fill-later; r1a-fill-inv, the
+    // `let` declaration having fixed it, 15.4.4, though `u@follow = g` makes that open region static). G1030 keeps a region a later write
+    // can bound (r1a-inv, under `uniq`), one with a recorded bound (r1a-fill-before, pick's slot region) and a `var` region a later
+    // assignment may still refute (r1a-var-late, valid by O-406 (a) as v-late-q).
+    [InlineData("r1a-ocall", R1aApply + R1aConstant + "func use()\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-ocall-ok", "func applyG<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return 0\n" + R1aConstant + "func use()\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = applyG(k@ref)\n", "")]
+    [InlineData("r1a-gen", R1aApply + "func mko() -> Option<ref/i32 during s> => $abort(\"no\")\nfunc use()\n    let o = mko()\n    let k = func [o] () -> i32 => 0\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-idt", R1aApply + R1aConstant + "func idt<T>(x: T) -> T => x@move\nfunc use()\n    let v = idt(constant())\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-ord", R1aApply + R1aConstant + R1aPick + "func use(q: ref/i32)\n    let v = constant()\n    let z = pick(v, q)\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-later", R1aApply + R1aConstant + R1aPick + "func use()\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n    let w = constant()\n    let z = pick(v, w)\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-inv", R1aApply + R1aConstant + R1aPick + R1aSink + "func use(g: ref/i32 during static)\n    let v = constant()\n    let k = func [v] () -> i32 => v@follow\n    let r = apply(k)\n    let u = sink()\n    let z = pick(v, u@follow)\n    u@follow = g\n", "UnprovenConstraint_Kd k")]
+    [InlineData("r1a-fill-before", R1aApply + R1aConstant + R1aPick + "func use()\n    let v = constant()\n    let w = constant()\n    let z = pick(v, w)\n    let k = func [z] () -> i32 => z@follow\n    let r = apply(k)\n", "Unsupported_Kd k")]
+    [InlineData("r1a-inv", R1aApply + R1aSink + "func use()\n    let u = sink()\n    let k = func [u@move] () -> i32 => 0\n    let r = apply(k)\n", "Unsupported_Kd k")]
+    [InlineData("r1a-var-late", "func run(f: () -> i32) -> i32 => 0\nfunc run<F>(f: F) -> i32 => 1\n" + R1aConstant + "func use()\n    var x: i32 = 1\n    var r = constant()\n    let c = func [r] () -> i32 => r@follow\n    let n = run(c@move)\n    r = x@ref\n", "Unsupported_Kd c@move")]
     public void ApplicabilityJudgesTheErasureRowsConditions(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
@@ -920,31 +1006,30 @@ public partial class CallableOriginForwardingTest
     // converted local), ann and ann2 (an annotated local); a Closure's body records `(.None, x)`. A twin that passes a `static` value
     // keeps its meaning with the input fixed at `static` (d1_c, lp_ok, lc_ok, ln_ok; lpn_ok's valid form is ResultPremiseTest's lpfix),
     // and its wide form is invalid (d1_cw, lp_okw, lc_okw, ln_okw). Since H5 the MIR's records on these rejected programs are published
-    // directly (DECISIONS R5-M184, until A6's 2g-1; class 4, counted by code under Q13): a located Unsupported_Kd at a written nested
-    // relation (ann, ann_n, lp, lp_okw, lc, lc_okw) and, where `use` or `k` returns past `local`, A5's ComparisonLoanConflict_Kd at it.
-    // F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN G216 (b)), the rows tagged F-a: Binding records nothing, so A5's
-    // located Unsupported_Kd at the written nested relation keeps the invalid program rejected where its UnprovenOriginRelation_Kd was
-    // (each record's text occurs once in its program, so it is the exact span); U-O3 (BU's R7-O3) moves the Language record to Binding at
-    // the same site and re-points these rows back.
+    // directly (DECISIONS R5-M184, until A6's 2g-1; class 4, counted by code under Q13): a record at a written nested relation (ann,
+    // ann_n, lp, lp_okw, lc, lc_okw; Binding's, below) and, where `use` or `k` returns past `local`, A5's ComparisonLoanConflict_Kd at it.
+    // A written nested relation of a per-call Origin is its nested signature's declaration row, Binding's UnprovenOriginRelation_Kd at
+    // the written relation (R7-O3 U-O3; SPEC 15.3.4; each record's text occurs once in its program, so it is the exact span); from H5 until
+    // U-O3 it was A5's located Unsupported_Kd there (F-a, H5's (e) list, the owner's O-2, PLAN G216 (b)).
     [Theory]
-    [InlineData("U2.1", "d1", "func k(s: ref/i32) -> i32\n" + ResultClosure, "Unsupported_Kd ref/(ref/i32 during x) during static", null)] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
+    [InlineData("U2.1", "d1", "func k(s: ref/i32) -> i32\n" + ResultClosure, "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static", null)]
     [InlineData("U2.1", "d1_c", "func k(s: ref/i32 during static) -> i32\n" + StaticResultClosure, "", null)]
-    [InlineData("U2.1", "d1_cw", "func k(s: ref/i32 during static) -> i32\n" + ResultClosure, "Unsupported_Kd ref/(ref/i32 during x) during static", null)] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
-    [InlineData("U2.1", "lp", LeakUse + LeakFrom + LeakClosure + "    return use(c)\n", "ComparisonLoanConflict_Kd let local: i32 = 5; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static; Unsupported_Kd ref/(ref/i32 during x) during static", null)]
+    [InlineData("U2.1", "d1_cw", "func k(s: ref/i32 during static) -> i32\n" + ResultClosure, "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static", null)]
+    [InlineData("U2.1", "lp", LeakUse + LeakFrom + LeakClosure + "    return use(c)\n", "ComparisonLoanConflict_Kd let local: i32 = 5; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
     [InlineData("U2.1", "lp_ok", FixedUseOk + LeakFromStatic + FixedLeakClosure + "    return use(c, s)\n", "", null)]
-    [InlineData("U2.1", "lp_okw", LeakUseOk + LeakFromStatic + LeakClosure + "    return use(c, s)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32) during static; Unsupported_Kd ref/(ref/i32 during x) during static", null)]
+    [InlineData("U2.1", "lp_okw", LeakUseOk + LeakFromStatic + LeakClosure + "    return use(c, s)\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
     [InlineData("U2.1", "lpn", LeakMk + LeakUse + LeakFrom + "    return use(mk)\n", "ComparisonLoanConflict_Kd let local: i32 = 5; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
     [InlineData("U2.1", "lpn_ok", LeakMk + LeakUseOk + LeakFromStatic + "    return use(mk, s)\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
-    [InlineData("U2.1", "lc", LeakFrom + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n" + LocalCall, "ComparisonLoanConflict_Kd let local: i32 = 5; UnprovenOriginRelation_Kd (.None, x); Unsupported_Kd ref/(ref/i32 during x) during static; Unsupported_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "lc", LeakFrom + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n" + LocalCall, "ComparisonLoanConflict_Kd let local: i32 = 5; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
     [InlineData("U2.1", "lc_ok", LeakFromStatic + FixedLeakClosure + "    let g: " + FixedLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "", null)]
-    [InlineData("U2.1", "lc_okw", LeakFromStatic + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd (.None, x); Unsupported_Kd ref/(ref/i32 during x) during static; Unsupported_Kd ref/(ref/i32) during static", null)]
-    [InlineData("U2.1", "ln", LeakMk + LeakFrom + "    let g: " + StaticLeakTarget + " = mk\n" + LocalCall, "ComparisonLoanConflict_Kd let local: i32 = 5; Unsupported_Kd ref/(ref/i32) during static", null)] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
+    [InlineData("U2.1", "lc_okw", LeakFromStatic + LeakClosure + "    let g: " + StaticLeakTarget + " = c\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ln", LeakMk + LeakFrom + "    let g: " + StaticLeakTarget + " = mk\n" + LocalCall, "ComparisonLoanConflict_Kd let local: i32 = 5; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
     [InlineData("U2.1", "ln_ok", LeakMk + LeakFromStatic + "    let g: " + FixedLeakTarget + " = mk\n    let pair = g(s)\n    return pair.1\n", "", null)]
-    [InlineData("U2.1", "ln_okw", LeakMk + LeakFromStatic + "    let g: " + StaticLeakTarget + " = mk\n    let pair = g(s)\n    return pair.1\n", "Unsupported_Kd ref/(ref/i32) during static", null)] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
-    [InlineData("U2.1", "ann", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static; Unsupported_Kd ref/(ref/i32) during static", null)]
-    [InlineData("U2.1", "ann_n", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n" + LocalNone, "UnprovenOriginRelation_Kd ref/(ref/i32) during static; Unsupported_Kd ref/(ref/i32) during static", null)]
-    [InlineData("U2.1", "ann2", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n    return 0\n", "Unsupported_Kd ref/(ref/i32 during x) during static; Unsupported_Kd ref/(ref/i32) during static", null)] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
-    [InlineData("U2.1", "ann2_n", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n" + LocalNone, "Unsupported_Kd ref/(ref/i32 during x) during static; Unsupported_Kd ref/(ref/i32) during static", null)] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
+    [InlineData("U2.1", "ln_okw", LeakMk + LeakFromStatic + "    let g: " + StaticLeakTarget + " = mk\n    let pair = g(s)\n    return pair.1\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann_n", "func k(f: " + StaticTarget + ") -> i32\n    let g: " + StaticTarget + " = f@move\n" + LocalNone, "UnprovenOriginRelation_Kd ref/(ref/i32) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann2", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
+    [InlineData("U2.1", "ann2_n", "func k() -> i32\n    let g: " + StaticTarget + " = " + ErasedClosure + "\n" + LocalNone, "UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during static", null)]
     public void ANestedSignaturesPerCallRelationIsRecordedWhereItIsWritten(string unit, string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords($"{form} [{unit}]", body, records, label);
 
@@ -953,18 +1038,18 @@ public partial class CallableOriginForwardingTest
     // record is the source's contract at the converted value (j9, j9b, j11, j6 at each Closure, j12 at `f@move`), with no TypeMismatch_Kd
     // or contract copy at the `if`, and j4's independent capture records stay. Remaining sources that misfit keep the join's own record
     // (j9m, Conflict prevails); a `match` of two Closures (j10) and a lone Closure (j6s) are unchanged. Since H5 the MIR's records are
-    // published directly (DECISIONS R5-M184, until A6's 2g-1; class 4, counted under Q13): j6 and j6s add its located Unsupported_Kd at
-    // each arm's written nested relation and at the annotation's.
+    // published directly (DECISIONS R5-M184, until A6's 2g-1; class 4, counted under Q13): j6 and j6s add a record at each arm's written
+    // nested relation and at the annotation's, Binding's UnprovenOriginRelation_Kd since R7-O3 U-O3 (A5's located Unsupported_Kd before).
     [Theory]
     [InlineData("j9", JoinHead + "if c => " + LeakArm + " else => " + StaticArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
     [InlineData("j9b", JoinHead + "if c => " + StaticArm + " else => " + LeakArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
     [InlineData("j11", "func k(x: ref/i32, c: bool) -> Option<ref/i32 during static>\n    let g: " + StaticArmType + " = if c => " + LeakArm + " else => " + StaticArm + "\n    return g()\n", "UnprovenOriginContract_Kd " + LeakArm)]
-    [InlineData("j6", PairHead + "if c => " + PairArm + " else => " + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd (.None, x); " + PairUnsupported + "; " + PairUnsupported + "; " + PairTargetUnsupported)]
+    [InlineData("j6", PairHead + "if c => " + PairArm + " else => " + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x); UnprovenOriginContract_Kd func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x); UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during s")]
     [InlineData("j12", "func k(x: ref/i32, c: bool, f: () -> Option<ref/i32 during x>, g: " + StaticArmType + ") -> i32\n    let h: " + StaticArmType + " = if c => f@move else => g@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("j4", "func k(x: ref/i32, y: ref/i32, c: bool) -> i32\n    let g: (ref/i32) -> ref/i32 during y = if c => func [] (p: ref/i32) -> ref/i32 during x => x else => func [] (p: ref/i32) -> ref/i32 during y => y\n    return 0\n", "InvalidCaptureBinding_Kd x; InvalidCaptureBinding_Kd y; UnprovenOriginContract_Kd func [] (p: ref/i32) -> ref/i32 during x => x")]
     [InlineData("j9m", "func k(x: ref/i32, n: i32) -> i32\n    let g: " + StaticArmType + " = match n\n        0 => " + LeakArm + "\n        1 => " + StaticArm + "\n        _ => 1\n    return 0\n", "TypeMismatch_Kd 1; UnprovenOriginContract_Kd " + LeakArm)]
     [InlineData("j10", JoinHead + "match c\n        true => " + LeakArm + "\n        false => " + StaticArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + LeakArm)]
-    [InlineData("j6s", PairHead + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd " + PairArm + "; UnprovenOriginRelation_Kd (.None, x); " + PairUnsupported + "; " + PairTargetUnsupported)]
+    [InlineData("j6s", PairHead + PairArm + "\n    return 0\n", "UnprovenOriginContract_Kd func [] (x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x); UnprovenOriginRelation_Kd (.None, x); UnprovenOriginRelation_Kd ref/(ref/i32 during x) during static; UnprovenOriginRelation_Kd ref/(ref/i32) during s")]
     public void AJoinRestsOnASourceWhoseConversionFailed(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
@@ -1212,7 +1297,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("vd_bad", "func kd(f: (i32) -> i32, q: ref/i32) -> i32 => 0\n\n" + NestedHost + "    let g = kd\n    return g(func [] (x) => undefinedName2, undefinedName)\n", "UnresolvedBinding_Kd undefinedName; UnresolvedBinding_Kd undefinedName2", null)]
     [InlineData("va_bad", ClosurePlace + "    return g(c, undefinedName)\n", "TransferRequired_Kd c; UnresolvedBinding_Kd undefinedName", null)]
     [InlineData("va2_bad", ClosurePlace + "    return g(c, s)\n", "TransferRequired_Kd c", null)]
-    [InlineData("r17_two_acq_bad", TwoAcquisitions, "TransferRequired_Kd values", null)]
+    [InlineData("r17_two_acq_bad", TwoAcquisitions, "TransferRequired_Kd c; TransferRequired_Kd values", null)]
     [InlineData("w04_cl", K6 + NestedHost + "    let g = k6\n    return g(s, undefinedName)\n", "UnprovenOriginRelation_Kd s; UnresolvedBinding_Kd undefinedName", null)]
     [InlineData("w12_fit", "func k9(q: ref/i32, f: (ref/i32) -> i32, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\nfunc hf2(x: ref/i32 during static) -> i32 => 5\n\n" + TwoHost + "    let g = k9\n    return g(s, hf2, p)\n", "UnprovenOriginContract_Kd hf2; UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s", null)]
     [InlineData("w17_case", "func k10(q: ref/i32, o: Option<i32>, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\n" + TwoHost + "    let g = k10\n    return g(s, .Some(undefinedName), p)\n", "UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s; UnresolvedBinding_Kd undefinedName", null)]

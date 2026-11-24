@@ -11,6 +11,16 @@ namespace Kimi.Compiler;
 // query (DECISIONS BU-19). Reads binding states and their retained part causes; never binds or reports.
 public sealed partial class Binding
 {
+    // OperandContexts' answer: a part names a declaration in a failed context, one not yet resolved.
+    private const int InvalidContext = 1;
+    private const int UnresolvedContext = 2;
+
+    // The running capability request's query of clearParts and the change signal at its begin (ClearQuery); a query of 0: no request.
+    private (uint Query, int Signal) clearRequest;
+
+    /// <summary>Gets the parts OperandContexts decided in this compilation, which the scaling rows read.</summary>
+    internal int OperandContextWork { get; private set; }
+
     private static bool UnresolvedTypeDeclarationContext(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
@@ -100,13 +110,33 @@ public sealed partial class Binding
     }
 
     // The declaration contexts a Type's parts name: whether one is in a failed context and whether one is not yet resolved, each distinct
-    // part visited once (DECISIONS BU-19).
+    // part decided once per query (DECISIONS BU-19), and once per capability request for a part found clear (ClearQuery).
     private (bool Invalid, bool Unresolved) OperandContexts(BoundType type)
     {
-        var found = (Invalid: false, Unresolved: false);
-        this.OperandContexts(type, this.visitedParts.Begin(this.storageVersion), ref found);
-        return found;
+        var found = this.OperandContexts(type, this.visitedParts.Begin(this.storageVersion), this.ClearQuery());
+        return ((found & InvalidContext) != 0, (found & UnresolvedContext) != 0);
     }
+
+    // R7-C6 a (DECISIONS BU-19 as amended): one query of clearParts spans a capability request, from the outermost request's first
+    // evaluation to its settle (BeginClearParts, EndClearParts), so a chain of works whose Types share their parts walks each part once,
+    // not once per work. Its fixed inputs are the declaration contexts' states, which change during a request only through the change
+    // signal's writer (Invalidated: Fail, FailPremise), so a moved signal begins a new query; the request binds no declaration (the
+    // engine runs after declarations are bound, capabilitiesReady) and runs inside one validation step (validationStep). Only a clear
+    // answer is kept, so a failed context is read, and consulted (ReadFailedDeclaration), at every query as before. Outside a request
+    // the query is 0: no part is kept. A request begun inside another ends both queries (the outer one walks on without the memo).
+    private uint ClearQuery()
+    {
+        if (this.clearRequest.Query != 0 && this.clearRequest.Signal != this.invalidations)
+        {
+            this.BeginClearParts();
+        }
+
+        return this.clearRequest.Query;
+    }
+
+    private void BeginClearParts() => this.clearRequest = (this.clearParts.Begin(this.storageVersion), this.invalidations);
+
+    private void EndClearParts() => this.clearRequest = default;
 
     // An atom's operand contexts: its subject's and required Type's, and its Contract's own declaration.
     private (bool Invalid, bool Unresolved) OperandContexts(BoundConstraint proposition)
@@ -130,21 +160,49 @@ public sealed partial class Binding
     private bool ContainsAssociatedProjection(BoundType? type)
         => type is { HasAbstractPart: true } && this.ProjectionPart(type, this.visitedParts.Begin(this.storageVersion));
 
-    private void OperandContexts(BoundType type, uint query, ref (bool Invalid, bool Unresolved) found)
+    // The contexts in a part's subtree (InvalidContext, UnresolvedContext): a leaf decided at each meet, a constructed part once per query
+    // (its answer kept beside the visit bit in visitedParts) and, inside a capability request, a clear one once per request (clearParts).
+    private int OperandContexts(BoundType type, uint query, uint clear)
     {
+        var constructed = type.Components.Count != 0;
+        if (constructed && clear != 0 && this.clearParts.TryGet(type, clear, out _))
+        {
+            return 0;
+        }
+
+        this.OperandContextWork++;
+        var found = 0;
         if (type.Symbol is { } symbol)
         {
-            found.Invalid |= this.InvalidDeclarationContext(symbol.Declaration);
-            found.Unresolved |= UnresolvedTypeDeclarationContext(symbol.Declaration);
+            found = (this.InvalidDeclarationContext(symbol.Declaration) ? InvalidContext : 0) |
+                (UnresolvedTypeDeclarationContext(symbol.Declaration) ? UnresolvedContext : 0);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (this.FirstVisit(type.Components[i], query))
+            var part = type.Components[i];
+            if (part.Components.Count == 0)
             {
-                this.OperandContexts(type.Components[i], query, ref found);
+                found |= this.OperandContexts(part, query, clear);
+            }
+            else if (this.visitedParts.TryGet(part, query, out var met))
+            {
+                found |= met >> 1;
+            }
+            else
+            {
+                var inner = this.OperandContexts(part, query, clear);
+                this.visitedParts.Set(part, query, (byte)(1 | (inner << 1)));
+                found |= inner;
             }
         }
+
+        if (constructed && found == 0 && clear != 0)
+        {
+            this.clearParts.Set(type, clear, 1);
+        }
+
+        return found;
     }
 
     // The Invalid node a check that could not judge a Type rests on (DECISIONS BU-75): the failed context of the first part that names one,
