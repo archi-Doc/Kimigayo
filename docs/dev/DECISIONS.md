@@ -4372,8 +4372,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     arrNode2Ok, appendNullOk, appendIntoOk, the probes' pop2Ok) are unchanged; dictNodeOk is C2's (the literal's internal
     `placeEntry`), not C3's.
   - Rule W's facts on Chain rows (G263's item): a Chain row's conflict is derived where every read on the way was of a whole holder, as
-    a Content row's, and independent where the chain read the Loan through E (chain-retention, chain-through-e beside
-    content-through-e); a chain through E at a later step reaches what an earlier store left there (viaEBad, viaEOk).
+    a Content row's, and independent where the chain read the Loan through E (chain-generic; chain-through-e beside
+    content-through-e; chain-retention, derived until R4-M245, is independent since: Holder's raw Field without an Origin gives E its chain); a chain through E at a later step reaches what an earlier store left there (viaEBad, viaEOk).
   - Rejected: closing Content rows at untied outputs (BU-40's reason); one union per state read (a set per prefix, quadratic in a
     chain's length); pairwise unions in balanced rounds (a log factor, K·log K for K holders); a marker read back over the words from
     the least element to the greatest (a sparse union, Φ_E with one Loan, costs the body's numbering / 64); Chain reading states
@@ -7317,6 +7317,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded in part by R4-M243 (G841b, Q-729, 2026-11-24): U3b's first-step source (now each layer of the input's key) and its
     rows' guard (now the layers' greatest), the G785 bullet's "an input whose key has no single layer ... keeps its referent's root
     key", and U3c's layer gate (`Declared` no longer suppresses the reading of a key's other layers).
+  - Superseded in part by R4-M245 (G841c, Q-755, 2026-11-24): U3c's "Rule 4 ... is read where a node reads on" (also at a call's
+    result key, where no node reads on).
 - **R4-M220 Rule H: a local that a store of the body gives a value read from a holder is an A5 holder, and a Loan-free Case payload
   of a call's result carries nothing (the Case bound)** (2026-11-19, landed with the A5 one-tree landing, Q-539; Middle, A5; Major,
   an acceptance mover; the owner's O-209, O-359 (a), O-364 (a), O-383 (b) (verbatim 「O-383  b」) and O-424 (a); implementation
@@ -8259,6 +8261,75 @@ and migration obligations remain in force; no numeric cap changes are authorized
     handle's payload past the reference's Deref and lost the Warning of oh1 and oh2 (g1276ir's B1). Dev's reach exactly, a second
     clause chaining only from a first step whose Prefix is the root's: a form-specific split beside the base case, and oh3's and
     oha's required Warning stays missing.
+- **R4-M245 Rule 4 at a call's result: the call's own pointer at a raw layer without an Origin of its result (PLAN G841, Revision 3's
+  clause (3) H2)** (2026-11-24; the Middle; G841c, Q-755, D-1253; Major, an acceptance mover, class 1; the owner's O-365 (a), O-524
+  (a) and O-528 (a); design `middle\notes\g841-design.md` Revision 3, Revision 3b (`middle\notes\g841c-rev3b.md`) and 3c
+  (`middle\notes\g841c-rev3c.md`), its review's C1, C3 and C4, the implementation review's C1-C3 (`middle\notes\g841c-impl-review.md`);
+  its Binding prerequisite BU-257 (C-527)) SPEC 15.6.4, 5.7 Calls, 15.6.2, 15.6.6.
+  - **Rule.** Where a call's plan composes (`CallRetention.Composes`) and storage lies past a layer the call writes in its result
+    (`CallRetention.ResultWrites`), `MirBorrows.Calls.KeepResult` begins one walk at the result's key (`InputKey` at the result slot:
+    `TyCtxt.ParameterKey(function, -1, result)`, the Type the callee's declaration writes for its result, for a function or
+    constructor callee; the result's root key for any other callee), reads rule 4 there (`OwnPointer`, folded under `ResultWrites`'
+    Handed list) and delivers by the one loop (`Deliver`, extracted from `Keep` unchanged) with E its one target, at the result's
+    Type, through no argument's value. A discarded result is read so too (h2DiscardBad): its destination is a temp the call writes.
+    A5 judges no Type there: E takes the layer's entry of `ResultWrites`: at a layer the result's Type expression writes (Its: a bare
+    raw result, a Tuple or array element, an Option payload, a Type argument an instance's Field holds) its pointee's Reached entry, a
+    kept pointee's kept entry bounded by BU-257; at a layer the result's declaration states without an Origin (Any,
+    `TyCtxt.RawStated`: a Field, Case payload or base) `All`, whatever its pointee, as at any key (5.7 Calls: through a layer a
+    declaration states, the call may store what a raw layer it writes retains; its example throughField; R4-M241). A layer that
+    states an Origin (`during o`, `during self`, `static`) is `PastLayer.Stated`, which `OwnPointer` skips. A nominal result with a
+    `raw/u8` Field is therefore composed like one with `raw/(raw/u8)`.
+  - **Departs from R4-M219 (C1):** U3c's "Rule 4 (SPEC 15.6.4's composition) is read where a node reads on, at the first step and
+    past a holder alike, by the node's own guard" (as amended by R4-M241 (iv)): it is also read at the call's result key, where no
+    node reads on (the walk begins at the result, which no argument names). The reason that no longer holds: the result was read
+    only as its record's destination (`Rewrite`), while 15.6.4 names "a raw layer that the call may write, in its result, a nominal
+    Type's Fields included" (O-365 (a): constructors included). This closes R4-M241's line "The departures of clauses (1)-(3) ...
+    rule 4's site at the result key are G841b's and G841c's entries".
+  - **The owner's O-524 (a):** where E may hold a borrow the call stores through its own pointer at the result's raw layer (a
+    `ref/i32 during x` pointee keeping x), a value stored there may be used after every point (15.6.4), so the end of the borrowed
+    local's storage is an error (15.6.2, 15.6.6), with no Origin bound on E's values: h2RefPointeeOk is invalid (one record, at
+    `var k: i32 = 0`), h2RefPointeeParamOk (x a parameter's borrow) valid. The same reading gives hiddenInit, hiddenHolder, stXm and
+    mvXm their storage-end records and a method's receiver its own: E may hold the receiver's shared Loan, so a1MethodResultBad also
+    errs at the end of the receiver's storage (`let m`); its twin with a `raw/u8` result (methodOneOk) is valid. The design's R2-N6
+    ("stays accepted") is withdrawn.
+  - **The owner's O-528 (a):** a borrow or an address given to a constructor whose Type declares a raw Field without an Origin is
+    taken as stored through the constructor's own pointer there, as SPEC 5.7 is written (a declared layer is not bounded by its
+    pointee). Four filed valid tests became invalid, each rule kept by a valid vehicle: `MirBorrowsTest.Raw`'s localCellOk and
+    replacedFieldOk (now localCellCtorBad and replacedFieldCtorBad; the Field-source rows put the address in by a body write,
+    quietFieldOk's form), `ClosureResultOriginTest`'s a18_raw_input_store (`local = 2`; vehicle a18_gen, the Type argument
+    `raw/i32` a result's Type expression writes) and `LoanFieldTest`'s covariant view LoanFieldWindow (made from a parameter's
+    borrow; the filed form is `MirBorrowsTest.CallResult`'s loanFieldWindowBad, at `var numbers`).
+  - **Labels corrected (Revision 3b):** six struct-Field rows of the unit's working sets were labelled valid by reading 15.6.4's
+    oneLayer at a declaration's layer; 5.7 Calls rules that out ("never one a declaration states in its own Fields"), so they are
+    invalid: quietCtorU8Bad (was quietCtorOk), valueStructU8Bad (a1ValueStructU8Ok), resultStructU8Bad (p1FnStructU8Ok) and
+    p1CtorStructU8Ok, p1CtorQuietU8MinOk, p1FnQuietU8Ok. The filed valid tests of that form are O-528 (a)'s.
+  - **Records (Q13):** invalid programs newly rejected or given records, with `ComparisonLoanConflict_Kd`: resultTwoBad,
+    resultStructBad, resultStructU8Bad, valueStructU8Bad, resultHalfTBad, h2OptResultBad, h2TupResultBad, h2HolderResultBad,
+    h2ShownResultBad, h2ShownResultRawBad, h2ClosureResultBad, h2DiscardBad, h2RefPointeeBad, ctorMinBad, a1MethodResultBad
+    (`y@follow = 5`, `let m`), xResultDeclBad (`kk = 2`), h2RefPointeeOk (`var k: i32 = 0`), loanFieldWindowBad (`var numbers`);
+    `MirBorrowsTest.Destructions`' quietCtorBad (was quietOk, `y = 5`; O-365 (a)) and quietCtorU8Bad (its valid twin for the
+    destruction rule is quietFieldOk); `MirBorrowsTest.Raw`'s hiddenInit and hiddenHolder add their storage ends (`var v`, `var t`)
+    beside `y = 5`, stXm and mvXm add `var q: i32 = 3`, localCellCtorBad and replacedFieldCtorBad err at `y@follow = 5`;
+    `ClosureResultOriginTest`'s a18_raw_input_store at `local = 2`. chain-retention keeps its records without its Cause
+    `<- mkE(h2@ref)`: E, which Holder's raw Field without an Origin gives every argument with its chains, keeps local's Loan, so the
+    conflict is independent (R4-M132; SPEC 15.6.5, 23.1.2); R4-M138's derived Chain case is now `MirBorrowsTest.Causes`'
+    chain-generic (`mkC<T>(x: ref/(ref/T during b)) -> Box<T>`: the kept-T row past x's second layer into a result that holds no
+    raw layer; derived at `let local = 1 <- mkC(h2@ref)`, beside `var h`'s independent record, A5's Chain reading (R4-M138), which
+    SPEC does not require; 48 causes, as before this unit). owndtor's Reader takes p by a body write, so drop-liveness alone keeps
+    its departure open (R4-M153 revision 2). Merge interactions with G1276 (R4-M244, W-356), invalid by O-524 (a): its
+    `MirBorrowsTest.Raw` rows prc2 (G1301's open class, accepted) and prc2v (filed valid) read through
+    `gp(r: ref/Outer) -> raw/(raw/u8 during r, i32)`, whose raw layer states no Origin, so gp may store through its own pointer
+    there a value keeping o@ref's Loan, used after every point: both filed forms are `MirBorrowsTest.CallResult`'s prc2Bad and
+    prc2vBad (at the move's `o` and `let o = Outer.init()`), and G1301's rows keep their class with the layer stated `during r`
+    (silent, as filed). The A5 oracle moves no corpus program (0 of 1,764, on dev 34d96c664).
+  - **Rejected:** E taking the result's own record (the result's stated Origin bounding what E keeps: SPEC 15.6 "Origin regions and
+    outlives relations ... never keep a Loan live"; O-524 (a)); a second walk for the result (one walk, one delivery loop); a Type
+    test at the result in A5 (`Holds(pointee)` back; BU-257 bounds the kept-Type record in Binding, its owner); the result walk only
+    where the result is used (a discarded result was written); a declaration's layer bounded by its pointee (Any read as Its; O-528
+    (b)), which contradicts 5.7 Calls and would also accept throughField, enumPayloadPtrU8Bad, xRawDeclBad and xResultDeclBad.
+  - **Scaling:** one memoized key per call with a result; the walk is bounded by the result Type's layer count (C4's row
+    `AResultAndInputLayersWorkStaysLinearInCallsAndLayers`: N calls with a by-value Tuple of K two-layer raw elements and a
+    composing result with a raw Field, work linear in N and in K).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
