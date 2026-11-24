@@ -505,7 +505,8 @@ public sealed partial class Binding
             case NumberLiteralKoto number:
                 if (this.TakesGenericLiterals(expected, scope, node))
                 {
-                    // SPEC 7.2.3: a generic literal position takes integer literals only; the mismatch names both sides.
+                    // SPEC 12.3.1, 8.7.4: a generic literal position takes integer literals only (a floating-point literal adopts only an
+                    // expected f32 or f64); the mismatch names both sides.
                     return !number.IsInteger ? this.RecordTypeMismatch(node, node, new(null, MismatchForm.FloatingPointLiteral), expected!) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Record(node, BindingFailure.InvalidLiteral, []);
                 }
 

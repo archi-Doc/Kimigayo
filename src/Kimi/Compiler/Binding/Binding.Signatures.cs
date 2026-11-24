@@ -221,9 +221,8 @@ public sealed partial class Binding
                         {
                             if (ReceiverShape(b) is { } other && other != shape)
                             {
-                                // Transitional, R7-E5 (D-924; B's E3c-2 ruling 11): a declaration that already failed, such as one whose
-                                // receiver forms no Type, keeps its first failure, the input this mismatch rests on, so the slot's drop
-                                // stays until R7-E5's per-problem inputs decide the dependent record.
+                                // SPEC 23.1.2: a declaration that already failed, such as one whose receiver forms no Type, keeps its first
+                                // failure, the input this mismatch rests on.
                                 this.Fail(fa, BindingFailure.ReceiverShapeMismatch);
                                 this.Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
                             }
@@ -289,8 +288,8 @@ public sealed partial class Binding
                     }
                     else if (expected != current)
                     {
-                        // Transitional, R7-E5 (D-924; B's E3c-2 ruling 11): as a member group's mismatch, a requirement that already
-                        // failed keeps its first failure, the input this mismatch rests on.
+                        // SPEC 23.1.2: as a member group's mismatch, a requirement that already failed keeps its first failure, the input
+                        // this mismatch rests on.
                         this.Fail(contract, BindingFailure.ReceiverShapeMismatch);
                         if (ReferenceEquals(members[i].Symbol.Declaration.Parent, contract))
                         {

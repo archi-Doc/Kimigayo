@@ -76,7 +76,7 @@ public sealed partial class Binding
             {
                 if (!number.IsInteger)
                 {
-                    return this.RecordTypeMismatch(unary, unary, new(null, MismatchForm.FloatingPointLiteral), expected!); // SPEC 12.3, 7.2.3.
+                    return this.RecordTypeMismatch(unary, unary, new(null, MismatchForm.FloatingPointLiteral), expected!); // SPEC 12.3.1, 8.7.4.
                 }
 
                 if (!FitsGenericInteger(number, unary.Akind == KotoKind.PrefixMinus))

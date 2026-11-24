@@ -18,16 +18,12 @@ public sealed partial class Binding
         this.BindNodeCore(name, scope, null);
         if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
-            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call; an unresolved
-            // name is the located limit at the reference, resting on the name's own record.
+            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call; at an
+            // unresolved name the reference rests on the name's own record (SPEC 23.1.2).
             this.BindUnknownChildren(reference, scope);
-            if (name.BindingState == BindingState.Resolved)
-            {
-                return this.Record(reference, BindingFailure.NoApplicableCandidate, []);
-            }
-
-            this.RecordLocated(reference, reference.Span, unresolved: true);
-            return null;
+            return name.BindingState == BindingState.Resolved
+                ? this.Record(reference, BindingFailure.NoApplicableCandidate, [])
+                : this.Fail(reference, BindingFailure.Unsupported, true);
         }
 
         for (var i = 0; i < reference.TypeArguments.Count; i++)
