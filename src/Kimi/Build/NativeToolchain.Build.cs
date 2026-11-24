@@ -132,6 +132,40 @@ internal static partial class NativeToolchain
         return StageInput(input, folder, extension, out hash);
     }
 
+    // ELF's line (ld.lld, the flavor the row's Format selects; T-M22): a static executable that loads no library a member names, its
+    // unreferenced sections removed and no build id, reproducible as COFF's /Brepro is; the inputs by place around the object (design
+    // §3.11): the files placed Start, the object, the program's libraries (no place) in the manifest's order, the files placed Library,
+    // then the files placed End (the C path: crt1.o crti.o <obj> <program libraries> libc.a crtn.o). With no start file the process
+    // starts at the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). The line is order-free
+    // for the dependency check, which runs before it (LinkAmbiguity); the object's definition of the entry is Inspect's. ld.lld reads no
+    // LINK variable and detects no toolchain; it still reads LLD_REPRODUCE (LC3 §10).
+    internal static string[] ElfLine(string entry, string obj, List<StagedLibrary> libraries, string executable)
+    {
+        List<string> link = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", executable];
+        if (!libraries.Exists(static x => x.Place == SupplyPlace.Start))
+        {
+            link.AddRange(["-e", entry]);
+        }
+
+        Place(SupplyPlace.Start);
+        link.Add(obj);
+        Place(null);
+        Place(SupplyPlace.Library);
+        Place(SupplyPlace.End);
+        return [.. link];
+
+        void Place(SupplyPlace? place)
+        {
+            foreach (var library in libraries)
+            {
+                if (library.Place == place)
+                {
+                    link.Add(library.Held.Name);
+                }
+            }
+        }
+    }
+
     // IMPL 20.4's reuse rule and the hold's start in one step (StagedHold; DECISIONS T-M17's structural start): the staged copy the hash
     // names, <stem>.native/<hash><extension>, is opened for reading with read sharing only and hashed from that handle; when its bytes still have
     // that hash it is returned open, held, so until the caller releases it no write, replacement or deletion of it, no rename of its
@@ -276,7 +310,7 @@ internal static partial class NativeToolchain
             // build's end, so the dependency step reads and LLD links the bytes the record names; the finally releases them with the
             // private file on every outcome (StagedHold). The object is held from its creation (Compile) to the build's end, so the
             // inspection and LLD read the object emit produced (Intermediates).
-            var libraries = new List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)>();
+            var libraries = new List<StagedLibrary>();
             var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + this.paths.ExecutableExtension; // Private until the commit.
             try
             {
@@ -383,7 +417,7 @@ internal static partial class NativeToolchain
         // keyed by the row's supply), each found by its catalog hash or staged from its resource (StageSupply); any other is a program's,
         // staged from its input with the row's InputExtension and checked against the project's supply under the row's key. Every
         // compiler's supply of the row but its C runtime is listed.
-        private void ResolveLibraries(List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries)
+        private void ResolveLibraries(List<StagedLibrary> libraries)
         {
             var libraryIdentities = new JsonArray();
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -404,14 +438,14 @@ internal static partial class NativeToolchain
                     foreach (var file in supply.Files)
                     {
                         var held = StageSupply(file, this.paths.Native, out var hash);
-                        libraries.Add((name, kind, hash, held, file.Place));
+                        libraries.Add(new(name, kind, hash, held, file.Place));
                     }
                 }
                 else
                 {
                     using var input = File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory));
                     var held = StageInput(input, this.paths.Native, this.row.InputExtension, out var hash);
-                    libraries.Add((name, kind, hash, held, null));
+                    libraries.Add(new(name, kind, hash, held, null));
                 }
 
                 for (var i = first; i < libraries.Count; i++)
@@ -464,9 +498,10 @@ internal static partial class NativeToolchain
 
         // The object's dependencies and shape: an undefined symbol is a fixed runtime reference of the row (RuntimeReferences) or an
         // external the module declares (the manifest's, the runtime's imports among them) in the same form; one definition of the row's
-        // float marker where the row has one, none counted elsewhere, and no default library. Unwind information is not judged
-        // here: IMPL 21.4's is the ABI's, which every definition's uwtable attribute (the profile's UnwindTables) asks of LLVM, an entry
-        // for each function that allocates stack, saves a nonvolatile register or calls, and none for a frameless leaf, so an object
+        // float marker where the row has one, none counted elsewhere, and no default library; the manifest's entry defined as an external
+        // function, on every format (ld.lld's -e meets an undefined entry with a warning only; T's ruling 79). Unwind information is not
+        // judged here: IMPL 21.4's is the ABI's, which every definition's uwtable attribute (the profile's UnwindTables) asks of LLVM, an
+        // entry for each function that allocates stack, saves a nonvolatile register or calls, and none for a frameless leaf, so an object
         // whose functions are all leaves has none. Returns the record's form of the undefined symbols, llvm-nm's posix lines, in which an
         // undefined symbol's value and size are 0, and the object's facts, which the dependency step reads (one inspection).
         private (string Undefined, ObjectMember Module) Inspect(Tatara tatara, string obj)
@@ -499,6 +534,12 @@ internal static partial class NativeToolchain
                 throw new InvalidDataException("Invalid _fltused definition or hidden default library.");
             }
 
+            var entry = LinkManifest.Text(this.manifest, "entry");
+            if (!module.DefinedExternal.Any(s => s.Name == entry && s.Kind == 'T'))
+            {
+                throw new InvalidDataException($"The object does not define the manifest's entry '{entry}' as an external function.");
+            }
+
             return (string.Join('\n', lines), module);
         }
 
@@ -511,7 +552,7 @@ internal static partial class NativeToolchain
         // and no object: a linked image or a bare import member, an unsupported native dependency whatever its Kind; T's rulings 24 and
         // 54), a unit it loads that its library's Kind does not admit and a declared import bound to code fail the build before the
         // link, every line in one failure: the native build's input failure, the record left incomplete.
-        private void CheckDependencies(Tatara tatara, ObjectMember module, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries)
+        private void CheckDependencies(Tatara tatara, ObjectMember module, List<StagedLibrary> libraries)
         {
             var inputs = new (string Name, LinkClass Admits, LinkInput Input)[libraries.Count];
             for (var i = 0; i < inputs.Length; i++)
@@ -543,12 +584,12 @@ internal static partial class NativeToolchain
         // Run's private file, so neither a failed link nor any failure before the commit publishes it, then the record's linked state,
         // naming the private file's hash, which Run's commit publishes before the file. LLD opens the held object and each held library by
         // its path, for reading, which the holds admit (StagedHold, Intermediates).
-        private void Link(Tatara tatara, string obj, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries, string undefined, string executable)
+        private void Link(Tatara tatara, string obj, List<StagedLibrary> libraries, string undefined, string executable)
         {
             var line = this.row.Format switch
             {
                 "COFF" => this.CoffLine(obj, libraries, executable),
-                "ELF" => this.ElfLine(obj, libraries, executable),
+                "ELF" => ElfLine(LinkManifest.Text(this.manifest, "entry"), obj, libraries, executable),
                 _ => throw new InvalidOperationException($"No link writer for the executable format '{this.row.Format}'."),
             };
             tatara.Link(this.context, line);
@@ -562,7 +603,7 @@ internal static partial class NativeToolchain
         // COFF's line (lld-link): the object, the libraries in the manifest's order, the row's entry and subsystem. LLD reads no
         // environment (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds
         // no VC or Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1).
-        private string[] CoffLine(string obj, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries, string executable)
+        private string[] CoffLine(string obj, List<StagedLibrary> libraries, string executable)
         {
             var link = new string[libraries.Count + 9];
             link[0] = "lld-link";
@@ -581,41 +622,17 @@ internal static partial class NativeToolchain
             link[^1] = "/out:" + executable;
             return link;
         }
-
-        // ELF's line (ld.lld, the flavor the row's Format selects; T-M22): a static executable that loads no library a member names, its
-        // unreferenced sections removed and no build id, reproducible as COFF's /Brepro is; the inputs by place around the object (design
-        // §3.11): the files placed start, the object, the program's libraries in the manifest's order, the files placed library, then the
-        // files placed end (the C path: crt1.o crti.o <obj> <program libraries> libc.a crtn.o). With no start file the process starts at
-        // the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). The line is order-free for the
-        // dependency check, which runs before it (LinkAmbiguity). ld.lld reads no LINK variable and detects no toolchain; it still reads
-        // LLD_REPRODUCE (LC3 §10).
-        private string[] ElfLine(string obj, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries, string executable)
-        {
-            List<string> link = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", executable];
-            if (!libraries.Exists(static x => x.Place == "start"))
-            {
-                link.AddRange(["-e", LinkManifest.Text(this.manifest, "entry")]);
-            }
-
-            Place("start");
-            link.Add(obj);
-            Place(null);
-            Place("library");
-            Place("end");
-            return [.. link];
-
-            void Place(string? place)
-            {
-                foreach (var library in libraries)
-                {
-                    if (library.Place == place)
-                    {
-                        link.Add(library.Held.Name);
-                    }
-                }
-            }
-        }
     }
+
+    /// <summary>One staged input of a build's link, in the manifest's order (a compiler's supply adds one per file): its library's
+    /// manifest name and Kind, its staged hash, its staged copy, held to the build's end, and its place on an ELF line (a program
+    /// library's: null).</summary>
+    /// <param name="Name">The library's manifest name.</param>
+    /// <param name="Kind">The library's Kind.</param>
+    /// <param name="Sha256">The staged copy's SHA-256.</param>
+    /// <param name="Held">The staged copy, held.</param>
+    /// <param name="Place">The file's place on an ELF line, or null for a program library.</param>
+    internal readonly record struct StagedLibrary(string Name, string Kind, string Sha256, FileStream Held, SupplyPlace? Place);
 
     /// <summary>A staged input's facts as the dependency step reads them (LinkAmbiguity, design §2): Tatara's inspection
     /// (<c>Facts</c>); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, and whether that

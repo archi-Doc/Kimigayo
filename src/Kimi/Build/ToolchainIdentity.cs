@@ -6,16 +6,17 @@
 // reserved supply the record's library names), and the compiler's supplies (IMPL 20.4's reserved supplies) in one representation,
 // keyed by (row, supply) (CompilerSupply; C-469 n1, the Tatara plan's B7b7): one per reserved supply of each row (its TargetSupply: name,
 // kind and symbols), with the manifest fields that identify it and its files, each with its catalog name, its embedded resource (committed
-// beside the catalog), the catalog's SHA-256 and its place on an ELF link line (start, library or end; a COFF file's is library). The
+// beside the catalog), the catalog's SHA-256 and its place on an ELF link line (SupplyPlace, read once here; a COFF file's is Library). The
 // windows-x64 row's: kernel32 (Kimi.Kernel32.lib) and the backend archive (Kimi.WindowsBackend.lib), from the backend record; the
 // linux-x64 row's: c, musl 1.2.6's startup files and C library (Tatara B7b4), read from the embedded Linux record
 // (src/backend/linux-x64/profile.json, the resource Kimi.LinuxBackendProfile.json), whose files are listed in link order.
 // Input: the embedded records and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
 // self-check (P13). Invariants: the backend record matches the Windows row (its name; its library names a reserved supply, whose
 // symbols are its provided symbols) and pins a major.minor.patch LLVM version; the Linux record matches the Linux row (its name; its
-// library names a reserved supply, whose symbols are its provided symbols); the supplies are the rows' reserved supplies in the rows'
-// order, each row's in its order, else the type initializer throws InvalidDataException; each resource's SHA-256 is its file's
-// (NativeToolchainTest's catalog row; not checked at a start, stated by toolchain verify).
+// library names a reserved supply, whose symbols are its provided symbols) and places each file start, library or end (ReadFile); the
+// supplies are the rows' reserved supplies in the rows' order, each row's in its order, else the type initializer throws
+// InvalidDataException; each resource's SHA-256 is its file's (NativeToolchainTest's catalog row; not checked at a start, stated by
+// toolchain verify).
 // Must not be read by check (Binding, project configuration, LSP) or code generation: those read TargetProfile.
 
 using System.Text.Json;
@@ -93,8 +94,8 @@ public static class ToolchainIdentity
                 TargetProfile.Windows,
                 kernel32,
                 [("generator", Kernel32Imports.Generator), ("dll", Kernel32Imports.Dll), ("definitionSha256", Kernel32DefinitionSha256)],
-                [new("kernel32.lib", "Kimi.Kernel32.lib", Kernel32Sha256, "library")]),
-            (TargetProfile.Windows, Backend.Name, [("resolution", "toolchain")], [new("kimi_backend_windows_x64_v1.lib", "Kimi.WindowsBackend.lib", BackendSha256, "library")]),
+                [new("kernel32.lib", "Kimi.Kernel32.lib", Kernel32Sha256, SupplyPlace.Library)]),
+            (TargetProfile.Windows, Backend.Name, [("resolution", "toolchain")], [new("kimi_backend_windows_x64_v1.lib", "Kimi.WindowsBackend.lib", BackendSha256, SupplyPlace.Library)]),
             (TargetProfile.Linux, musl.Name, [("resolution", "toolchain")], [.. c.GetProperty("files").EnumerateArray().Select(static x => ReadFile(x))]),
         ];
         var supplies = new List<CompilerSupply>();
@@ -108,18 +109,30 @@ public static class ToolchainIdentity
         }
 
         Supplies = [.. supplies];
-
-        static SupplyFile ReadFile(JsonElement file)
-        {
-            var name = file.GetProperty("name").GetString()!;
-            return new(name, "Kimi.Linux." + name, file.GetProperty("sha256").GetString()!, file.GetProperty("place").GetString()!);
-        }
     }
 
     /// <summary>Gets the compiler's supply of a row's reserved supply.</summary>
     /// <param name="supply">A row's reserved supply, or null.</param>
     /// <returns>The compiler's supply whose row's supply is <paramref name="supply"/>, or null for null.</returns>
     internal static CompilerSupply? Of(TargetSupply? supply) => Array.Find(Supplies, x => x.Supply == supply);
+
+    /// <summary>Reads a file of the Linux record's supply: its catalog name, its resource (<c>Kimi.Linux.</c> and the name), its SHA-256
+    /// and its place, the one read of a place (T's ruling 79).</summary>
+    /// <param name="file">The record's file entry.</param>
+    /// <returns>The supply file.</returns>
+    /// <exception cref="InvalidDataException">The entry's place is missing or none of start, library and end.</exception>
+    internal static SupplyFile ReadFile(JsonElement file)
+    {
+        var name = file.GetProperty("name").GetString()!;
+        var place = (file.TryGetProperty("place", out var text) && text.ValueKind == JsonValueKind.String ? text.GetString() : null) switch
+        {
+            "start" => SupplyPlace.Start,
+            "library" => SupplyPlace.Library,
+            "end" => SupplyPlace.End,
+            _ => throw new InvalidDataException($"The embedded native supply catalog's file '{name}' has no place on an ELF link line (start, library or end)."),
+        };
+        return new(name, "Kimi.Linux." + name, file.GetProperty("sha256").GetString()!, place);
+    }
 }
 
 /// <summary>One of the compiler's supplies (IMPL 20.4's reserved supplies), keyed by (row, supply): the row, its reserved supply (name,
@@ -132,15 +145,29 @@ public static class ToolchainIdentity
 internal sealed record CompilerSupply(TargetProfile Row, TargetSupply Supply, (string Name, string Value)[] Entry, SupplyFile[] Files);
 
 /// <summary>One embedded file of a compiler's supply: its catalog name, whose extension its staged copy keeps, its embedded resource,
-/// that resource's SHA-256, the catalog's, and its place on an ELF link line (<c>start</c>: before the object; <c>library</c>: after the
-/// program's libraries; <c>end</c>: last), which only the ELF link writer reads.</summary>
+/// that resource's SHA-256, the catalog's, and its place on an ELF link line, which only the ELF link writer reads.</summary>
 /// <param name="Name">The file's catalog name.</param>
 /// <param name="Resource">The embedded resource holding the file's bytes.</param>
 /// <param name="Sha256">The catalog's SHA-256 of those bytes.</param>
 /// <param name="Place">The file's place on an ELF link line.</param>
-internal sealed record SupplyFile(string Name, string Resource, string Sha256, string Place)
+internal sealed record SupplyFile(string Name, string Resource, string Sha256, SupplyPlace Place)
 {
     /// <summary>Opens the file's bytes.</summary>
     /// <returns>The embedded resource's stream, which the caller disposes.</returns>
     internal Stream Open() => typeof(SupplyFile).Assembly.GetManifestResourceStream(this.Resource)!;
+}
+
+/// <summary>A compiler's supply file's place on an ELF link line (design §3.11; the catalog's <c>start</c>, <c>library</c> and
+/// <c>end</c>): before the object, after the program's libraries, or last. A COFF file's is <c>Library</c>; a program library has
+/// none.</summary>
+internal enum SupplyPlace : byte
+{
+    /// <summary>Before the object.</summary>
+    Start,
+
+    /// <summary>After the program's libraries.</summary>
+    Library,
+
+    /// <summary>Last.</summary>
+    End,
 }

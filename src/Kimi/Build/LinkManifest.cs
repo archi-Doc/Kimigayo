@@ -166,14 +166,16 @@ internal static class LinkManifest
     }
 
     /// <summary>Checks that a libraries entry naming a compiler's supply is the one this compiler writes: its kind and every identifying
-    /// field equal and no input; any other member is ignored, a sha256 being an assertion the native build checks.</summary>
+    /// field equal, no input, and no sha256 on a supply of several files; any other member is ignored, a sha256 being an assertion the
+    /// native build checks against the supply's one file.</summary>
     /// <param name="entry">The libraries entry.</param>
     /// <param name="supply">The row of the supply the entry names.</param>
     /// <exception cref="InvalidDataException">The entry is not this compiler's.</exception>
     internal static void CheckCompilerSupply(JsonElement entry, CompilerSupply supply)
     {
         if (!ArtifactFiles.States(entry, ("kind", supply.Supply.Kind)) || !ArtifactFiles.States(entry, supply.Entry) ||
-            ArtifactFiles.Member(entry, "input").ValueKind != JsonValueKind.Undefined)
+            ArtifactFiles.Member(entry, "input").ValueKind != JsonValueKind.Undefined ||
+            (supply.Files.Length != 1 && ArtifactFiles.Member(entry, "sha256").ValueKind != JsonValueKind.Undefined))
         {
             throw new InvalidDataException($"The link manifest's 'libraries' entry '{supply.Supply.Name}' is not this compiler's. Re-emit the manifest.");
         }

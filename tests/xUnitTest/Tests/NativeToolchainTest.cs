@@ -68,7 +68,7 @@ public sealed class NativeToolchainTest : IDisposable
 
     // IMPL 20.4 (Tatara B6a, B7b4; one representation since B7b7, C-469 n1): the compiler carries every row's supplies' bytes, one record
     // per (row, supply) with its files. windows-x64's are the two reserved names in Ordinal order, one file each (a COFF file's place is
-    // library); linux-x64's c is musl's startup files and C library in the Linux catalog's order, its link order (crt1.o and crti.o
+    // Library); linux-x64's c is musl's startup files and C library in the Linux catalog's order, its link order (crt1.o and crti.o
     // start, libc.a library, crtn.o end), and the catalog's providedSymbols are c's symbols. Each file's SHA-256 is its catalog's, and each
     // embedded resource has that SHA-256 and is the file committed beside the catalog, so a build stages the adopted bytes. musl's notice,
     // which the compiler carries as Kimi.Linux.COPYRIGHT, is the tarball's COPYRIGHT: the catalog's copyrightSha256, which build-musl.ps1
@@ -86,8 +86,8 @@ public sealed class NativeToolchainTest : IDisposable
                 $"windows-x64-v1 kimi_backend kimi_backend_windows_x64_v1.lib library {catalog.RootElement.GetProperty("artifactSha256").GetString()}",
                 .. musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"linux-x64-v1 c {x.GetProperty("name").GetString()} {x.GetProperty("place").GetString()} {x.GetProperty("sha256").GetString()}"),
             ],
-            ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"{x.Row.Name} {x.Supply.Name} {f.Name} {f.Place} {f.Sha256}")));
-        Assert.Equal(["crt1.o start", "crti.o start", "libc.a library", "crtn.o end"], Assert.Single(ToolchainIdentity.Supplies, static x => x.Row == TargetProfile.Linux).Files.Select(static x => $"{x.Name} {x.Place}"));
+            ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"{x.Row.Name} {x.Supply.Name} {f.Name} {f.Place.ToString().ToLowerInvariant()} {f.Sha256}")));
+        Assert.Equal(["crt1.o Start", "crti.o Start", "libc.a Library", "crtn.o End"], Assert.Single(ToolchainIdentity.Supplies, static x => x.Row == TargetProfile.Linux).Files.Select(static x => $"{x.Name} {x.Place}"));
         Assert.Equal(TargetProfile.Linux.Supply("c")!.Symbols, musl.RootElement.GetProperty("providedSymbols").EnumerateArray().Select(static x => x.GetString()));
         foreach (var supply in ToolchainIdentity.Supplies)
         {
@@ -113,6 +113,23 @@ public sealed class NativeToolchainTest : IDisposable
             Assert.Equal(sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
             Assert.Equal(File.ReadAllBytes(file), bytes.ToArray());
         }
+    }
+
+    // T's ruling 79 (a): the Linux record's reader places each file Start, Library or End, its one read of a place; a missing or other
+    // place is the toolchain's InvalidDataException naming the file. Fail-before: an unknown place read (on 0e7a59618 any string did,
+    // and the ELF writer left such a file off its line).
+    [Theory]
+    [InlineData("\"begin\"")]
+    [InlineData("\"Start\"")]
+    [InlineData(null)]
+    public void ACatalogFileOutsideThePlacesIsRefused(string? place)
+    {
+        using var valid = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\", \"place\": \"start\"}");
+        Assert.Equal(SupplyPlace.Start, ToolchainIdentity.ReadFile(valid.RootElement).Place);
+        using var file = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\"" + (place is null ? string.Empty : ", \"place\": " + place) + "}");
+        Assert.Equal(
+            "The embedded native supply catalog's file 'crt1.o' has no place on an ELF link line (start, library or end).",
+            Assert.Throws<InvalidDataException>(() => ToolchainIdentity.ReadFile(file.RootElement)).Message);
     }
 
     // The invalidation is the record's incomplete state: its status and the compiler's and LLVM's versions, and no member more (PLAN
@@ -1341,6 +1358,36 @@ public sealed class NativeToolchainTest : IDisposable
         await RunsOk(ArtifactPaths.Create(project).Executable);
     }
 
+    // T's ruling 79 (c), design §3.11: the ELF line on both start paths, from the catalog's places: the libc-free path's -e and the
+    // row's entry before its one input, the object; the C path's files around the object, crt1.o crti.o <obj> <program libraries> libc.a
+    // crtn.o, and no -e (crt1.o defines _start).
+    [Fact]
+    public void TheElfLinePlacesItsInputsAroundTheObject()
+    {
+        string[] head = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", "Hello.elf"];
+        Assert.Equal([.. head, "-e", TargetProfile.Linux.EntrySymbol, "Hello.obj"], NativeToolchain.ElfLine(TargetProfile.Linux.EntrySymbol, "Hello.obj", [], "Hello.elf"));
+        var libraries = new List<NativeToolchain.StagedLibrary>();
+        try
+        {
+            foreach (var file in ToolchainIdentity.Of(TargetProfile.Linux.Supply("c"))!.Files)
+            {
+                libraries.Add(new("c", "static", file.Sha256, File.Create(Path.Combine(this.directory, file.Name)), file.Place));
+            }
+
+            libraries.Add(new("codec", "static", "0", File.Create(Path.Combine(this.directory, "codec.a")), null));
+            string[] inputs = ["crt1.o", "crti.o", "codec.a", "libc.a", "crtn.o"];
+            var staged = inputs.Select(x => Path.Combine(this.directory, x)).ToArray();
+            Assert.Equal([.. head, staged[0], staged[1], "Hello.obj", .. staged[2..]], NativeToolchain.ElfLine("main", "Hello.obj", libraries, "Hello.elf"));
+        }
+        finally
+        {
+            foreach (var library in libraries)
+            {
+                library.Held.Dispose();
+            }
+        }
+    }
+
     // The Tatara plan's B7b7 (design §3.11, §5 row 21): a Linux pair builds a static ELF executable through build --Manifest at either
     // level. Hello, without a library, takes the libc-free path and starts at the row's entry; Ffi, whose codec.a (ELF relocatable
     // objects, Kind's row 21) calls musl's getpid, takes the C path: c's start files, the object, codec.a, libc.a and c's end file, the
@@ -1369,13 +1416,16 @@ public sealed class NativeToolchainTest : IDisposable
 
     // The Tatara plan's B7b7 (design §3.11, §6.1): Linux pairs whose head, entry or object the row does not take fail before any link:
     // another relocation model (the fixed-field text), Ffi's entry edited to main with c removed and Hello's __kimi_start with c listed
-    // (the profile text, per row; O8), and an object calling bcmp, which no declaration names (the IR edited, its hash rewritten). Two
+    // (the profile text, per row; O8), an object calling bcmp, which no declaration names (the IR edited, its hash rewritten), and Ffi's c
+    // removed with its entry edited to the row's __kimi_start, which its object does not define (Inspect's entry check, T's ruling 79;
+    // ld.lld only warns of an undefined -e entry: on 0e7a59618 it built, artifacts\tatara\b7b7\b7b7c\probe-twin-0e7a59618.txt). Two
     // builds of each pair in two folders give equal executables.
     [Theory]
     [InlineData("relocation", "'codegen.relocationModel' is not this compiler's")]
     [InlineData("main", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
     [InlineData("start", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
     [InlineData("bcmp", "Unsupported actual object dependency: bcmp U 0 0")]
+    [InlineData("entry", "The object does not define the manifest's entry '__kimi_start' as an external function.")]
     public async Task ALinuxPairTheRowDoesNotTakeFails(string edit, string failure)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
@@ -1387,8 +1437,13 @@ public sealed class NativeToolchainTest : IDisposable
             case "relocation":
                 manifest["codegen"]!["relocationModel"] = "pic";
                 break;
-            case "main":
+            case "main" or "entry":
                 libraries.Remove(libraries.Single(static x => x!["name"]!.GetValue<string>() == "c"));
+                if (edit == "entry")
+                {
+                    manifest["entry"] = TargetProfile.Linux.EntrySymbol;
+                }
+
                 break;
             case "start":
                 libraries.Add(System.Text.Json.Nodes.JsonNode.Parse("{\"name\": \"c\", \"kind\": \"static\", \"resolution\": \"toolchain\"}"));
