@@ -1821,6 +1821,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   K's windows; builds 53%, runs 40%, the fixture keys 77% of an all-reused step's 5.4 s. U1 adopted (the owner's O-519 (a), with
   O-522 (a2): a run is reused only from an entry really run within the last 12 h); R3, K1, R1, B1, B3, B4 and K3 open, each a unit
   of its own; four stopped. No decision changes. No SPEC or IMPL text. Nothing frozen.
+- Revision 21 (2026-11-24, T's D-1217 revised; the owner in T's dialog, 11-24 10:1x, verbatim
+  「NV2はU1までにしてください。それ以上の最適化は、そこまで効果は大きくないため、いったん閉じてください。」): §8's candidate 5
+  ends NV2 with U1 (a2) (O-519 (a), O-522 (a2): a fixture whose executables, sidecars and run scripts did not change is not run
+  again, from an entry really executed within 12 hours). R3, K1, R1, B1, B3, B4 and K3, open in revision 20, are closed by the
+  owner's order; their designs stay in `artifacts/handoff/tatara/units/NV2/` as records, reopened only on the owner's word. The
+  measured split stands. No decision changes. No SPEC or IMPL text. Nothing frozen.
 
 ## 2026-11-22 — Four proposals withdrawn to Obsolete
 
