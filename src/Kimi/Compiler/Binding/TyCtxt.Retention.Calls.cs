@@ -87,6 +87,7 @@ internal sealed partial class TyCtxt
     {
         var closure = Closure(callee);
         var owner = closure is null ? (FunctionKoto?)Binding.SignatureOwner(callee) : (FunctionKoto)closure.Symbol!.Declaration!;
+        Debug.Assert(owner is null || ReferenceEquals(Binding.CallableCore(callee)?.Symbol?.Declaration, owner), "A Value callee's owner key is its owner's symbol: the callee's symbol declares the owner SignatureOwner or Closure reads.");
         var use = binding.DefinitionUse(definition);
         var key = owner is null ? new RetentionKey(null, signature, null, binding.ConstraintScope(use), null, binding.RetentionState)
             : new RetentionKey(null, signature, closure?.InstanceContext, null, Binding.CallableCore(callee)!.Symbol, binding.RetentionState);
