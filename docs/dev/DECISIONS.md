@@ -26632,6 +26632,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     subject and the Contract as evidence**. The pending judgment is the selection's deferral (`RecordSelection`): UnprovenConstraint_Kd
     with role 6 "argument" and role 7 shown as a related `declaration` (the slot's Type parameter), which the adapter reads by role
     (ruling 13, n1). Moves: M3 the erasure Note's text (from the fact) and the pending Note (gone); M4 the pending slot related.
+  - Superseded in part by R7-M95 (R7-E4 E4a-1, 2026-11-24), for E4's sites: the Rule's "a site converts only where its record is the
+    node's first failure ...; a dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5". E4's B1
+    statement is by input: a check that reads none of the node's failed inputs records beside the node's earlier failure (SPEC
+    23.1.2), and one that reads a failed input keeps `Fail` with an R7-E5 Transitional naming that input.
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
@@ -27327,6 +27331,41 @@ R8-M* and R9-M* by the stage of the recording unit.
     bump), a field on `BoundType` (shared by compilations) and a per-work cache (still quadratic).
   - Open: PLAN G651 a2-a4 (the unframed steps); PLAN G1352 (a conformance's dependent `IncompatibleContractImplementation_Kd` beside
     its witness's own record).
+- **R7-M95 Family 3's problems record through `Record`; E4a-1: a denied write records beside the node's other failures** (Front,
+  2026-11-24; R7-E4 E4a-1, Q-741, D-1229; Major unit of a Major design, R7 plan §5.1 E4; design `front\notes\R7E4\design.md` with
+  F's R7-E4 rulings 1-6; the design review ACCEPT WITH CONDITIONS, C5 (a), C6 and C9 for this unit) SPEC 23.1.2, 23.1.1, 13.7.1,
+  13.7.2, 3.4, 15.1.5.
+  - **Rule.** A family-3 check (Origins, acquisition and access, captures: the R7 plan's §5.1 E4 row; not the lints, which keep their
+    own records, a closed table that never fails a node, F's R7-E4 ruling 1 O-L) records its failure as a problem through one
+    recorder per kind over that kind's one mapping, with existing fact kinds (R7-M75's form). E4a-1's kind is the denied write:
+    `RecordWrite`, the one recorder of `FailWrite` and `FailObjectAuthority`, records `AccessFailure`'s code (or the object
+    authority's `SharedPathAccess`) numbered (`RecordNumbered`), with the written target as `Related` role 0, "target" (its meaning
+    at its ReportProblem row, which renders `ReportWrite` with the problem's condition); an Unsupported write is the located limit
+    through `RecordLocated` at the write's span (SPEC 23.1.1; the location dev gave it). Deleted: `writeTargets` (its field, Reset
+    line and ReportIssue arm). Ratchet "Node-keyed table members in Binding" 10 -> 9 (every table left is E4's; E4 ends at 0).
+  - **Supersedes in part R7-M75's Rule, for E4's sites:** "a site converts only where its record is the node's first failure ...; a
+    dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5". Its reason no longer holds for a site whose
+    B1 statement names its own inputs: the first-failure clause stood in for unstated per-problem inputs (rule W, SPEC 23.1.2), and a
+    check that reads none of the node's failed inputs is independent, so its record stands beside the node's earlier failure. E4's
+    per-site statement is **by input** (does the check read an input that already failed?), not by path; a site whose check reads a
+    failed input keeps `Fail` with an R7-E5 Transitional naming that input (R7-M75's form). The destination check of an assignment,
+    compound assignment, increment or decrement reads the destination's path only, never the route or the value (SPEC 13.7.1), so
+    its record stands beside the route's (TryArithmetic's ArithmeticSelection, the operator's NonNumericOperand) whatever order the
+    checks run in.
+  - **Moves (Q13).** M1 only: a `let` destination or a parameter updated through a failing route gains its InvalidAssignment_Kd at
+    the target: PLAN G1310 (`let value = V.init()` / `value += true`, a user provider fitting no `bool`), G509's parameter form
+    (`x += y`, `x: V`, `y: bool`) and G502's r16 (`let s = "a"` / `s += nope`: InvalidAssignment_Kd beside NonNumericOperand_Kd and
+    UnresolvedBinding_Kd); no acceptance moves; the diagnostic snapshot and semantic HIR+MIR 0 differences against
+    shared-base/a61063573. Pinned by `NonNumericOperandDiagnosticTest.AFailedDestinationKeepsItsRoute`;
+    `BindingReportTest.AFurtherRecordIsAnIssueOfItsOwn` pins the slot's issue's problem by identity (InvalidAssignment_Kd with the
+    target `b` related; F's R7-E4 ruling 3): the slot's issue now names a problem (a representation change).
+  - **Rejected.** Reordering CheckDestination before TryArithmetic (an order dependence on a slot-first recorder: a symptom fix,
+    C-516); a fact-less Unsupported record beside `RecordLocated` (a second form of the located limit, the review's C5 (a)); keeping
+    `ExclusivePathTake` in the write row (AccessFailure returns it only for a Take: FailTake's own row, E4a-2).
+  - **Later parts add their lines below** (E4's order: E4a-2 acquisition, Take, the written Borrow's denial, static Borrow, the
+    reference binding's update (O-A2: Operators 181, 192, 280); E4a-3 G453/G486; E4b captures; E4c Origin formation; E4e Owned and
+    Callable; E4d the Origin records, O-R), each listing the stores it deletes. E4's parts total about +296/-474 against the plan's
+    +100/-500: E4a-3 (G453/G486, given to E4 by plan revision 69 (B)) and the per-part regression rows are the difference.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
