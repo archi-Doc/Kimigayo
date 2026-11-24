@@ -8,9 +8,9 @@
 //   parts at their instantiated parameters (PLAN G494); the substitution, and the result (ValueCallResult). P9: a Closure's result
 //   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage), the image of the Closure binder's reserved atom
 //   built only where the result names it (CallAtomsOf, PerCallImages); its call result atom, P8's per-call result Origin (SPEC 15.8.2),
-//   takes this call's own call result region in the calling body (CallResultRegion, B1; superseding R7-M66's "published as it is"),
-//   never an Unbound atom resting on no Binding failure (R4-M118), but a deferred result slot's atom Final proved, which the intakes
-//   complete (CompletedOrigin, R7-O2 O2-F); a Closure value
+//   always takes this call's own call result region in the calling body (CallResultRegion, B1; superseding R7-M66's "published as it
+//   is"). P9 makes no Unbound image (R4-M118): an Unbound atom a result names is a deferred result slot's atom Final proved, which the
+//   intakes complete (CompletedOrigin, R7-O2 O2-F). A Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
 //   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
 //   Unsupported_Kd.

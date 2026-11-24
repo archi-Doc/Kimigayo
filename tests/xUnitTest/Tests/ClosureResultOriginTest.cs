@@ -203,7 +203,10 @@ public partial class ClosureResultOriginTest
     // the candidate applicable and the Constraint failure recorded at the argument (d_raw_let, d_direct, d_raw_direct; R1-a); with two
     // candidates no one is strictly best (x_pair_let: AmbiguousBinding_Kd; dev accepted it, the maker's atom refuting the erasure). A `var`
     // holder's region may still be refuted by a later assignment, so applicability waits for the body: PLAN G1030's located limit at the
-    // argument (d_var, d_raw_var; dev's NoApplicableOverload_Kd at the call, the owner's O-523 (a)).
+    // argument (d_var, d_raw_var; dev's NoApplicableOverload_Kd at the call, the owner's O-523 (a)). The same in a nested Closure that calls
+    // the maker through a captured reference (b_nested_call, b_raw_nested_call: the Constraint failure at the argument, not dev's
+    // NoApplicableOverload_Kd at the call); the raw family's value used by a generic borrow in a nested Closure or after a move to another
+    // `let` is accepted (b_raw_nested_gen, b_raw_move: valid, dev's located limit at the use; R7-M66 Open r01's class).
     [Theory]
     [InlineData("f_raw_two", Generic + RawUse + RawMaker + "    var a = outer(p)\n    a = outer(p)\n    let s = applyG(a@ref)\n" + MainUnit, "")]
     [InlineData("f_g_var", Generic + Use + FailMaker + "    var a = outer(3)\n    a = outer(4)\n    let r = applyG(a@ref)\n" + MainUnit, Unsatisfied + " " + FailLiteral)]
@@ -214,8 +217,12 @@ public partial class ClosureResultOriginTest
     [InlineData("x_pair_let", "func run(f: () -> i32) -> i32 => 0\nfunc run<F>(f: F) -> i32 => 1\n" + RawUse + RawMaker + "    let a = outer(p)\n    let n = run(a)\n" + MainUnit, "AmbiguousBinding_Kd run(a)")]
     [InlineData("d_var", Apply + Use + FailMaker + "    var a = outer(3)\n    let r = apply(a)\n" + MainUnit, Unsatisfied + " " + FailLiteral + "; Unsupported_Kd a")]
     [InlineData("d_raw_var", Apply + RawUse + RawMaker + "    var a = outer(p)\n    let r = apply(a)\n" + MainUnit, "Unsupported_Kd a")]
+    [InlineData("b_nested_call", Apply + Use + FailMaker + "    let g = func [outer@ref] () -> i32 => apply(outer(3))\n    let n = g()\n" + MainUnit, Unsatisfied + " " + FailLiteral + "; UnprovenConstraint_Kd outer(3)")]
+    [InlineData("b_raw_nested_call", Apply + RawUse + RawMaker + "    let g = func [outer@ref, p] () -> i32 => apply(outer(p))\n    let n = g()\n" + MainUnit, "UnprovenConstraint_Kd outer(p)")]
+    [InlineData("b_raw_nested_gen", Generic + RawUse + RawMaker + "    let g = func [outer@ref, p] () -> i32\n        let a = outer(p)\n        return applyG(a@ref)\n    let n = g()\n" + MainUnit, "")]
+    [InlineData("b_raw_move", Generic + RawUse + RawMaker + "    let a = outer(p)\n    let b = a@move\n    let r = applyG(b@ref)\n" + MainUnit, "")]
     public void AMakersCallResultIsItsCallsOwnRegion(string form, string source, string records)
-        => Assert.True(records == Records(source), $"{form}: expected [{records}], found [{Records(source)}]");
+        => Assert.Equal($"{form}: {records}", $"{form}: {Records(source)}");
 
     // SPEC 7.7.3, 23.1.2 (DECISIONS R4-M152): the receiver classification reads a nested Closure's definition, so a nested literal whose
     // erasure fails (its creation failed) still makes its maker Exclusive through its `n@uniq` capture: `c()` through a `let` is
