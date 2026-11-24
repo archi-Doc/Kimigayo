@@ -1019,7 +1019,10 @@ public sealed partial class InstanceCollectorTest
     // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1). In a
     // generic body never instantiated (open250, U2a's f-open) the builder's read of the refused instance is one record in that declaration,
     // one per declaration that reads it (opentwo250, the Middle's f-open-2d); behind a handle (obj250, U2a's f-obj) A4's payload walk forms
-    // D past the height at `let o`, its record beside the handle key's own limit (ruling 25's rows).
+    // D past the height at `let o`, its record beside the handle key's own limit (ruling 25's rows). The Front's lint-g (openlint250: the
+    // statement a discarded Case construction `Option.Some(noneD(p40))`, SPEC 17.5.3: a call argument, no warning) and lint-gc
+    // (openlintc250: W and D derived Copy, SPEC 3.5.2, so the lint walk's Copy proof may read D's stored Field first): one record in g at
+    // its least use, the construction (every read of D past the height is the builder's), never Rejected's InternalInvariant_Kd (R8 Rev 2).
     // Fail-before: dev gives InternalInvariant_Kd at each use.
     [Theory]
     [InlineData("stored250", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>|TypeHeightLimit_Kd@noneD(p40)")]
@@ -1030,6 +1033,8 @@ public sealed partial class InstanceCollectorTest
     [InlineData("open250", "TypeHeightLimit_Kd@noneD(p40)")]
     [InlineData("opentwo250", "TypeHeightLimit_Kd@noneD(p40)|TypeHeightLimit_Kd@noneD(p40)")]
     [InlineData("obj250", "GenerationResourceLimit_Kd@let o = noneO(p40)|TypeHeightLimit_Kd@let o = noneO(p40)")]
+    [InlineData("openlint250", "TypeHeightLimit_Kd@Option.Some(noneD(p40))")]
+    [InlineData("openlintc250", "TypeHeightLimit_Kd@Option.Some(noneD(p40))")]
     public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
     {
         var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
@@ -1040,9 +1045,16 @@ public sealed partial class InstanceCollectorTest
             "stored" => "taked(p40, count(noneD(p40)))", // The copy's written twin.
             "clo" => "let c = func () -> i32 => count(noneD(p40))\n    _ = c()",
             "obj" => "let o = noneO(p40)",
+            "openlint" or "openlintc" => "Option.Some(noneD(p40))",
             _ => "_ = count(noneD(p40))",
         };
         var source = Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement);
+        if (name == "openlintc")
+        {
+            source = source.Replace("struct W<T>\n", "struct W<T>\n    Self is Copy when T is Copy\n", StringComparison.Ordinal)
+                .Replace("struct D<T>\n", "struct D<T>\n    Self is Copy when T is Copy\n", StringComparison.Ordinal);
+        }
+
         if (name.StartsWith("open", StringComparison.Ordinal))
         {
             // The lifts and the statement in a generic function never instantiated (twice for opentwo), main empty.
