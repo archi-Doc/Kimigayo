@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -253,6 +254,36 @@ public class DefaultBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Generate(TextWriter.Null));
+    }
+
+    // SPEC 7.2.3 with 15.3.4 (the owner's D-1236 (A), PLAN G1362): a default's content names only the preceding parameters as Origins,
+    // in a named function's signature (do_*) or body (do_body_*), a Closure's header (clo_*) or a local's annotation (let_*): a later
+    // one, z, is the one record, at z. Its boundaries: the signature itself, a nested signature in the body, and a signature Origin (q) that a later
+    // parameter's annotation introduces, visible in any order.
+    [Theory]
+    [InlineData("do_later", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during z) -> i32 => 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", false)]
+    [InlineData("do_prec", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during a) -> i32 => 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", true)]
+    [InlineData("clo_later", "func f(a: ref/i32, k: () -> i32 = func [] () -> i32\n    let c = func [] (x: ref/i32 during z) -> i32 => 0\n    return 0\n, z: ref/i32) -> i32 => k()", false)]
+    [InlineData("clo_prec", "func f(a: ref/i32, k: () -> i32 = func [] () -> i32\n    let c = func [] (x: ref/i32 during a) -> i32 => 0\n    return 0\n, z: ref/i32) -> i32 => k()", true)]
+    [InlineData("let_later", "func f(a: ref/i32, k: i32 = label w: do\n    let q: ref/i32 during z = a\n    exit to w 0\n, z: ref/i32) -> i32 => k", false)]
+    [InlineData("let_prec", "func f(a: ref/i32, k: i32 = label w: do\n    let q: ref/i32 during a = a\n    exit to w 0\n, z: ref/i32) -> i32 => k", true)]
+    [InlineData("do_body_later", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during a) -> i32\n        let q: ref/i32 during z = x\n        return 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", false)]
+    [InlineData("do_body_prec", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during a) -> i32\n        let q: ref/i32 during a = x\n        return 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", true)]
+    [InlineData("signature", "func f(a: ref/i32 during z, z: ref/i32) -> i32 => 0", true)]
+    [InlineData("body", "func f(a: ref/i32, z: ref/i32) -> i32\n    func g(x: ref/i32 during z) -> i32 => 0\n    return 0", true)]
+    [InlineData("do_set", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during q) -> i32 => 0\n    exit to w 0\n, z: ref/i32 during q) -> i32 => k", true)]
+    public void ADefaultNamesOnlyThePrecedingParametersAsOrigins(string row, string source, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(valid == c.Binding.Result.IsComplete, row + "\n" + MinimalEmissionTest.Describe(c));
+        if (!valid)
+        {
+            c.Binding.ReportDiagnostics();
+            var span = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters[1].DefaultValue!.Span;
+            var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+            Assert.True(record.Code == nameof(DiagnosticCode.MissingOriginBinding_Kd) && record.Text == "z" && record.Span.Start > span.Start &&
+                record.Span.End <= span.End, row + ": " + record);
+        }
     }
 
     [Fact]

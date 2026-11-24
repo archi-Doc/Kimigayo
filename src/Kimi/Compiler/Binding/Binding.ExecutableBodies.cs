@@ -5,7 +5,7 @@
 // - Inputs: the entries that start binding a body or a declaration (BindHeader, BindFunction, BindConcreteClosure, BindAccessorBody, a
 //   Property's initializer, ValidateOriginRelations), each through EnterBody.
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
-//   OriginDeclaration.Body (BeginOriginDeclaration), BoundClosure.EvaluatingBody (ClosureHeaderScope), and ParameterVisible's answer.
+//   OriginDeclaration.Body (BeginOriginDeclaration), BoundClosure.EvaluatingBody (ClosureHeaderScope).
 // - Invariants: every entry restores the context it found; a declaration's own syntax (a signature, a declared Property Type, a
 //   declaration clause) is bound with no body; a Closure's header and captures belong to its evaluating body. ExecutableBody.Declarations,
 //   the declaration judge's frame (DECISIONS BU-89), is entered only by JudgeDeclarationRows; nothing is formed in it, only AddObligation
@@ -71,25 +71,5 @@ public sealed partial class Binding
         var saved = this.formingBody;
         this.formingBody = body;
         return saved;
-    }
-
-    // SPEC 7.2.3: in default i of f, or in a Closure its evaluation reaches, a parameter of f is visible only when it precedes i (a
-    // constructor's or destructor's receiver, whose slot is no parameter index, never is); elsewhere every parameter in scope is.
-    private bool ParameterVisible(BindingSymbol candidate)
-    {
-        if (candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function)
-        {
-            return true;
-        }
-
-        for (var body = this.formingBody; body.IsBody; body = EvaluatingBody(body))
-        {
-            if (body.Index >= 0 && ReferenceEquals(body.Definition?.Declaration, function))
-            {
-                return (uint)candidate.Slot < (uint)body.Index;
-            }
-        }
-
-        return true;
     }
 }

@@ -1,8 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The binding of a function definition: its header (BindHeader's function part, also bound lazily from a use), its signature, then its
-// parts (defaults, base initializer, body); and InLaterDefault, the rule that a parameter read in the default of a later parameter of its
-// function names the slot its call prepared (SPEC 7.2.3), read by the capture diagnostics and the HIR tables (HirRes.PreparedParam).
+// parts (defaults, base initializer, body); and SPEC 7.2.3's parameter positions, by the default of its function a node lies in
+// (DefaultIndex): which parameters a name there may select (ParameterVisible, the rule of every name lookup, a value's and a written
+// Origin's), and that a parameter read in the default of a later parameter names the slot its call prepared (InLaterDefault, read by
+// the capture diagnostics and the HIR tables, HirRes.PreparedParam).
 
 using Kimi.Compiler.Parsing;
 
@@ -26,31 +28,41 @@ public sealed partial class Binding
     internal static bool InLaterDefault(Koto node, BindingSymbol symbol, out int walked)
     {
         walked = 0;
-        if (symbol.Kind != BindingSymbolKind.Parameter || symbol.Scope.Owner is not FunctionKoto declaration ||
-            (uint)symbol.Slot >= (uint)declaration.Parameters.Count)
-        {
-            return false;
-        }
+        return symbol.Kind == BindingSymbolKind.Parameter && symbol.Scope.Owner is FunctionKoto declaration &&
+            (uint)symbol.Slot < (uint)declaration.Parameters.Count && DefaultIndex(node, declaration, out walked) > symbol.Slot;
+    }
 
+    // SPEC 7.2.3 with 15.3.4 (the owner's D-1236 (A)): whether a name at `use` may select a parameter: in default i of its function,
+    // whatever the default holds (a Closure, a named function's signature or body, a local's annotation), only one before i (never a
+    // constructor's or destructor's receiver, whose slot is no parameter index); elsewhere every parameter in scope.
+    private static bool ParameterVisible(BindingSymbol candidate, Koto use)
+        => candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function ||
+            (DefaultIndex(use, function, out _) is var index && (index < 0 || (uint)candidate.Slot < (uint)index));
+
+    // SPEC 7.2.3: the parameter of `function` whose default holds `node`, else -1 (its signature, its body, or outside it); `walked`
+    // counts the parents read, the node's depth below the function, bounded by IMPL A.4's L.
+    private static int DefaultIndex(Koto node, FunctionKoto function, out int walked)
+    {
+        walked = 0;
         Koto child = node;
         for (var parent = node.Parent; parent is not null; child = parent, parent = parent.Parent)
         {
             walked++;
-            if (ReferenceEquals(parent, declaration))
+            if (ReferenceEquals(parent, function))
             {
-                for (var i = symbol.Slot + 1; i < declaration.Parameters.Count; i++)
+                for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    if (ReferenceEquals(declaration.Parameters[i].DefaultValue, child))
+                    if (ReferenceEquals(function.Parameters[i].DefaultValue, child))
                     {
-                        return true;
+                        return i;
                     }
                 }
 
-                return false;
+                return -1;
             }
         }
 
-        return false;
+        return -1;
     }
 
     private static bool HasParameterDefaults(FunctionKoto function)
