@@ -379,9 +379,11 @@ internal sealed partial class MirBorrows
     // A Place's read on its layer and parents (SPEC 5.7 Reading a Field; B §5.4): a `during self` layer's, or a Tuple's or fixed array's
     // enclosing one inline (read element by element, a Copy and a Move alike), adds what `@raw` of the layer's storage carries, the
     // parents and its own-step entry; another Place's is its layer.
-    // R-C (SPEC 15.6 Holders, 15.6 Addresses): the read carries its Place's one own-step row (MirBorrows.Addresses: the owner's entry at
-    // its exact lent position, the base's past a dereference, or none) with its parents whole; an Unplaced one carries its layer and is the
-    // location's limit where a borrow of the view lends a layer's or enclosing Place (PQ-10, narrowed; MirBorrows.Locations records it).
+    // R-C (SPEC 15.6 Holders, 15.6 Addresses): the read carries its Place's one own-step row (MirBorrows.Addresses: the entry of the body
+    // Place its owner step applies to at its exact lent position, direct or past a dereference (G1276); else the base's past a
+    // dereference; or none) with its parents whole; an Unplaced one (no exact position, no owner in its own steps: G1301's classes)
+    // carries its layer and is the location's limit where a borrow of the view lends a layer's or enclosing Place (PQ-10, narrowed;
+    // MirBorrows.Locations records it).
     private int Layered(int root, int projection, int layer, int parents)
     {
         var entry = this.OwnStepAt(root, projection);
