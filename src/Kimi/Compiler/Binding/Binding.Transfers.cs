@@ -135,5 +135,4 @@ public sealed partial class Binding
             }
         }
     }
-
 }
