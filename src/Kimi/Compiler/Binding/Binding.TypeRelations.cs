@@ -29,6 +29,16 @@ public sealed partial class Binding
     internal bool FitsStructuralPart(BoundType actual, BoundType expected)
         => new RelationWalk(this, null, null, OriginPart.Everywhere).Fits(actual, expected);
 
+    // FitsStructuralPart with whether its walk held a part against an open atom (RelationWalk.MetOpenSlot), for the identity questions
+    // that read it (Binding.OpenSlots: such a pair holds for a fit and is identical for none, SPEC 10.8 Unbound slots).
+    internal bool FitsStructuralPart(BoundType actual, BoundType expected, out bool metOpenSlot)
+    {
+        var walk = new RelationWalk(this, null, null, OriginPart.Everywhere);
+        var fits = walk.Fits(actual, expected);
+        metOpenSlot = walk.MetOpenSlot;
+        return fits;
+    }
+
     // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Function value's signature with a required one at `use` (a Callable
     // proof's; a Closure's and a Function Item's contract is DefinitionContractFits'), a whole-contract comparison: its member Origins
     // and the implementation's conditions, its own well-formedness among them (the owner's (a); FunctionFits), are proven from the
