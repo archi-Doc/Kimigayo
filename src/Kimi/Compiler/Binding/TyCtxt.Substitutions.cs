@@ -180,8 +180,10 @@ internal sealed partial class TyCtxt
         => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
 
     // SPEC 4.4.1, 8.1.3: a length in the instance a substitution makes, Binding.InstanceLength, the one statement of an instance's length
-    // (Compose's lengths), which a default's copy and code generation's Length constant read (MirBuilder.Inline, InstanceCollector.LengthOf);
-    // the identity keeps it; null where the substitution does not complete it.
+    // (Compose's lengths), which a default's copy and code generation's Length constant read (MirBuilder.Instantiates and Inline,
+    // InstanceCollector.LengthOf); the identity keeps it; null where the substitution does not complete it. A bare read, no formation:
+    // an interpolation term's instance passes no height its values' did not (the terms' dominance, InterpolationHint), so a refusal
+    // inside it is a broken contract, loud through its readers' Incomplete and no-owner routes, never answered here (PLAN G651 U2c).
     internal BoundLength? InstanceLength(BoundLength length, Subst subst) => subst.IsIdentity ? length : binding.InstanceLength(length, subst);
 
     // SPEC 8.1.3: a declared Type in the instance a substitution makes, by the substitution alone (Binding.StorageInstance: its closing
