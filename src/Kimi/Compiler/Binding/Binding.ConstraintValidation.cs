@@ -181,6 +181,27 @@ public sealed partial class Binding
         _ => BindingFailure.Internal,
     };
 
+    // The layer of written Type syntax holding `node` as one of its Type components (a Type-syntax node, an Origin application or a Type
+    // application), or null at the outermost written Type node, whose parent reads it as a Type (a declaration, a call's explicit Type
+    // argument list, a qualifier). RestLayersOnType walks it.
+    private static Koto? TypeLayerOver(Koto node)
+    {
+        if (node.Parent is not { } layer || layer is not (TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type }))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < layer.TypeComponentCount; i++)
+        {
+            if (ReferenceEquals(layer.TypeComponent(i), node))
+            {
+                return layer;
+            }
+        }
+
+        return null;
+    }
+
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
     private Koto? CallableArgument(Koto use, IsKoto clause)
     {
@@ -659,27 +680,6 @@ public sealed partial class Binding
                 this.SetRecordedState(layer, state);
             }
         }
-    }
-
-    // The layer of written Type syntax holding `node` as one of its Type components (a Type-syntax node, an Origin application or a Type
-    // application), or null at the outermost written Type node, whose parent reads it as a Type (a declaration, a call's explicit Type
-    // argument list, a qualifier).
-    private static Koto? TypeLayerOver(Koto node)
-    {
-        if (node.Parent is not { } layer || layer is not (TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type }))
-        {
-            return null;
-        }
-
-        for (var i = 0; i < layer.TypeComponentCount; i++)
-        {
-            if (ReferenceEquals(layer.TypeComponent(i), node))
-            {
-                return layer;
-            }
-        }
-
-        return null;
     }
 
     // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a)): a failed written Type that a node's published decision read before the written
