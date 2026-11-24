@@ -10,7 +10,8 @@
 // BU-38, R4-M139); Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); and the instance a reader of
 // an instance's storage reads (ReadableInstance: Instance, then Binding.Readable's guard; R4-M139).
 // Formation, this file's representation: whether a substitution formed its instance, the cause travelling with a null one (Apply's
-// Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete), HeightLimit (Binding.TypeHeight's
+// Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete; read as a broken contract in a
+// complete compilation, R5-M151), HeightLimit (Binding.TypeHeight's
 // refusal answered after Binding's run, under the innermost after-run owner (the instance collector's answer frame, OpenAnswer, or a
 // site, OpenBodySite and OpenSite; PLAN G651 U2b), to the formation that owns it, Answered, or Witness, a requirement call's resolution,
 // as its target's Cause; the read is answered to that owner: the collector's reader records it at its requesting site, a site is
@@ -52,7 +53,11 @@ internal sealed partial class TyCtxt
         /// <summary>A step does not complete (BU-36's contract substitution that does not complete), or Binding.TypeHeight refused a
         /// Type no formation of this query owns, recording it itself (the consultation's node during the run; after it, the innermost
         /// after-run owner's: a site's mark, the collector frame's broken contract its run throws after the close (R7-T1), or with no owner
-        /// the throw (PLAN G651 U2b R13.1)).</summary>
+        /// the throw (PLAN G651 U2b R13.1)). A capability work's evaluation is such an owner too: a refusal in it is the work's Unknown,
+        /// with no record (C8 ruling 30), so a formation whose normalization rests on it may be Incomplete with no record. Its readers read
+        /// it by R5-M151: a broken contract at the requesting site where Binding is complete (BindingComplete; InternalInvariant_Kd), else
+        /// a dependent of Binding's records (no record): the collector's Formed and a default's copy (MirBuilder.Defaults; PLAN G651
+        /// U2c).</summary>
         Incomplete,
 
         /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered it to this formation
