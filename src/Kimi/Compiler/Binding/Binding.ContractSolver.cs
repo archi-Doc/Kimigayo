@@ -20,8 +20,8 @@
 //   subject's Origin arguments (RowContract; SPEC 8.5.1, 8.5.4: application substitutes Origin atoms positionally). A row carries
 //   whether it is available (R7-C2c2 c2-3a): its fact and its Contract are, for a clause or an ancestor its source row too; the
 //   strongest of its derivations wins. A constraint of another kind with a reader (RowAtom; R7-C2c2 c2-3b: Callable), and the
-//   negation of one (c2-5b; SPEC 8.3.2: `not P` carries its operand's row), gives a leaf row under (1) and (2), filed and matched by
-//   its atom's subject: its proposition (Clause, the negation as stated) and no Contract, so the closure (3), (4), head depths and
+//   negation of one (c2-5b; SPEC 8.3.2), gives a leaf row under (1) and (2), filed and matched by its atom's subject, a negation in
+//   the Not row (c2-5b2): its proposition (Clause, the negation as stated) and no Contract, so the closure (3), (4), head depths and
 //   active prefixes read Contract rows alone. A leaf row is one per proposition and stating scope, never merged and never Alias:
 //   SPEC 8.10's weakest receiver is each premise's, 8.11.4's bound list each fact's Statements', and merging by signature is the
 //   Callable selection's rule. Every row carries its Source: the written fact its derivation starts from, as its environment holds it (Raw; none for a
@@ -163,8 +163,8 @@
 // Closure(view) (DECISIONS R7-C2e2-1, R7-C2e2-2): a view's index of its facts by kind and subject is one table, an entry per (view
 // scope, requirement Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope,
 // kind, SubjectKey).
-// - Rows: a kind has a row when a reader reads it by subject: each row kind (RowKinds: Contract, and R7-C2c2 c2-3b's leaf kind
-//   Callable; Enumerate's walk; a leaf kind's negation is in that kind's row, RowAtom, c2-5b), TypeIdentity
+// - Rows: a kind has a row when a reader reads it by subject: each row kind (RowKinds: Contract, R7-C2c2 c2-3b's leaf kind
+//   Callable and c2-5b2's Not, the negations RowAtom gives a row; Enumerate's walk), TypeIdentity
 //   (ValidateAssociatedOverlapAgreement, DisjointConformanceFacts) and Semantics (DisjointConformanceFacts). A row kind's row holds
 //   each fact as written, under its atom's subject and its class key in the view (R7-C2c2 c2-1: the forming request's classes,
 //   which are the view's), in the Sources' order (the Invariants above), and the Contract row,
@@ -246,9 +246,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The kinds whose constraints give a row, the one list the index and the walk's two sources read (RowAtom; each kind its own row
-    // of Closure(view), R7-C2e2-2): Contract, and each kind with a reader of its own, a leaf kind (R7-C2c2 c2-3b: Callable), whose
-    // negation is a row of that kind too (c2-5b). A later kind with a reader joins the list here alone.
-    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable, ConstraintKind.Error]; // Error: an unbound clause's failed fact (R7-C3)
+    // of Closure(view), R7-C2e2-2, a fact in its own kind's: ViewIndex.Add): Contract, each kind with a reader of its own, a leaf kind
+    // (R7-C2c2 c2-3b: Callable), and Not, the negations RowAtom gives a row (c2-5b), filed by their atom's subject (c2-5b2: one row per
+    // meaning, which the walk reads and no validator). A later kind with a reader joins the list here alone.
+    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable, ConstraintKind.Not, ConstraintKind.Error]; // Error: an unbound clause's failed fact (R7-C3)
 
     // The closure's kept readings (Reading), emptied at each publication's start in the capability phase (ForgetKeptTables) and each
     // pass (ResetCapabilities), capacity kept.
@@ -313,9 +314,10 @@ public sealed partial class Binding
     private static (BindingSymbol? Symbol, BoundType Type) SubjectKey(BoundType type)
         => type.Kind == BoundTypeKind.AssociatedProjection ? (type.Symbol, type.Components[0]) : (null, type);
 
-    // The atom by whose kind and subject a constraint gives a row, else none: a constraint of one of RowKinds (a Contract one naming
-    // its Contract), or the operand of a negation of a leaf kind's atom (R7-C2c2 c2-5b; SPEC 8.3.2 Exact assumption and Negation: the
-    // negation is that kind's row, its Clause). A negated Contract atom gives none: a Contract row is a positive premise's refinement.
+    // The atom by whose subject a constraint gives a row, else none: a constraint of one of RowKinds (a Contract one naming its
+    // Contract), or the operand of a negation of a leaf kind's atom (R7-C2c2 c2-5b; SPEC 8.3.2 Exact assumption and Negation: the
+    // negation is a Not row, its Clause, c2-5b2; an operand is never a negation, NegateConstraint folding `not not P`). A negated
+    // Contract atom gives none: a Contract row is a positive premise's refinement.
     private static BoundConstraint? RowAtom(BoundConstraint constraint)
     {
         var atom = constraint.Kind == ConstraintKind.Not ? constraint.Left! : constraint;
@@ -658,8 +660,8 @@ public sealed partial class Binding
 
             // A fact is indexed in its kind's row by subject key, as written and as normalized in the view: FactStates confirms a
             // match. A nested demand reads the written facts alone (the leaf rule), so an entry an outermost request prepared serves it
-            // too. Each is a row with its Source: a Contract fact its Contract's, a fact of another row kind (RowKinds) or its negation a
-            // leaf row, matched by its atom (RowAtom).
+            // too. Each is a row with its Source: a Contract fact its Contract's, a fact of another row kind (RowKinds: a leaf kind's, a
+            // negation's) a leaf row, matched by its atom (RowAtom).
             foreach (var kind in RowKinds)
             {
                 if (index.Buckets.GetValueOrDefault((current, kind, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
@@ -675,7 +677,7 @@ public sealed partial class Binding
                         continue; // A nested demand reads the written facts and their keys alone.
                     }
 
-                    var atom = RowAtom(fact)!; // the bucket's kind is its atom's (ViewIndex.Add)
+                    var atom = RowAtom(fact)!; // a row kind's bucket holds facts with a row atom alone (IndexWritten, IndexNormalized)
                     var states = this.FactStates(atom, subject, out _);
                     if (states || this.SameClass(atom.Subject!, subject))
                     {
