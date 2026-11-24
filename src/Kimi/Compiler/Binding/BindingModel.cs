@@ -395,6 +395,12 @@ public sealed class BindingSymbol
 
     internal BindingScope Scope { get; set; }
 
+    /// <summary>Gets or sets the executable body that declares this function and that EvaluatingBody returns (SPEC 15.3.4;
+    /// Binding.ExecutableBodies.cs): a Closure's evaluating body, which binds its header and captures, written by its header scope
+    /// (ClosureHeaderScope) before any header binding; a named nested function's declaring body, written by the index walk that
+    /// declares it (DeclareFunction); no body for any other symbol. MIR never reads it.</summary>
+    internal ExecutableBody DeclaringBody { get; set; }
+
     internal SyntaxFormKoto? ConditionalDeclaration { get; set; }
 
     internal BindingSymbol? Next { get; set; }

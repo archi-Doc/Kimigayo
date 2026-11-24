@@ -433,12 +433,13 @@ internal static partial class NativeToolchain
         private string Inspect(Tatara tatara, string obj)
         {
             var facts = tatara.Inspect(this.context, obj);
+            var module = facts.Members[0]; // Tatara's own object: one member
             Dictionary<string, bool>? declared = null;
-            var lines = new string[facts.Undefined.Count];
+            var lines = new string[module.Undefined.Count];
             for (var i = 0; i < lines.Length; i++)
             {
-                var symbol = facts.Undefined[i].Name;
-                lines[i] = symbol + " " + facts.Undefined[i].Kind + " 0 0";
+                var symbol = module.Undefined[i].Name;
+                lines[i] = symbol + " " + module.Undefined[i].Kind + " 0 0";
                 if (AllowedUndefined.Contains(symbol))
                 {
                     continue;
@@ -453,7 +454,7 @@ internal static partial class NativeToolchain
                 }
             }
 
-            var markers = facts.DefinedExternal.Count(s => s.Name == TargetProfile.Windows.FloatMarker && s.Kind is 'B' or 'D');
+            var markers = module.DefinedExternal.Count(s => s.Name == TargetProfile.Windows.FloatMarker && s.Kind is 'B' or 'D');
             if (markers != 1 || facts.HasDefaultLibrary)
             {
                 throw new InvalidDataException("Invalid _fltused definition or hidden default library.");

@@ -106,8 +106,9 @@ public class DeclaredOriginSlotTest
 
     // SPEC 23.1.2, 15.3.1 (PLAN G312): a parenthesis or meet whose operand failed, and an associated Type application whose Origin
     // argument failed, rest on that operand, so a written Origin reports each cause once, at the operand: a non-borrow name, an absent
-    // slot (also nested, and in a clause), BU-56's located Unsupported_Kd and a missing Name; a meet whose two operands fail keeps both
-    // records, and the valid twins bind.
+    // slot (also nested, and in a clause) and a missing Name; a meet whose two operands fail keeps both records, and the valid twins bind.
+    // A parenthesized set projection of a body local (x.s) names the local's region, so put's store of its own input is the relation's
+    // record at `v` (SPEC 15.3.4, 15.6.5; R7-O3 O3-A removed BU-56's located Unsupported_Kd there, Q13).
     [Theory]
     [InlineData("func f(a: ref/i32, n: i32, b: ref/i32 during (n and a)) => ()", "InvalidOriginBinding_Kd: n")]
     [InlineData(SlotW + "func f(w: ref/W, b: ref/i32 during (w.zz)) => ()", "InvalidOriginBinding_Kd: zz")]
@@ -117,7 +118,7 @@ public class DeclaredOriginSlotTest
     [InlineData(
         SlotW + "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    var w: W{x} = W.init(items: arr@move)\n" +
             "    func put(slot: uniq/Array<ref/i32 during (x.s)>, v: ref/i32) => slot@follow.append(v)\n    return 0",
-        "Unsupported_Kd: x.s")]
+        "UnprovenOriginRelation_Kd: v")]
     [InlineData(SlotW + "func f(n: i32, w: ref/W, b: ref/i32 during (n and w.zz)) => ()", "InvalidOriginBinding_Kd: n", "InvalidOriginBinding_Kd: zz")]
     [InlineData(Item + "func f(x: ref/i32 during source) -> S.Item((missing)) => 42", "MissingOriginBinding_Kd: missing")]
     [InlineData(SlotW + "func f(a: ref/i32, w: ref/W, b: ref/i32 during ((a and w.s))) => ()")]
