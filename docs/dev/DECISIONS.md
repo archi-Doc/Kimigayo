@@ -33314,3 +33314,25 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     library (C-514 B1), every COMDAT copy a candidate (C-514 B2 (ii)), the compiled object's references (C-514 B3), keeping
     `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact), a `testBuild` flag with a `TargetProfile`
     column (ruling 21's fallback), the runtime's entries inside `Externals` (its `FunctionAbi`; ruling 32).
+- **T-M46 A library inconsistent with its declared Kind is an error at the link** (Tatara, 2026-11-25; PLAN G1330, D-1192, Q-762;
+  Major; design `artifacts\handoff\tatara\units\LinkAmbiguity\kind-design.md` Revision 0 with its corrections 1-3 from LinkAmbiguity
+  Revisions 1-3a (`kind-brief-impl.md`); the Middle's C-514; T's ruling 24). IMPL 20.4 makes a native dependency inconsistent with its
+  declared `Kind` an error; nothing compared a library with its Kind: LLD links an import library declared `static` through import
+  thunks (a DLL the program did not declare) and binds a dllimport reference to code by its local-import rule. LinkAmbiguity's step
+  (`NativeBuild.CheckDependencies`, T-M45) judges each unit the link may load, the library inputs that are objects (the only form
+  lld-link loads whole) and each library's pick in its closure (never every member defining a symbol: a second definer is judged only as another symbol's
+  pick), against its library's Kind (K): a unit's class, kept per member with the input's facts (`LinkInput.Classes`, `LinkClass`),
+  is Import for a COFF short import member (text kind 4, `i`) or an object defining an `.idata` global (llvm-nm's `I`), Image for a
+  linked image (`s`), else Code; `static` admits Code, `import` admits Import, nothing admits Image. An inconsistent pick still joins
+  the closure, so every other failure is found. A library input that is no archive and not an object (a linked image, a bare short
+  import member) is no library but IMPL 20.4's unsupported native dependency, whatever its Kind, and fails before the link: a linked
+  image as T's ruling 24 states (lld-link refuses a DLL with an ordinary error, "unknown file type"), and a bare short import member
+  so that it never reaches LLD, which refuses it with its fatal(), after which Tatara refuses every later call of the process (T's
+  rulings 53 and 54). K2: the module's declared import (`__imp_X` of the step's start, the manifest's declarations: the same at O0
+  and O2, never the object's undefined symbols) that no whole file defines and no library picks, while a whole input or a library's
+  pick defines `X`, fails (LLD would bind it to that code); with `X` defined nowhere LLD's undefined symbol stands. K2 is temporary: NamedProvider's rule P (PLAN G1333) replaces it. The lines join LinkAmbiguity's in its one
+  `InvalidDataException`: K's in Ordinal library order (a pick's symbols joined, a whole input's line by its class, a linked image
+  inside an archive its own line, T's ruling 24), then K2's and the ambiguous symbols' in Ordinal symbol order. Readings KR1-KR4
+  (kind-design.md §7). Rejected: the whole library's composition (rejects an MSVC import library with static members and a static
+  archive's unused bundled import member), a sibling step (the closure twice), staging (bytes, not loads), LLD's `/WX`, the manifest
+  naming each import's library (PLAN G1333), a Tatara verdict.
