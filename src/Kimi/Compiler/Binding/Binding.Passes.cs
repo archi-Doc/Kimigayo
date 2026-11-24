@@ -347,6 +347,7 @@ public sealed partial class Binding
             ResolvedCount = layer.ResolvedCount + program.ResolvedCount,
             UnresolvedCount = layer.UnresolvedCount + program.UnresolvedCount,
             InvalidCount = layer.InvalidCount + program.InvalidCount,
+            LimitedCount = layer.LimitedCount + program.LimitedCount,
         };
     }
 
