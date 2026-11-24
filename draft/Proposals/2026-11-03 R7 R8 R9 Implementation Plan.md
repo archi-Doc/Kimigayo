@@ -240,10 +240,14 @@ WORKFLOW "Sessions" owns this table where the two differ.
 - A review is one per unit; a fix after REVISE is the same reviewer's repeated review; two reviews sharing a cause or a third non-ACCEPT
   suspend the unit for the owner (Q11, Q14); record selection is the planning session's (Q13).
 - Prototype first (RP13); RP14's checks run before an A5-changing review; state files and handoffs (RP15).
-- A unit that moves A5 needs the Middle's consent (RP17): SPEC labels decided before any output is read, adversarial invalid twins,
-  and the A5 oracle plus MIR codegen of the moved programs (§7.1). An acceptance mover runs a whole-suite Session before its queue
-  row. A newly invalid test or library program goes to the owner before its expectation changes. The A5 oracle may run once for the
-  units K plans into the same window (revision 75, the owner in the Middle's session, verbatim "Yes, adopt it"): their heads merged
+- A unit that moves A5's verdicts or acceptance runs the combined A5 oracle (§7.1; the window's G-O command) on its head merged with
+  the newest dev before its Ready line, and the line states the result: the differing programs, or none (revision 119, DECISIONS
+  Q23). The Middle's consent (RP17) then labels each differing program from SPEC, never from the change's output, builds at least
+  three adversarial invalid twins of its own and runs MIR codegen of the moved programs (§7.1); it no longer reads the change's
+  code. The oracle does not replace the twins: its corpus holds known forms only. An acceptance mover runs a whole-suite Session
+  before its queue row. A newly invalid test or library program goes to the owner before its expectation changes. The window's G-O
+  stays, one A5 oracle run for the units K plans into the same window (revision 75, the owner in the Middle's session, verbatim
+  "Yes, adopt it"): their heads merged
   in turn onto the window's base (dev); a unit whose head does not merge cleanly runs alone. The base side's rows are the same
   commit's cached rows when they exist. When records differ, each unit merged alone onto the base runs the differing programs, which
   attributes every difference to its unit; a program no unit moves alone is reported as an interaction. Masking, two units
@@ -858,7 +862,9 @@ D- plus a number) and carries `[MM-dd HH:mm session]`; a session edits its own r
 state and never disappears until the coordinator archives it into the log seven days after its last change; the file is re-read
 immediately before every write and written in place, one row at a time (a rename onto it is denied), so two sessions never lose each
 other's rows, and the log is append-only; a session re-reads the board before opening a window, starting a heavy run, taking a hold or booking quiet time; a row older
-than 24 hours without a state change is stale and the coordinator flags it; a message is sent only to point at a row that needs an answer.
+than 24 hours without a state change is stale and the coordinator flags it; a message is sent only to point at a row that needs an answer;
+a row's cell or a log line states its facts in about three or four lines and links files for detail, copying no design or review text
+(revision 119, DECISIONS Q23).
 
 ```markdown
 # Board — read before any heavy action. Rules: docs/dev/... (this plan §9)
@@ -1153,3 +1159,4 @@ frozen.
 | 116 | 2026-11-23 | R7-C3 b's landing (the Front's Q-693, D-1143; F's V2a2/C3b rulings 1, 3 and 4, and ruling (A) on C-481; DECISIONS R7-M82) | §5.0's C3 row: b landed in W-322 (Q-693): `SelectConformance` (`Binding.Contracts`) is the one selection of a Type's conformance by a Contract, replacing `ConformanceByDeclaration`, `ConformanceByReference`, `ConformanceForKey`'s and `InstanceContract`'s loops and the solver's two-step lookup; G302's sp2, sp3 and r7 are accepted. Its remainder C3b-2 (PLAN G1300: a specification whose qualifier names a conformance of several members is a located `Unsupported_Kd` until a specification binds to the whole set; with it x2's, x4's and x11's index records) is next. Nothing frozen. |
 | 117 | 2026-11-23 | R8-X1 U4's records (the Back's D-1179; B's ruling 3) | §5.2's L1 row: L1 landed whole (DECISIONS R8-M51, R8-M53-M55), in place of "Adopted 11-11 by RQ13's measurement". §5.2's X1 row: L2 landed before the exit run (U1 Q-661 W-317, U2 Q-671 W-319, U3 Q-677 W-322; DECISIONS R8-M58, R8-M59), and X1's exit run was at 6e8ffd3b4. §10.2 item 3 reads "`IntrinsicId` 27 for R8's set (29 with OSF2's `VolatileRead` and `VolatileWrite`, the owner's O-489; DECISIONS T-M23)": R8's set is 27 (R8-I1, R8-M52), and the two volatile intrinsics are the Tatara lane's. Nothing frozen. |
 | 118 | 2026-11-23 | R8's exit (the Back's D-1186; the owner's O-513 (c), verbatim 「O-513 c」, and O-514 (a), verbatim 「O-514 a」) | §5.2's X1 row: R8 exited 2026-11-23 (DECISIONS R8-M60; the owner's O-513 (c), O-514 (a)): R8-M60 records the exit gate (§10.2) item by item at 6e8ffd3b4 and the owner's review of R8's exceptions (every Review row stays as recorded). Nothing frozen. |
+| 119 | 2026-11-24 | The owner's adoption of the Coordinator's three process proposals in K's dialog (DECISIONS Q23; verbatim 「3案とも採用します。作業を開始してください。各セッションに意見を聞き、問題なければ適用してください。」) | §3.3's RP17 bullet: a unit that moves A5's verdicts or acceptance runs the combined A5 oracle on its head merged with the newest dev before its Ready line, which states the result; the Middle's consent then labels each differing program from SPEC, builds at least three adversarial invalid twins of its own and runs MIR codegen of the moved programs, and no longer reads the change's code; the window's G-O stays (revision 75). §9: a row's cell or a log line states its facts in about three or four lines and links files for detail. WORKFLOW takes the rest of Q23 (designs of about 1,000 to 1,500 words written from the prototype's diff, the coverage table kept in its test rows, a fix after ACCEPT reviewed only by its reviewer). For units whose design starts after Q23 lands. Nothing frozen. |
