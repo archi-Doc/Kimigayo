@@ -5,8 +5,8 @@
 // for a subject (Enumerate) and their readers: SPEC 8.3.2's refinement row over them (PremiseRefines, the row's one
 // predicate: ProveConformance, SymbolicCapability, and the declaration queries of a parameter's indexing, iteration and arithmetic),
 // the first walk's rows (FirstRows, R7-C2c2 c2-3b: a value call's Callable Constraints, TryCallable and SelectValueCall; the bounds
-// of a Callable premise and of a requirement call, AvailableCallableEffects and AvailableEffectBounds; SPEC 8.10's row for a
-// Callable atom and its negation, PremiseCallable, which Supply reads (c2-5b); the callables a contract hands its body, retention's
+// of a Callable premise and of a requirement call, AvailableCallableEffects and AvailableEffectBounds; SPEC 8.3.2's Exact assumption
+// over the leaf rows for every atom and its negation, ExactAssumption, which Supply reads (c2-5b, c2-5b2); the callables a contract hands its body, retention's
 // HandedSignatures, R7-C2c2 c2-3c) and, over them, the candidate readers' rows (PremiseRows: name discovery, R7-C2c2 c2-3a); until C3 the eager derivation
 // too (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply)
 // and the availability of a fact (AvailableConstraintFact).
@@ -20,8 +20,8 @@
 //   subject's Origin arguments (RowContract; SPEC 8.5.1, 8.5.4: application substitutes Origin atoms positionally). A row carries
 //   whether it is available (R7-C2c2 c2-3a): its fact and its Contract are, for a clause or an ancestor its source row too; the
 //   strongest of its derivations wins. A constraint of another kind with a reader (RowAtom; R7-C2c2 c2-3b: Callable), and the
-//   negation of one (c2-5b; SPEC 8.3.2), gives a leaf row under (1) and (2), filed and matched by its atom's subject, a negation in
-//   the Not row (c2-5b2): its proposition (Clause, the negation as stated) and no Contract, so the closure (3), (4), head depths and
+//   negation of any atom (c2-5b, c2-5b2; SPEC 8.3.2 Exact assumption), gives a leaf row under (1) and (2), filed and matched by its
+//   atom's subject, a negation in the Not row: its proposition (Clause, the negation as stated) and no Contract, so the closure (3), (4), head depths and
 //   active prefixes read Contract rows alone. A leaf row is one per proposition and stating scope, never merged and never Alias:
 //   SPEC 8.10's weakest receiver is each premise's, 8.11.4's bound list each fact's Statements', and merging by signature is the
 //   Callable selection's rule. Every row carries its Source: the written fact its derivation starts from, as its environment holds it (Raw; none for a
@@ -72,11 +72,12 @@
 //   links' equations: a function of (link, view), whichever link a request entered first or spelled (SPEC 8.3.3: a fact that depends
 //   on its own judgment supplies nothing; no coinduction), in at most the (link, row) pairs plus one rounds. A key never leaves the supply: no
 //   reader receives it as a Type (on a class match AppliedAssociatedContract reads the fact's own subject). Not yet supplied: a
-//   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a Callable fact or its negation
-//   whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), the clause kinds
-//   without a leaf row at depth (the eager supply's one level until c2-3c and d), and a negated Contract, identity or Semantics atom
-//   (no row: its exact assumption is Supply's exact match and scan, the eager supply's one level, until R7-C2c2 c2-5b2); a missing
-//   row only rejects.
+//   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a leaf row's fact (a Callable fact,
+//   a negation) whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), and
+//   the clause kinds without a leaf row at depth (the eager supply's one level until c2-3c and d). A missing row rejects, but where it
+//   is the evidence against a written premise it accepts: an identity premise putting a constructed Type in the subject's class (the
+//   proposition asks that Type's rows, which no clause instance states: nts2c) and a positive identity clause at depth, which is no
+//   row (nts2c-rev); PLAN's open issue against c2-5c's constructed roots.
 // - Extension (R7-C2c2 c2-2; SPEC 8.2.3's grounds include the identity Constraints a Contract premise supplies at every depth): the
 //   walk records the TypeIdentity clause instances of its available Contract rows, but a deferred mate's walk (PLAN G881b: a
 //   cycle's mate, walked from the top) records none, so an extension rests on the chains a request walks without a cycle, as
@@ -115,8 +116,8 @@
 //   can keep for its epoch an Unknown a depth-1 evaluation would prove (no program shows it; removal: R7-C2c2 c2-4's request by
 //   identity class, which every depth reads alike).
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
-//   only Reading calls (temporary until R7-C2c3 removes its binding completion), and of a Callable row's signature, which only
-//   PremiseCallable calls, as the Callable selection reads it (CallableContractType, which reads ClassForm);
+//   only Reading calls (temporary until R7-C2c3 removes its binding completion), and of a leaf row's atom, which only the reader
+//   normalizes (ExactAssumption: as the proposition's intake reads it, NormalizeProofConstraint);
 //   Enumerate's walk and what it calls never
 //   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, ClassForm or RequestCapability
 //   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading and the kept rows,
@@ -164,7 +165,7 @@
 // scope, requirement Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope,
 // kind, SubjectKey).
 // - Rows: a kind has a row when a reader reads it by subject: each row kind (RowKinds: Contract, R7-C2c2 c2-3b's leaf kind
-//   Callable and c2-5b2's Not, the negations RowAtom gives a row; Enumerate's walk), TypeIdentity
+//   Callable and c2-5b2's Not, every negated atom; Enumerate's walk), TypeIdentity
 //   (ValidateAssociatedOverlapAgreement, DisjointConformanceFacts) and Semantics (DisjointConformanceFacts). A row kind's row holds
 //   each fact as written, under its atom's subject and its class key in the view (R7-C2c2 c2-1: the forming request's classes,
 //   which are the view's), in the Sources' order (the Invariants above), and the Contract row,
@@ -220,7 +221,7 @@
 //   - FirstRows' admission (`nofirstadmit`: its rows kept whatever the walk's Completion): the merge review's six twins (d3a, d3ar,
 //     d3av, d3b, d3br, d3bv) and the refresh's 56 acceptance programs: no difference, and the admission unobserved: the invalid
 //     twins never reach a Provisional FirstRows walk (an environment naming a failed Contract is Invalid, and the walk skips it).
-//     FirstRows' readers (PremiseCallable, the Callable and effect-bound readers, HandedSignatures) read `Available` rows directly,
+//     FirstRows' readers (ExactAssumption, the Callable and effect-bound readers, HandedSignatures) read `Available` rows directly,
 //     with no shadow, so a Pending read inside a round by one of them is the case left open; its row is owed with C3's.
 // - Lifetime: the entry's, the publication, in the capability phase (KeepsAcrossRequests, the one phase fact); before it one
 //   outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
@@ -247,8 +248,8 @@ public sealed partial class Binding
 {
     // The kinds whose constraints give a row, the one list the index and the walk's two sources read (RowAtom; each kind its own row
     // of Closure(view), R7-C2e2-2, a fact in its own kind's: ViewIndex.Add): Contract, each kind with a reader of its own, a leaf kind
-    // (R7-C2c2 c2-3b: Callable), and Not, the negations RowAtom gives a row (c2-5b), filed by their atom's subject (c2-5b2: one row per
-    // meaning, which the walk reads and no validator). A later kind with a reader joins the list here alone.
+    // (R7-C2c2 c2-3b: Callable), and Not, every negated atom (c2-5b, c2-5b2), filed by its atom's subject (one row per meaning, which
+    // the walk reads and no validator). A later kind with a reader joins the list here alone.
     private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable, ConstraintKind.Not, ConstraintKind.Error]; // Error: an unbound clause's failed fact (R7-C3)
 
     // The closure's kept readings (Reading), emptied at each publication's start in the capability phase (ForgetKeptTables) and each
@@ -315,17 +316,21 @@ public sealed partial class Binding
         => type.Kind == BoundTypeKind.AssociatedProjection ? (type.Symbol, type.Components[0]) : (null, type);
 
     // The atom by whose subject a constraint gives a row, else none: a constraint of one of RowKinds (a Contract one naming its
-    // Contract), or the operand of a negation of a leaf kind's atom (R7-C2c2 c2-5b; SPEC 8.3.2 Exact assumption and Negation: the
-    // negation is a Not row, its Clause, c2-5b2; an operand is never a negation, NegateConstraint folding `not not P`). A negated
-    // Contract atom gives none: a Contract row is a positive premise's refinement.
+    // Contract), or the operand of a negation that is an atom of any kind, no conjunction, disjunction or Unresolved (R7-C2c2 c2-5b,
+    // c2-5b2; SPEC 8.3.2 Exact assumption and Negation: the negation is a Not row, its Clause; an operand is never a negation,
+    // NegateConstraint folding `not not P`).
     private static BoundConstraint? RowAtom(BoundConstraint constraint)
     {
-        var atom = constraint.Kind == ConstraintKind.Not ? constraint.Left! : constraint;
+        if (constraint.Kind == ConstraintKind.Not)
+        {
+            return constraint.Left!.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Unresolved ? null : constraint.Left;
+        }
+
         foreach (var kind in RowKinds)
         {
-            if (atom.Kind == kind)
+            if (constraint.Kind == kind)
             {
-                return kind != ConstraintKind.Contract || (atom.Contract is not null && constraint.Kind != ConstraintKind.Not) ? atom : null;
+                return kind != ConstraintKind.Contract || constraint.Contract is not null ? constraint : null;
             }
         }
 
@@ -473,9 +478,9 @@ public sealed partial class Binding
             }
         }
 
-        // R7-C2c2 c2-3b, c2-5b: a Callable atom's premise evidence, for the proposition and its negation, is the subject's Callable
-        // rows and their negations (SPEC 8.3.2: a clause at every depth, whatever its spelling).
-        var rows = this.PremiseCallable(proposition, view.Premises);
+        // R7-C2c2 c2-3b, c2-5b, c2-5b2: an atom's premise evidence at every depth, for the proposition and its negation, is the
+        // subject's leaf rows (SPEC 8.3.2 Exact assumption: a clause at every depth, whatever its spelling).
+        var rows = this.ExactAssumption(proposition, view.Premises);
         return new() { Positive = positive || rows.Positive, Negative = negative || rows.Negative };
     }
 
@@ -719,7 +724,7 @@ public sealed partial class Binding
                     }
 
                     // A clause instance stating the subject or a Type of its class is a row whose Source is its prefix row's scope; a
-                    // negated leaf clause states its atom's subject (RowAtom).
+                    // negated clause states its atom's subject (RowAtom).
                     if (premise is not null && RowAtom(premise) is { Subject: { } stated } &&
                         ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
                     {
