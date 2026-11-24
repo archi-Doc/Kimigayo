@@ -221,6 +221,8 @@ public sealed partial class Binding
                         {
                             if (ReceiverShape(b) is { } other && other != shape)
                             {
+                                // SPEC 23.1.2: a declaration that already failed, such as one whose receiver forms no Type, keeps its first
+                                // failure, the input this mismatch rests on.
                                 this.Fail(fa, BindingFailure.ReceiverShapeMismatch);
                                 this.Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
                             }
@@ -286,6 +288,8 @@ public sealed partial class Binding
                     }
                     else if (expected != current)
                     {
+                        // SPEC 23.1.2: as a member group's mismatch, a requirement that already failed keeps its first failure, the input
+                        // this mismatch rests on.
                         this.Fail(contract, BindingFailure.ReceiverShapeMismatch);
                         if (ReferenceEquals(members[i].Symbol.Declaration.Parent, contract))
                         {

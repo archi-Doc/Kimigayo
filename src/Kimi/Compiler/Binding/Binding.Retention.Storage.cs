@@ -59,7 +59,7 @@ public sealed partial class Binding
     private readonly HashSet<int> storageBorrowed = new(); // The storages the walk entered past a borrow or pair layer (R's exclusion, Storages).
     private readonly HashSet<BoundType> storageResultLeaves = new(ReferenceEqualityComparer.Instance); // ResultLeaves' answer, per computation.
     private readonly List<(int Storage, int Node, BoundType? Signature)> storageTargets = new(); // With the walked signature there (Admits).
-    private readonly List<(int Storage, BoundType Signature)> storageBound = new(); // The written roots of the kept abstract Type's bindings, by storage (HiddenKinds).
+    private readonly List<(int Storage, BoundType Signature, BoundType Bound)> storageBound = new(); // The written roots of the kept abstract Type's bindings, by storage, with the Type the call binds it to there (HiddenKinds).
     private readonly HashSet<BoundType> storageKept = new(ReferenceEqualityComparer.Instance); // The kept abstract Types the output's walk met (Written's Handed).
     private readonly Dictionary<BoundType, int> storageResultSeen = new(ReferenceEqualityComparer.Instance); // ResultLeaves' walk: Enters' depths.
     private readonly List<(HoldAt At, int Storage)> storageHolds = new();
@@ -168,7 +168,7 @@ public sealed partial class Binding
             // node names it (ResultLeaves: past its own borrow or raw layer the result lends a referent or pointee, K2).
             if (bound && !at.Bound && (named || at.Storage != ResultStorage || this.storageResultSeen.ContainsKey(type)))
             {
-                this.storageBound.Add((at.Storage, at.Signature!));
+                this.storageBound.Add((at.Storage, at.Signature!, type));
             }
         }
 

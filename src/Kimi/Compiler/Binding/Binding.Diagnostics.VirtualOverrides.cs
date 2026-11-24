@@ -31,6 +31,23 @@ public sealed partial class Binding
         function.ReportIn(store, problem.Requirement, problem.Code, span: function.DispatchModifierSpan, evidence: [cause, rule], related: related);
     }
 
+    // SPEC 6.4.4: the rule a base reference breaks, its record's Reason; its Note is pinned by the console and LSP row
+    // (BaseCallSyntaxTest.InvalidBaseContextIsLocatedInCliAndLspWhileOtherErrorsSurvive), so it is rendered from the Reason.
+    private static void ReportBaseCallFailure(Koto reference, DiagnosticCollection? store, in BindingProblem problem, BaseCallCause cause)
+    {
+        var note = cause switch
+        {
+            BaseCallCause.NotCall => "base has no value; use base.name(arguments)",
+            BaseCallCause.NoReceiver => "base requires a derived instance function; named locals have no implicit self",
+            BaseCallCause.NoBase => "the lexical declaring struct has no direct base",
+            BaseCallCause.OutsideBody => "base is available in an instance body, not a parameter default or declaration header",
+            BaseCallCause.NoSelfCapture => "base in an anonymous function requires an explicit self capture at each function boundary",
+            BaseCallCause.NotInstanceFunction => "base.name(arguments) must name an instance function; use Type qualification for receiverless functions",
+            _ => throw new UnreachableException(),
+        };
+        reference.ReportIn(store, problem.Requirement, problem.Code, note: note, evidence: [cause], condition: problem.Condition);
+    }
+
     // SPEC 6.4.2-6.4.4: an override problem from its facts (OverrideFacts): the cause and a condition's proof, the original or first
     // candidate and a conflicting declaration, the record's own location, a renamed external name (whose parameter's two names the adapter
     // reads from the two declarations at that position) and a result's two Types.
@@ -101,21 +118,5 @@ public sealed partial class Binding
 
             throw new UnreachableException();
         }
-    }
-
-    private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var cause = this.baseCallFailures[reference];
-        var note = cause switch
-        {
-            BaseCallCause.NotCall => "base has no value; use base.name(arguments)",
-            BaseCallCause.NoReceiver => "base requires a derived instance function; named locals have no implicit self",
-            BaseCallCause.NoBase => "the lexical declaring struct has no direct base",
-            BaseCallCause.OutsideBody => "base is available in an instance body, not a parameter default or declaration header",
-            BaseCallCause.NoSelfCapture => "base in an anonymous function requires an explicit self capture at each function boundary",
-            BaseCallCause.NotInstanceFunction => "base.name(arguments) must name an instance function; use Type qualification for receiverless functions",
-            _ => throw new UnreachableException(),
-        };
-        reference.ReportIn(store, requirement, code, note: note, evidence: [cause]);
     }
 }

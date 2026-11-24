@@ -243,7 +243,7 @@ public sealed partial class Binding
             if (arm.Guard is { } guard && this.BindNode(guard, this.scopes[guard], BoundType.Boolean) is { } guardType &&
                 !this.FitsType(guardType, BoundType.Boolean))
             {
-                this.Fail(guard, BindingFailure.TypeMismatch);
+                this.RecordTypeMismatch(guard, guard, guardType, BoundType.Boolean); // SPEC 14.8.3: a guard is one bool expression.
                 plan.Invalid = true;
             }
 
@@ -381,7 +381,7 @@ public sealed partial class Binding
         if (structural && type.Semantics != SemanticsKind.Owner)
         {
             plan.Invalid = true;
-            this.Fail(syntax, BindingFailure.InvalidPattern);
+            this.Record(syntax, BindingFailure.InvalidPattern, []);
             return index;
         }
 
@@ -398,7 +398,7 @@ public sealed partial class Binding
                 symbol.BindsReference = reach.Access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 if (reach is { Access: PatternAccessMode.Exclusive, OwnedPart: true } && IsGetterResult(plan.Syntax.Expression))
                 {
-                    this.Fail(binding, BindingFailure.InvalidAssignment);
+                    this.Record(binding, BindingFailure.InvalidAssignment, []);
                 }
 
                 binding.Operands[0].BoundSymbol = symbol;
@@ -451,7 +451,7 @@ public sealed partial class Binding
                     if (payload is null)
                     {
                         plan.Invalid = true;
-                        this.Fail(children[i], BindingFailure.InvalidPattern);
+                        this.Record(children[i], BindingFailure.InvalidPattern, []);
                         unread ??= children[i];
                     }
                 }
@@ -503,7 +503,7 @@ public sealed partial class Binding
         if (position.Kind == BoundPatternKind.Invalid)
         {
             plan.Invalid = true;
-            this.Fail(syntax, BindingFailure.InvalidPattern);
+            this.Record(syntax, BindingFailure.InvalidPattern, []);
         }
         else if (unsupported)
         {
@@ -608,7 +608,7 @@ public sealed partial class Binding
 
         plan.Invalid |= proof != ConstraintProof.Unknown;
         plan.Pending |= proof == ConstraintProof.Unknown;
-        this.Fail(syntax, ConstraintFailureOf(proof), proof == ConstraintProof.Unknown);
+        this.RecordConstraint(syntax, proof, [], proof == ConstraintProof.Unknown); // The recheck meets a node its first check failed: the read keeps it.
         return false;
     }
 
@@ -643,7 +643,10 @@ public sealed partial class Binding
 
             if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
             {
-                this.Fail(plan.Syntax, BindingFailure.NonExhaustiveMatch);
+                // SPEC 14.8.4: the reason a match lacks as a Reason, its Case's declaration index plus one packed above its byte (0 for
+                // none; R7-E3 E3c-2). B1 none: this runs once, after the positions' checks, which fail positions, never the match.
+                var coverage = plan.Coverage;
+                this.Record(plan.Syntax, BindingFailure.NonExhaustiveMatch, [new(ProblemFactKind.Reason, SourceRef.Of(plan.Syntax), (long)coverage.Requirement | ((long)(coverage.CaseIndex + 1) << 8))]);
             }
 
             // Publish coverage warnings only after all Pattern Type checks have completed.

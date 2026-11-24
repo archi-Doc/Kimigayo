@@ -164,6 +164,8 @@ public sealed partial class Binding
                 continue;
             }
 
+            // Transitional, R7-E5 (D-924; B's E3a-2 ruling 10, R7-E3 E3c-2): a held part's join conflict is spelled as a failure only
+            // where the part holds none, so its own earlier failure, the input this conflict rests on, keeps its record.
             if (context.Outcome == JoinOutcome.Conflict && held.BindingFailure == BindingFailure.None)
             {
                 this.Fail(held, BindingFailure.TypeMismatch);
