@@ -28437,8 +28437,8 @@ R8-M* and R9-M* by the stage of the recording unit.
 - **R7-M102 A default's copy reads its formation's Incomplete as the collector does (PLAN G651 U2c)** (Back, 2026-11-25; Q-766,
   D-1267; Major: design `back\notes\g651-u2c\design.md` Revision 1 with B's rulings 1-13; design reviews C-503 (the Middle's ACCEPT
   WITH CONDITIONS and delta read ACCEPT WITH CONDITIONS, the Front's ACCEPT WITH CONDITIONS and delta read ACCEPT, 2026-11-23/24);
-  implementation read by the Front (commit (1)'s contract text and commit (2)'s `Formation` text) and the Middle (commit (2)'s
-  builder hunk, RP17)) SPEC 7.2.3, 22.10.5, 23.1.2; IMPL 21.3.2, A.4. Supersedes in part R7-M85 and R4-M127; amends
+  implementation reads C-557: the Front's (commit (1)'s contract text and commit (2)'s `Formation` text) and the Middle's (commit
+  (2)'s builder hunk, RP17), ACCEPT and ACCEPT with RP17 CONSENT, no move) SPEC 7.2.3, 22.10.5, 23.1.2; IMPL 21.3.2, A.4. Supersedes in part R7-M85 and R4-M127; amends
   R5-M151 and R7-M38; records in R7-M54 that R7-M94 ended the G651 U2a line's N6 clause (each entry's line states the change).
   - **Rule.** `MirBuilder.Instantiates` gives the first failing read's `TyCtxt.Formation` in its loop order (non-Arg locals, each
     constant's Type then its Length term, rvalues, callee substitutions): each Type and callee substitution through `TyCtxt.Answered`
