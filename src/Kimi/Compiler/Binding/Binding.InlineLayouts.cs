@@ -35,7 +35,7 @@ namespace Kimi.Compiler;
 //   binding names no Type after the failed Binding), no limit, no read of TyCtxt.RecursiveContracts' post-Bind memo inside Bind.
 public sealed partial class Binding
 {
-    private readonly Dictionary<(object Key, BoundRequirement Identity), InlineSummary> inlineSummaries = new();
+    private readonly Dictionary<InlineNode, InlineSummary> inlineSummaries = new();
     private readonly List<InlineSummary> inlineSummaryPool = new();
     private readonly List<InlineSummary> inlineComponents = new(); // Tarjan's stack: the nodes whose component is open.
     private readonly Dictionary<BindingSymbol, bool> inlineRecursive = new(ReferenceEqualityComparer.Instance);
@@ -55,7 +55,7 @@ public sealed partial class Binding
 
         foreach (var container in this.storageDeclarations)
         {
-            if (this.Summary(container, default, null, this.scopes[container]) is { Index: 0 } summary)
+            if (this.Summary(new(container.BoundSymbol, null, default), null, this.scopes[container]) is { Index: 0 } summary)
             {
                 this.SummarizeInlineStorage(summary);
             }
@@ -70,7 +70,7 @@ public sealed partial class Binding
                 for (var i = 0; i < shape.AssociatedTypes.Count; i++)
                 {
                     if (this.InlineBinding(path, shape.AssociatedTypes[i]) is { } binding &&
-                        this.Summary(path, shape.AssociatedTypes[i], binding, path.Scope) is { Index: 0 } summary)
+                        this.Summary(new(null, path, shape.AssociatedTypes[i]), binding, path.Scope) is { Index: 0 } summary)
                     {
                         this.SummarizeInlineStorage(summary);
                     }
@@ -80,7 +80,7 @@ public sealed partial class Binding
 
         foreach (var container in this.storageDeclarations)
         {
-            if (this.Summary(container, default, null, this.scopes[container]).Cyclic)
+            if (this.Summary(new(container.BoundSymbol, null, default), null, this.scopes[container]).Cyclic)
             {
                 container.BoundSymbol!.Adt!.InlineCycle = true;
                 this.Record(container, BindingFailure.InvalidInlineLayout, []);
@@ -116,11 +116,11 @@ public sealed partial class Binding
         }
     }
 
-    // A node's summary in this run, taken from the pool on its first request: a declaration's (key the declaration, no identity, binding
-    // null) or an associated binding's (key its conformance path and identity), walked and proven in `scope`.
-    private InlineSummary Summary(object key, BoundRequirement identity, BoundType? binding, BindingScope scope)
+    // A node's summary in this run, taken from the pool on its first request: a declaration's (no identity, binding null) or an
+    // associated binding's, walked and proven in `scope`.
+    private InlineSummary Summary(InlineNode key, BoundType? binding, BindingScope scope)
     {
-        if (!this.inlineSummaries.TryGetValue((key, identity), out var summary))
+        if (!this.inlineSummaries.TryGetValue(key, out var summary))
         {
             var count = this.inlineSummaries.Count;
             if (count == this.inlineSummaryPool.Count)
@@ -129,8 +129,8 @@ public sealed partial class Binding
             }
 
             summary = this.inlineSummaryPool[count];
-            summary.Reset(key, identity, binding, scope);
-            this.inlineSummaries.Add((key, identity), summary);
+            summary.Reset(key, binding, scope);
+            this.inlineSummaries.Add(key, summary);
         }
 
         return summary;
@@ -187,7 +187,7 @@ public sealed partial class Binding
             return;
         }
 
-        var shape = summary.Container!.BoundSymbol!.Adt!;
+        var shape = summary.Declaration!.Adt!;
         for (var i = 0; i < shape.Types.Count; i++)
         {
             this.VisitInlinePart(summary, shape.Types[i].BoundType, query);
@@ -227,7 +227,7 @@ public sealed partial class Binding
         else if (instance)
         {
             var declaration = (DeclarationContainerKoto)part.Symbol!.Declaration;
-            this.VisitInlineNode(summary, this.Summary(declaration, default, null, this.scopes[declaration]), part, query);
+            this.VisitInlineNode(summary, this.Summary(new(declaration.BoundSymbol, null, default), null, this.scopes[declaration]), part, query);
         }
         else
         {
@@ -265,7 +265,7 @@ public sealed partial class Binding
         }
         else if (this.InlineBinding(outcome.Path!, outcome.Identity) is { } binding)
         {
-            this.VisitInlineNode(summary, this.Summary(outcome.Path!, outcome.Identity, binding, outcome.Path!.Scope), subject, query);
+            this.VisitInlineNode(summary, this.Summary(new(null, outcome.Path, outcome.Identity), binding, outcome.Path!.Scope), subject, query);
         }
     }
 
@@ -393,10 +393,15 @@ public sealed partial class Binding
         return recursive;
     }
 
+    // A node of one run (DECISIONS BU-220, R7-N5 B8): a struct or enum declaration by its symbol, or an associated binding by its
+    // conformance path and identity. The walk reaches library declarations in a program pass, so a declaration is keyed by its symbol,
+    // its identity in inlineRecursive and MirDefKey, never its node.
+    private readonly record struct InlineNode(BindingSymbol? Declaration, BoundConformancePath? Path, BoundRequirement Identity);
+
     // A node's state in one run (ValidateInlineLayouts), pooled across runs.
     private sealed class InlineSummary
     {
-        internal DeclarationContainerKoto? Container { get; private set; } // A declaration node's declaration.
+        internal BindingSymbol? Declaration { get; private set; } // A declaration node's declaration.
 
         internal BoundConformancePath? Path { get; private set; } // A binding node's conformance path.
 
@@ -406,7 +411,7 @@ public sealed partial class Binding
 
         internal BindingScope Scope { get; private set; } = null!;
 
-        internal Koto Site => (Koto?)this.Container ?? this.Path!.Use; // The node of its proofs' judgment (QuerySite): the declaration, else the path's use.
+        internal Koto Site => this.Declaration?.Declaration ?? this.Path!.Use; // The node of its proofs' judgment (QuerySite): the declaration, else the path's use.
 
         internal List<BoundType> Parts { get; } = new(); // The abstract parts its storage reaches by value.
 
@@ -420,9 +425,9 @@ public sealed partial class Binding
 
         internal bool Cyclic { get; set; }
 
-        internal void Reset(object key, BoundRequirement identity, BoundType? binding, BindingScope scope)
+        internal void Reset(InlineNode key, BoundType? binding, BindingScope scope)
         {
-            (this.Container, this.Path, this.Identity) = (key as DeclarationContainerKoto, key as BoundConformancePath, identity);
+            (this.Declaration, this.Path, this.Identity) = key;
             (this.Binding, this.Scope) = (binding, scope);
             (this.Index, this.Low, this.OnStack, this.SelfEdge, this.Cyclic) = (0, 0, false, false, false);
             this.Parts.Clear();

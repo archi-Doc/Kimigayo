@@ -393,7 +393,7 @@ public sealed partial class Binding
                 {
                     if (ReferenceEquals(use, syntax))
                     {
-                        this.obligationSet.Remove(this.obligations[i]);
+                        this.obligationSet.Remove(new(this.obligations[i]));
                         this.obligations.RemoveAt(i);
                         break;
                     }

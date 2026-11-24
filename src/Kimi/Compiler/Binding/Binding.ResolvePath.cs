@@ -793,7 +793,7 @@ public sealed partial class Binding
         }
 
         var environment = scope.EvaluatedPremises;
-        var search = this.SearchAssociated(type, environment, name, contract);
+        var search = this.SearchAssociated(type, environment, name, contract, projection);
         if (search is { Found: { } associated, Alternative: null })
         {
             if (this.UnappliedFamily(associated.Declaration, false))
@@ -993,7 +993,7 @@ public sealed partial class Binding
     // scope), a parameter as ParameterVisible says, any other binding of the scope always. The one visibility rule of a value lookup
     // (ValueStage) and of a literal's capture test (CanCapture, Binding.Captures).
     private bool VisibleAt(BindingSymbol candidate, Koto use)
-        => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && this.ParameterVisible(candidate);
+        => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && ParameterVisible(candidate, use);
 
     private ResolvedPath SelectedPath(in TypeCandidates candidates, Koto use, int step)
     {
@@ -1083,7 +1083,7 @@ public sealed partial class Binding
         // they register every one may (G621's early read); a parameter's, a pair target's or `Self`'s candidates are premises, completed
         // later (an override's selection), so its Name stays a projection. The former decides with evidence.
         var associable = IsCore(left) && (left.Declaration is not (StructKoto or EnumKoto) || left.Kind != BindingSymbolKind.Type || !this.impls.Reached(ImplTable.AdmissionPoint.SelfClauses) ||
-            (left.Named.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null).Found is not null));
+            (left.Named.Type is { } leftType && this.SearchAssociated(leftType, scope, name, null, member).Found is not null));
         return new(associable ? PathEnd.Projection : PathEnd.Unresolved, null, member);
     }
 

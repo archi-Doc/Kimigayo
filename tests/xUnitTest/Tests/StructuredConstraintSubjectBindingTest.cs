@@ -9,6 +9,13 @@ namespace XunitTest;
 
 public class StructuredConstraintSubjectBindingTest
 {
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 8.1, F.6): a closed clause's projection subject over a Function Type argument is formed without the
+    // nested signature, whose input is its premise (dev: InvalidConstraint_Kd at the subject and UnprovenConstraint_Kd at H); its control.
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\ncontract HasItem\n    associate Item\nstruct W<Z>\n    Self is HasItem\n    associate Item is i32\nstruct H {q}\n    W<(Option<T during q>) -> i32>.Item is Copy\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n", "clean")] // c1cs
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\ncontract HasItem\n    associate Item\nstruct W<Z>\n    Self is HasItem\n    associate Item is i32\nstruct H {q}\n    W<i32>.Item is Copy\n    public let r: ref/i32 during q\n    public init(r: ref/i32 during q) => self.r = r\n", "clean")] // c1csd
+    public void ANestedSignatureInAProjectionSubjectIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     // The owner's O-42 (a), SPEC F.6's ConstraintSubject: a constructed Type is no subject. One syntax record at the subject, on which the
     // clause rests, so the declaration reports nothing else.
     [Theory]

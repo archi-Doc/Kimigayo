@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
+using Kimi.Build;
 using Xunit;
 
 namespace XunitTest;
@@ -121,16 +123,165 @@ public class HeapRuntimeTest
         ScalarEmissionTest.WriteFixture("HeapRuntimeNoPages" + name, ir, string.Empty, 1, "Hello.kimi:1:9: abort KIMI_E_ALLOC: Failed to allocate memory\n");
     }
 
-    // SPEC 22.5.2: a large run's release that the system refuses (VirtualFree given a size with MEM_RELEASE, ERROR_INVALID_PARAMETER)
-    // Aborts KIMI_E_FREE at the release with the OS error. The adapter suite's mode 17 fakes the refusal and its error; this row has the
-    // real system refuse it and reports at a program's releasing source location.
+    // IMPL 21.4.3 as amended (PLAN G1311): a released large run of at most 1 MiB is kept, and the next block of its length takes it
+    // without the layer. The wrapper refuses a second mapping of the last run's length (a region's 1 MiB passes and is not remembered).
+    // Three 300 KiB Arrays (the take and the keep), three 600 KiB ones (the first release hands the kept 300 KiB run back, the
+    // replacement), then a 300 KiB one (a new length after it). Fail-before: the second 300 KiB Array asks the layer again and Aborts
+    // KIMI_E_ALLOC.
     [Fact]
-    public void ARefusedReleaseIsAFreeFailure()
+    public void AReleasedRunIsTakenAgainWithoutTheLayer()
+    {
+        const string Source = """
+            var sum: i64 = 0
+            for _ in 0..3
+                let ones = Array<u8>.init(repeating: 1, count: 307200)
+                sum += ones[0]@i64
+            for _ in 0..3
+                let twos = Array<u8>.init(repeating: 2, count: 614400)
+                sum += twos[0]@i64
+            let threes = Array<u8>.init(repeating: 3, count: 307200)
+            sum += threes[0]@i64
+            require sum == 12 else => $abort("sum")
+            Console.writeLine("runs ok")
+            """;
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
+        Assert.Contains("call ptr @VirtualAlloc(", ir, StringComparison.Ordinal);
+        ir = ir.Replace("call ptr @VirtualAlloc(", "call ptr @map_once(", StringComparison.Ordinal) + """
+
+            @last_run = internal global i64 0
+            define internal ptr @map_once(ptr %address, i64 %bytes, i32 %kind, i32 %protect) {
+            entry:
+              %last = load i64, ptr @last_run
+              %again = icmp eq i64 %bytes, %last
+              br i1 %again, label %refuse, label %map
+            refuse:
+              ret ptr null
+            map:
+              %region = icmp eq i64 %bytes, 1048576
+              br i1 %region, label %call, label %remember
+            remember:
+              store i64 %bytes, ptr @last_run
+              br label %call
+            call:
+              %pages = call ptr @VirtualAlloc(ptr %address, i64 %bytes, i32 %kind, i32 %protect)
+              ret ptr %pages
+            }
+
+            """;
+        ScalarEmissionTest.WriteFixture("HeapRuntimeRunTakenAgain", ir, "runs ok\n");
+    }
+
+    // SPEC 22.5.2: a large run's release that the system refuses (VirtualFree given a size with MEM_RELEASE, ERROR_INVALID_PARAMETER)
+    // Aborts KIMI_E_FREE with the OS error at the release that hands a run to the layer (PLAN G1311): a run above the spare's bound goes
+    // back at its own release, and a kept run at the release that replaces it. A run of exactly 1 MiB is kept, and a smaller run never
+    // takes a larger spare (it maps its own, whose release replaces the spare). The adapter suite's mode 17 fakes the refusal and its
+    // error; these rows have the real system refuse it and report at a program's releasing source location.
+    [Theory]
+    [InlineData("Above", "let big = Raw.allocate<u8>(1048576)\nunsafe => Raw.release(big)", 2)]
+    [InlineData("AtTheBound", "let a = Raw.allocate<u8>(1048560)\nunsafe => Raw.release(a)\nlet b = Raw.allocate<u8>(307200)\nunsafe => Raw.release(b)", 4)]
+    [InlineData("Replaced", "let a = Raw.allocate<u8>(307200)\nunsafe => Raw.release(a)\nlet b = Raw.allocate<u8>(614400)\nunsafe => Raw.release(b)", 4)]
+    [InlineData("Smaller", "let a = Raw.allocate<u8>(614400)\nunsafe => Raw.release(a)\nlet b = Raw.allocate<u8>(307200)\nunsafe => Raw.release(b)", 4)]
+    public void ARefusedReleaseIsAFreeFailure(string name, string source, int line)
     {
         const string Release = "call i32 @VirtualFree(ptr %pages, i64 0, i32 32768)";
-        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("let big = Raw.allocate<u8>(307200)\nunsafe => Raw.release(big)"));
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
         Assert.Contains(Release, ir, StringComparison.Ordinal);
         ir = ir.Replace(Release, "call i32 @VirtualFree(ptr %pages, i64 1, i32 32768)", StringComparison.Ordinal);
-        ScalarEmissionTest.WriteFixture("HeapRuntimeRefusedRelease", ir, string.Empty, 1, "Hello.kimi:2:11: abort KIMI_E_FREE: Failed to free memory (win32=87)\n");
+        ScalarEmissionTest.WriteFixture(
+            "HeapRuntimeRefusedRelease" + name, ir, string.Empty, 1, $"Hello.kimi:{line}:11: abort KIMI_E_FREE: Failed to free memory (win32=87)\n");
+    }
+
+    // PLAN G1311 Revision 1: every path that calls the layer is unlikely. At O2 each inlined allocation and release still tests the
+    // template's `%small` (a class's block, not a large run) and the allocation its `%fits` (the current region, not a new one), and each
+    // such branch weights the small path's edge over the edge toward the layer, which has weight 1. The edge is read from the condition,
+    // since jump threading renames the blocks: the small path is the true edge, or the false edge when instcombine inverted the compare
+    // (`.not`) and swapped the weights. A loop allocates and releases blocks of 4^0 to 4^10 bytes, so no site's size is constant.
+    // Fail-before: the branches carry no weights.
+    [Fact]
+    public void PathsIntoTheLayerAreUnlikelyAtO2()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Tatara runs on Windows.");
+        var text = Optimized("var n: isize = 1\nwhile n < 2000000\n    let p = Raw.allocate<u8>(n)\n    unsafe => Raw.release(p)\n    n *= 4");
+        var weights = Regex.Matches(text, @"^!(\d+) = !\{!""branch_weights""(?:, !""expected"")?, i32 (\d+), i32 (\d+)\}", RegexOptions.Multiline)
+            .ToDictionary(static x => x.Groups[1].Value, static x => (First: long.Parse(x.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), Second: long.Parse(x.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture)));
+        var branches = Regex.Matches(text, @"\bbr i1 %((small|fits)(?:\.[\w.]*)?), label %[\w.$-]+, label %[\w.$-]+(.*)$", RegexOptions.Multiline);
+        Assert.True(branches.Count(static x => x.Groups[2].Value == "small") >= 2, "the allocation's and the release's small tests");
+        Assert.True(branches.Any(static x => x.Groups[2].Value == "fits"), "the allocation's region test");
+        Assert.All(branches, x =>
+        {
+            var profile = Regex.Match(x.Groups[3].Value, @"!prof !(\d+)");
+            Assert.True(profile.Success, x.Value);
+            var (first, second) = weights[profile.Groups[1].Value];
+            var (hot, cold) = x.Groups[1].Value.Contains(".not", StringComparison.Ordinal) ? (second, first) : (first, second);
+            Assert.True(cold == 1 && hot > cold, x.Value);
+        });
+    }
+
+    // IMPL 21.4.3 as amended (PLAN G1311): the run path is two noinline routines, so at O2 the inlined allocation and release sites keep
+    // the small path only. A small and a large block's program through the product's O2: both routines stay defined and are called from
+    // another definition, the spare's globals appear in them alone, the pages' release (the inlined platform routine) is called in the
+    // return routine alone, and every other page request is a region's 1 MiB (the allocation's region path). Without noinline both fold
+    // into every site.
+    [Fact]
+    public void TheRunPathStaysOutOfLineAtO2()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Tatara runs on Windows.");
+        const string Source = "let small = Raw.allocate<u8>(48)\nlet large = Raw.allocate<u8>(307200)\nunsafe => Raw.release(small)\nunsafe => Raw.release(large)";
+        const string Take = "__kimi_heap_take_run";
+        const string Return = "__kimi_heap_return_run";
+        var definitions = Definitions(Optimized(Source));
+        foreach (var routine in (string[])[Take, Return])
+        {
+            Assert.Contains(routine, definitions.Keys);
+            Assert.Contains(definitions, x => x.Key != routine && x.Value.Contains("@" + routine + "(", StringComparison.Ordinal));
+        }
+
+        Assert.All(definitions.Where(static x => x.Key is not (Take or Return)), static x => Assert.DoesNotContain("@__kimi_heap_spare", x.Value, StringComparison.Ordinal));
+        Assert.Contains("@VirtualFree(", definitions[Return], StringComparison.Ordinal);
+        Assert.All(definitions.Where(static x => x.Key != Return), static x => Assert.DoesNotContain("@VirtualFree(", x.Value, StringComparison.Ordinal));
+        var requests = definitions.Where(static x => x.Key != Take).SelectMany(static x => x.Value.Split('\n')).Where(static x => x.Contains("@VirtualAlloc(", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(requests);
+        Assert.All(requests, static x => Assert.Contains("i64 1048576,", x, StringComparison.Ordinal));
+    }
+
+    // A program's module after the product's O2 (Tatara's optimize, as NativeBuild calls it).
+    private static string Optimized(string source)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-heap-o2-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var ir = Path.Combine(directory, "Hello.ll");
+            File.WriteAllText(ir, CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)));
+            return Tatara.Instance.Optimize(TataraExecutorTest.Context, ir);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    // An optimized module's definitions by name, each its define line to its closing brace.
+    private static Dictionary<string, string> Definitions(string text)
+    {
+        var definitions = new Dictionary<string, string>(StringComparer.Ordinal);
+        var lines = text.Split('\n');
+        var start = -1;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].StartsWith("define ", StringComparison.Ordinal))
+            {
+                start = i;
+            }
+            else if (start >= 0 && lines[i].TrimEnd() == "}")
+            {
+                var header = lines[start];
+                var at = header.IndexOf('@', StringComparison.Ordinal);
+                definitions.Add(header[(at + 1)..header.IndexOf('(', at)], string.Join('\n', lines[start..(i + 1)]));
+                start = -1;
+            }
+        }
+
+        return definitions;
     }
 }
