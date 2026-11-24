@@ -465,14 +465,15 @@ internal static partial class NativeToolchain
             return (string.Join('\n', lines), module);
         }
 
-        // IMPL 20.4: an ambiguous native dependency, or one inconsistent with its declared Kind, is an error, never resolved by link
-        // order (LinkAmbiguity; design Revisions 0-3a, its §2 and §3; Kind, kind-design.md §2 and §3). Each library's facts are Tatara's
-        // inspection of its staged copy, read once per process (LinkInputs). The closure starts from the module's declared references,
-        // the manifest's external declarations in their referenced form and the fixed RuntimeReferences, the same at O0 and O2 (never the
-        // object's undefined symbols), and from the references of the library files the link loads whole (DependencyClosure); a symbol
-        // it references that two or more libraries define, a library input that is no library (no archive and no object), a unit it loads
-        // that its library's Kind does not admit and a declared import bound to code fail the build before the link, every line in one
-        // failure: the native build's input failure, the record left incomplete.
+        // IMPL 20.4: an ambiguous or unsupported native dependency, or one inconsistent with its declared Kind, is an error, never
+        // resolved by link order (LinkAmbiguity; design Revisions 0-3a, its §2 and §3; Kind, kind-design.md §2 and §3). Each library's
+        // facts are Tatara's inspection of its staged copy, read once per process (LinkInputs). The closure starts from the module's
+        // declared references, the manifest's external declarations in their referenced form and the fixed RuntimeReferences, the same
+        // at O0 and O2 (never the object's undefined symbols), and from the references of the library files the link loads whole
+        // (DependencyClosure); a symbol it references that two or more libraries define, a library input that is no library (no archive
+        // and no object: a linked image or a bare import member, an unsupported native dependency whatever its Kind; T's rulings 24 and
+        // 54), a unit it loads that its library's Kind does not admit and a declared import bound to code fail the build before the
+        // link, every line in one failure: the native build's input failure, the record left incomplete.
         private void CheckDependencies(Tatara tatara, ObjectMember module, List<(string Name, string Kind, string Sha256, FileStream Held)> libraries)
         {
             var inputs = new (string Name, LinkClass Admits, LinkInput Input)[libraries.Count];
@@ -602,8 +603,10 @@ internal static partial class NativeToolchain
         private readonly List<(string Symbol, string Line)> symbols = []; // The ambiguous symbols' and K2's lines.
 
         // The whole files: their definitions first, then their references; each whole library input judged (K). A library input that
-        // is no archive and not of form o (a linked image, s; a bare import member, i) is no library, whatever its Kind: one line, so
-        // LLD, which refuses it with a fatal() that ends Tatara for the process, never sees it (T's rulings 24, 53 and 54).
+        // is no archive and not of form o is no library, IMPL 20.4's unsupported native dependency, whatever its Kind: one line before
+        // the link. For a linked image (s) that is T's ruling 24 (lld-link refuses a DLL with an ordinary error, "unknown file type");
+        // a bare import member (i) must never reach LLD, which refuses it with a fatal() that ends Tatara for the process (T's rulings
+        // 53 and 54).
         internal DependencyClosure((string Name, LinkClass Admits, LinkInput Input)[] inputs, ObjectMember module)
         {
             this.inputs = inputs;
