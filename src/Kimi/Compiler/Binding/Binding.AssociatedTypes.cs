@@ -92,10 +92,7 @@ public sealed partial class Binding
     // a bound reference (`Indexable<isize>`), or a Contract applied to its own Type parameters (`Indexable<Key>` inside its
     // declaration), reached from the reference or refinement that supplied the name, or from the declaring Contract.
     private BoundType ProjectionContract(BindingSymbol associated, BindingSymbol? reference)
-    {
-        var supplied = reference ?? associated.Scope.Owner.BoundSymbol!;
-        return IsBoundContractReference(supplied) ? supplied.Type! : this.SelfType(supplied);
-    }
+        => this.ContractReferenceType(reference ?? associated.Scope.Owner.BoundSymbol!);
 
     // Projection syntax and the effective shape share one identity. A declaration applied to its own slots denotes
     // that declaration's requirement; every other normalized argument list retains its interned bound reference.

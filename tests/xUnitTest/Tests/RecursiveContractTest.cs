@@ -39,8 +39,22 @@ public sealed partial class RecursiveContractTest
     private const string Marks = "contract Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\n";
 
     // R7-C2c2 c2-5a (G837, the Middle's C-304 R2, rebuilt from its text): MT's clause names MT's own parameter.
-    private const string MarkArgs = "contract Tree\n    associate Child is Tree\ncontract Mark<A>\ncontract MT<A>: Tree, Mark<A>\n    Self.(Tree).Child is MT<A>\n" +
-        "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc needMT<V, W>(v: ref/V)\n    V is MT<W>\n    ()\n";
+    private const string MarkArgs = MarkTree + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc needMT<V, W>(v: ref/V)\n    V is MT<W>\n    ()\n";
+
+    private const string MarkTree = "contract Tree\n    associate Child is Tree\ncontract Mark<A>\ncontract MT<A>: Tree, Mark<A>\n    Self.(Tree).Child is MT<A>\n";
+
+    // MT's requirement whose clause names MT's own reference, and a generic struct conforming to MT<i32> that implements it.
+    private const string Put = "    func put<U>(self: ref/Self, u: ref/U) -> i32\n        U is MT<A>\n";
+
+    private const string PutS = "struct S<T>\n    T is MT<i32>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n    public func put<U>(self: ref/Self, u: ref/U) -> i32\n";
+
+    private const string Second = "contract MT2<A, B>: Tree, Mark<B>\n    Self.(Tree).Child is MT2<A, B>\n";
+
+    private const string SelfArg = "contract D<U>\ncontract C<A>\n    A is D<Self>\n";
+
+    private const string Either = "contract E\ncontract D<U>\ncontract C<A>\n    A is E or D<Self>\n";
+
+    private const string Both = "contract E\ncontract D<U>\ncontract C<A>\n    A is E and D<Self>\n";
 
     private const string KArgs = "contract K<A>\n    associate X\n";
 
@@ -402,6 +416,50 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "x-carried-n1", NeedE + "contract D<U>\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<A>(a)\n", "UnprovenConstraint_Kd: needE<A>(a)")]
     [InlineData("guard", "x-carried-n2", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<T>(t)\n", "UnprovenConstraint_Kd: needE<T>(t)")]
     [InlineData("guard", "x-carried-n3", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A, B>(t: ref/T, a: ref/A, b: ref/B)\n    T is D<B>\n    needE<A>(a)\n", "UnprovenConstraint_Kd: needE<A>(a)")]
+    // c2-5a's design review twins (artifacts\units\r7-c25\rv\twins.txt, labelled from SPEC; F's rulings CC-6, CC-10). The own reference
+    // is instantiated wherever C's clauses are read through `C<X>`: a generic struct's conformance (gs), a requirement's premise (rq)
+    // and call (rc), two parameters (m2), the formation's query (rf-n1: 8.3.2's Error for the supplied, refuted `i32 is R<i32>`).
+    // Formation judges each condition by its role (6.1.4; 8.3.1's requirement precedence splits `and`, while `or` and `not` are one
+    // condition): Self in a Contract argument (sa), a projection's (pa), a Tuple or Function Type (tf), a disjunction (or), a conjunction's
+    // Self part only (an; an-n1 keeps its input condition's record). A premise's own supply proves its formation's input condition (rf-v1,
+    // rf-n2, rf-n3, tf-n1: F's F-1 (a), x-carried-v's reading); a premise whose supply is refuted on a concrete Type is contradictory
+    // evidence at the function (sa-v1, or-v1, an-v1: F-2 (a)); er-n1 loses only the record resting on its unresolved clause.
+    [InlineData("guard", "gs-n1", MarkTree + "struct S<T>\n    T is MT<i64>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "gs-n2", MarkTree + "struct S<T>\n    T is Tree\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "gs-n3", MarkTree + "contract MT3<B>: MT<B>\nstruct S<T>\n    T is MT<i64>\n    Self is MT3<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT3<i32> | ...")]
+    [InlineData("guard", "rq-v1", MarkTree + Put + PutS + "        U is MT<i32>\n        return 0\n", "")]
+    [InlineData("guard", "rq-n1", MarkTree + Put + PutS + "        U is MT<i64>\n        return 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "rq-n2", MarkTree + Put + PutS + "        U is Mark<i64>\n        return 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "rc-n1", MarkTree + Put + "func probe<T, U>(t: ref/T, u: ref/U) -> i32\n    T is MT<i32>\n    U is MT<i64>\n    return t.put(u)\n", "UnprovenConstraint_Kd: return t.put(u)")]
+    [InlineData("guard", "m2-v1", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child, i64>(c)\n", "")]
+    [InlineData("guard", "m2-v2", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "")]
+    [InlineData("guard", "m2-n1", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i32>(c)")]
+    [InlineData("guard", "m2-n2", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i32>(c)")]
+    [InlineData("guard", "rf-n1", "contract R<A>\n    A is R<A>\nfunc probe<T>(t: ref/T)\n    T is R<i32>\n    ()\n", "InvalidConstraint_Kd: T is R<i32> | ...")]
+    [InlineData("guard", "rf-v1", "contract R<A>\n    A is R<A>\nfunc probe<T, U>(t: ref/T)\n    U is R<U>\n    T is R<U>\n    ()\n", "")]
+    [InlineData("guard", "rf-n2", "contract R<A>\n    A is R<A>\nfunc probe<T, U>(t: ref/T)\n    T is R<U>\n    ()\n", "")]
+    [InlineData("guard", "rf-n3", "contract R2<A, B>\n    B is R2<A, B>\nfunc probe<T, Y>(t: ref/T)\n    Y is R2<i64, Y>\n    T is R2<i32, Y>\n    ()\n", "")]
+    [InlineData("guard", "sa-v1", SelfArg + "struct S\n    public var tag: i32 = 0\nfunc probe<T>(t: ref/T)\n    T is C<S>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T)")]
+    [InlineData("guard", "sa-v2", SelfArg + "struct S\n    Self is D<W>\n    public var tag: i32 = 0\nstruct W\n    Self is C<S>\n    public var tag: i32 = 0\n", "")]
+    [InlineData("guard", "sa-n1", SelfArg + "struct S\n    public var tag: i32 = 0\nstruct W\n    Self is C<S>\n    public var tag: i32 = 0\n", "UnsatisfiedConstraint_Kd: Self is C<S>")]
+    [InlineData("guard", "pa-v1", KArgs + "contract C<A>\n    A is K<Self>\n    A.(K<Self>).X is Copy\ngroup H\n    public func twice<T, S>(x: S.(K<T>).X) -> (S.(K<T>).X, S.(K<T>).X)\n        T is C<S>\n        S is K<T>\n        return (x, x)\n", "")]
+    [InlineData("guard", "pa-n1", KArgs + "contract C<A>\n    A is K<Self>\ngroup H\n    public func twice<T, S>(x: S.(K<T>).X) -> (S.(K<T>).X, S.(K<T>).X)\n        T is C<S>\n        S is K<T>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "pa-n2", KArgs + "contract C<A>\n    A is K<Self>\n    A.(K<Self>).X is Copy\ngroup H\n    public func twice<T, S>(x: S.(K<i32>).X) -> (S.(K<i32>).X, S.(K<i32>).X)\n        T is C<S>\n        S is K<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "tf-v1", "contract Holder<P>\ncontract C<A>\n    A is Holder<(Self, i32)>\nfunc probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "tf-v2", "contract Holder<P>\ncontract C<A>\n    A is Holder<(Self) -> i32>\nfunc probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "tf-n1", "contract Holder<P>\ncontract C<A>\n    A is Holder<(A, i32)>\nfunc probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "or-v1", Either + "func probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T)")]
+    [InlineData("guard", "or-v2", Either + "func probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "an-v1", Both + "struct S\n    Self is E\n    public var tag: i32 = 0\nfunc probe<T>(t: ref/T)\n    T is C<S>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T)")]
+    [InlineData("guard", "an-v2", Both + "func probe<T, S>(t: ref/T)\n    S is E\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "an-n1", Both + "func probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "*: T is C<i32> | ...")]
+    [InlineData("guard", "sc-n1", "contract D<U>\ncontract C\n    i32 is D<i64>\nfunc probe<T>(t: ref/T)\n    T is C\n    ()\n", "*: i32 is D<i64> | ...")]
+    [InlineData("guard", "er-n1", KArgs + "contract C<A>: K<A>\n    Self.(K<A>).X is Missing\nfunc probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: contract C<A>: K<A> | UnresolvedBinding_Kd: Self.(K<A>).X is Missing")]
+    // Closedness does not read a clause's Contract arguments (pre-existing; c2-5a's PLAN row for unit C2, review N3): `Q is F<U>` is a
+    // reference input condition judged at the declaration, and `i32 is D<Self>` (an implementation requirement) a closed obligation.
+    [InlineData("C2", "cl-v1", "contract F<W>\nstruct S\n    public var tag: i32 = 0\nstruct Q\n    Self is F<S>\n    public var tag: i32 = 0\ncontract D<U>\n    Q is F<U>\nfunc probe<T>(t: ref/T)\n    T is D<S>\n    ()\n", "", Explicit = true)]
+    [InlineData("C2", "cl-n1", "contract F<W>\nstruct S\n    public var tag: i32 = 0\nstruct Q\n    Self is F<S>\n    public var tag: i32 = 0\ncontract D<U>\n    Q is F<U>\nfunc probe<T>(t: ref/T)\n    T is D<i32>\n    ()\n", "*: T is D<i32> | ...", Explicit = true)]
+    [InlineData("C2", "sc-v2", "contract D<U>\ncontract C\n    i32 is D<Self>\n", "", Explicit = true)]
     public void APremiseSuppliesItsRefinementsByDemand(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 

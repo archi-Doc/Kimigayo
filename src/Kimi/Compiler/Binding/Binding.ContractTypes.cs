@@ -45,16 +45,16 @@ public sealed partial class Binding
     // SPEC 8.4, 8.3.2: a Contract reference written in a Contract's declaration (a clause's Contract, an ancestor) for the conforming Type
     // `self`, itself where unchanged. With a bound `reference` (the premise supply's), the Self the declaration writes is `self` first and
     // the reference's arguments come after, so a Self they carry from the premise's context stays the context's (DECISIONS R4-M166). The
-    // declaration's own reference (`MT<A>` written in MT: the declaration symbol, BoundContractReference) is its SelfType, which the
+    // declaration's own reference (`MT<A>` written in MT: the declaration symbol) is its SelfType (ContractReferenceType), which the
     // reference binds like any other (PLAN G837).
     private BindingSymbol InstantiatedContract(BindingSymbol contract, BindingScope scope, BoundType? self, bool normalize, BindingSymbol? reference)
     {
-        if (contract.Type is not { } written)
+        if (contract.Type is null)
         {
             return contract;
         }
 
-        var type = IsBoundContractReference(contract) ? written : this.SelfType(contract);
+        var type = this.ContractReferenceType(contract);
         var image = reference is null ? this.ContractType(type, scope, self, normalize)
             : this.ContractType(this.SubstituteContractReference(self is null ? type : this.WithConformingSelf(type, self), reference, out _), scope, null, normalize);
         return ReferenceEquals(image, type) ? contract : this.BoundContractReference(image);

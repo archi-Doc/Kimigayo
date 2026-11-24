@@ -102,17 +102,14 @@ public sealed partial class Binding
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
 
-    // SPEC 6.1.4, 8.4.3: whether a Contract's clause is an implementation requirement, a condition on its conforming Self (an associated
-    // requirement, or a clause one of whose Types names Self): an obligation of every conformer, never an input condition of a reference
-    // to the Contract, which is a condition only on the Contract's parameters. Read by a reference's formation (CheckConstraints); the
-    // premise supply's gate is another contract, a clause that is not closed (DependentConstraint with the Contract's Self, both kinds).
-    private static bool IsImplementationRequirement(IsKoto clause)
-        => clause.IsAssociatedConstraint || (clause.BoundConstraint is { } constraint && NamesContractSelf(constraint));
-
-    private static bool NamesContractSelf(BoundConstraint constraint)
-        => (constraint.Subject is { } subject && NamesContractSelf(subject)) || (constraint.RequiredType is { } required && NamesContractSelf(required)) ||
-        (constraint.Contract?.Type is { } reference && NamesContractSelf(reference)) ||
-        (constraint.Left is { } left && NamesContractSelf(left)) || (constraint.Right is { } right && NamesContractSelf(right));
+    // SPEC 6.1.4, 8.4.3: whether a condition of a Contract's clause is an implementation requirement, a condition on the conforming Self:
+    // one of its Types (subject, required Type, Contract reference, an `or` or `not` operand's) names the Contract's Self. An obligation of
+    // every conformer, never an input condition of a reference to the Contract, which is a condition only on the Contract's parameters.
+    // Its conditions are ReferenceInputCondition's; an associated requirement (`associate X is R`: the subject `Self.(C).X`) is one whole.
+    private static bool IsImplementationRequirement(BoundConstraint condition)
+        => (condition.Subject is { } subject && NamesContractSelf(subject)) || (condition.RequiredType is { } required && NamesContractSelf(required)) ||
+        (condition.Contract?.Type is { } reference && NamesContractSelf(reference)) ||
+        (condition.Left is { } left && IsImplementationRequirement(left)) || (condition.Right is { } right && IsImplementationRequirement(right));
 
     private static bool NamesContractSelf(BoundType type)
     {
@@ -190,6 +187,23 @@ public sealed partial class Binding
         (constraint.RequiredType is { } required && this.DependentType(required, unresolvedProjection: false, contractSelf)) ||
         (constraint.Left is { } left && this.DependentConstraint(left, contractSelf)) ||
         (constraint.Right is { } right && this.DependentConstraint(right, contractSelf));
+
+    // SPEC 6.1.4, 8.3.1: what forming a reference to a Contract judges of its clause `clause`: the reference input condition, the clause's
+    // conditions (requirement precedence splits `and`; `or` and `not` are one condition each) that are not implementation requirements,
+    // conjoined in their order; null when every condition is one. Read by a reference's formation (CheckConstraints); the premise supply's
+    // gate is another contract, a clause that is not closed (DependentConstraint with the Contract's Self, both kinds).
+    private BoundConstraint? ReferenceInputCondition(BoundConstraint clause)
+    {
+        if (clause.Kind != ConstraintKind.And)
+        {
+            return IsImplementationRequirement(clause) ? null : clause;
+        }
+
+        var left = this.ReferenceInputCondition(clause.Left!);
+        var right = this.ReferenceInputCondition(clause.Right!);
+        return left is null || right is null ? left ?? right
+            : ReferenceEquals(left, clause.Left) && ReferenceEquals(right, clause.Right) ? clause : this.InternConstraint(new(ConstraintKind.And, left: left, right: right));
+    }
 
     private ConstraintProof JudgeConstraintAtom(BoundConstraint proposition, BindingScope scope)
     {
