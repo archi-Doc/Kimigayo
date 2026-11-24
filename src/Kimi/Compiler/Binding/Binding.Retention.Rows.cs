@@ -23,6 +23,7 @@ public sealed partial class Binding
     // (by target node: the start and count of its run in retentionClosureNodes), and the storages' kinds, reused.
     private readonly Dictionary<BoundType, RetentionKind[]> retentionHidden = new(ReferenceEqualityComparer.Instance); // HiddenKinds' per Type, per Storages.
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
+    private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // CanCarryLoan's walk, per query: the Types met.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
     private readonly HashSet<(HoldAt At, HeldIn In, int Storage)> retentionMet = new();
@@ -47,6 +48,7 @@ public sealed partial class Binding
     private bool retentionFilled; // A callable's write keeps a row in the Abstract storage of the walk made (FilledKinds), whose entry Written then forms.
     private (RetentionKind Raw, RetentionKind Free)[] retentionUndecided = []; // Per input, what the premise closure does not decide (FilledKinds), reused.
     private FunctionKoto? retentionCallee; // Whose own abstract Types those are (Parametric): a Closure's enclosing function's are the caller's.
+    private RetentionKind[] retentionGate = []; // HiddenKinds' row in the callee's terms, which its fill's R gate reads (FilledKinds), reused.
     private RetentionKind[] retentionChained = []; // Rule A's rows of the output (Hold), which a Chained storage joins as it admits.
     private bool[] retentionAssigned = []; // Written's storages already in an entry, and the storages whose pairs Pairs reads, reused.
     private bool[] retentionMembers = [];
@@ -154,6 +156,11 @@ public sealed partial class Binding
         callable = found is { Kind: BoundTypeKind.Function } ? found : null;
         return listed;
     }
+
+    // Whether an entry passes a holding walk on to a part holding its own Type (Hold.PassesOn, which MirTypes.HoldsLoans reads alone, with
+    // Binding's narrowing Holds Its): every other entry is a layer, an erased or abstract part or a part no Type states, which may carry a
+    // Loan or an address itself. The hold walk's Loans fact (Held) and CanCarryLoan read it.
+    private static bool Passes(in Hold entry) => entry.PassesOn && entry.Holds == HoldContent.Its;
 
     // SPEC 15.6.4 (DECISIONS R4-M154): the records of the contract being computed. The result is one storage, every position of its Type
     // (StorageWalk); each input's writable storage is its root (Own) and the storages past its exclusive layers (Reached, by contract Type,
@@ -363,7 +370,7 @@ public sealed partial class Binding
             var excluded = output >= 0 && !this.storageBorrowed.Contains(storage) ? output : -1;
             if (type is not null && storage != AbstractStorage && Abstract(type) && !this.Parametric(signature))
             {
-                this.FilledKinds(kinds[storage], type, null, excluded); // An abstract part outside the kept Type's binding, whatever its node.
+                this.FilledKinds(kinds[storage], kinds[storage], type, null, excluded); // An abstract part outside the kept Type's binding, whatever its node.
             }
 
             if (node < 0)
@@ -408,9 +415,9 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var (storage, signature) in this.storageBound)
+        foreach (var (storage, signature, bound) in this.storageBound)
         {
-            this.HiddenKinds(kinds[storage], signature, output); // The root of a binding of the callee's kept Type: its rows in the callee's terms, once.
+            this.HiddenKinds(kinds[storage], signature, bound, output); // The root of a binding of the callee's kept Type: its rows in the callee's terms, once.
         }
 
         for (var s = 0; s < kinds.Count; s++)
@@ -445,22 +452,31 @@ public sealed partial class Binding
     // the root of a binding of the called function's own abstract Type `hidden` (BU-202's kept Type, StorageAt.Signature; storageBound)
     // holds input i where i's declared Type, or a part it holds by value, is that Type (Value), where i's declared referent or pointee
     // holds it (Content; Chain further), or where a callable the contract hands the body may retain i there (FilledKinds); never by the
-    // binding's Origins, which are the caller's, nor by the Type the call binds it to: every binding gets the declared record's rows,
-    // and no storage past a layer of the binding gets one (a raw layer the abstract Type does not show adds no reach of its own).
+    // binding's Origins, which are the caller's, and no storage past a layer of the binding gets one (a raw layer the abstract Type does
+    // not show adds no reach of its own). The Type the call binds it to, `bound`, bounds only the reads (SPEC 15.6.4's first sentence,
+    // "determined by the instantiated public contract"; the owner's O-353 (a)): a read or chain of reads through an input is retained
+    // only by a storage that may retain an Origin inside the input's referent or pointee, or by a raw layer the call writes, so where no
+    // value of `bound` can carry a Loan or an address (CanCarryLoan, SPEC 15.6's predicate) the storage keeps no Content or Chain row; an
+    // input's own value (Value: it is, or holds by value, that Type) and a handed callable's fill it keeps whatever `bound` is: what the
+    // abstract slot can hold is the callee's terms' question (15.6.4's argument sentence; the owner's O-359 (a), O-360 (a); F's G935
+    // ruling 16 (2): mkConcWnBad), and whether it may retain a read the instantiated one (O-353 (a); the owner's C-527 Q1 (a)).
     // `excluded`, the input this storage is written through (its output), keeps nothing here: its own value never (15.6.4: a pointer is
     // never part of its own pointee), and what a read or chain of reads through it gives is that storage's own content.
-    private void HiddenKinds(RetentionKind[] kinds, BoundType hidden, int excluded)
+    private void HiddenKinds(RetentionKind[] kinds, BoundType hidden, BoundType bound, int excluded)
     {
         var known = this.Hidden(hidden, kinds.Length);
+        var reads = this.CanCarryLoan(bound) ? RetentionKind.Value | RetentionKind.Content | RetentionKind.Chain : RetentionKind.Value;
+        var gate = Reused(ref this.retentionGate, kinds.Length);
         for (var i = 0; i < kinds.Length; i++)
         {
             // An input with sources takes its own value's row from the instantiated tests that Admits lets through (their Origin fits and
             // pairs stand); a raw input, or one holding a raw part by value, the hold walk's source, takes it here.
-            var kind = this.RawInput(i) ? known[i] : known[i] & ~RetentionKind.Value;
-            kinds[i] |= i == excluded ? RetentionKind.None : kind;
+            var kind = i == excluded ? RetentionKind.None : this.RawInput(i) ? known[i] : known[i] & ~RetentionKind.Value;
+            gate[i] = kinds[i] | kind;
+            kinds[i] |= kind & reads;
         }
 
-        this.FilledKinds(kinds, null, hidden, excluded);
+        this.FilledKinds(kinds, gate, null, hidden, excluded); // The fill's R gate reads the callee's-terms row: the fill stays (F's C-527 ruling 2, B1).
     }
 
     // The one fills arm (Revision 1's R1.3; SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... may
@@ -469,12 +485,14 @@ public sealed partial class Binding
     // test lets the storage keep its input, MayRetain; a raw source by its kind) where a handed callable may retain that input there
     // (Filled), and through a write also where a value of the Type reaches past its hidden references (the Abstract storage, whose entry
     // Written then forms). Outside the kept Type's binding a raw source's fill is the hold walk's (Held), which walks no hidden binding.
-    private void FilledKinds(RetentionKind[] kinds, BoundType? type, BoundType? signature, int excluded)
+    // R's Origin test reads `gate`: the storage's row so far (`kinds`), and at the root of a kept Type's binding HiddenKinds' row in the
+    // callee's terms before the bound Type bounds its reads, so a fill stays for every binding (G935 ruling 16 (2); F's C-527 ruling 2).
+    private void FilledKinds(RetentionKind[] kinds, RetentionKind[] gate, BoundType? type, BoundType? signature, int excluded)
     {
         var (reached, own) = (this.retentionKinds[AbstractStorage], this.Parametric(signature));
         for (var i = 0; i < kinds.Length; i++)
         {
-            var free = this.MayRetain(kinds, i) ? this.retentionUndecided[i].Free : RetentionKind.None;
+            var free = this.MayRetain(gate, i) ? this.retentionUndecided[i].Free : RetentionKind.None;
             var kind = own ? this.retentionUndecided[i].Raw | free : free;
             var fill = kind == RetentionKind.None || i == excluded ? Fill.None : this.Filled(type, signature, i);
             if (fill != Fill.None)
@@ -501,6 +519,50 @@ public sealed partial class Binding
         }
 
         return known!;
+    }
+
+    // SPEC 15.6's Type-level predicate (HiddenKinds' bound; the owner's C-527 Q1 (a)): whether a value of a Type can carry a Loan or an
+    // address, that is, whether some part of it, through its own storage, its Type arguments and the storage its owning handles own
+    // (Holdings' entries that pass a walk on, Passes), is a borrow, a raw pointer, a callable value other than a Function Item or a value
+    // of an abstract Type: an entry that does not pass on (a borrow or raw layer, an erased environment, an abstract part) or a part
+    // Binding did not bind (it may be any Type). A concrete Closure carries what its captures hold (Holdings' Closure row; SPEC 3.2.1,
+    // 15.8.2; the owner's C-527 Q2 (b)); a Function Item and a Scalar hold no entry. It folds the same SPEC 15.6 predicate as
+    // MirTypes.HoldsLoans' Loan fact, which Binding does not read (MIR); HoldsLoans keeps its own walk for its modes and its write fact.
+    // They disagree only at a part Binding did not bind (HoldsLoans: no Loan; here: carries, failing closed); PLAN's open issue: one
+    // publisher, TyCtxt, that both read. It decides no Loan, holder or write. At Binding's Limit it answers true and makes the contract
+    // the Limit (retentionLimit, as HiddenKind); past StorageBound it answers true and reports nothing, as the input fold's walk stops
+    // there silently (StorageWalk). Each Type is walked once per query (retentionCarried), so a recursive Type ends; its repeat adds
+    // nothing its first meeting lacks.
+    private bool CanCarryLoan(BoundType type)
+    {
+        this.retentionCarried.Clear();
+        return this.MayCarry(type, 0);
+    }
+
+    // CanCarryLoan's fold over Holdings: a Type and, through the entries that pass on, its parts.
+    private bool MayCarry(BoundType? type, int depth)
+    {
+        if (type is null || depth > StorageBound)
+        {
+            return true;
+        }
+
+        if (!this.retentionCarried.Add(type))
+        {
+            return false;
+        }
+
+        var run = this.HeldRun(type, null, null, out var complete);
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit: the contract's Limit (F's C-527 ruling 2, C2).
+        var carries = !complete;
+        for (var i = run.Start; !carries && i < run.End; i++)
+        {
+            var entry = this.retentionHeld[i];
+            carries = !Passes(entry) || this.MayCarry(entry.Part, depth + 1);
+        }
+
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
+        return carries;
     }
 
     // Whether input i is a raw pointer or holds a raw layer stating no Origin by value (a hold-walk source, retentionRawSources; RawSource).
@@ -1161,7 +1223,7 @@ public sealed partial class Binding
     // (Hold's `met` is None there), the storage is that Type's and nothing else's.
     private bool KeptStorage(int storage)
     {
-        foreach (var (bound, _) in this.storageBound)
+        foreach (var (bound, _, _) in this.storageBound)
         {
             if (bound == storage)
             {
@@ -1273,7 +1335,7 @@ public sealed partial class Binding
             refers &= Dereference(entry);
             stepped |= layer && places && entry.Step != HoldStep.Address;
             unbounded |= !at.Routed && layer && entry is { Step: HoldStep.Address, Holds: HoldContent.Any }; // A layer a declaration wrote (TyCtxt.RawStated), not Routed.
-            loans |= !layer && !(entry.PassesOn && entry.Holds == HoldContent.Its); // Hold.PassesOn, the row MirTypes.HoldsLoans reads.
+            loans |= !layer && !Passes(entry);
             hidden |= places && entry.Step == HoldStep.Abstract;
         }
 
