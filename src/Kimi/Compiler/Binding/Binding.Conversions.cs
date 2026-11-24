@@ -423,7 +423,7 @@ public sealed partial class Binding
             if (semantics == SemanticsKind.Owner)
             {
                 Complete(conversion.Right, operandType);
-                return this.Fail(conversion, BindingFailure.BareOwningShorthand);
+                return this.Record(conversion, BindingFailure.BareOwningShorthand, []);
             }
 
             // SPEC 13.5.6: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.

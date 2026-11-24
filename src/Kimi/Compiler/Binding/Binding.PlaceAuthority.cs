@@ -668,7 +668,7 @@ public sealed partial class Binding
             return false;
         }
 
-        this.Fail(source, BindingFailure.Unsupported);
+        this.RecordLocated(source, source.Span); // SPEC 23.1.1: the located limit's one recorder, at the source as before.
         return true;
     }
 
