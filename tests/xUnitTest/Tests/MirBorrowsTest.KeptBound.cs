@@ -289,6 +289,42 @@ public sealed partial class MirBorrowsTest
                 y@follow = 5
                 useAny(r@ref)
             """,
+        ["closureRawCapBad"] = """
+            func mkOT<T>(value: raw/T) -> Option<T> => .None
+            func useAny<U>(x: ref/U) => ()
+            func closureRawCap(y: uniq/i32)
+                let w = y@follow@ref
+                let p: raw/u8 = null
+                let c = func [p] () => ()
+                let pair = (w, c@move)
+                let r = mkOT(pair.1@raw)
+                y@follow = 5
+                useAny(r@ref)
+            """,
+        ["closureTupleCapOk"] = """
+            func mkOT<T>(value: raw/T) -> Option<T> => .None
+            func useAny<U>(x: ref/U) => ()
+            func closureTupleCap(y: uniq/i32)
+                let w = y@follow@ref
+                let t = (1, 2)
+                let c = func [t] () => ()
+                let pair = (w, c@move)
+                let r = mkOT(pair.1@raw)
+                y@follow = 5
+                useAny(r@ref)
+            """,
+        ["closureValueResultBad"] = """
+            func mkV<T>(value: T) -> Option<T> => .None
+            func useAny<U>(x: ref/U) => ()
+            func closureValueResult(y: uniq/i32)
+                let w = y@follow@ref
+                let n: i32 = 3
+                let c = func [n] () => ()
+                let pair = (w, c)
+                let r = mkV(pair.1)
+                y@follow = 5
+                useAny(r@ref)
+            """,
         ["fillShownBad"] = """
             func keepF<T>(slot: raw/(raw/T), value: raw/u8, make: (raw/u8) -> T) => ()
             func toI(p: raw/u8) -> i32 => 0
@@ -349,7 +385,7 @@ public sealed partial class MirBorrowsTest
 
     // C-527's rows (F\restart12\c527\labels.tsv and the design reviewer's rv\labels-rv.tsv, labelled from SPEC before any run). A V row
     // whose kept T is bound to a Type no value of which can carry a Loan or an address is a class-3 move (rejected at `y@follow = 5` on
-    // dev 16e63a55b: HiddenKinds kept the read through `value` whatever the binding); the I rows keep their records.
+    // dev dd138750b, the fail-first base: HiddenKinds kept the read through `value` whatever the binding); the I rows keep their records.
     [Theory]
     [InlineData("oneLayer", "")] // V, SPEC 15.6.4's example: the layer below cell admits only a u8
     [InlineData("keepS1OneOk", "")] // V, C-527's reproducer: oneLayer with T = u8 (15.6.4 "determined by the instantiated public contract"; owner C-527 Q1 (a)); a move
@@ -379,6 +415,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("closureOwnedResultOk", "")] // V, T a Closure capturing an owned i32: its captures hold no borrow (owner C-527 Q2 (b); 3.2.1, 15.8.2); a move
     [InlineData("closureEmptyResultOk", "")] // V, a Closure capturing nothing, the same; a move
     [InlineData("closureResultBad", "closureResult: y@follow = 5")] // I, a Closure capturing k@ref: its Type holds k's Origin (15.8.2), so the result keeps the read, pair's Loans
+    [InlineData("closureRawCapBad", "closureRawCap: y@follow = 5")] // I, a Closure capturing an owned raw/u8 carries what its captures hold, an address (Q2 (b)): the raw layer the call writes in its result keeps the read (15.6.4)
+    [InlineData("closureTupleCapOk", "")] // V, a Closure capturing an owned (i32, i32) carries nothing (Q2 (b); 3.2.1, 15.8.2); a move
+    [InlineData("closureValueResultBad", "closureValueResult: y@follow = 5")] // I, the Value row stays: a T by value read from pair carries its Loans, and Option<C> holds a C (15.6.4 argument sentence; O-360 (a)'s first half)
     [InlineData("fillShownBad", "fillShown: y@follow = 5")] // I, a handed callable's fill stays in the callee's terms for every binding (G935 ruling 16 (2), BU-231)
     [InlineData("fillShownRawBad", "fillShownRaw: y@follow = 5")] // I, the same with T = raw/u8
     [InlineData("fillRefShownBad", "fillRefShown: y@follow = 5")] // I, the fill of an Origin-carrying input's Origin-free part: its R gate reads the callee's-terms row (C-527 B1)
