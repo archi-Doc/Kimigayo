@@ -71,16 +71,17 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
     }
 
     // R7-C3 (F's C2 ruling 314, DECISIONS Q13): a generic override of a slot whose `T is Copy` the derived struct's `U is not Copy`
-    // refutes is one declaration error at the override (SPEC 6.4.3). PLAN G1278 (G1278-A, Q13; F's G1278-3): the receiver's `Self` names the
-    // Self symbol and carries its Type, judged at its formation site only, so its InvalidConstraint_Kd (record selection on an invalid
-    // program, pinned here before) goes.
+    // refutes is one declaration error at the override (SPEC 6.4.3). Since the override's refuted premise is its failed premise (ruling
+    // 313), the receiver's `Self` also records InvalidConstraint_Kd: record selection on an invalid program, pinned here. Open (the PLAN
+    // issue of rulings 298 and 311, widened by ruling 314; the Middle's N2): the receiver's formation reads the failed `U is Copy` as
+    // contrary evidence instead of resting on it.
     [Fact]
-    public void AGenericOverridesRefutedPremiseIsOneRecordAtTheOverride()
+    public void AGenericOverridesRefutedPremiseAlsoRecordsAtItsReceiver()
     {
         const string Source = "public func main() => ()\nopen struct Base<T>\n    public virtual func read(self: objref/Self)\n        T is Copy\n" +
             "        return\nstruct Derived<U> : Base<U>\n    U is not Copy\n    override func read(self: objref/Self) => ()\n";
         Assert.Equal(
-            ["InvalidConstraint_Kd read(self: objref/Self) => ()"],
+            ["InvalidConstraint_Kd read(self: objref/Self) => ()", "InvalidConstraint_Kd Self"],
             DiagnosticCorpus.Check(Source).Diagnostics.Select(x => $"{x.Code} {Source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}"));
     }
 

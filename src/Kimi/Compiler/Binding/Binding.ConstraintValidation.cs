@@ -629,14 +629,15 @@ public sealed partial class Binding
         return node;
     }
 
-    // PLAN G1278 (SPEC 8.6.3, 23.1.2): a constructed Type with clauses is judged once, at its formation site, the node that forms it: a
-    // written occurrence, whose Type node names the Type's declaration (BindType's published symbol), or a Dictionary literal (SPEC 12.4);
-    // a construction that inferred its target's arguments judges them itself. Every other node holding the Type (a declaration, a read, a
-    // call result, a Pattern position, an acquisition) carries it from a site or a call's own proof and is neither judged nor rested.
+    // PLAN G1278 (SPEC 9.7, 9.7.1, 23.1.2): a constructed Type with clauses is judged once, at its formation site, the node that forms it
+    // as its binder publishes (FormedTypeRows: a written occurrence, a `Self` included, or a Dictionary literal, at the occurrence's Type
+    // node); a construction that inferred its target's arguments and an Enum acquisition that inferred an own slot or Origin judge what
+    // they formed. Every other node holding the Type (a declaration, a read, a call result, a Pattern position, an acquisition) carries it
+    // from a site or a call's own proof and is neither judged nor rested.
     private BoundType? ConstrainedType(Koto node)
         => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
             !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) &&
-            (node is DictionaryLiteralKoto || ReferenceEquals(this.OccurrenceTypeNode(node).BoundSymbol, type.Symbol)) ? type : null;
+            FormedTypeRows.Contains(this.OccurrenceTypeNode(node)) ? type : null;
 
     // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
     // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its

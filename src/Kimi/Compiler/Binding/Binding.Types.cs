@@ -64,6 +64,8 @@ public sealed partial class Binding
     private BoundType? BindType(Koto syntax, BindingScope scope)
         => this.BindType(syntax, scope, this.TypeContext(syntax, scope));
 
+    // The Type binding of a written Type occurrence: the one producer of its Type, which it completes on `syntax` and publishes as formed
+    // there (FormedTypeRows; PLAN G1278), whatever names it: a declaration, a `Self`, an alias, a Type parameter.
     private BoundType? BindType(Koto syntax, BindingScope scope, TypeBindingContext context)
     {
         if (syntax.BoundType is { } known && !(this.closureHeader?.ReturnType is { } result && IsWithin(syntax, result)))
@@ -145,6 +147,7 @@ public sealed partial class Binding
                 return this.HeightChecked(syntax, type);
             }
 
+            FormedTypeRows.Add(syntax);
             Complete(syntax, type);
             this.CompleteOriginDeclaration(originDeclaration);
             return syntax.BoundType;
@@ -171,6 +174,7 @@ public sealed partial class Binding
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
+                FormedTypeRows.Add(root.Operands[0]);
                 Complete(root.Operands[0], rootType);
                 return rootType;
             case GenericParameterKoto:
@@ -498,5 +502,19 @@ public sealed partial class Binding
         internal void Remove(Koto syntax) => HirTables.Of(syntax).Families.ResolvingTypes.Ref(syntax.SyntaxId, binding) = false;
 
         internal bool Contains(Koto syntax) => syntax.SyntaxOwner is { } table && table.Hir.Families.ResolvingTypes.Get(syntax.SyntaxId, binding);
+    }
+
+    /// <summary>The `formedTypes` family's one accessor (DECISIONS BU-220; PLAN G1278, SPEC 9.7, 9.7.1, 12.4): a kept family, whether a node
+    /// forms its Type: a written Type occurrence the Type binding completed (BindType, a `Self`, an alias and a rooted name included; a
+    /// Case or construction qualifier that writes its own list, is its declaration's `Self` or is formed by its path) or a Dictionary literal
+    /// its binder completed. A `bool` row in the node's module's NodeColumns at its SyntaxId, written true by its one producer at each
+    /// completion, so a node bound in an earlier pass keeps it and a renumbering moves it; read only with the node's Type. A node that
+    /// takes its Type from an expected Type, an inference or another node never has one. Read by ValidateConstraintUses' site test
+    /// (ConstrainedType): a constructed Type with clauses is judged at the node that forms it, and every other node carries it.</summary>
+    private static class FormedTypeRows
+    {
+        internal static void Add(Koto node) => HirTables.Of(node).Families.FormedTypes.Ref(node.SyntaxId) = true;
+
+        internal static bool Contains(Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.FormedTypes.Get(node.SyntaxId);
     }
 }

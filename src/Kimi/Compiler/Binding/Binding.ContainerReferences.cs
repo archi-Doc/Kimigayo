@@ -268,13 +268,18 @@ public sealed partial class Binding
 
     // SPEC 9.7, 9.7.1, 10.8.1: a construction qualifier whose own Type-argument list is omitted: its environment from the path, its own
     // arguments those of `supplied`, else its own parameters, open, and the qualifier an inferred construction target, which the
-    // construction completes with its solved Type.
+    // construction completes with its solved Type. With no own parameters the path forms the whole Type, and the qualifier is its
+    // formation site (FormedTypeRows, PLAN G1278).
     private BoundType? ConstructionTargetType(Koto syntax, BindingSymbol symbol, BindingScope scope, BoundType? supplied)
     {
         var own = ((DeclarationContainerKoto)symbol.Declaration).GenericParameterNodes.Count;
         var arguments = own == 0 ? default : ((BoundType[])(supplied ?? this.SelfType(symbol)).Components).AsSpan(0, own);
         var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), arguments);
-        if (type is not null && own != 0 && supplied is null)
+        if (type is not null && own == 0)
+        {
+            FormedTypeRows.Add(syntax);
+        }
+        else if (type is not null && supplied is null)
         {
             this.inferredConstructionTargets.Add(syntax);
         }
