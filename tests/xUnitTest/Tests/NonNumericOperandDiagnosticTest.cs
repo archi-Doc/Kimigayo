@@ -18,6 +18,10 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     private const string Note = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
     private const string Building = "; to build text in steps, write to a Text.HeapBuffer through Text.writer and $tryWrite, then intoString";
 
+    // SPEC 13.3.3: a user arithmetic provider whose one conformance fits i32 only (no route of V + bool, SPEC 13.3.4).
+    private const string Provider = "struct V\n    Self is Addable<i32>\n    associate Addable<i32>.Output is V\n    public init() => ()\n" +
+        "    public func added(self: ref/Self, right: ref/i32) -> V => V.init()\n";
+
     [Fact]
     public void StringPlusIsRejectedAtBindingWithTheInterpolatedLiteral()
     {
@@ -67,8 +71,13 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     }
 
     // SPEC 23.1.2: a compound assignment or update whose destination failed keeps its route a verdict (G509): the route reads neither the
-    // destination's authority nor its Holder, so both records stand.
+    // destination's authority nor its Holder, so both records stand. SPEC 13.7.1: the destination check reads the destination only, so its
+    // record stands beside a route that failed first, a user provider's selection (G1310, G509's parameter form) or a string's with a
+    // failed operand (G502's r16).
     [Theory]
+    [InlineData(Provider + "func f() -> ()\n    let value = V.init()\n    value += true\n", "InvalidAssignment_Kd", "ArithmeticSelection_Kd")]
+    [InlineData(Provider + "func f(x: V, y: bool) -> ()\n    x += y\n", "InvalidAssignment_Kd", "ArithmeticSelection_Kd")]
+    [InlineData("func f() -> ()\n    let s = \"a\"\n    s += nope\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd", "UnresolvedBinding_Kd")]
     [InlineData("func f(u: ref/string, n: i32) -> ()\n    u += n\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(n: bool) -> ()\n    n += 1\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f() -> ()\n    let s = \"a\"\n    s += \"b\"\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
@@ -79,10 +88,10 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f<T>(x: T) -> ()\n    x++\n", "InvalidAssignment_Kd", "UnprovenConstraint_Kd")]
     [InlineData("func f(items: uniq/Array<i32>, n: bool) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(items: uniq/Array<bool>) -> ()\n    for item in items\n        item++\n", "ExclusiveBindingAssignment_Kd", "NonNumericOperand_Kd")]
-    public void AFailedDestinationKeepsItsRoute(string source, string destination, string route)
+    public void AFailedDestinationKeepsItsRoute(string source, params string[] codes)
     {
         var c = MinimalEmissionTest.Check(source + "public func main() => ()");
-        Assert.Equal(new[] { destination, route }.Order(), Errors(c).Select(static x => x.Code).Order());
+        Assert.Equal(codes.Order(), Errors(c).Select(static x => x.Code).Order());
     }
 
     // The route holds, or an assignment has none: the destination's record stands alone.
