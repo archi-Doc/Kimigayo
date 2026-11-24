@@ -561,7 +561,8 @@ public sealed partial class MirBuildTest
     // PLAN G1184 (DECISIONS R7-M88; IMPL A.4, R7-T1): the one projection rule (MirBody.SelectsPart) gives a Field step of no Type only for
     // a stored Field whose own slot failed; a part past IMPL A.4's height whose slot is typed is no part, so neither the builder's Stored
     // nor a constructor's Move Paths (MirMoveData) take it as one: D<T>'s `v: W^250<T>` is no part of D<W^8000<i32>> (8,251) and a typed
-    // part of D<W^7800<i32>> (8,051) (fail-before: a struct arm admitting every part in range answers true past the height).
+    // part of D<W^7800<i32>> (8,051) (fail-before: a struct arm admitting every part in range answers true past the height). The step is
+    // read in main's body site, as a MIR driver reads it (PLAN G651 U2b R13.1): past the height the instance's read marks the site once.
     [Theory]
     [InlineData(40, false)]
     [InlineData(39, true)]
@@ -573,7 +574,9 @@ public sealed partial class MirBuildTest
         var main = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
         var type = main.Locals.ToArray().Single(static x => x.Name == "d").Type!.Components[0];
         Assert.True(AdtDef.IsStruct(type));
+        var site = c.Types.OpenBodySite(main.Source);
         Assert.Equal((stored, stored), (MirBody.SelectsPart(c.Types, type, MirProjectionKind.Field, 0, out var part), part is not null));
+        Assert.Equal(stored ? [] : new[] { new SiteMark(type, main.Source, true) }, c.Types.CloseBodySite(site).ToArray());
         Assert.False(AdtDef.FieldSlotFailed(type, 0));
 
         static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
