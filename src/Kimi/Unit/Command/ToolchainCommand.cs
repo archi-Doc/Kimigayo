@@ -6,22 +6,18 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("toolchain")]
-public sealed class ToolchainCommand : ISimpleCommand<ToolchainCommand.Options>
+[SimpleCommand(ToolchainCommand.Name)]
+public sealed class ToolchainCommand : ISimpleCommand
 {
-    public sealed class Options
-    {
-        [SimpleOption("Report")]
-        public string? Report { get; set; }
-    }
+    public const string Name = "toolchain";
 
     private readonly Kimigayo kimigayo;
 
     public ToolchainCommand(Kimigayo kimigayo) => this.kimigayo = kimigayo;
 
-    public async Task Execute(Options options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(string[] arguments, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, Name, arguments, async (options, args) =>
         {
             if (args.Length != 1 || args[0] != "verify")
             {

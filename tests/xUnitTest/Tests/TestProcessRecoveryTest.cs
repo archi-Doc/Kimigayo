@@ -180,7 +180,7 @@ public class TestProcessRecoveryTest
         var executable = Path.ChangeExtension(typeof(TestProcessRecoveryTest).Assembly.Location, ".exe");
         var settings = new TestSettings { Timeout = mode == "sleep" ? "2s" : "30s", RecoveryGrace = "30s" };
         var worker = TestWorker.Run(
-            executable, root, root, 0, settings, environment, outcome, new(TestOptions.Parse([])), cancellation.Token);
+            executable, root, root, 0, settings, environment, outcome, new(TestOptions.Read([])), cancellation.Token);
         try
         {
             if (mode == "cancel")
