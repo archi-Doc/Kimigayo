@@ -28,8 +28,7 @@ internal readonly record struct ExecutableBody
     internal ExecutableBody(BindingSymbol? definition, int index = -1) => (this.Definition, this.index) = (definition, index + 1);
 
     /// <summary>Gets the declaration judge's frame (SPEC 15.3.4; DECISIONS BU-89): no body, distinct from the default value, in which
-    /// every executable body's Origin a declaration's row names is a fixed Origin of that declaration, until PLAN G230 (A) records the
-    /// declaring body.</summary>
+    /// every executable body's Origin a declaration's row names is a fixed Origin of that declaration.</summary>
     internal static ExecutableBody Declarations { get; } = new(null, -2);
 
     internal BindingSymbol? Definition { get; }
