@@ -245,13 +245,21 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.14, 8.15.2 (R6-check H1): the `case` fact of a bare acquisition that moves a Place: every case of the definition's
-    // resolved binders whose complete Type (CaseType, which takes each layer's Semantics from its own binder, a nested layer's
-    // included) the rows of SPEC 3.5 move; null when no case or every case moves. The binders it names are left in namedCaseBinders.
-    private string? AcquisitionCases(Koto place, out bool single)
+    // SPEC 8.14, 8.15.2 (R6-check H1): the `case` fact of a bare acquisition that moves a Place, decoded at publication from the mask
+    // FailAcquisition recorded (AcquisitionCaseMask) over the Place's resolved binders, read from its scope; null when no case or every
+    // case moves. The binders it names are left in namedCaseBinders.
+    private string? AcquisitionCases(Koto place, ulong cases, out bool single)
     {
-        single = false;
-        this.namedCaseBinders.Clear();
+        var binders = this.acquisitionBinders;
+        this.PairBinders(place, binders);
+        return CaseFact(binders, cases, this.namedCaseBinders, out single);
+    }
+
+    // The judgment behind the `case` fact, made at the failure: the mask of every case of the definition's resolved binders whose complete
+    // Type (CaseType, which takes each layer's Semantics from its own binder, a nested layer's included) the rows of SPEC 3.5 move; null
+    // for a Place whose Type has no pair layer.
+    private ulong? AcquisitionCaseMask(Koto place)
+    {
         if (place.BoundType is not { ContainsPairLayer: true } type)
         {
             return null;
@@ -299,6 +307,6 @@ public sealed partial class Binding
             this.caseScratch.Return(scratch, clearArray: true);
         }
 
-        return CaseFact(binders, cases, this.namedCaseBinders, out single);
+        return cases;
     }
 }

@@ -25,6 +25,7 @@ public sealed class TransferJudgmentTest
     [InlineData("func bad(x: string, y: string = (x)) => ()\npublic func main()\n    bad(Text.toString(1))\n", "DefaultArgumentMove_Kd (x)")]
     [InlineData("func f<s/T>(value: s/T)\n    s is owner or ref\n    let b = value\npublic func main()\n    let n = 1\n    f(n)\n", "TransferRequired_Kd value repair case=s = owner | Found under the Semantics case s = owner (SPEC 8.15)")]
     [InlineData("func f<t/U, s/T>(value: s/t/U)\n    s is owner or uniq\n    t is owner or ref\n    let b = value\npublic func main() => ()\n", "TransferRequired_Kd value repair case=t = owner, s = owner | Found under the Semantics case t = owner, s = owner (SPEC 8.15)")]
+    [InlineData("func f<s/T>(value: s/T)\n    s is owner\n    let b = value\npublic func main() => ()\n", "TransferRequired_Kd value repair")] // PLAN G181 (c): an owner-only pair; every case moves, so no case fact.
     [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    items[0]@follow = 7\n", "")]
     [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    let r = items[0]@follow\n", "")]
     [InlineData("func peek<t/U>(value: t/U, seen: U = value@follow) -> U\n    t is owner or uniq\n    U is Copy\n    return seen\nfunc caller<s/T>(x: s/T) -> T\n    s is owner or uniq\n    T is Copy\n    return peek(x)\n", "")]
@@ -32,6 +33,10 @@ public sealed class TransferJudgmentTest
     [InlineData("func p<s/T>(q: uniq/(s/T during h) during k)\n    s is ref or uniq\n    let through = q@follow\n", "")]
     [InlineData("func k<s/T>(a: s/T, b: s/T = a) -> ()\n    s is owner or ref\npublic func main() => ()\n", "DefaultArgumentMove_Kd a | Found under the Semantics case s = owner (SPEC 8.15)")]
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x")]
+
+    // R7-E4 E4a-2 (the design review's C3, PLAN G421 (i)): a value call's arguments are acquired each at its own parameter, so each bare
+    // Non-Copy argument is its own record (SPEC 15.1.5, 23.1.2).
+    [InlineData("struct R\n    public init() => ()\nfunc k(f: (R, R) -> ()) -> ()\n    var a = R.init()\n    var b = R.init()\n    f(a, b)\npublic func main() => ()\n", "TransferRequired_Kd a repair; TransferRequired_Kd b repair")]
     public void ABareMoveIsBindingsRecord(string source, string expected) => Assert.Equal(expected, Records(source));
 
     // SPEC 4.7.2, 13.5.5 (PLAN G384, resolved by the H5 merge): an index expression denotes an element Place without copying it, and

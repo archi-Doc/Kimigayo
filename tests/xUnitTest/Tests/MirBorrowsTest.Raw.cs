@@ -1759,8 +1759,17 @@ public sealed partial class MirBorrowsTest
     // `during self` layer or an enclosing Place through a dereference carries its owner's own-step entry at its exact lent position
     // (MirBorrows.Lent) with every Loan its parents carry, so the owner's Move under it conflicts (and departs the owner's own step where the
     // position names the owner from its root); where the read's own steps name the owner past the dereference, the base's row (g1, g2, g5,
-    // ix2: the owner the lender's Place or past it); where no run names one, in a view whose borrow the base marked, the read's located
-    // Unsupported_Kd (n2: an owner past an E3 Reborrow; tw3: a reference stored twice). Labels from SPEC (Z5-R1 design section 5).
+    // ix2: the owner the lender's Place or past it). G1276 (E-a, Revision 1c): an owner step in a lender's steps applies to the Place the
+    // steps before it name from the position's root where the body has that Place's row, direct (oh1, oh2: a reference to an owning
+    // handle's payload; oh3, oha: that payload's Deref past a whole-handle lender, oha's an address, which carries no Loan), else to its
+    // Prefix row past the lender's Deref (Lent's LentPlace), so the read carries its parents whole through a raw lender (pr1, pr2, pr3:
+    // two lender segments; pre: an enclosing Tuple; prw: a write; pru: a uniq lender) and a shared one (n2, n2v leave the limit). Where
+    // no exact position exists and the own steps name no owner, in a view whose borrow the base marked, the read's located
+    // Unsupported_Kd (tw3: a reference stored twice); elsewhere silent (G1301's open classes: prs, a pointer stored twice, and prc2, a
+    // call's result, invalid or undecided by the text and accepted; bn1, bn2, valid reads through a call's result, accepted; bn3
+    // conflicts by 15.6.4). The Warning of a non-direct entry is PLAN G1277's (N10; pr1: not given); a plain address is a direct entry
+    // and gives it (pra). Labels from SPEC (Z5-R1 design section 5; G1276 design section 6 and Revision 1c section 3, before any run;
+    // pra's Warning corrected after it, as the design's section 7 measured it).
     [Theory]
     [InlineData("t5c", "let t = (b.pair@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
     [InlineData("mx", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
@@ -1780,7 +1789,34 @@ public sealed partial class MirBorrowsTest
     [InlineData("t9", "let o = Outer.init()|let t = (b@ref, o.inner@ref)|let x = t.1@follow.data|let m = b@move|usep(x)", "", "b")]
     [InlineData("cg1", "let x = gt(b.pair@ref)|usep(x)", "func gt(r: ref/(raw/u8, i32)) -> raw/u8 => r@follow.0\n", "")]
     [InlineData("cg1m", "let x = gt(b.pair@ref)|let m = b@move|usep(x)", "func gt(r: ref/(raw/u8, i32)) -> raw/u8 => r@follow.0\n", "b")]
-    [InlineData("n2", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner.pair@ref|let x = q@follow.0|let m = o@move|usep(x)", "", "q@follow.0 Unsupported_Kd")]
+    [InlineData("n2", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner.pair@ref|let x = q@follow.0|let m = o@move|usep(x)", "", "o")]
+    [InlineData("n2v", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner.pair@ref|let x = q@follow.0|usep(x)|let m = o@move", "", "")]
+    [InlineData("pr1", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("pr1v", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "", "")]
+    [InlineData("pr2", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|let p2 = p|unsafe|    let x = (*p2).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("prt", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner@raw|unsafe|    let x = (*p).pair.0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("prtv", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner@raw|unsafe|    let x = (*p).pair.0|    usep(x)|    let m = o@move", "", "")]
+    [InlineData("pr3", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner@ref|let p = q@follow.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("pr3v", "let o = Outer.init()|let r = o@ref|let q = r@follow.inner@ref|let p = q@follow.pair@raw|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "", "")]
+    [InlineData("pre", "let o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let t = *p|    let m = o@move|    usep(t.0)", "", "o")]
+    [InlineData("prw", "var o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    o = Outer.init()|    usep(x)", "", "o = Outer.init()")]
+    [InlineData("pru", "var o = Outer.init()|let r = o@uniq|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o")]
+    [InlineData("pra", "let o = Outer.init()|let p = o.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o OwnStepDeparture_Kd")]
+    [InlineData("oh1", "let h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|let m = h@move|usep(x)", "", "h|h OwnStepDeparture_Kd")]
+    [InlineData("oh1v", "let h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|usep(x)|let m = h@move", "", "")]
+    [InlineData("oh2", "var h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|let w = h@uniq|usep(x)", "", "h@uniq|h@uniq OwnStepDeparture_Kd")]
+    [InlineData("oh2v", "var h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|usep(x)|let w = h@uniq", "", "")]
+    [InlineData("oh3", "var h = Packet.init()@obj|let rr = h@ref|let r = rr@follow@follow@ref|let x = r@follow.pair.0|let w = h@uniq|usep(x)", "", "h@uniq|h@uniq OwnStepDeparture_Kd")]
+    [InlineData("oh3v", "var h = Packet.init()@obj|let rr = h@ref|let r = rr@follow@follow@ref|let x = r@follow.pair.0|usep(x)|let w = h@uniq", "", "")]
+    [InlineData("oha", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    let w = h@uniq|    usep(x)", "", "h@uniq OwnStepDeparture_Kd")]
+    [InlineData("ohav", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    usep(x)|    let w = h@uniq", "", "")]
+    [InlineData("prs", "let o = Outer.init()|let o2 = Outer.init()|let r = o@ref|let s = o2@ref|var p = s@follow.inner.pair@raw|p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "")]
+    [InlineData("prc2", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw\n", "")]
+    [InlineData("prc2v", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw\n", "")]
+    [InlineData("prp", "gq(fresh@raw/(raw/u8, i32))", "func gq(p: raw/(raw/u8, i32))\n    unsafe\n        let x = (*p).0\n        usep(x)\n", "")]
+    [InlineData("bn1", "var a = (1, 2)|let q = pickN(a@ref)|let t = q@follow|a = (3, 4)|usen(t.0)", "func usen(n: i32) => ()\nfunc pickN(r: ref/(i32, i32)) -> ref/(i32, i32) during r => r\n", "")]
+    [InlineData("bn2", "var a = (fresh, 1)|let q = pickR(a@ref)|let x = q@follow.0|a = (fresh, 2)|usep(x)", "func pickR(r: ref/(raw/u8, i32)) -> ref/(raw/u8, i32) during r => r\n", "")]
+    [InlineData("bn3", "var a = (1, 2)|let q = pickN(a@ref)|let t = q@follow|a = (3, 4)|usen(t.0)|usen(q@follow.0)", "func usen(n: i32) => ()\nfunc pickN(r: ref/(i32, i32)) -> ref/(i32, i32) during r => r\n", "a = (3, 4)")]
     [InlineData("tw3", "var r = b.pair@ref|r = d.pair@ref|let x = r@follow.0|usep(x)", "", "r@follow.0 Unsupported_Kd")]
     public void ALayerReadThroughADereferenceCarriesItsOwnersEntryAndItsParents(string id, string lines, string declarations, string expected)
     {

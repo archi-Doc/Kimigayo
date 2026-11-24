@@ -173,23 +173,23 @@ public sealed partial class Binding
 
         var bound = this.BindNode(binary.Left, scope, context);
         var left = assignment ? bound : this.ReadReferent(binary.Left, bound);
-        // Keep a reference binding's authority failure ahead of literal fitting and compound applicability.
-        if (assignment && left?.SafeReferent is { } bindingReferent &&
-            (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
+        // SPEC 15.1.6 (R7-E4 rulings 8, 9, 15): a write that names a reference binding's mode (ReferenceBindingAssignment's one decision: an
+        // update, or an `=` to a non-reassignable binding, whatever the value) records it ahead of literal fitting and compound applicability;
+        // an `=` to a reassignable one is a rebind, bound and judged below as any `=`.
+        var referenceBinding = assignment && left?.SafeReferent is not null ? ReferenceBindingAssignment(binary.Left, binary) : null;
+        if (referenceBinding is { } binding && left?.SafeReferent is { } bindingReferent && (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)))
         {
             var value = this.BindNode(binary.Right, scope, bindingReferent);
-            this.Fail(binary, referenceBinding);
+            this.RecordWrite(binary, binding, binary.Left);
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
         }
 
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
-        if (assignment && kind == KotoKind.Equals && left?.SafeReferent is { } valueReferent &&
-            right is not null && !this.FitsType(right, left) && this.FitsType(right, valueReferent) &&
-            ReferenceBindingAssignment(binary.Left) is { } valueBinding)
+        if (kind == KotoKind.Equals && referenceBinding is { } assigned)
         {
-            return this.Fail(binary, valueBinding);
+            return this.RecordWrite(binary, assigned, binary.Left);
         }
 
         right = !assignment || shift ? this.ReadReferent(binary.Right, right) : right;
@@ -262,9 +262,9 @@ public sealed partial class Binding
 
     // SPEC 13.7.1, 3.4, 15.1.5: the one destination check of an assignment, compound assignment, increment or decrement, run once the
     // operands and route have bound, whatever they gave: the target is located with write permission under the path, `let`/`var` and
-    // Property permissions. It reads the target, never the value's Type. An update of a reference binding names the binding's mode
-    // (SPEC 15.1.6); a plain write's mode record rests on its value (BindBinary). An update of a `during self` layer's Place or an
-    // enclosing one is the allowlist's (JudgeHolderPlace; SPEC 5.7).
+    // Property permissions. It reads the target, never the value's Type. A write whose code is a reference binding's mode
+    // (ReferenceBindingAssignment's one decision, SPEC 15.1.6) records it. An update of a `during self` layer's Place or an enclosing one
+    // is the allowlist's (JudgeHolderPlace; SPEC 5.7).
     private bool CheckDestination(Koto operation, Koto target, BoundType type, BindingScope scope)
     {
         if (!this.ValidPropertyWritePath(target, scope))
@@ -273,14 +273,13 @@ public sealed partial class Binding
             return false;
         }
 
-        var write = operation is BinaryKoto { Akind: KotoKind.Equals };
-        if (!write && type is { SafeReferent: not null } &&
-            ReferenceBindingAssignment(target) is { } referenceBinding)
+        if (type is { SafeReferent: not null } && ReferenceBindingAssignment(target, operation) is { } referenceBinding)
         {
-            this.Fail(operation, referenceBinding);
+            this.RecordWrite(operation, referenceBinding, target);
             return false;
         }
 
+        var write = operation is BinaryKoto { Akind: KotoKind.Equals };
         if (!this.WritablePlace(target, this.PathFold(target, [])) &&
             !(write && (CanInitializeLocal(target, scope) || (IsSpecialField(target, out var constructor) && constructor.IsConstructor))))
         {
