@@ -19,8 +19,9 @@ namespace XunitTest;
 public sealed partial class MirBorrowsTest
 {
     // The forms' Types: Writer stores its q through its raw slot p when destroyed (SPEC 15.6.4's example), Quiet holds the same Fields
-    // without a drop; Outer holds a Writer by value and OuterD's own drop rewrites its inner Writer's slot (two drops, both composed;
-    // no row observes their order); BaseW's drop runs for a Derived's base part; Holder<T> is a generic Type with the drop; Setter's drop writes its
+    // without a drop, and QuietU8 holds them with p a raw/u8; Outer holds a Writer by value and OuterD's own drop rewrites its inner
+    // Writer's slot (two drops, both composed; no row observes their order); BaseW's drop runs for a Derived's base part; Holder<T> is a
+    // generic Type with the drop; Setter's drop writes its
     // borrowed value through its borrowed target (no raw layer, so nothing reaches storage the body does not own); ELeaf is a sealed leaf
     // with Writer's drop under an open EBase without one (a handle to EBase destroys erased, SPEC 16.3.3); WriterS states its raw layers'
     // Origin through a Loan of the slot it writes (BU's p6 Lens spelling, SPEC 5.7), so its drop stores only into that slot; WKey is a
@@ -39,6 +40,12 @@ public sealed partial class MirBorrowsTest
                 unsafe => *self.p = self.q
         struct Quiet
             public var p: raw/(raw/u8)
+            public var q: raw/u8
+            public init(q: raw/u8)
+                self.p = null
+                self.q = q
+        struct QuietU8
+            public var p: raw/u8
             public var q: raw/u8
             public init(q: raw/u8)
                 self.p = null
@@ -151,11 +158,30 @@ public sealed partial class MirBorrowsTest
             x = Writer.init(q: null)
             usep(slot)
             y = 5
-        func quietOk()
+        func quietCtorBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
             var slot: raw/u8 = null
             var x = Quiet.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            x = Quiet.init(q: null)
+            y = 5
+            usep(slot)
+        func quietCtorU8Bad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: u8 = 0
+            var x = QuietU8.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            x = QuietU8.init(q: null)
+            y = 5
+            usep(slot@raw)
+        func quietFieldOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Quiet.init(q: null)
+            x.q = w@raw@raw/u8
             x.p = slot@raw
             x = Quiet.init(q: null)
             y = 5
@@ -737,7 +763,12 @@ public sealed partial class MirBorrowsTest
     // used after every point: a later write of y errs at the write, and with no write at y's storage end (its declaration, as A5 locates
     // a storage end). One row per rule and site, each Bad with a valid twin where SPEC gives one:
     // - Drop at `=`: localBad (also localDrop2Bad, reset and k2's resetSpecBad, the same source); localReachBad uses slot first and errs
-    //   all the same by the whole-holder text (as Raw's viaOk); quietOk has no drop, nullQOk's drop stores null; statedBad and
+    //   all the same by the whole-holder text (as Raw's viaOk); quietCtorBad errs at its construction, not at a drop (Quiet has none):
+    //   Quiet.init may put its own pointer in p and store q through it in storage the body does not own (15.6.4 "a nominal Type's Fields
+    //   included", the owner's O-365 (a); PLAN G841 (3)); so does quietCtorU8Bad, whose p is a raw/u8: p is a layer QuietU8 states, and
+    //   through such a layer the call may store what a raw layer it writes retains, whatever its pointee (SPEC 5.7 Calls and its example
+    //   throughField; R4-M241); quietFieldOk is the valid twin for the destruction rule: the constructors receive only null, w's address
+    //   enters x by a body write and the old x is replaced without a drop; nullQOk's drop stores null; statedBad and
     //   statedSlotBad: WriterS's stated raw layers reach only the slot its Loan names, so the drop's store into that holder decides `y = 5`
     //   (their difference); the store retains as the borrow `slot@uniq` would (5.7 Calls), with its own Loan by the per-argument rule, so
     //   `usep(slot)` errs in both: the argument is the `uniq/Self` receiver, whose referent holds the keeper, so a read through it carries
@@ -776,7 +807,9 @@ public sealed partial class MirBorrowsTest
     [Theory]
     [InlineData("localBad", "localBad: y = 5")] // Drop at `=`
     [InlineData("localReachBad", "localReachBad: y = 5")] // Drop at `=`
-    [InlineData("quietOk", "")] // Drop at `=`
+    [InlineData("quietCtorBad", "quietCtorBad: y = 5")] // Drop at `=`, no drop: the construction's own pointer at p (O-365 (a))
+    [InlineData("quietCtorU8Bad", "quietCtorU8Bad: y = 5")] // Drop at `=`, no drop: the construction's own pointer at p, a layer QuietU8 states (SPEC 5.7 Calls)
+    [InlineData("quietFieldOk", "")] // Drop at `=`, no drop: w's address enters x by a body write
     [InlineData("nullQOk", "")] // Drop at `=`
     [InlineData("statedBad", "statedBad: y = 5; statedBad: usep(slot); statedBad: var spare: raw/u8 = null; statedBad: var slot: raw/u8 = null")] // Drop at `=`, stated raw layers; the storage ends are true records (5.7 Calls: a stated layer keeps what it admits; D-757)
     [InlineData("statedSlotBad", "statedSlotBad: usep(slot); statedSlotBad: y = 5; statedSlotBad: var spare: raw/u8 = null; statedSlotBad: var slot: raw/u8 = null")] // Drop at `=`, stated raw layers; true records as statedBad's (D-757)
