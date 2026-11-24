@@ -538,8 +538,13 @@ public class ClosureEnvironmentOriginTest
     // (put stores its own input into `x.s`), the `w.s` and `r` forms: the relation's record at `v` in put; d6c (`v` during `x.s`): the
     // call's store of the block's `inner` is the leak's Loan record; d6v and the reading `first` are valid. The root form (a top-level
     // function naming a top-level statement's local, no nested function: F's O3-16 (1)) keeps the located limit at `v`, beside the leak's
-    // own Loan record (SPEC 23.1.2). dev accepted d6 and the root form (`leak 41`).
+    // own Loan record (SPEC 23.1.2). dev accepted d6 and the root form (`leak 41`). The default template's edge (SPEC 7.2.3; F's O3-21
+    // (4)): g, declared in a capture-free Closure literal that is f's default for `action`, has the Closure as its declaring body, whose
+    // evaluating body is (f, 1): g's `during r` and `during q` name the Closure's local regions, fixed in g with no premise, so returning
+    // x as `during q` is the relation's record (dt_lift4) and the pass-through twin is valid (dt_ok4); dev gave both the located limit.
     [Theory]
+    [InlineData("func f(a: i32, action: () -> i32 = func [] () -> i32\n    let y: i32 = 1\n    let q = y@ref\n    let r = q\n    func g(x: ref/i32 during r) -> ref/i32 during q => x\n    return 0\n) -> i32 => action()\npublic func main() => ()\n", "UnprovenOriginRelation_Kd x\n    return")]
+    [InlineData("func f(a: i32, action: () -> i32 = func [] () -> i32\n    let y: i32 = 1\n    let q = y@ref\n    let r = q\n    func g(x: ref/i32 during r) -> ref/i32 during r => x\n    return 0\n) -> i32 => action()\npublic func main() => ()\n")]
     [InlineData(NestedHead + PutStore + NestedStore, "UnprovenOriginRelation_Kd v)")]
     [InlineData(NestedHead + PutBoth + NestedStore, "ComparisonLoanConflict_Kd let inner")]
     [InlineData(NestedHead + PutBoth + NestedValid)]
