@@ -25181,6 +25181,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   invalidation key when R7-O1 f deletes `originStateVersion` (or openers only over settled state). The in-process times above are
   measured with `OriginProofMetrics` on, whose `Closure` counts every edge of each closure, so they overstate the closure's cost;
   the RP8 row's `check` times are the measure.
+  - Extended by R7-M98 (PLAN G1082, Q-730): the invalidation-key rest above covers a Callable comparison's premise
+    environments too.
 - **R7-M40 A candidate's trial owns its frame, and a solve's invariant marks are its frame's** (Front, 2026-11-18; R7-I2 c, plan
   §5.0's I2 part c, revision 95; design `front\notes\I2\design-c.md` phases 1-2: design review REVISE (B1-B3), the re-check REVISE
   (R1), the delta check ACCEPT; implementation review ACCEPT WITH CONDITIONS, C1 met; F's I2 ruling-c 1-9; Major: commit 1
@@ -27861,6 +27863,30 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open (PLAN G651 a2-2c, a3, a4).** The remaining frames of BindDeclarations' steps: Signature's, BindConstraint,
     ResolveAssociated, CompleteProjections, SummarizeInlineStorage, PrepareVirtualOverrides, CompleteImplementationOrigins,
     FillVTable, RecordIdentityPremiseError, PrepareSpecializations and SelectOmittedBaseConstructor's frame.
+- **R7-M98 A Callable comparison's requests share one premise environment** (Middle, 2026-11-24; R7-O1 e, R7-M39's comparison rest;
+  PLAN G1082, closed by Q-730; Major, records unchanged; design review and implementation review C-519 (the Front) ACCEPT WITH
+  CONDITIONS; commits 11943af5a, 9fa0b0297, 0e22c988c). Every proof request is set up and ended by one path
+  (`BeginRequest`/`EndRequest`, `Binding.OriginPremises.cs`): in an open premise session at depth 0 a request reads the session's
+  environment of its use's anchor, or in a Callable comparison of its use and comparison (key: required signature, enclosing
+  comparisons' required signatures, scope), built once per Origin state; any other rents. An environment is built as its base (the
+  premises at its use, no request's shorter end), then takes the request's endpoints and R5 (`AddPlacePremises`: outside a
+  comparison at every new node; in one from the request's shorter end, then J1 over the request's nodes); in a comparison
+  `EndRequest` restores the base (`OriginPremiseClosure.Truncate`), since SPEC 15.6.1's R5 there is per relation (PLAN G491's (b);
+  T1 shows a kept R5 edge accepts an invalid program). Openers added: `ContractFits`, `CompareCallableContracts`. Nested comparisons
+  share an environment when their use, excluded result premise, required signature, scope and enclosing required signatures,
+  compared level by level, are the same: the inputs its construction reads (a nested comparison builds its own enclosing chain, so
+  the key compares chains, not objects); Pool holds at most the distinct keys one session meets. Removes the per-request rebuild of
+  the required signature's premises (O(n^2) in a comparison's inputs, also on Function-typed inputs) and `EntailsInSession`.
+  Rejected: per-request edge layers in the closure; keeping a request's R5 edges; sharing only while a request adds none (a
+  fallback); the L1 lift reading the last failed closure (the last closure may be another target's or stopped early); PLAN's metric
+  Nodes + Edges + Insertions (it sums each closure's whole graph); an enclosing chain cached per comparison instance (a second
+  representation; equal chains under distinct instances still split, and every comparison allocates one). R7-M39's rests now read:
+  the session's invalidation key when R7-O1 f deletes `originStateVersion` covers comparison environments too;
+  `TypeRelations.Comparison` outside any opener and `PropertyMatching`'s `Bridge` stay R7-M39's open rest; the per-request closure
+  stays R7-O1 e's. G1082's form and metric were amended (agreed by C-519 (5)): the cost sits on the `ref/U` form (`ref/(U during p)`
+  makes no request on dev since Q-640); it is closed by `CallableRegionScalingTest.ALiteralsComparisonOverManyInputsScales` and
+  `NestedComparisonsOverManyInputsScale` (inputs alternating `ref/U` and a Function Type, nested once or twice): written edges +
+  insertions + activations at most 2.25x per doubling, environments constant.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
