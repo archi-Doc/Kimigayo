@@ -117,10 +117,11 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding,
-    // TyCtxt and ImplTable are R7-N5's (B7c, B8), MirBody and MirBuilder the Middle's, DiagnosticOwner the Diagnostics owner's, HoverBuilder
-    // and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands second takes the merged counts.
-    private const string NodeKeyedTableSites = "Binding=8;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;ImplTable=1;MirBody=1;MirBuilder=1;" +
+    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding
+    // and TyCtxt are R7-N5's (B7c, B8b; ImplTable's left in B8a), MirBody and MirBuilder the Middle's, DiagnosticOwner the Diagnostics
+    // owner's, HoverBuilder and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands second takes
+    // the merged counts.
+    private const string NodeKeyedTableSites = "Binding=8;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1;" +
         "TyCtxt=1";
 
     // The IL opcodes by value (MethodCalls).

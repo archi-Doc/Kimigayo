@@ -135,6 +135,10 @@ public sealed class BoundConformance
 
     internal List<BoundConformancePath> PathStorage { get; } = new();
 
+    // ImplTable's row (R7-N5 B8): every path its store keeps for the identity, named and not swept, across passes; ImplTable.NamedPath
+    // finds one by its declaring clause and root Contract, ImplTable.Sweep compacts it.
+    internal List<BoundConformancePath> NamedPaths { get; } = new();
+
     // Rule (a) (ImplTable): the point of the identity's first path and of its last, and, for a base identity, its paths before the last
     // later point's join (its paths at point 1 while every base row registers at point 1 or 2: ImplTable's premise); written by the pass
     // that registers it.
@@ -217,6 +221,7 @@ public sealed class BoundConformance
         this.Type = type;
         this.Contract = contract;
         this.Stamp = 0;
+        this.NamedPaths.Clear(); // Already empty: Sweep pools an identity once its row is.
         return this;
     }
 }
