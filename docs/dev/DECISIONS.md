@@ -16780,6 +16780,49 @@ resumed by R4-M86 (2026-10-20).
     per warm Bind in N instantiations and in fan-in; retention past depth 2), a `KeyedRow` of root paths with successor interning
     (kept-family rows for an identity across edits no reader needs), a `Koto` key emptied at the edit (a node-keyed table outside
     Syntax), a per-pass interner (breaks the warm identity and the 0 B rows).
+  - **R7-N5 B8a** (the Back's batch, Q-768, D-1269; design `b8-design.md` with B's rulings 1-7 and its addendum §V; the Front's design
+    review C-521, C1-C4): Binding's tables B7's row made visible keep their owners and lifetimes and lose the node in their keys, each
+    key by its table's lifetime and store. `inlineSummaries` (ValidateInlineLayouts' map, one run of the walk) keys a struct or enum
+    declaration by its symbol (`InlineNode(Declaration, Path, Identity)`): the walk reaches library declarations in a program pass, so
+    a node key would put library nodes in a program table (a node family: a program store at library ids), and the symbol is the
+    declaration's identity there, as in `inlineRecursive` and MirDefKey (0 of 153,118 keys without one). `collisionSubstitutions`'
+    term names its candidate by side (`CollisionSide`: None, Left, Right), the unification holding the two functions
+    (`collisionLeft`, `collisionRight`), exact by construction (both null, or an overload pair's two distinct functions; asserted in Debug at `MayUnify`, C-555); the map is
+    emptied at each pass's start. The obligation list's dedup index (`obligationSet`, `PassPart.ObligationSet`) keys `ObligationKey`
+    (the obligation with `Use`, `Clause`, `FixedBy` and `Site` as `SourceRef.Written` values) and `valueInReads` (ValueIn's memo)
+    keys `(BoundOrigin, SourceRef Body)`: both live within one numbering (a pass part's set emptied each pass; a memo of one run),
+    B7's per-pass memo form; the dedup is load-bearing (12,892 of 872,531 adds duplicate) and the key exact (every node field numbered
+    at its add, asserted in Debug at `ObligationKey`'s constructor and ValueIn's key, C-555); a symbol key for the memo is refused (a module's top-level body has no symbol). `ImplTable.paths` becomes its
+    identity's row (`BoundConformance.NamedPaths`), scanned by declaring clause and root (BU-220's composite form, the key's first
+    part holding the row; `Named` writes a path's key fields): the suite's longest row is 13, and a Type declaring n Contracts that
+    each refine one Contract compares about 3n^2 entries per warm Bind (5n^2 when that Contract has a requirement;
+    `DeepRefinementPremiseBindingTest.WideRefinementPathLookupsStayWithinTheRowBound`). With them `BeginRun` makes ValueIn's memo
+    stale with the region-graph version (a defect R7-O2 left: a warm second Bind read the first run's entries, 1 ValueIn read where
+    the first run had 7 or 15, and an edit left the removed body's keys beside the next run's;
+    `OriginProofScalingTest.ASecondRunReadsEveryCarriedCandidateAgain`, `AnEditLeavesNoEarlierRunInTheValueInMemo`). Owner: each
+    table's component as before (ImplTable the conformance table's rows). Exposure: none (no acceptance or record moves; the fix
+    changes only which ValueIn reads compute). Readings: SPEC 6.2 (inline storage), 7.4 and 8.9.1 steps 2-4 (the collision test's
+    candidates), 8.6.1-8.6.2 (conformance paths), 15.3.6 (a local region's value), 23.1.2 (no record moves). Rejected: node families
+    (a program store at library ids for `inlineSummaries` and the memo; ImplTable's two store decisions for `paths`), the obligation
+    set as a kept family scanned at `Use` (C-521 B1: 21.7M entries over 84 classes, x8 per doubling), its deletion (duplicates
+    occur), `SourceRef` keys for a table kept across an edit (`paths`), an index set over the obligation list, a one-body memo
+    (recomputes when readers switch bodies). Sites in B7's row after B8a: `Binding=7` (B7c's 12 less five), no `ImplTable`;
+    `TyCtxt.retentions` is B8b's (the next line).
+  - **R7-N5 B8b** (the Back's batch, Q-768, D-1269; design `b8-design.md` §2.4 with B's ruling of 2026-11-25 on the owner's key; the
+    Front's review C-558): the retention memo (`TyCtxt.retentions`, kept across passes with no edit and discarded at an edit) keys a
+    typed `RetentionKey(Callee, Signature, Types, Scope, Owner, State)` with no node, each field compared by reference and null where
+    its form has none: a callee symbol keys its interned `Subst` and the definition's premise scope where that has an abstract part;
+    a Value callee's declared signature keys, for an item or a Closure whose definition did not bind, its owner, for a bound Closure
+    its owner and closure context, and for an erased callable the calling definition's constraint scope; an erased destruction keys
+    its receiver and that scope. The owner is the callee's own symbol (`Binding.CallableCore(callee).Symbol`), whose declaration is
+    the owner (`Binding.SignatureOwner`, `Closure`): the memo outlives a pass and holds library callees, so it keys a declaration by
+    its symbol (MirDefKey's identity), never by its node. The map from the former `object`-typed keys is injective, so every hit and
+    miss is as before (`RetentionTest.ValueCalleeRetentionsAreMemoizedPerOwnerUntilAnEdit`: the two owners of one signature keep two
+    entries; a warm Final Bind reuses each; an edit revokes them). Owner: TyCtxt as before. Exposure: none (no acceptance, record or
+    generated-code move; a cold entry's key grows from 32 to 48 bytes). Readings: SPEC 23.1.2 (no record moves). Rejected: the
+    owner's node (a node family kept across passes at library ids, B8's rejected (a)); `SourceRef` keys (an edit renumbers; B8's
+    rejected (b)); the owner's `BoundSymbol` (a Transitional read; the callee's symbol names the same declaration). Sites in B7's
+    row after B8b: no `TyCtxt`; with B7c and B8a, no table of Binding's own that G1342 names remains.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
