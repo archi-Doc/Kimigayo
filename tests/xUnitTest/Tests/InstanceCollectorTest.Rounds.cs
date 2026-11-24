@@ -162,6 +162,32 @@ public sealed partial class InstanceCollectorTest
         static string Deep(string type) => string.Concat(Enumerable.Repeat(type + "<", 65)) + "i32" + new string('>', 65); // Past the storage depth.
     }
 
+    // PLAN G651 U2b R8 Rev 2 (rounds; the Front's c495-nest built lazily; IMPL A.4, 21.3.2): a body first built in a collector round
+    // forms a refused instance after Binding's run, and its record survives the missed run. Labels (SPEC): valid (7.2.3: takeh's default
+    // fits its parameter Type; 10.5.3 and 7.7.4: Lib's g erased to a declared Function Type); IMPL A.4: the default's copy at g's omitting
+    // call nested in count(..) forms Option<W^192<W^8000<i32>>> past H: exactly one TypeHeightLimit_Kd at takeh(p40), in both builds (its
+    // single-module form is MirBuildTest's nest192). Built lazily, g is first built by the erasure's adapter in the collector's first run,
+    // which misses and commits nothing; g's site added its use at once, and the clean run flushes it once, as the eager build's one run
+    // (fail-before on dev: B3's Unsupported_Kd at the omitting call and InternalInvariant_Kd at the project).
+    [Fact]
+    public void ARefusedInstanceOfABodyBuiltInAMissedRoundIsItsRecord()
+    {
+        const string root = "public func main() -> ()\n    let action: (raw/i32) -> () = Lib.Api.g\n    return\n";
+        var lib = "public struct W<T>\n    public var v: T\npublic group Api\n" + $"    public func lift<T>(p: raw/T) -> raw/{W(200)} => null\n" +
+            $"    public func count<U>(u: U) -> i32 => 0\n    public func takeh<T>(p: raw/T, k: i32 = count(Option<{W(192)}>.None)) => ()\n" +
+            "    public func g(p0: raw/i32) -> ()\n" + string.Concat(Enumerable.Range(1, 40).Select(static i => $"        let p{i} = lift(p{i - 1})\n")) +
+            "        _ = count(takeh(p40))\n        return\n";
+        var eager = TwoModule(root, lib, SyntaxTable.LibraryModule + 1);
+        var lazy = TwoModule(root, lib, 1);
+        Assert.Equal((1, 2), (eager.Works.Length, lazy.Works.Length));
+        Assert.Empty(lazy.FirstRows);
+        Assert.Equal(["collection TypeHeightLimit_Kd takeh(p40)"], eager.Rows);
+        Assert.Equal(eager.Rows, lazy.Rows);
+        Assert.Equal(eager.Items, lazy.Items);
+
+        static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
     // A missed run does not make every demand (the Back's review N3): a Drop site of a body A2 does not hold requests nothing, so a chain
     // through it takes a third run. Labels (SPEC): valid (10.5.3 and 7.7.4: hold's T bound from the declared Function Type, then erased;
     // 7.2.3 and 16.3: hold destroys its parameter, running Lib's Holder drop); no record. Built lazily, the first run misses at hold (built

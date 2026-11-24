@@ -5,7 +5,8 @@
 // platform layer (its RuntimeLayer's template; windows-x64's WindowsPlatform.ll.in owns every kernel32 call of the runtime in a program
 // module, linux-x64's LinuxPlatform.ll.in every system call), the common part (Runtime.ll.in) and Kimi's allocator (HeapRuntime.ll.in)
 // and expanded in one scan, with the layer's ABI definitions spliced in and the row's constants written, and its test variant (none for
-// a layer naming no test runtime, where a test build is a broken contract), the memory part every module defines after it
+// a layer naming no test runtime, where a test build is a broken contract), each with the row's runtime declarations it declares (its
+// imports, which the generation result publishes for the link; LinkAmbiguity), the memory part every module defines after it
 // (MemoryRuntime.ll.in: the runtime's memcmp, memcpy, memmove and memset, TargetProfile.MemorySymbols), the erased writer's kept runtime
 // (ErasedWriterRuntime.ll.in: the ErasedReserve intrinsic's routine, a module part on request), the float formatting part
 // (Utf8FloatRuntime.ll.in and Utf8FloatRyu.ll.in: the FormatFloat intrinsic's routine and Ryu, a module part on request), the 128-bit
@@ -325,6 +326,8 @@ internal static partial class LlvmModuleText
                 ? null
                 : ReportTestAbort(ReportTestAbort(this.Runtime, RuntimeAbi.Abort), RuntimeAbi.AbortMessage);
             this.Footer = FooterText(row);
+            this.RuntimeImports = Imports(row, this.Runtime, null);
+            this.TestRuntimeImports = this.TestRuntime is null ? null : Imports(row, this.TestRuntime, Testing.TestRuntime.Text);
         }
 
         /// <summary>Gets the row's platform layer, whose start form the module's entry takes (ModuleCodegen's start).</summary>
@@ -341,6 +344,14 @@ internal static partial class LlvmModuleText
         /// <summary>Gets a test build's runtime: each Abort definition first reports the aborted test to the test runtime; null for a layer
         /// naming no test runtime.</summary>
         internal string? TestRuntime { get; }
+
+        /// <summary>Gets the imports the runtime declares (LinkAmbiguity, T's ruling 32): the row's runtime declarations whose symbol it
+        /// declares, in the row's order (TargetProfile.RuntimeDeclarations), each a kernel32 import in its dllimport form.</summary>
+        internal string[] RuntimeImports { get; }
+
+        /// <summary>Gets the imports a test build's runtime declares: those of <see cref="TestRuntime"/> and of the test runtime's routines
+        /// (Testing's TestRuntime.Text), in the row's order; null for a layer naming no test runtime.</summary>
+        internal string[]? TestRuntimeImports { get; }
 
         /// <summary>Gets the footer: every generated definition carries the row's profile attributes (SPEC 21.3.1) with its
         /// FunctionAttributes, #0; the memory part's definitions take #1, #0 plus "no-builtins", so no pass turns their loops into calls of
@@ -364,6 +375,21 @@ internal static partial class LlvmModuleText
                 _ => throw new InvalidDataException("The target row's relocation model must be pic or static."),
             };
             return "attributes #0 = { " + profile + " }\nattributes #1 = { " + profile + " \"no-builtins\" }\n" + flags;
+        }
+
+        // The row's runtime declarations a runtime declares, or the test runtime's routines do, in the row's order.
+        private static string[] Imports(TargetProfile row, string runtime, string? routines)
+        {
+            var imports = new List<string>();
+            foreach (var (symbol, _) in row.RuntimeDeclarations)
+            {
+                if (Declares(runtime, symbol) || (routines is not null && Declares(routines, symbol)))
+                {
+                    imports.Add(symbol);
+                }
+            }
+
+            return [.. imports];
         }
     }
 

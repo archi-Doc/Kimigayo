@@ -21,37 +21,41 @@ internal sealed partial class MirBuilder
     // any of it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's), each
     // Length constant's term (TyCtxt.InstanceLength) and each callee's substitution, in the call's instance as the written call forms it
     // (the collector's formation, R7-M54: TyCtxt.Apply's Type, TyCtxt.Compose's Subst, whatever the instance's storage verdict, Rejected or
-    // past Binding's storage bound), each kept for Inline, which folds by them. It is false only where a formation fails (Incomplete):
-    // after Binding's run, a Type past IMPL A.4's height that Binding records itself (PLAN G651's site-less record, at once outside the
-    // collector's answer frame, at the frame's close for a body built lazily inside it), or BU-36's contract substitution that does not
-    // complete (no reproducer; the collector reads it as a broken contract, R5-M151): Defaults' located Unsupported_Kd until G651
-    // U2c (the Back's; U2b gives the copy a formation owning its height refusal, U2c removes this arm with the Incomplete row).
-    private bool Instantiates(MirBody template, Subst subst)
+    // past Binding's storage bound), each kept for Inline, which folds by them. A formation is TyCtxt.Answered's (PLAN G651 U2b R1, K1):
+    // after Binding's run a Type past IMPL A.4's height is the formation's HeightLimit, which the innermost site records (AnswerSite) and
+    // Defaults rests on; Incomplete is BU-36's contract substitution that does not complete (no reproducer; the collector reads it as a
+    // broken contract, R5-M151): Defaults' located Unsupported_Kd until G651 U2c (the Back's), which removes that arm with the row.
+    private TyCtxt.Formation Instantiates(MirBody template, Subst subst)
     {
         this.instances.Clear();
         this.compositions.Clear();
         foreach (ref readonly var local in template.Locals)
         {
-            if (local.Kind is not (MirLocalKind.Return or MirLocalKind.Arg) && !this.Instance(local.Type, subst))
+            if (local.Kind is not (MirLocalKind.Return or MirLocalKind.Arg) && this.Instance(local.Type, subst) is var cause && cause != TyCtxt.Formation.Formed)
             {
-                return false;
+                return cause;
             }
         }
 
         foreach (ref readonly var constant in template.Consts)
         {
-            if (!this.Instance(constant.Type, subst) ||
-                (constant is { Kind: MirConstKind.Length, Value: BoundLength length } && compilation.Types.InstanceLength(length, subst) is null))
+            if (this.Instance(constant.Type, subst) is var cause && cause != TyCtxt.Formation.Formed)
             {
-                return false;
+                return cause;
+            }
+
+            if (constant is { Kind: MirConstKind.Length, Value: BoundLength length } && compilation.Types.InstanceLength(length, subst) is null)
+            {
+                return TyCtxt.Formation.Incomplete;
             }
         }
 
         foreach (ref readonly var statement in template.Statements)
         {
-            if (statement.Kind == MirStatementKind.Assign && statement.Rvalue.Type is { } type && !this.Instance(type, subst))
+            if (statement.Kind == MirStatementKind.Assign && statement.Rvalue.Type is { } type && this.Instance(type, subst) is var cause &&
+                cause != TyCtxt.Formation.Formed)
             {
-                return false;
+                return cause;
             }
         }
 
@@ -59,16 +63,17 @@ internal sealed partial class MirBuilder
         {
             if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
             {
-                if (compilation.Types.Compose(inner, subst).Subst is not { } composed)
+                var (composed, cause) = compilation.Types.Answered(inner, subst);
+                if (composed is null)
                 {
-                    return false;
+                    return cause;
                 }
 
                 this.compositions.Add(inner, composed);
             }
         }
 
-        return true;
+        return TyCtxt.Formation.Formed;
     }
 
     // A copy's keyed view (SPEC 8.15.3; PLAN G597), or Storage.viewStart's (Form): its key, in the call's instance, decides its form
@@ -91,20 +96,21 @@ internal sealed partial class MirBuilder
 
     // A Type of a copy in the call's instance (Instantiates), each once; a local of no Type (a slot Binding failed, PLAN G1073) has none
     // and folds to itself (FoldType).
-    private bool Instance(BoundType? type, Subst subst)
+    private TyCtxt.Formation Instance(BoundType? type, Subst subst)
     {
         if (type is null || this.instances.ContainsKey(type))
         {
-            return true;
+            return TyCtxt.Formation.Formed;
         }
 
-        if (compilation.Types.Apply(type, subst).Type is not { } instance)
+        var (instance, cause) = compilation.Types.Answered(type, subst);
+        if (instance is null)
         {
-            return false;
+            return cause;
         }
 
         this.instances.Add(type, instance);
-        return true;
+        return TyCtxt.Formation.Formed;
     }
 
     // A copy's location, in the copy's scope (Frame).

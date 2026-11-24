@@ -184,7 +184,7 @@ internal sealed partial class MirBuilder
     // no value path (TakeLeft) goes on at the target's Apart, not its delivery, which it does not join, and the value-less paths the
     // value's own form left leave the scopes through the Apart's drop tree, so their cleanups are checked on their own path (SPEC
     // 14.10.3, 16.1.2).
-    private void End(Koto body, bool value)
+    private void EndAt(Koto body, bool value)
     {
         var target = this.targets[^1];
         var rest = this.TakeLeft(body);
