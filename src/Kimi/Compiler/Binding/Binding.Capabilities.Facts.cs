@@ -143,7 +143,8 @@ public sealed partial class Binding
         internal bool Depends { get; set; }
 
         // Whether that dependence is the bound body's binding (Binding.BodyBinding: its evaluation read a local region with no answer yet,
-        // itself or through a work it read; R7-O2 A1+A2, Revision 3.2): forgotten past the outermost request with its parts kept, only its
+        // R7-O2 A1+A2, Revision 3.2, or a program path's Unknown before the pass's final conformance decision, R7-E3 E3e ruling 20, itself
+        // or through a work it read): forgotten past the outermost request with its parts kept, only its
         // verdict not cached (Forget), so the erasure's Owned owner classifies its parts as before (OwnedMember: a refuted leaf first) and
         // its obligation is judged again once the body is bound (JudgeErasedOwned).
         internal bool ReadsBodyBinding { get; set; }

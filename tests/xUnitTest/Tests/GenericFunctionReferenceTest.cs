@@ -39,6 +39,13 @@ public class GenericFunctionReferenceTest
     private const string Unbound = "func unbound<T>(y: ref/i32 during k, z: ref/i32 during j) -> ref/i32 during k => y\n";
     private const string Caller = "func g(a: ref/i32 during p, b: ref/i32 during q) -> i32\n    let e: ";
 
+    // PLAN G464 (SPEC 15.6.1, 15.3.4): a written Type argument at a reference holding a Function Type is formed without the nested
+    // signature, whose input is its premise and whose result was judged where written (dev: UnprovenConstraint_Kd at the reference).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc ku<U>(q: ref/i32, f: U) -> i32\n    return 0\nfunc host(s: ref/i32, h: (Option<T during s>) -> i32) -> i32\n    let g = ku<(Option<T during s>) -> i32>\n    return g(s, h@move)\n", "clean")] // c1r
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc ku<U>(q: ref/i32, f: U) -> i32\n    return 0\nfunc host(s: ref/i32, h: (Option<T during s>) -> Option<T during s>) -> i32\n    let g = ku<(Option<T during s>) -> Option<T during s>>\n    return g(s, h@move)\n", "clean")] // c1rr
+    public void ANestedSignatureInAReferencesTypeArgumentIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("Erased", Identity + "let b: (i32) -> i32 = identity\nrequire b(2) == 2 else => $abort(\"erased\")", "")]
     [InlineData("Returned", Identity + "func make() -> (i32) -> i32 => identity\nlet f = make()\nrequire f(3) == 3 else => $abort(\"returned\")", "")]
