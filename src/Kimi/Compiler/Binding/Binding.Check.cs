@@ -12,7 +12,9 @@ namespace Kimi.Compiler;
 //   (CheckTransfers, DECISIONS BU-84), with one republication when it failed a node; then the counting of the node states and the
 //   collection of the issues, which ends the pass's failure production (producing: a refusal after it fails no node, Binding.RefuseProof).
 // - Inputs: the bound nodes, the obligations, the needed sites and paths, the facts the pass recorded.
-// - Outputs: every failure the pass decides; the published HIR columns of a Final pass; the pass summary, issues and derived issues.
+// - Outputs: every failure the pass decides; the published HIR columns of a Final pass; the pass summary, issues and derived issues: in a
+//   Final pass a node without a failure publishes its problems that set no slot but Origin records (a located limit, a Defect), and is
+//   counted limited (BindingResult.LimitedCount), so the Bind is not complete.
 // - Invariants: every step that decides a failure runs before the publication, so the published columns describe the pass's final
 //   facts; PublishHir() after a Final pass returns its version without work. CheckBound runs the same three steps again.
 // - Prohibitions: the counting decides no failure and writes no fact the publisher reads.
@@ -190,11 +192,11 @@ public sealed partial class Binding
     // Fail calls return at the recorded failures), so the record is published once again, not twice.
     private void CountStates(BindingMode mode)
     {
-        Span<int> counts = stackalloc int[3]; // Resolved, Unresolved, Invalid.
+        Span<int> counts = stackalloc int[4]; // Resolved, Unresolved, Invalid; and Resolved with a published problem (limited).
         for (var i = 0; i < this.nodes.Count; i++)
         {
             counts[Tally(this.nodes[i].BindingState)]++;
-            this.CollectIssue(this.nodes[i], mode);
+            counts[3] += this.CollectIssue(this.nodes[i], mode) ? 1 : 0;
         }
 
         for (var i = 0; i < this.foreignFailures.Count; i++)
@@ -202,10 +204,10 @@ public sealed partial class Binding
             var (node, before, state, _) = this.foreignFailures[i];
             counts[Tally(state)]++;
             counts[Tally(before)]--;
-            this.CollectIssue(node, mode);
+            counts[3] += this.CollectIssue(node, mode) ? 1 : 0;
         }
 
-        this.pass.Part.Counts = new(mode, counts[0], counts[1], counts[2]);
+        this.pass.Part.Counts = new(mode, counts[0], counts[1], counts[2], counts[3]);
 
         static int Tally(BindingState state) => state switch
         {
@@ -215,17 +217,27 @@ public sealed partial class Binding
         };
     }
 
-    // A failed node's issue of a Final pass, or its derived issue, with its problems.
-    private void CollectIssue(Koto node, BindingMode mode)
+    // A failed node's issue of a Final pass, or its derived issue, with its problems; a node without a failure publishes its problems that
+    // set no slot (a located limit, RecordLocatedLimit, or a report's Defect; its Origin records are ReportResolvedOriginRecords'). True
+    // when such a node published one: a rejected part, so the Bind is not complete (BindingResult.LimitedCount).
+    private bool CollectIssue(Koto node, BindingMode mode)
     {
         var failure = mode == BindingMode.Final && this.RecordedState(node) != BindingState.Resolved ? this.RecordedFailure(node) : BindingFailure.None;
         if (failure == BindingFailure.None)
         {
-            return;
+            if (mode != BindingMode.Final || this.RecordedFailure(node) != BindingFailure.None)
+            {
+                return false;
+            }
+
+            var published = this.issues.Count + this.derivedIssues.Count;
+            this.CollectProblems(node);
+            return this.issues.Count + this.derivedIssues.Count != published;
         }
 
         this.CollectProblem(node, failure, this.CodeOf(node, failure), this.SlotProblem(node));
         this.CollectProblems(node);
+        return false;
     }
 
     /// <summary>The `synthesizedCalls` family's one accessor (DECISIONS BU-220): a pass family, each call Binding synthesized in the pass with

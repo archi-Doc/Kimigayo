@@ -207,7 +207,7 @@ public sealed partial class Binding
         // (2) Removal condition PLAN G170's identity query: an abstract Type dev did not capture (a pair target, a projection) where an
         // identity premise is available in scope (HasTypeIdentity, SPEC 8.2.3), which may make it a pair layer that no plan reads.
         if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareAcquisition(type, function, out var reborrow) == SemanticsMask.None &&
-                reborrow != SemanticsMask.None && (this.ReborrowedType(type, function, BoundOrigin.Static, [], out var limit) is null || limit)) ||
+                reborrow != SemanticsMask.None && (this.ReborrowedType(type, function, BoundOrigin.Static, [], out var limit) is null || limit != ReborrowLimit.None)) ||
             (type is { IsAbstract: true, IsPairLayer: false, Kind: not BoundTypeKind.Parameter } && HasTypeIdentity(this.ConstraintScope(function))))
         {
             if (entry is { } written)
