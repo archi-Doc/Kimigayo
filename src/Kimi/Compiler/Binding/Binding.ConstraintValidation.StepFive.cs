@@ -7,7 +7,11 @@ namespace Kimi.Compiler;
 // Step 5's obligation (SPEC 10.1 step 5, 8.1.3; DECISIONS BU-136, PLAN G572 U2a), a part of constraint validation.
 // - Responsibility: a candidate's Constraints and premises over its bindings, one conjunction in one order (StepFiveConjunction) over
 //   one value, CandidateBindings, the candidate's substitution; and the selected call's obligation (CheckCallTypeConstraints): that
-//   conjunction judged again in the Final loop, then the selected call's own Types.
+//   conjunction judged again in the Final loop, then the selected call's own Types (the slots past the callee's own, the result, the
+//   conforming Type). An instantiated input is not one of them (SPEC 15.6.4 step 3; PLAN G464): its Origin part is
+//   RequireInputPremises', its Contract part follows from this conjunction and the judgment of each Type where it is written (R7-V1c,
+//   SPEC 8.6.3). Step 5's slot formation is no second judge of a slot-typed input: it is the binding's formation (10.1 step 5), whose
+//   Origin part skips call-region relations (CallRowRelation), and the positions a fit replaces are RequireInputPremises'.
 // - Inputs: the trial's solution (SlotSolution.Prove) with the Contract reference its candidate is tried under (the
 //   activeRequirementContract CallSelection sets), or the selected call's plan (CallPlan's columns, RequirementContract among them);
 //   the scope whose premises apply.
@@ -75,12 +79,6 @@ public sealed partial class Binding
             proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope, QuerySite.Nested), true);
         }
 
-        proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
-        foreach (var operation in call.ArgumentOperations)
-        {
-            proof = CombineProof(proof, this.CheckOperationTypeConstraints(operation, scope), true);
-        }
-
         var fact = this.ProofCause(proof) is null ? this.ProofFact(proof) : null;
         var clause = this.ProofClause(proof);
         proof = this.EndProof(proof);
@@ -134,17 +132,6 @@ public sealed partial class Binding
         {
             this.activeRequirementContract = enclosing;
         }
-    }
-
-    private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
-    {
-        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope, QuerySite.Nested) : ConstraintProof.Proven;
-        if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
-        {
-            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope, QuerySite.Nested), true);
-        }
-
-        return proof;
     }
 
     // SPEC 10.1 steps 3 to 5 (DECISIONS: G572 U2a): a candidate's bindings as inference leaves them and the selected call publishes

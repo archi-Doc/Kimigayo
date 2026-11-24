@@ -563,7 +563,7 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(use, result, mode, frame);
                 if (result != ConstraintProof.Proven)
                 {
-                    this.RestLayersOnType(node, written);
+                    this.RestLayersOnType(written);
                 }
 
                 if (node.BindingState == BindingState.Invalid)
@@ -633,15 +633,18 @@ public sealed partial class Binding
         => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
             !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) ? type : null;
 
-    // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
-    // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its
-    // unproven state, so a reader of the declaration's written Type reads a failed Type.
-    private void RestLayersOnType(Koto judged, Koto written)
+    // SPEC 23.1.2 (rule W; PLAN G464): the layers of written Type syntax over a written occurrence's Type node `written`, up to the
+    // outermost written Type node, are Types formed from it: a layer forming its operand's Type (R7-V1c) and one forming another Type
+    // from it (a Function, Tuple, array, Optional or pair layer, an Origin or Type application) alike. When the occurrence's judgment
+    // leaves it failed or unproven, each layer with no failure of its own rests on it (RestOnPart) or takes its unproven state, so a
+    // reader of a written Type reads a failed Type: a declaration's, and a decision that read it before this judgment, which rests on it
+    // at Check (FailedWrittenType). The state read is this judgment's, Binding's Contract verdict, never an Origin row of A5.
+    private void RestLayersOnType(Koto written)
     {
         var state = this.RecordedState(written);
-        for (var layer = written; state != BindingState.Resolved && !ReferenceEquals(layer, judged);)
+        for (var layer = written; state != BindingState.Resolved && TypeLayerOver(layer) is { } outer;)
         {
-            layer = layer.Parent!;
+            layer = outer;
             if (this.RecordedState(layer) == BindingState.Invalid)
             {
                 continue;
@@ -657,6 +660,52 @@ public sealed partial class Binding
             }
         }
     }
+
+    // The layer of written Type syntax holding `node` as one of its Type components (a Type-syntax node, an Origin application or a Type
+    // application), or null at the outermost written Type node, whose parent reads it as a Type (a declaration, a call's explicit Type
+    // argument list, a qualifier).
+    private static Koto? TypeLayerOver(Koto node)
+    {
+        if (node.Parent is not { } layer || layer is not (TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type }))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < layer.TypeComponentCount; i++)
+        {
+            if (ReferenceEquals(layer.TypeComponent(i), node))
+            {
+                return layer;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a)): a failed written Type that a node's published decision read before the written
+    // occurrences were judged (ValidateConstraintUses), as the part that Type rests on: a selected call's explicit Type argument (its
+    // plan), a Property's Type (its certificate). One row per form; a decision that reads a written Type before that judgment adds a row.
+    // Check rests the node on it, as on a failed called declaration (InvalidCalledDeclaration).
+    private Koto? FailedWrittenType(Koto node)
+    {
+        if (node is InvocationKoto { Method: GenericsKoto generic } invocation && this.CallOf(invocation) is not null)
+        {
+            for (var i = 0; i < generic.TypeArguments.Count; i++)
+            {
+                if (this.FailedPart(generic.TypeArguments[i]) is { } part)
+                {
+                    return part;
+                }
+            }
+
+            return null;
+        }
+
+        return node is PropertyKoto { TypeKoto: { } type, BoundSymbol.Property.IsVerified: true } ? this.FailedPart(type) : null;
+    }
+
+    // A failed written Type node as the part a reader rests on: the part it rests on itself, or the node.
+    private Koto? FailedPart(Koto type) => this.RecordedState(type) == BindingState.Invalid ? this.UnresolvedPart(type) ?? type : null;
 
     // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
     // keeps an unproven target role of the same occurrence as a separate record; every final check recomputes the causes. The role is

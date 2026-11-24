@@ -933,13 +933,9 @@ public sealed partial class Binding
                 continue;
             }
 
-            var scope = this.ConstraintScope(use);
-            var formation = this.CheckTypeConstraints(plan.Type, scope, use);
-            for (var i = 0; i < plan.PayloadOperations.Length; i++)
-            {
-                formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope, use), true);
-            }
-
+            // SPEC 15.6.4 step 3 (PLAN G464): the construction forms its own Type; its instantiated payloads are its inputs, whose premises
+            // are RequireInputPremises' (BindEnumConstruction), as a call's.
+            var formation = this.CheckTypeConstraints(plan.Type, this.ConstraintScope(use), use);
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
