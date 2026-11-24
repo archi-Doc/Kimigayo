@@ -1297,6 +1297,208 @@ public sealed partial class MirBorrowsTest
                 wd(h@raw@raw/(raw/(raw/u8)), spare)
                 kk = 2
             """,
+        ["twoTupleSlotBad"] = """
+            func keepTup(slot: (raw/(raw/(raw/u8)), i32), value: raw/u8) => ()
+
+            func twoTupleSlot(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTup((hop@raw, 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["twoTupleSlotOk"] = """
+            func keepTup1(slot: (raw/(raw/u8), i32), value: raw/u8) => ()
+
+            func twoTupleSlotOne(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                keepTup1((cell@raw, 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["twoTupleTwoBad"] = """
+            func keepTup2(slot: (raw/(raw/u8), raw/(raw/(raw/u8))), value: raw/u8) => ()
+
+            func twoTupleTwo(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var cell2: raw/u8 = null
+                var hop2: raw/(raw/u8) = cell2@raw
+                keepTup2((cell@raw, hop2@raw), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["twoTuplePunBad"] = """
+            func keepTup(slot: (raw/(raw/(raw/u8)), i32), value: raw/u8) => ()
+
+            func twoTuplePun(y: uniq/i32)
+                let w = y@follow@ref
+                let z: i32 = 0
+                let t = z@ref
+                keepTup((t@raw@raw/(raw/(raw/u8)), 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1OptSlotBad"] = """
+            func keepOpt(slot: Option<raw/(raw/(raw/u8))>, value: raw/u8) => ()
+
+            func optSlot(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepOpt(Option.Some(hop@raw), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1OptSlotOk"] = """
+            func keepOpt1(slot: Option<raw/(raw/u8)>, value: raw/u8) => ()
+
+            func optSlotOne(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                keepOpt1(Option.Some(cell@raw), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1TupUniqSlotBad"] = """
+            func keepTupU(slot: (uniq/(raw/(raw/u8)) during s, i32), value: raw/u8) => ()
+
+            func tupUniqSlot(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTupU((hop@uniq, 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1TupUniqSlotOk"] = """
+            func keepTupU1(slot: (uniq/(raw/u8) during s, i32), value: raw/u8) => ()
+
+            func tupUniqSlotOne(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                keepTupU1((cell@uniq, 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1TupSharedOk"] = """
+            func keepTupR(slot: (ref/(raw/(raw/u8)) during s, i32), value: raw/u8) => ()
+
+            func tupShared(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTupR((hop@ref, 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1DispTupBad"] = """
+            func keepTup(slot: (raw/(raw/(raw/u8)), i32), value: raw/u8) => ()
+
+            func h1DispTup(y: uniq/i32)
+                let w = y@follow@ref
+                var cells: [2 of raw/(raw/u8)] = [null, null]
+                var d: raw/(raw/(raw/u8)) = null
+                unsafe => d = cells@raw@raw/(raw/(raw/u8)) + 1
+                keepTup((d, 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1DispTupOk"] = """
+            func keepTup1(slot: (raw/(raw/u8), i32), value: raw/u8) => ()
+
+            func h1DispTupOne(y: uniq/i32)
+                let w = y@follow@ref
+                var cells: [2 of raw/u8] = [null, null]
+                var d: raw/(raw/u8) = null
+                unsafe => d = cells@raw@raw/(raw/u8) + 1
+                keepTup1((d, 1), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1MixTupleBad"] = """
+            func keepMix(slot: (raw/(raw/(raw/u8)), raw/i32 during a), anchor: ref/i32 during a, value: raw/u8) => ()
+
+            func mixTuple(y: uniq/i32)
+                let w = y@follow@ref
+                var k: i32 = 0
+                let ka = k@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepMix((hop@raw, ka@follow@raw), ka, w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1MixTupleOk"] = """
+            func keepMix1(slot: (raw/(raw/u8), raw/i32 during a), anchor: ref/i32 during a, value: raw/u8) => ()
+
+            func mixTupleOne(y: uniq/i32)
+                let w = y@follow@ref
+                var k: i32 = 0
+                let ka = k@ref
+                var cell: raw/u8 = null
+                keepMix1((cell@raw, ka@follow@raw), ka, w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1MixStaticBad"] = """
+            func keepMixS(slot: (raw/(raw/(raw/u8)), raw/u8 during static), value: raw/u8) => ()
+
+            func mixStatic(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepMixS((hop@raw, null), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1Mix3Bad"] = """
+            func keepMix3(slot: (raw/(raw/(raw/u8)), raw/u8 during static, uniq/(raw/(raw/u8)) during s), value: raw/u8) => ()
+
+            func mix3(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                var cell2: raw/u8 = null
+                var hop2: raw/(raw/u8) = cell2@raw
+                keepMix3((hop@raw, null, hop2@uniq), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1Mix3Ok"] = """
+            func keepMix3One(slot: (raw/(raw/u8), raw/u8 during static, uniq/(raw/u8) during s), value: raw/u8) => ()
+
+            func mix3One(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var cell2: raw/u8 = null
+                keepMix3One((cell@raw, null, cell2@uniq), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["h1Mix3OnlyBorrowBad"] = """
+            func keepMix3B(slot: (raw/(raw/u8), raw/u8 during static, uniq/(raw/(raw/u8)) during s), value: raw/u8) => ()
+
+            func mix3B(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var cell2: raw/u8 = null
+                var hop2: raw/(raw/u8) = cell2@raw
+                keepMix3B((cell@raw, null, hop2@uniq), w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["xPairRawDeclBad"] = """
+            enum Slot
+                Has(raw/u8)
+                Empty
+
+            func viaPairP(p: (raw/Slot, i32), v: raw/u8) => ()
+
+            func xPairRawDeclBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: Slot = .Has(null)
+                viaPairP((s@raw, 0), spare)
+                kk = 2
+            """,
+        ["xPairRawU8Ok"] = """
+            func viaPairQ(p: (raw/(raw/u8), i32), v: raw/u8) => ()
+
+            func xPairRawU8Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s: raw/u8 = null
+                viaPairQ((s@raw, 0), spare)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (U3b): the 17 forms the first step's reading newly rejects (12 of PLAN G784's 13, pPlainViewBad, F2 unit
@@ -1308,7 +1510,9 @@ public sealed partial class MirBorrowsTest
     // state file a5v-r3ref-state.md): a stepping row over a byte a punned write may not change (a reference's, a handle's, an enum's
     // or a struct Field's) reaches storage the body does not own, an array of no element, Unit and a Function Item have no byte of
     // either kind (the owner's O-356 (a)), and a layer
-    // hidden in the called function's Type parameter's binding adds no reach (SPEC 15.6.4).
+    // hidden in the called function's Type parameter's binding adds no reach (SPEC 15.6.4). PLAN G841's clauses (1) and (2): the first
+    // step reads every layer of the input's key, one an argument holds by value (a Tuple element, an Option payload) and one beside a
+    // layer stating an Origin included, so SPEC 15.6.4's composition (twoLayers, punnedRef) holds there too.
     [Theory]
     [InlineData("fMixedPunChainBad", "fMixedPunChainBad: kk = 2; fMixedPunChainBad: var z: u8 = 5")] // I, PLAN G784
     [InlineData("qIntChainMixedBad", "qIntChainMixedBad: kk = 2")] // I, PLAN G784
@@ -1409,6 +1613,25 @@ public sealed partial class MirBorrowsTest
     [InlineData("jHidWholeScalarOk", "")] // V, as jHidWholeRefOk over owner Scalar bytes
     [InlineData("jGenCalleeBad", "jGenCalleeBad: kk = 2; jGenCalleeBad: var y: i32 = 5")] // I, a generic callee whose stepping row is shown
     [InlineData("jShowPartScalarBad", "jShowPartScalarBad: kk = 2")] // I, the stepping layers shown above the hidden one (its dependent `var y` record went with the A5 landing: DECISIONS Q13)
+    [InlineData("twoTupleSlotBad", "twoTupleSlot: y@follow = 5")] // I, PLAN G841 (1): SPEC 15.6.4's twoLayers with the slot pointer held by value as a Tuple element (retained as a raw pointer argument is)
+    [InlineData("twoTupleSlotOk", "")] // V, its oneLayer twin (the next layer u8)
+    [InlineData("twoTupleTwoBad", "twoTupleTwo: y@follow = 5")] // I, two slot pointers in one Tuple, the second written through
+    [InlineData("twoTuplePunBad", "twoTuplePun: y@follow = 5; twoTuplePun: let z: i32 = 0")] // I, punnedRef with the slot pointer as a Tuple element (its records as punnedRef's)
+    [InlineData("h1OptSlotBad", "optSlot: y@follow = 5")] // I, through an Option payload (5.7 Calls: a Type argument's layer)
+    [InlineData("h1OptSlotOk", "")] // V
+    [InlineData("h1TupUniqSlotBad", "tupUniqSlot: y@follow = 5")] // I, an exclusive borrow held by value in a Tuple
+    [InlineData("h1TupUniqSlotOk", "")] // V
+    [InlineData("h1TupSharedOk", "")] // V, a shared borrow: no write past it
+    [InlineData("h1DispTupBad", "h1DispTup: y@follow = 5")] // I, the slot element displaced within cells (5.3; N4's row: the limit meets its label)
+    [InlineData("h1DispTupOk", "")] // V
+    [InlineData("h1MixTupleBad", "mixTuple: y@follow = 5; mixTuple: var k: i32 = 0")] // I, PLAN G841 (2): the layer without an Origin beside one stating an Origin is read as at a key of one kind (5.7 Calls decides per layer); k's storage end too
+    [InlineData("h1MixTupleOk", "")] // V
+    [InlineData("h1MixStaticBad", "mixStatic: y@follow = 5")] // I, the second element states `static`
+    [InlineData("h1Mix3Bad", "mix3: y@follow = 5")] // I, three kinds of part: an unstated raw layer, a `static` one, an exclusive borrow
+    [InlineData("h1Mix3Ok", "")] // V
+    [InlineData("h1Mix3OnlyBorrowBad", "mix3B: y@follow = 5")] // I, the composition through the borrow element alone
+    [InlineData("xPairRawDeclBad", "xPairRawDeclBad: kk = 2")] // I, a by-value Tuple element's raw layer whose pointee's Case payload is a layer Slot states: the call may write its own pointer there and store spare through it (15.6.4; 5.7 Calls)
+    [InlineData("xPairRawU8Ok", "")] // V, its twin: past s's layer the parameter's Type expression admits only a u8 (oneLayer)
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");
