@@ -629,15 +629,19 @@ public class ClosureEnvironmentOriginTest
         CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n    let w = lift(c.item)\n" +
             "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n")] // t4_fwd_ok
     // PLAN G1369 rule 4 (SPEC 15.3.6, 15.4.4; DECISIONS R8-M56 as amended): a `var` slot an equality fixes is its region as a `let`
-    // slot is, so lift reads it fixed there with no premise (t4_clause_var). A clause equating the slot with a `let` local of the body is
-    // checked there: k.at's value is q's, p, in f's body, and lift returns its input in its own Origin (t4_q, valid).
+    // slot is, so lift reads it fixed there with no premise (t4_clause_var). A clause equating the slot with a `let` local of the body
+    // (t4_q) is valid (k.at's value is q's, p, in f's body) but stays rejected as on dev: lift's header completes c before f's statements
+    // type q (header order, PLAN G230's family), so q is no binding there and lift's `k.at` rests on it.
     [InlineData(
         CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    var c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n" +
             "    func lift(v: ref/i32 during k.at) -> ref/i32 during p => v\n    return lift(c.item)\npublic func main() => ()\n",
         "UnprovenOriginRelation_Kd v\n")] // t4_clause_var
     [InlineData(
         CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let q = p\n    let c: Cursor{k} = Cursor.init(q)\n        origin k.at == q\n" +
-            "    func lift(v: ref/i32 during k.at) -> ref/i32 during k.at => v\n    return lift(c.item)\npublic func main() => ()\n")] // t4_q
+            "    func lift(v: ref/i32 during k.at) -> ref/i32 during k.at => v\n    return lift(c.item)\npublic func main() => ()\n",
+        "InvalidOriginBinding_Kd q\n",
+        "Unsupported_Kd k.at) ->",
+        "Unsupported_Kd k.at => v")] // t4_q
     public void ANestedSignatureNamingABodyLocalNamesItsRegion(string source, params string[] records)
     {
         var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)

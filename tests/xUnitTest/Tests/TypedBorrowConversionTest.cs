@@ -51,13 +51,15 @@ public class TypedBorrowConversionTest
         => Assert.Equal(records, TypeIdentityTest.PremiseRecords(source));
 
     // SPEC 13.5.6 with 15.3.6 (DECISIONS R8-M56; PLAN G1369): the written and the stored Type are read at the borrow, where a region of
-    // its own body with a value is that value: `during r` names r's value p (tb_let); a set slot the local's clause equates with x.source
-    // names it (OriginRedesignTest's CompletesDeclarationOriginContracts), and an omitted one is inferred (SPEC 15.4.4; x1c_inf).
+    // its own body with a value is that value: `during r` in the Core's argument names r's value p (tb_let; a borrow layer of the target
+    // takes no Origin, SPEC 13.5.1, F.5). A set slot the local's clause equates with x.source names it (OriginRedesignTest's
+    // CompletesDeclarationOriginContracts). An omitted slot is inferred (SPEC 15.4.4), so x1c_inf is valid, but an inferred slot has no
+    // fixed value at the typed borrow: rejected as on dev (PLAN G1369's row).
     [Theory]
-    [InlineData("func f(p: ref/i32, x: ref/(ref/i32 during p)) -> i32\n    let r = p\n    let y = x@follow@ref/(ref/i32 during r)\n    return 0\n")] // tb_let
-    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\nfunc f(x: ref/V<i32>) -> i32\n    let y = x@follow@ref/V<i32>{v}\n    return 0\n")] // x1c_inf
-    public void ATypedBorrowReadsARegionAsItsValue(string source)
-        => Assert.Equal(string.Empty, TypeIdentityTest.PremiseRecords(source));
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\nfunc f(p: ref/i32, x: ref/Box<ref/i32 during p>) -> i32\n    let r = p\n    let y = x@follow@ref/Box<ref/i32 during r>\n    return 0\n", "")] // tb_let
+    [InlineData("struct V<T> {source}\n    public let value: ref/T during source\nfunc f(x: ref/V<i32>) -> i32\n    let y = x@follow@ref/V<i32>{v}\n    return 0\n", "TypeMismatch_Kd@4")] // x1c_inf
+    public void ATypedBorrowReadsARegionAsItsValue(string source, string records)
+        => Assert.Equal(records, TypeIdentityTest.PremiseRecords(source));
 
     // SPEC 14.9.2 with 8.2.3 (PLAN G1240): a join's conversion source supplies its written target as the conversion forms it, so a
     // Type target or a typed borrow identical by a premise with the other source's Type gives the join one Type.
