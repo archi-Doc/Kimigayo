@@ -32452,7 +32452,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     of 2^k bytes, k = max(5, 64 − ctlz(size − 1)), 5..18 (32 B .. 256 KiB), popped LIFO from the class's list, else carved by bump
     from the current 1 MiB region, a new region mapped when the rest is too small (the rest abandoned); release pushes on the class's
     list; never split, merged or returned. size > 262,144: its own run of size rounded up to 4,096, the run's length in word 0 (> 18,
-    never a class), released at release. Regions and runs are page-aligned and every class size a multiple of 32, so every payload is
+    never a class), released at release (amended by T-M44: one spare run). Regions and runs are page-aligned and every class size a multiple of 32, so every payload is
     16-aligned. Zero bytes take the smallest block (a fresh start). Failures keep their texts: no pages is `KIMI_E_ALLOC` without an
     OS error, a refused release `KIMI_E_FREE` with the OS error, `__kimi_try_allocate` null where `__kimi_alloc` Aborts.
   - **Why IR, not Kimigayo:** its state would be static slots, which SPEC 22.4.3 makes Finished during shutdown while shutdown's
@@ -32977,3 +32977,38 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   native build's dependency step, lands with G1329's phase B (removal condition of that temporary state: phase B lands). Phase B's
   full entry supersedes this one. Rejected: LLD's private COFF directive parser declared in Tatara (a mirror of an internal ABI), a
   second managed reader of archives, keeping `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact).
+- **T-M44 Kimi's allocator keeps one spare run** (Tatara, 2026-11-24; PLAN G1311; the owner's O-508 (a) and O-518 (a); Q-756, D-1254;
+  Major; design `artifacts\handoff\tatara\units\G1311\design.md` Revision 1; reviews C-515 (Revision 0: the Back, the Middle) and C-538
+  (Revision 1: the Middle, the Back, both ACCEPT WITH CONDITIONS, taken); T's rulings 36-44). Amends T-M27's Algorithm and IMPL 21.4.3.
+  - **The rule:** a released large run of at most 1 MiB (the region size) is kept as the spare, replacing the previous spare, which goes
+    to the layer. A large block whose run has the spare's length takes it without the layer. A run above 1 MiB goes to the layer at its
+    release, as before. Retained after release: at most one run of at most 1 MiB. A refused release reports at the release that hands a
+    run to the layer (the run itself above 1 MiB, or the spare it replaces).
+  - **The run path out of line:** two template-internal `noinline` routines (`__kimi_heap_take_run`, `__kimi_heap_return_run`), so the
+    inlined allocation and release sites keep the small path only. Each routine has one call site, so the inliner would fold it into
+    every site (+4-5% on the small path, measured). `__kimi_heap_take_run` takes the run's page length and replaces only the layer's
+    request; the large allocation keeps its own header store and its join `done`, so the class-list (pop) path's code is the code
+    before G1311 (ruling 42).
+  - **Every path into the layer is unlikely:** the three branches that lead to the layer (`%small` in `__kimi_heap_allocate` and
+    `__kimi_heap_release`, `%fits` before the region refill) test `@llvm.expect.i1(<cond>, true)`; none inside the two routines. Without
+    the hints the branches carry no weights, block placement put the run path between hot blocks at every inlined site, and G1311
+    moved the hot blocks behind them: W-353 (O2 STOP) read Interpolation 1.038 and ArrayLiteral 1.016 aligned, 16 of 16 pairs above
+    A=A. The hint is a generated-code change (not a behavior-preserving restructuring). `declare i1 @llvm.expect.i1(i1, i1)` sits in
+    the template beside the other declarations, because the test reader (`GeneratedIr.cs`) resolves each callee by its declaration.
+    A `HeapRuntimeTest` row pins the three weights at O2 (the weight-1 edge to the layer); it fails before on dev.
+  - **The gate:** the pre-check compares byte-free disassembly of the 13 corpus kernels and `Allocs.kimi` (W' against G'): it fails on
+    any change in a loop's blocks and in a function called inside a loop, and reports the other blocks (`artifacts\tatara\g1311\
+    precheck-r1.md`). Fail-before: it fails on 06f7852fb at `__kimi_raw_allocate` +0x10 (the join's third predecessor; Array 1.017
+    aligned in T-349 row 2) and passes with commit 3. Timing stays the arbiter. Ready per row: row 1 (W' against dev) on all 13
+    kernels, a gap an owner question under R5-M147; row 2 (G' against W'), a gap stops the unit; row 3 (`Allocs`) per O-508.
+  - **A double release of a run of at most 1 MiB** (unsafe code only) is no longer detected as `KIMI_E_FREE`: the second release keeps
+    the run again and hands its first keep to the layer, so the spare names unmapped pages and a later run of that length faults.
+    SPEC 22.5.2's `KIMI_E_FREE` is a detected release failure; a small block's double release was never detected.
+  - **Measured:** W3's gap was the large path's page faults (97.5% of its excess); the strings part runs 2.9x faster than the process
+    heap. T-349 row 1 (dev 4ed6419bc against W' c0020fa1e): within, Buffers faster (aligned 0.985). T-352 row 2 (G' against W'): 13 kernels inside A=A (O2 PASS);
+    row 3 (`Allocs.kimi`): aligned 0.215.
+  - **Rejected:** blocks above 256 KiB from regions (decision 23); a list of runs (a G1306 candidate); an unbounded or larger spare
+    (memory); decommit or reset (the faults remain). For the layout: one commit for both effects (not attributable), `cold` routines
+    (the inline blocks stay in the hot code), routines after the user functions (the intra-function shifts remain), an RP8
+    exception, inlining the run path again (PartS +4-5%); `take_run` writing the header (it split the join and cost the pop path a
+    fetch block).
