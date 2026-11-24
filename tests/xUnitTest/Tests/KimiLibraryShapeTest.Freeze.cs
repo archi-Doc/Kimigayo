@@ -73,6 +73,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.LintCompletions"] = "released at the freeze: the lint walk's query memo; the library is not linted (R7-N5 B6b)",
         ["NodeColumns.ReachedThroughBorrow"] = "released at the freeze: a selection's ReachesThroughBorrow answer, the library pass's working state, read only by that pass's queries (D-932)",
         ["NodeColumns.FormReads"] = "released at the freeze: the HIR publisher's kept-read working state, a row of another publication absent; the library pass records no failure (one refuses it: FreezeLibrary), so it writes none (D-986)",
+        ["NodeColumns.JudgedOccurrences"] = "released at the freeze: the library pass's judged written Type occurrences, its per-pass query's memo, read only by that pass's checks (R7-E3 E3e; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.DuplicateDeclarations"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary), so its pairwise checks join no group (R7-N5 E)",
         ["NodeColumns.PrerequisiteVisits"] = "released at the freeze: the library pass's publication walks' visited marks, a walk's scratch, a row of another walk absent (R7-N5 E)",
         ["NodeColumns.PartPrerequisites"] = "released at the freeze: the library pass's part prerequisites, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
@@ -500,6 +501,7 @@ public partial class KimiLibraryShapeTest
         Released(families.InferredConstructionTargets);
         Released(families.QualificationStops);
         Released(families.ReachedThroughBorrow);
+        Released(families.JudgedOccurrences);
         Released(families.ResolvedSlices);
         Released(families.Prerequisites);
         Released(families.PartPrerequisites);
