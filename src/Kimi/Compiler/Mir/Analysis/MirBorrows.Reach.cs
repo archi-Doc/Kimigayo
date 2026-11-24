@@ -990,8 +990,8 @@ internal sealed partial class MirBorrows
     // Its or Any; never a layer stating an Origin, `static` included, nor a hidden one, which has no past entry), the call may write its own
     // pointer at that layer, also as a Tuple element or a declaration's or an environment's layer, which may address that storage, and
     // store through it at the next one; at the first step and past a holder alike, at a key read layer by layer and at one that keeps the
-    // declared step (ReadAt). A5 judges no Type there: what the call stores takes the layer's record (the A5 value redesign's rule 5),
-    // Binding's entry being the bound: at an Its layer the Reached entry of its pointee (Written's place, Received; a kept pointee's kept
+    // declared step (ReadAt), and at the result's key (MirBorrows.Calls' KeepResult: ResultWrites' entries). A5 judges no Type there:
+    // what the call stores takes the layer's record (the A5 value redesign's rule 5), Binding's entry being the bound: at an Its layer the Reached entry of its pointee (Written's place, Received; a kept pointee's kept
     // entry), at an Any layer the output's All (Written with no place).
     private void OwnPointer(int key, OutputRetention output)
     {

@@ -134,7 +134,10 @@ public class LoanFieldTest
             access,
             code);
 
-    // A covariant view keeps a raw/() address beside its Loan Field and converts the address just before an access.
+    // A covariant view keeps a raw/() address beside its Loan Field and converts the address just before an access. The view is made
+    // from a parameter's borrow: made from a local's, the end of the local's storage would conflict, since Window states its raw Field
+    // without an Origin and its constructor may store the borrow through its own pointer there (SPEC 5.7 Calls, 15.6.4, 15.6.6; the
+    // owner's O-528 (a); MirBorrowsTest's loanFieldWindowBad).
     [Fact]
     public void ACovariantViewAccessesThroughItsAddress()
     {
@@ -150,9 +153,11 @@ public class LoanFieldTest
                 public func get(self: ref/Self, index: isize) -> ref/T during source
                     require 0 <= index and index < self.length else => $abort("index")
                     unsafe => return (self.data@raw/T)[index]@ref
+            func check(numbers: ref/[3 of i32])
+                let window = Window<i32>.init(numbers)
+                require window.get(2) == 30 else => $abort("element")
             var numbers: [3 of i32] = [10, 20, 30]
-            let window = Window<i32>.init(numbers@ref)
-            require window.get(2) == 30 else => $abort("element")
+            check(numbers@ref)
             Console.writeLine("windowed")
             """;
         ScalarEmissionTest.EmitFixture("LoanFieldWindow", source, "windowed\n");

@@ -232,8 +232,7 @@ public sealed partial class MirBorrowsTest
     // every Origin of which is Fixed, is derived from the Refuted problems of its Borrow's Origin: a return through locals, a Reborrow and
     // a Slice handle, a generic call's result (the call clause), a store through a parameter, through two paths (both causes), in a loop,
     // through a guard candidate's call (err(ended)), a read through a reference to a whole value (B's read-through clause, Content
-    // retention, and a Chain row's reads of whole holders, R4-M138; the outer layers' Loans, whose Origins mkE leaves free, have no Refuted
-    // relation), a write through a reference to a whole local (B's write-through row), a container's or a closure environment's append (A's
+    // retention, R4-M138), a write through a reference to a whole local (B's write-through row), a container's or a closure environment's append (A's
     // receiving check over every Origin of the receiving Type), a candidate the access does not conflict with (R4-M96's exact scan, B), a
     // pair binder's view, a pair application in the receiving Type (judged in its cases, SPEC 8.15.2: Fixed meets `i32` and
     // `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same through a call's
@@ -244,7 +243,7 @@ public sealed partial class MirBorrowsTest
     // invariant under uniq, SPEC 15.6.1): into the referent, a Tuple part, a Field, by a call's store, and under a pair binder whose
     // masked row puts the run's two views in two classes (PLAN G824: Fixed's Inferred atom equal to a Fixed one in every class; fail-before:
     // independent).
-    // Fail-before: no Cause fact exists (chain-retention: no conflict at `local`, a Chain row read as one read).
+    // Fail-before: no Cause fact exists.
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
     [InlineData("j-bad-v", "bad: let local: i32 = 1 <- r")]
@@ -271,7 +270,6 @@ public sealed partial class MirBorrowsTest
     [InlineData("d4a09871a00b", "g: let local: i32 = 1 <- x")]
     [InlineData("write-through-store", "w: let local = 1 <- x")]
     [InlineData("content-retention", "cr: let local = 1 <- first(h@ref)")]
-    [InlineData("chain-retention", "chainKept: var h2 = h@ref | chainKept: var h = local@ref | chainKept: let local = 1 <- mkE(h2@ref)")]
     [InlineData("f02fb5c218bc", "store: let local: i32 = 1 <- local@ref")]
     [InlineData("container-deep", "deep: let local: i32 = 1 <- local@ref")]
     [InlineData("3c4ffb8ea44b", ": let local: i32 = 1 <- local@ref")]
@@ -301,7 +299,9 @@ public sealed partial class MirBorrowsTest
     // its Origin is not Fixed, a local a call writes that is read later, an aggregate argument a call retains (fK and g526-agg-arg's
     // `.Some(v@ref)`, R4-M104), a call result read by part, a conflict with no Refuted relation, a report of one key both derived and
     // direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the storage the body does not own (B's
-    // read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails chain-through-e); a repair loses the
+    // read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails chain-through-e), and a Chain row's reads
+    // of whole holders into a result whose raw Field its Type states without an Origin, where the call may store the chain through its own
+    // pointer, so E keeps it (chain-retention; SPEC 5.7 Calls, 15.6.4; G841c, the owner's O-528 (a); a derived conflict before); a repair loses the
     // conflict; a store through an equated slot into a Type parameter's
     // part (`ref/T during a`: Fixed fails closed on an abstract part, R4-M132; PLAN G824 leaves it). Pins: each passes before.
     [Theory]
@@ -332,6 +332,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("merge-derived-direct-v", "g: let local = 1")]
     [InlineData("content-through-e", "contentViaE: let local = 1")]
     [InlineData("chain-through-e", "chainViaE: var r = slot@follow@ref | chainViaE: let local = 1")]
+    [InlineData("chain-retention", "chainKept: var h2 = h@ref | chainKept: var h = local@ref | chainKept: let local = 1")]
     [InlineData("rv-guard-annot", "")]
     [InlineData("j-bad-v.r1", "")]
     [InlineData("m-store-v.r1", "")]
@@ -371,7 +372,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["noncfl-candidate-v"], shared);
         // R7-O1 H: j-bad's, m-write4's and 27e4888a2ae9's derived conflicts (F-H-9's class; 27e4888a2ae9's cause is the Refuted relation
         // at the returned value since PLAN G1115, AConflictCausedOnlyByRefutedRelationsIsDerived).
-        Assert.Equal(48, causes);
+        Assert.Equal(47, causes);
     }
 
     // PLAN G824: pair-views-slot's one run covers both views (no view decides a check), which its masked row (the pair layer's

@@ -26,7 +26,8 @@ namespace Kimi.Compiler.Mir;
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
 // an untied storage), the values of the inputs an output sources into the write slot of each holder its store reaches (Keep, Sourcing;
 // MirBorrows.Holders' WriteSlots), and the result into the destination, which replaces the destination's write slot (Rewrite); Φ_E for an
-// untied result; in the checks replay, whether a store is undecided,
+// untied result; into E what the call may store through its own pointer at a raw layer of its result (KeepResult, PLAN G841 (3));
+// in the checks replay, whether a store is undecided,
 // two facts: the limit, where its W reached a
 // holder the guard leaves undecided (MirWrites.Limit, R4-M147), or a record's pair whose Origins the view's Origin class does not class
 // where its Value would store one (R4-M154); and the depth fact (R4-M153), where the step from a holder W met whose guard is Deep would
@@ -69,7 +70,8 @@ internal sealed partial class MirBorrows
         => (proven & (1UL << Math.Min(input, 63))) != 0 ? (kind & ~RetentionKind.Content) | RetentionKind.Value : kind;
 
     // A Call (A3 5, Calls; E14, E16): its arguments' Moves, then its inputs' values into the result by its record and into the holders each
-    // output's store reaches (Keep), then the result into the destination; Φ_E for an untied result. A Value callee's value is read with
+    // output's store reaches (Keep) and into E what the call may store past its result's raw layers (KeepResult), then the result into the
+    // destination; Φ_E for an untied result. A Value callee's value is read with
     // the arguments', the callee operand's position (Input): a Closure's call receiver (R4-M148). In the checks replay, an undecided store sets the location's limit.
     private void Call(ulong[] state, in MirTerminator call, bool checks)
     {
@@ -106,9 +108,10 @@ internal sealed partial class MirBorrows
             result = kind == RetentionKind.None ? result : this.sets.Union(result, this.Retained(state, this.Input(call, p), p, kind));
         }
 
-        if (this.writeCount > 0 && this.planned is { } writing && !writing.Writes.IsEmpty)
+        var resultWrites = this.planned is { Composes: true } composing ? composing.ResultWrites : null;
+        if (this.writeCount > 0 && this.planned is { } writing && (!writing.Writes.IsEmpty || resultWrites is not null))
         {
-            this.SourceSlots(call, writing.Result.Kinds.Length, this.Receiver(call)); // Once per call, for Keep's Sourcing.
+            this.SourceSlots(call, writing.Result.Kinds.Length, this.Receiver(call)); // Once per call, for Deliver's Sourcing.
         }
 
         foreach (var written in this.planned is null ? default : this.planned.Writes)
@@ -118,6 +121,11 @@ internal sealed partial class MirBorrows
         }
 
         this.covering.Clear();
+        if (resultWrites is not null)
+        {
+            this.KeepResult(state, call, resultWrites, checks); // Before the return below: a discarded result was still written.
+        }
+
         for (var p = 0; p <= call.Count; p++)
         {
             if (this.argValues[p] != 0)
@@ -175,6 +183,21 @@ internal sealed partial class MirBorrows
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
         this.Deliver(state, call, written, referent, this.argValues[position], checks);
+    }
+
+    // Rule 4 at the result (PLAN G841 (3), H2; SPEC 15.6.4 "a raw layer that the call may write, in its result, a nominal Type's Fields
+    // included", 5.7 Calls): where the plan composes (CallRetention.Composes) and storage lies past a layer the call writes in its result
+    // (CallRetention.ResultWrites, `written`), the call may write its own pointer at a raw layer without an Origin of the result and store
+    // through it at the next layer, in storage the body does not own. A walk begun at the result's key (InputKey at the result slot), E its
+    // one target, by rule 4 there (OwnPointer, folded under the output's Handed list; the layer's record, ResultWrites' entry), delivered
+    // by the one loop (Deliver) at the result's Type, through no argument's value: none reaches the result's storage but by the records.
+    private void KeepResult(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
+    {
+        var result = cases.TypeOf(call.Place);
+        this.walkComposes = true;
+        this.BeginWalk();
+        this.OwnPointer(this.Key(this.InputKey(call, CallRetention.ResultOutput, result), this.Fold(written)), written);
+        this.Deliver(state, call, written, result, 0, checks);
     }
 
     // The one delivery of a store's walk (Keep's): into each target W reached, what the output's store puts there (Received), arriving at
