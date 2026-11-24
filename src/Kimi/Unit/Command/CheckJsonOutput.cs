@@ -68,7 +68,7 @@ internal static class CheckJsonOutput
             return CheckDocument.Create(missing, input ?? string.Empty, target, CheckMode.Product, options.Debug, inputs.Hashes);
         }
 
-        Project project;
+        Project? project;
         if (input.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
         {
             try
@@ -82,15 +82,14 @@ internal static class CheckJsonOutput
 
             target = project.ProjectFile.Targets[0];
         }
-        else if (!Project.TryCreate(kimigayo, null, input, inputs, out project!, out var failures))
+        else if (CheckService.Load(kimigayo, SourceIdentity.FromPath(input), inputs, out project) is { } failed)
         {
-            var blocked = CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, SourceIdentity.FromPath(input), failures);
-            return CheckDocument.Create(blocked, input, target, CheckMode.Product, options.Debug, inputs.Hashes);
+            return CheckDocument.Create(failed, input, target, CheckMode.Product, options.Debug, inputs.Hashes);
         }
         else if (target.Length == 0)
         {
             // SPEC 23.2.1: one unit has one target; a project with several needs --Target.
-            var targets = project.ProjectFile.Targets;
+            var targets = project!.ProjectFile.Targets;
             if (targets.Length != 1)
             {
                 return CheckDocument.Create(CheckOutput.Blocked(DiagnosticCode.TargetSelectionRequired_Kd, SourceIdentity.FromPath(input)), input, target, CheckMode.Product, options.Debug, inputs.Hashes);
@@ -99,7 +98,7 @@ internal static class CheckJsonOutput
             target = targets[0];
         }
 
-        var output = CheckService.Run(project, target, CheckMode.Product, options.Debug, inputs, cancellationToken);
+        var output = CheckService.Run(project!, target, CheckMode.Product, options.Debug, inputs, cancellationToken);
         return CheckDocument.Create(output, input, target, CheckMode.Product, options.Debug, inputs.Hashes);
     }
 

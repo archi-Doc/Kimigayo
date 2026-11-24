@@ -112,6 +112,24 @@ public class DependencyConfigurationTest
         Assert.Equal(notes, Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures);
     }
 
+    // IMPL 20.1 (PLAN G1010, R9 part B's Revision 2): a key that is not a name, at each position the map checks read, is the
+    // configuration's failure with its own note naming its map (SPEC 23.1.2), never a reader exception; the map is then unreadable, so the
+    // deserializer's failure is kept too.
+    [Theory]
+    [InlineData("2=\"a\"", "the project file")]
+    [InlineData("Dependencies={1={}}", "Dependencies")]
+    [InlineData("Test={1=2}", "Test")]
+    [InlineData("Test={Environment={1=\"a\"}}", "Test.Environment")]
+    [InlineData("NativeLibraries={1=2}", "NativeLibraries")]
+    [InlineData("NativeRequirements={1=2}", "NativeRequirements")]
+    [InlineData("NativeLibraries={\"x86_64-pc-windows-msvc\"={1=2}}", "NativeLibraries")]
+    public void ASettingNameThatIsNotANameFailsTheLoad(string source, string map)
+    {
+        Assert.Equal(
+            new[] { $"A setting name in {map} must be a name.", "Failed to deserialize Kimi.ProjectFile value." },
+            Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures);
+    }
+
     [Fact]
     public void IndentedNativeRequirementIsRead()
     {
