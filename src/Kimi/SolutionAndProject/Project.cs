@@ -56,27 +56,27 @@ public partial class Project
         [MaybeNullWhen(false)] out Project project,
         out IReadOnlyList<string> failures)
     {
+        // SPEC 23.2.3 (PLAN G1010): only the load's own calls are classified, each where it reads: the path's naming, the file's read and
+        // the source listing (CheckInputSource.IsReadFailure), and the configuration text's parse and rules (ProjectFile.Load:
+        // TinyhandException, ProjectConfigurationException; the deserializer's span also runs compiler code, a recorded limit). Any other
+        // exception is the compiler's and ends the caller's result as Faulted (the check entry's CheckService.Load).
         project = default;
-        failures = [];
+        string fullPath;
+        byte[] bytes;
         try
         {
-            var fullPath = Path.GetFullPath(path);
-            var file = ProjectFile.Load(inputs.ReadAllBytes(fullPath));
-            if (file is null)
-            {
-                failures = [$"Empty project configuration '{path}'."];
-                logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
-                return false;
-            }
+            fullPath = Path.GetFullPath(path);
+            bytes = inputs.ReadAllBytes(fullPath);
+        }
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+        {
+            return Failed([$"The project '{path}' could not be loaded: {ex.Message}"], out failures);
+        }
 
-            project = new(kimigayo, file);
-            project.FilePath = fullPath;
-            project.Directory = Path.GetDirectoryName(fullPath)!;
-            project.Name = Path.GetFileNameWithoutExtension(path);
-            foreach (var source in inputs.GetFiles(project.Directory, "*.kimi"))
-            {
-                project.AddKimiFile(source);
-            }
+        ProjectFile? file;
+        try
+        {
+            file = ProjectFile.Load(bytes);
         }
         catch (Exception ex) when (ex is TinyhandException or ProjectConfigurationException)
         {
@@ -85,22 +85,48 @@ public partial class Project
             for (var i = 0; i < reasons.Length; i++)
             {
                 reasons[i] = $"Invalid project configuration '{path}': {notes[i]}";
-                kimigayo.WriteLine(DiagnosticSeverity.Error, reasons[i]);
             }
 
-            failures = reasons;
-            project = default;
-            return false;
-        }
-        catch (Exception ex) when (ex is not PendingInputException)
-        {
-            failures = [$"The project '{path}' could not be loaded: {ex.Message}"];
-            logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
-            project = default;
-            return false;
+            return Failed(reasons, out failures);
         }
 
+        if (file is null)
+        {
+            return Failed([$"Empty project configuration '{path}'."], out failures);
+        }
+
+        var loaded = new Project(kimigayo, file) { FilePath = fullPath, Directory = Path.GetDirectoryName(fullPath)!, Name = Path.GetFileNameWithoutExtension(path) };
+        string[] sources;
+        try
+        {
+            sources = inputs.GetFiles(loaded.Directory, "*.kimi");
+        }
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
+        {
+            return Failed([$"The project '{path}' could not be loaded: {ex.Message}"], out failures);
+        }
+
+        foreach (var source in sources)
+        {
+            loaded.AddKimiFile(source);
+        }
+
+        project = loaded;
+        failures = [];
         return true;
+
+        // Each reason once through the service (a silent one writes nothing), and the load's log line.
+        bool Failed(string[] reasons, out IReadOnlyList<string> result)
+        {
+            foreach (var reason in reasons)
+            {
+                kimigayo.WriteLine(DiagnosticSeverity.Error, reason);
+            }
+
+            logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
+            result = reasons;
+            return false;
+        }
     }
 
     /// <summary>Creates an in-memory Application for exactly one source file without reading its contents.</summary>

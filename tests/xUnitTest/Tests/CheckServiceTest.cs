@@ -629,6 +629,31 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Equal(SourceIdentity.FromPath(project), Location(output, fault));
     }
 
+    // SPEC 23.2.3, DIAGNOSTICS rule 9 (PLAN G1010): the load classifies only its own reads, the project file's and its source listing's,
+    // so a read failure is the unit's Blocked load with its reason, and any other exception there is the unit's fault at the project file.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void ALoadIsBlockedByItsReadsAndFaultedByAnyOtherException(bool listing, bool internalFailure)
+    {
+        var project = SourceIdentity.FromPath(this.WriteProject("Load", ("main.kimi", Valid)));
+        Exception exception = internalFailure ? new InvalidOperationException("outer", new FormatException("inner")) :
+            listing ? new UnauthorizedAccessException("denied") : new IOException("held");
+        var inputs = new FailingInputSource(listing ? Path.GetDirectoryName(project.Value)! : project.Value, exception);
+        var output = CheckService.Load(Kimigayo.CreateSilent(), project, inputs, out var loaded);
+
+        Assert.Null(loaded);
+        Assert.Equal(internalFailure ? CheckOutcome.Faulted : CheckOutcome.Blocked, output?.Outcome);
+        var record = Assert.Single(output!.Diagnostics);
+        Assert.Equal(internalFailure ? nameof(DiagnosticCode.CheckFaulted_Kd) : nameof(DiagnosticCode.ProjectLoadFailed_Kd), record.Code);
+        Assert.Equal(
+            internalFailure ? "System.InvalidOperationException: outer ---> System.FormatException: inner" : $"The project '{project.Value}' could not be loaded: {exception.Message}",
+            record.Note);
+        Assert.Equal(project, Location(output, record));
+    }
+
     // SPEC 23.2.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
     [Fact]
     public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()
@@ -726,15 +751,6 @@ public sealed partial class CheckServiceTest : IDisposable
             this.Listed.AddRange(files);
             return files.ToArray();
         }
-    }
-
-    private sealed class FailingInputSource(string failing, Exception failure) : CheckInputSource
-    {
-        public override byte[] ReadAllBytes(string path) => SourceIdentity.PathComparer.Equals(path, failing) ? throw failure : Disk.ReadAllBytes(path);
-
-        public override SourceContent ReadSource(string path) => SourceIdentity.PathComparer.Equals(path, failing) ? throw failure : Disk.ReadSource(path);
-
-        public override string[] GetFiles(string directory, string pattern) => Disk.GetFiles(directory, pattern);
     }
 
     private sealed class CapturingConsole : IConsoleService
