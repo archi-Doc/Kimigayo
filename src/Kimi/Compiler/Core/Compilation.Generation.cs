@@ -108,7 +108,8 @@ public partial class Compilation
         var generator = this.moduleCodegen ??= new(this.Layout, this.Locations, this.Types, this.Binding.LibraryImports, this.Tests, row);
         if (generator.Write(program, collector, this.Binding.Startup, roots, writer))
         {
-            this.generated = new(this.Binding.Startup.OutputKind, generator.Libraries, generator.Externals); // The lists by reference.
+            // The lists by reference.
+            this.generated = new(this.Binding.Startup.OutputKind, generator.Libraries, generator.Externals, generator.RuntimeImports);
             return true;
         }
 

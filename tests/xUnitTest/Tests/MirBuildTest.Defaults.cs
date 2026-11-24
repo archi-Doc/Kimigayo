@@ -306,10 +306,10 @@ public sealed partial class MirBuildTest
     }
 
     // IMPL A.4, 21.3.2 (PLAN G396 (3), G651): the copy forms its temp Option<W^k<W^8000<i32>>> after Binding's run. Within IMPL A.4's
-    // height (copy191) it is built with its written twin's record codes (Layout's limit); past it (copy192) the formation fails outside
-    // the collector's frame, so the copy keeps the located Unsupported_Kd at the omitting call beside G651's site-less record, where the
-    // written twin gets TypeHeightLimit_Kd at none(p40) in Binding's frame: the one arm left, until G651 U2c (the Back's; U2b gives the
-    // copy a formation owning its refusal). In a generic caller (outer192) the copy is built open and the collector's formation at the
+    // height (copy191) it is built with its written twin's record codes (Layout's limit); past it (copy192) the copy's formation
+    // (TyCtxt.Answered) owns the refusal and the builder's read of it marks the omitting call's node site: exactly TypeHeightLimit_Kd
+    // there, no Unsupported_Kd and no site-less record (PLAN G651 U2b, K1; the written twin gets it at none(p40) in Binding's frame).
+    // In a generic caller (outer192) the copy is built open and the collector's formation at the
     // instance passing the height records TypeHeightLimit_Kd at the copy's operation, as at the written twin's expression (the Back's
     // review N3). The built rows compare distinct codes: the copy and its twin form their Types at different sites, so their least-use
     // records (DECISIONS R5-M171, one per instance and declaration) differ in count (copy191: two GenerationResourceLimit_Kd, its
@@ -317,7 +317,8 @@ public sealed partial class MirBuildTest
     // holds on both.
     [Theory]
     [InlineData("copy191", "takeh(p40)", "takeh(p40, count(none(p40)))", null)]
-    [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "Unsupported_Kd@takeh(p40) InternalInvariant_Kd@-")]
+    [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "TypeHeightLimit_Kd@takeh(p40)")]
+    [InlineData("nest192", "_ = count(takeh(p40))", "_ = count(takeh(p40, count(none(p40))))", "TypeHeightLimit_Kd@takeh(p40)")]
     [InlineData("outer192", "outer(p40)", "outerw(p40)", null)]
     public void ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft(string shape, string omitted, string written, string? records)
     {
@@ -346,6 +347,32 @@ public sealed partial class MirBuildTest
                 string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    {statement}\n    return\n";
 
         static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
+    // IMPL A.4, 21.3.2, SPEC 12 (interpolation; PLAN G651 U2b, U2c ruling 7 N3; the Front's C-503 lint1, lint0): an owning interpolation as a
+    // default (takes' s = "\(G<W^k<T>>.init(null))", fmt its written form) copied at takes(p40) forms the write's borrow temp
+    // ref/G<W^k<W^8000<i32>>> after Binding's run. Past IMPL A.4's height (k = 191: 8,193) its formation owns the refusal and the builder's
+    // read marks the omitting call's node site: exactly TypeHeightLimit_Kd there beside A4's own depth limits in takes' and fmt's
+    // interpolations; at the height (k = 190) A4's depth limits alone. Never InternalInvariant_Kd or Unsupported_Kd (fail-before for k = 191:
+    // both, as copy192 before U2b).
+    [Theory]
+    [InlineData(191, "TypeHeightLimit_Kd@takes(p40)")]
+    [InlineData(190, null)]
+    public void AnInterpolationCopyPastTheHeightIsARecordAtItsCall(int k, string? record)
+    {
+        var source = "struct W<T>\n    public var v: T\nstruct G<T>\n    Self is Utf8Format\n    public var q: raw/T\n    public init(q: raw/T) => self.q = q\n" +
+            "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"g\")\n" +
+            $"func lift<T>(p: raw/T) -> raw/{Nest(200)} => null\nfunc takes<T>(p: raw/T, s: string = \"\\(G<{Nest(k)}>.init(null))\") => ()\n" +
+            $"func fmt<T>(p: raw/T) -> string => \"\\(G<{Nest(k)}>.init(null))\"\n" + "public func main() -> ()\n    let p0: raw/i32 = null\n" + string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) +
+            "    takes(p40)\n    return\n";
+        var errors = TestDiagnostics.Of(MinimalEmissionTest.Check(source)).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code}@{x.Text ?? "-"}");
+        string[] expected = record is null ? [] : [record];
+        Assert.Equal(
+            expected,
+            errors.Where(static x => !x.StartsWith(nameof(DiagnosticCode.OwnershipDepthLimit_Kd), StringComparison.Ordinal)));
+        Assert.Contains(errors, static x => x.StartsWith(nameof(DiagnosticCode.OwnershipDepthLimit_Kd), StringComparison.Ordinal));
+
+        static string Nest(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
     }
 
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139; PLAN G396 (3)): a copy over storage Binding rejected is built in the call's instance, as the

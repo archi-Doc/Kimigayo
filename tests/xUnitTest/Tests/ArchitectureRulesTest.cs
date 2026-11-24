@@ -117,9 +117,18 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
+    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding,
+    // TyCtxt and ImplTable are R7-N5's (B7c, B8), MirBody and MirBuilder the Middle's, DiagnosticOwner the Diagnostics owner's, HoverBuilder
+    // and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands second takes the merged counts.
+    private const string NodeKeyedTableSites = "Binding=13;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;ImplTable=1;MirBody=1;MirBuilder=1;" +
+        "TyCtxt=1";
+
     // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
         .Select(static x => (OpCode)x.GetValue(null)!).ToDictionary(static x => x.Value);
+
+    // The keyed collections' interfaces (NodeKeyedTablesStayAtTheirSites): a dictionary's or a set's, whose first type argument is its key.
+    private static readonly Type[] KeyedInterfaces = [typeof(IReadOnlyDictionary<,>), typeof(IDictionary<,>), typeof(IReadOnlySet<>), typeof(ISet<>)];
 
     // R7-C3 C3c (TypeComparisonsOutsideTheJudgeStayAtTheirSites): the closed list of reasons an equality as written answers SPEC 8.2.3's
     // question. kind: one side is a static Type, or both are primitives, a kind test of the other side as given; unchanged: a Type
@@ -407,6 +416,7 @@ public class ArchitectureRulesTest
         "Binding.Structs.cs:PrepareTypeStorage=1 key",
         "Binding.Try.cs:TryFailure=1 record",
         "Binding.TypeArities.cs:AddTypeCandidates=1 declared",
+        "Binding.TypeHeight.cs:Mark=1 key",
         "Binding.TypeOrigins.cs:OriginFormationSite=2 record",
         "Binding.TypeRelations.Origins.cs:CommonOriginType=2 sufficient",
         "Binding.TypeRelations.Walk.cs:Discharged=1 formed",
@@ -508,9 +518,6 @@ public class ArchitectureRulesTest
     [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. None is left: R7-E3 E3b-1 records the unbound slot as a related location (UnboundSlotFact.Note went).
-    // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
-    // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 7)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 0)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -841,6 +848,49 @@ public class ArchitectureRulesTest
             .GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
             .Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // R7-N5, PLAN G949 S1-N5 and G1314 (DECISIONS BU-220; COMPILER_ARCHITECTURE's Syntax identity): a node-keyed table outside Syntax is a
+    // field of a keyed collection (a dictionary, a set or a weak table) whose key's equality reaches a node: a Koto type or an interface
+    // one implements, object, or a Kimi type, value tuple or Nullable that is a value type or has its own Equals, one of whose fields
+    // reaches one (ShapePair, CollisionTerm, BindingObligation). Read from the compiled fields, so a named key type hides no node; a field of
+    // a constructed Kimi generic type is read through its fields. A class with reference equality (BindingSymbol, BoundType) is its own
+    // identity and a SourceRef key a node's value identity, no node; a BCL struct's internals never count. Not seen: a node in a BCL key's
+    // generic arguments (KeyValuePair, Tuple) or a node-keyed collection held as a value or an element; review reads those. Counted by
+    // top-level type (NodeKeyedTableSites); each batch lowers its type's count, and R7-N5's exit is Binding's types at 0.
+    [Theory]
+    [InlineData("Kimi", NodeKeyedTableSites)]
+    public void NodeKeyedTablesStayAtTheirSites(string prefix, string sites)
+    {
+        const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        const BindingFlags Fields = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        var assembly = typeof(Kimi.Compiler.Compilation).Assembly;
+        var types = assembly.GetTypes();
+        var nodes = types.Where(static x => typeof(Kimi.Compiler.Parsing.Koto).IsAssignableFrom(x)).SelectMany(static x => x.GetInterfaces().Append(x)).ToHashSet();
+        var actual = types
+            .Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true && x.Namespace?.StartsWith("Kimi.Compiler.Parsing", StringComparison.Ordinal) != true && !x.Name.StartsWith('<'))
+            .SelectMany(x => x.GetFields(Declared).Where(f => HoldsNodeKeys(f.FieldType, 0)).Select(_ => TopLevel(x).Name))
+            .GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Node-keyed tables: {string.Join(";", actual)}; the sites are {sites}.");
+
+        static Type TopLevel(Type type) => type.DeclaringType is { } outer ? TopLevel(outer) : type;
+
+        // A keyed collection whose key reaches a node, or a constructed Kimi generic type holding one (two levels: TypeMemo, StampedColumn).
+        bool HoldsNodeKeys(Type type, int depth)
+            => KeyOf(type) is { } key ? ReachesNode(key, [])
+                : depth < 2 && type.IsConstructedGenericType && type.Assembly == assembly && type.GetFields(Fields).Any(x => HoldsNodeKeys(x.FieldType, depth + 1));
+
+        static Type? KeyOf(Type type)
+            => !type.IsConstructedGenericType ? null
+                : type.GetGenericTypeDefinition() == typeof(System.Runtime.CompilerServices.ConditionalWeakTable<,>) ? type.GetGenericArguments()[0]
+                : type.GetInterfaces().Append(type).FirstOrDefault(static x => x.IsConstructedGenericType && KeyedInterfaces.Contains(x.GetGenericTypeDefinition()))?.GetGenericArguments()[0];
+
+        bool ReachesNode(Type key, HashSet<Type> seen)
+            => key == typeof(object) || nodes.Contains(key) ||
+                (!key.IsGenericParameter && !key.IsPrimitive && !key.IsEnum &&
+                    (key.Assembly == assembly || key.FullName?.StartsWith("System.ValueTuple", StringComparison.Ordinal) == true || Nullable.GetUnderlyingType(key) is not null) &&
+                    (key.IsValueType || key.GetMethod("Equals", [typeof(object)])?.DeclaringType != typeof(object)) && seen.Add(key) &&
+                    key.GetFields(Fields).Any(x => ReachesNode(x.FieldType, seen)));
     }
 
     // G949 D2b-d's d13 (DECISIONS BU-220): NodeColumns holds Binding's private node families, read and written only through each

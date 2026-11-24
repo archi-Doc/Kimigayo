@@ -8,12 +8,14 @@ namespace Kimi.Compiler.Backend;
 // O-504 Q1 (a)), and its declaration request, one per symbol, whose Types the first called import's signature gives (Binding admits
 // imports of one symbol only with an equal physical code); computed once per Write through the per-index cache of
 // ModuleCodegen.Signatures.cs and the previous one reused while it still matches. What the written module states for its link (the
-// generation result, Compilation.Generated; R9-B1): the external functions it declares (Externals) and the native libraries it requires
-// (Libraries), which decide its start (IMPL 21.5.2: on the C path when they hold the row's C runtime), each published here and nowhere
-// re-derived (the toolchain reads no IR text).
+// generation result, Compilation.Generated; R9-B1): the external functions it declares (Externals), the native libraries it requires
+// (Libraries), which decide its start (IMPL 21.5.2: on the C path when they hold the row's C runtime), and the imports its runtime
+// declares that no external names (RuntimeImports; LinkAmbiguity, T's ruling 32), each published here and nowhere re-derived (the
+// toolchain reads no IR text).
 internal sealed partial class ModuleCodegen
 {
     private readonly List<(string Library, string Kind)> libraries = []; // The latest Write's required libraries (Libraries).
+    private readonly List<string> runtimeImports = []; // The latest Write's runtime imports no external names (RuntimeImports).
     private readonly Abi.Convention importConvention; // The row's C convention of its imports (ImportConvention).
     private FunctionAbi?[] importSignatures = []; // By import.
     private int[] importSigned = []; // By import, the Write whose signature importSignatures holds (0: none).
@@ -28,6 +30,12 @@ internal sealed partial class ModuleCodegen
     /// (TargetProfile.CRuntime), that supply with its row Kind when any library is required and no import names it (IMPL 21.5.2).</summary>
     internal IReadOnlyList<(string Library, string Kind)> Libraries => this.libraries;
 
+    /// <summary>Gets the imports the latest written module's runtime declares and no external of <see cref="Externals"/> names, each a
+    /// kernel32 import in its dllimport form, in the row's order: the frame's runtime's, a test build's the test runtime's
+    /// (LlvmModuleText.ModuleFrame), so the module's external declarations, these after <see cref="Externals"/>, name each symbol once
+    /// (LinkAmbiguity, T's ruling 32).</summary>
+    internal IReadOnlyList<string> RuntimeImports => this.runtimeImports;
+
     /// <summary>Gets the C signature of a validated <c>#LibraryImport</c> function a definition calls (SPEC 22.6; Abi.Of's C convention
     /// of the row), its own import's, and requests its declaration, one per external symbol (DECISIONS R5-M89).</summary>
     /// <param name="function">The called function.</param>
@@ -39,15 +47,11 @@ internal sealed partial class ModuleCodegen
             if (ReferenceEquals(this.imports[index].Decl, function))
             {
                 var (abi, symbol) = (this.ImportSignature(index), this.imports[index].Symbol);
-                foreach (var external in this.externals)
+                if (!this.DeclaresExternal(symbol))
                 {
-                    if (string.Equals(external.Symbol, symbol, StringComparison.Ordinal))
-                    {
-                        return abi;
-                    }
+                    this.externals.Add(new(abi, symbol, this.imports[index].Kind == "import"));
                 }
 
-                this.externals.Add(new(abi, symbol, this.imports[index].Kind == "import"));
                 return abi;
             }
         }
@@ -83,6 +87,35 @@ internal sealed partial class ModuleCodegen
             var supply = this.row.Supply(runtime) ?? throw new InvalidDataException("The target row's C runtime must be one of its supplies.");
             this.libraries.Add((runtime, supply.Kind));
         }
+    }
+
+    // The runtime's imports that no external names (RuntimeImports), after the module is assembled: a test build's frame then has a
+    // test runtime (LlvmModuleText.WriteRuntime refuses one without).
+    private void DeclareRuntime()
+    {
+        this.runtimeImports.Clear();
+        var frame = LlvmModuleText.Frame(this.row);
+        foreach (var symbol in (this.IsTestBuild ? frame.TestRuntimeImports : frame.RuntimeImports)!)
+        {
+            if (!this.DeclaresExternal(symbol))
+            {
+                this.runtimeImports.Add(symbol);
+            }
+        }
+    }
+
+    // Whether the latest Write's externals name a symbol.
+    private bool DeclaresExternal(string symbol)
+    {
+        foreach (var external in this.externals)
+        {
+            if (string.Equals(external.Symbol, symbol, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Whether the latest Write's libraries hold a library.

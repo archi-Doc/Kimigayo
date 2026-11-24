@@ -7,7 +7,7 @@
 //   EnterBody, with the one value of each body (FunctionBody, a default template's, AccessorBody, InitializerBody).
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
 //   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (a Closure's, ClosureHeaderScope; a named nested
-//   function's or a local's is the index walk's, DeclareFunction and IndexNode), and ParameterVisible's answer.
+//   function's or a local's is the index walk's, DeclareFunction and IndexNode).
 // - The rule for a local (SPEC 15.3.4, 15.3.6; DECISIONS R8-M56): its declaration, its Type's Origin declaration and its initializer are
 //   formed in its declaring body whoever demands them (FormingBodyOf: a use, a capture or a nested header binding them first), so every
 //   atom, row and region they form is that body's. DeclaringBody is total for a local: the index walk enters every body Binding forms
@@ -94,25 +94,5 @@ public sealed partial class Binding
 
         var body = this.symbols[local].DeclaringBody;
         return body.IsBody ? body : throw new InvalidOperationException("A local has no declaring body (InternalInvariant; PLAN G1369).");
-    }
-
-    // SPEC 7.2.3: in default i of f, or in a Closure its evaluation reaches, a parameter of f is visible only when it precedes i (a
-    // constructor's or destructor's receiver, whose slot is no parameter index, never is); elsewhere every parameter in scope is.
-    private bool ParameterVisible(BindingSymbol candidate)
-    {
-        if (candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function)
-        {
-            return true;
-        }
-
-        for (var body = this.formingBody; body.IsBody; body = EvaluatingBody(body))
-        {
-            if (body.Index >= 0 && ReferenceEquals(body.Definition?.Declaration, function))
-            {
-                return (uint)candidate.Slot < (uint)body.Index;
-            }
-        }
-
-        return true;
     }
 }
