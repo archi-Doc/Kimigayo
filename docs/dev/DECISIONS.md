@@ -31100,6 +31100,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     longer null), and the record's `kernel32` member is gone.
     - Amended by T-M35 (LC3 S1, 2026-11-24): a reserved name's staged copy is first looked up by its catalog hash and reused when
       its bytes still have it; `StageInput` stages its resource only when that copy is missing or changed.
+    - Amended by T-M41 (StagedHold, 2026-11-24): `StageInput` returns the staged copy held with read sharing only until the build
+      ends.
   - **A program cannot supply them:** a project's own `kimi_backend` entry (dev's legacy override) is an error, as a `kernel32` entry
     was: `NativeConfiguration.CheckReserved`, one note for both names, both record kinds and any target ("<name> is supplied by the
     compiler. Remove the <name> entry from NativeLibraries."); `EmissionArtifacts.CheckLibraryInputs` (was `ResolveBackend`) only
@@ -31522,6 +31524,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     locks); one lock per output directory; the record and the lock named from the IR (a manifest that fails to read would
     invalidate no record); the stem named from the manifest with any IR accepted (Revision 0: a manifest's IR can be one of its own
     build's files, C-450 B1, and the second derivation stays, B2).
+  - Amended by T-M41 (StagedHold, 2026-11-24): the staged libraries are held by the same rule.
 - **T-M18 The target table** (Tatara, 2026-11-22; the plan's unit B7a2, Q-660, D-1087; Major, behaviour-preserving; design
   `artifacts\handoff\tatara\units\B7\design-b7a.md` Revision 1 §2.1; design review C-440; the Middle's implementation review C-453,
   ACCEPT). Amends R5-M174.
@@ -32099,6 +32102,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   paired p50 B/A 0.977-1.014, peak commit within ±4.3 MiB. Rejected: identity (size, time) instead of the hash; a session's memory
   of what it staged; one rule hashing a program's input before its copy (unmeasured, two reads); a per-user cache outside the
   output; supplies from memory (a `tatara.h` ABI).
+  - Amended by T-M41 (StagedHold, 2026-11-24): `IsStaged` is `HoldStaged`, which returns the copy held with read sharing only until
+    the build ends.
 - **T-M36 The backend archive holds `__chkstk` alone (ABI 3)** (Tatara, 2026-11-24; the plan's unit B7r5, the owner's decision 24,
   Q-725, D-1205; Major; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.5.1 §3.6, §7.2, §7.3; implementation
   review C-506, the Middle's ACCEPT and the Back's ACCEPT WITH CONDITIONS, its C1 met; lands in window W5 with T-M37). Amends T-M8's
@@ -32236,3 +32241,21 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   execution time on reuse (Q16's daily execution); run reuse for any entry within `-ReuseHours` (O-519 (a) as first decided: the
   daily execution no longer rode on rebuild windows, F1). Open: PLAN G1351 (the worker runs a linked record's file without the
   hash check; pre-existing, the Middle's C-530 N-1).
+- **T-M41 A native build holds its staged libraries** (Tatara, 2026-11-24; D-1173, Q-740, D-1228; Major; design
+  `artifacts\handoff\tatara\units\StagedHold\design.md` Revision 0 with `brief-impl-refresh.md` and T's ruling 18
+  (`units\rulings-briefs-20261124.md`); the Middle's implementation review C-531, ACCEPT, which covers the design). Extends T-M17's
+  hold to every file whose hash the record names and Tatara reads afterwards. `HoldStaged` opens a staged copy
+  `<stem>.native/<hash>.lib` (`ArtifactPaths.Native`) with read sharing only and reads its hash from that handle, so IMPL 20.4's
+  reuse check and the hold's start are one step; `StageInput` and `StageSupply` return the held copy, holding it again after a
+  `Replace` (a copy changed or gone before that hold: an `IOException` "The staged library changed before the build held it:
+  <path>.", an output failure); `ResolveLibraries` adds each to `Run`'s list as soon as it is staged, before `CheckSupply` and the
+  manifest's assertion, and `Run`'s `finally` releases them with the private executable's delete, on every outcome. The record's
+  rows, their paths and every executable byte are unchanged; only handle lifetimes move. LLD 22.1.8 opens its inputs with read
+  access, sharing read, write and delete, for read and mapped inputs alike, and drops an input it cannot open without an error
+  (probed, design §3), so the hold admits it and refuses a foreign write, replacement or deletion of a copy, a rename of its folder
+  and an open without read sharing (which would make LLD drop the library silently). The executable needs no hold: its hash is
+  checked at its use (`run --no-build`). IMPL unchanged (IMPL 20.4, `docs/impl/20-compilation-configuration.md:140-141`, "the linker
+  receives those bytes", read as a guarantee over the build's duration; no Kimi command writes a staged copy). Rejected: LLD reading
+  held buffers (a `tatara.h` ABI, as T-M17); a check after the link (a write and a restore pass it); a private folder per build (a
+  copy per build); a byte-range lock (no deletion or rename refused); a hold from the link only (no structural start). Open: PLAN
+  G1353 (a held copy left to finalization when `StageInput`'s temporary delete throws; the Middle's C-531 N-1).
