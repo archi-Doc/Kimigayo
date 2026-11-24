@@ -2,12 +2,13 @@
 
 // The published closure definition (C2; ClosureDef, plan 5.3; DECISIONS R4-M126, R4-M145).
 // - Responsibility: what a binding of an anonymous function publishes: each capture's source and environment binding (Storage), the
-//   enclosing regions its environment carries (Carried), the environment Type, the signature, the evaluating body, whether the body
+//   enclosing regions its environment carries (Carried), the environment Type, the signature, whether the body
 //   infers the result (InfersResult), and the call receiver facts (SPEC 7.7.3): the strongest requirement over every admitted case
 //   (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose acquisition by value Reborrows by case
 //   (BoundCapture.BareReborrows), the first Exclusive cause, and whether this binding has classified them (Classified).
 // - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, InfersResult and the resets), Binding.Captures
-//   (Storage, Carried, and EvaluatingBody at the header scope, ClosureHeaderScope), Binding.ClosureReceivers (the receiver facts).
+//   (Storage and Carried), Binding.ClosureReceivers (the receiver facts). The evaluating body is the literal's symbol's
+//   (BindingSymbol.DeclaringBody, written at the header scope, ClosureHeaderScope).
 // - Outputs: InfersResult for Binding's discard rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
 //   reader (value calls, candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a
 //   view of one admitted case, that case's
@@ -74,10 +75,6 @@ public sealed class BoundClosure
     internal Koto? ExclusiveUse { get; set; }
 
     internal bool ExclusiveReborrow { get; set; }
-
-    // The body that evaluates the literal and binds its header and captures (SPEC 15.3.4; Binding.ExecutableBodies.cs), written by the
-    // header scope (Binding.ClosureHeaderScope) before any header binding. MIR never reads it.
-    internal ExecutableBody EvaluatingBody { get; set; }
 
     // Whether this binding's body infers the result, neither a written result nor a fixed expectation having fixed it before the body
     // (SPEC 10.5.4; DECISIONS BU-109). Written before the body is bound; MIR never reads it.
