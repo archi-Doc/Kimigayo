@@ -124,17 +124,12 @@ public sealed partial class Binding
                 this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
             }
 
-            // SPEC 23.1.2, 15.3.4 (PLAN G230's interim, D-990): the header is bound before the body types an unannotated local its
-            // written Origins name (DECISIONS BU-56); bound again here, each parameter takes its Type (dev's binding), but a result the
-            // header failed keeps that failure, so one this binding binds is the located Unsupported_Kd at its TypeSource: the
-            // failed-slot fact (DECISIONS BU-234), on which a call rests. Writing the result's Type like a parameter's would read
-            // `during r` as the Origin the body first gives r (D-862's class). Removed by G230 (A)'s name link (BU-56's removal
-            // condition: a nested signature's name of a local's region links to that local), after which a result binds like a
-            // parameter.
-            if (function.ReturnType is { } resultSyntax && this.BindType(resultSyntax, scope) is not null && symbol is { Type: null })
+            // SPEC 15.3.4 (PLAN G230 (A)): the header may be bound before the body types a local its written Origins name; bound
+            // again here, with that local bound, each parameter takes its Type and a result the header could not bind takes its own,
+            // its `during r` naming r's region, which a named nested function's body reads as a fixed Origin through its declaring body.
+            if (function.ReturnType is { } resultSyntax && symbol is { Type: null })
             {
-                Complete(resultSyntax, null);
-                this.Fail(resultSyntax, BindingFailure.Unsupported);
+                symbol.Type = this.BindType(resultSyntax, scope);
             }
 
             this.CheckCaseBound(function);

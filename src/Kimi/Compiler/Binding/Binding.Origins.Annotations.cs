@@ -365,6 +365,23 @@ public sealed partial class Binding
 
                 (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
                 carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
+                if (!this.formingBody.IsBody && use is IdentifierNameKoto && symbol is { Kind: BindingSymbolKind.Local, Type: null, Declaration: VariableKoto { TypeKoto: not null } annotated })
+                {
+                    // SPEC 15.3.4 (PLAN G230 (A)): a declaration's plain name of an annotated body local is that local's region where its
+                    // declaration formed one (the annotation's omitted top Origin, LocalRegionSlot), the atom its body reads; the
+                    // annotation's own atom is formed outside every body and no body reads it. Before the body binds the local, the name
+                    // is the located limit (a declaration bound ahead of the local's declaration).
+                    if (this.originAtoms.TryGetValue((annotated, OriginKind.Inference, -1), out var region))
+                    {
+                        scalar = region;
+                    }
+                    else
+                    {
+                        this.Fail(use, BindingFailure.Unsupported);
+                        carrier = null;
+                    }
+                }
+
                 return true; // An unsuitable nearest candidate never falls through.
             }
         }
