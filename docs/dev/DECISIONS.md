@@ -7934,7 +7934,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Staged: audit finding 7 (A4's readers recorded once per Run, the design's stamp) waits for its RP8 measurement under PLAN G349.
   - Moves: none at publication (42 test expectations of internal NoBody view values).
 - **R4-M234 Z5-F: A5 publishes each read's and each borrow's exact lent position** (Middle, 2026-11-22; the owner's O-482 (a); Z5's A5
-  half after its second stop; R7 plan Z5, PLAN G212, G396 (3); Q-668, D-1104; read by R4-M235)
+  half after its second stop; R7 plan Z5, PLAN G212, G396 (3); Q-668, D-1104; read by R4-M235; amended by R4-M244: each step's Place, LentPlace)
   - Representation: a position, a root key and a run of A5's steps passing no borrow or raw Deref, is the storage a Place denotes where
     the body forms it exactly: a Place passing no such Deref is its own; past one, the lent position of the borrow whose reference the
     last one goes through (the lender: the reference root's one whole store, followed through whole Copies and Moves and a Tuple's or
@@ -7953,7 +7953,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M235 Z5-R1: a read through a dereference of a `during self` layer or an enclosing Place carries the owner's own-step entry at its
   exact lent position, with its parents whole** (Middle, 2026-11-22; the owner's O-482 (a); R7 plan Z5, PLAN G212, G396 (3); Q-668,
   D-1104; design `middle\notes\z5r1-design.md` Revision 2 with 2a, review 3 ACCEPT WITH CONDITIONS; narrows R4-M120's PQ-10 bullet;
-  reads R4-M234)
+  reads R4-M234; its outcomes over a position replaced by R4-M244)
   - A non-raw borrow of a layer's or enclosing Place issues its ordinary Loan and no mark. A5's own-step table keeps one row per Place
     a read uses, decided by one owner walk over one step run: the Place's exact lent position, else its own steps. An owner whose Place
     the position names gives its direct own-step entry; the read carries it with every Loan and address its parents carry (SPEC 15.6
@@ -8225,6 +8225,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Known limit kept:** a by-value Tuple's value does not say which element holds which address (one set per value), so an
     element's Place may also be read punned at another element's raw layer (as past a holder, `ReadPart`); no valid row moved by it
     (PLAN G1361: p3CrossU8Ok, a valid by-value Tuple form, rejected on dev before this unit as after it).
+- **R4-M244 G1276: a lent position keeps the body Place each step applies to; an owner step past a Deref is that Place's entry**
+  (2026-11-24; the Middle; G1276, Q-753, D-1250; Major, an acceptance mover, class 1; design `middle\notes\g1276-design.md` Revision
+  1a (E-a with N-0) and 1b, review g1276r ACCEPT WITH CONDITIONS; Revision 1c `middle\notes\g1276-rev1c.md` after the implementation
+  review g1276ir's B1, N1 and N2; amends R4-M234's representation and R4-M235's outcomes) SPEC 5.2.1 (3), 5.7 Reading a Field
+  through a dereference, 15.6 Addresses, 15.6 Holders, 15.6.3.
+  - **Representation.** `MirBorrows.Lent` keeps beside each position step the body Place it applies to, decided once when the
+    position is made (`Exact`: a lender's head keeps its Places, each given step takes the rule's) and published as
+    `LentPlace(position, step)`. R4-M234's "`Lent(place)` only" reads `Lent(place)`, `LentRun` and `LentPlace`. Cost: two ints per
+    step copied, as `lentSteps`; one row read per step made; no allocation per read.
+  - **Rule.** Over an exact position the owner step's `LentPlace` is the own-step entry's Place: the position's root for the first
+    step; for a later step its Prefix row from that root where the previous step's Place is the root's and that row is (that Place's
+    projection, the previous step's Kind and Arg), rows being independent of their roots; else the step's Prefix row from the root of
+    the walk that gave it (the position's root in the first segment, else past that walk's Deref). The entry is direct where that
+    Place passes no borrow or raw Deref (R4-M234): in the first two cases, and in the first segment also after a failed test (a
+    ConstIndex step). This one rule replaces R4-M235's three outcomes over a position (`Named`, the tail walk, and an owner in a lender's steps,
+    Unplaced): a layer read whose owner step lies in a lender's steps carries its parents whole through a raw lender or a shared one.
+    Unplaced stays only where no exact position exists and the own steps name no owner (PLAN G1301's classes); PQ-10 at the read in
+    a `tabling` view is unchanged (N-0). The first step's Place is the root itself, the rule's base case (a whole-local lender
+    `d@ref` leaves the first segment empty: ex1, q12, q12w); a later step continues it where its Prefix row does (oh1, oh2: a
+    reference to an owning handle's payload).
+  - **Records (Q13).** `ComparisonLoanConflict_Kd` at the owner's access on invalid programs accepted before: pr1, pr2, pr3, pre,
+    prw, pru; n2's located `Unsupported_Kd` at the read becomes that conflict at `o@move`, and the valid n2v loses its
+    `Unsupported_Kd`. d23 and e1 (a reborrow of a parameter: no exact position) keep theirs. oh1 and oh2 keep dev's
+    `OwnStepDeparture_Kd`. Named moves, the rule's reach past dev's `Named` (which needed the first step's Prefix to be the root's):
+    oh3 (invalid: the payload's Deref past a whole-handle lender) and oha (valid: its lender an address, which carries no Loan) gain
+    the `OwnStepDeparture_Kd` SPEC 5.2.1 (3) requires, q12w's class. A non-direct entry gives no own-step Warning (pr1; PLAN G1277).
+  - **Rejected.** E-b, the parents whole for an Unplaced row with a position through a new row value (one more case of an open family
+    while the owner is knowable); E-c, a projection row naming the owner from the position's root (rows the body never forms); N-b in
+    this unit, the undecided marker (R4-M198's Φ_U) on an Unplaced read's parents: `Layer` makes rows by Type kind, so a read that
+    cannot be a layer keeps its reference's Loan undecided and a later write of the lent root gets `Unsupported_Kd` on valid programs
+    (the review's B1; N2 measured); an open option under PLAN G1301. Each step's walk root (Revision 1b's head): it named an owning
+    handle's payload past the reference's Deref and lost the Warning of oh1 and oh2 (g1276ir's B1). Dev's reach exactly, a second
+    clause chaining only from a first step whose Prefix is the root's: a form-specific split beside the base case, and oh3's and
+    oha's required Warning stays missing.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
