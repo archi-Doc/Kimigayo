@@ -4,9 +4,11 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("emit")]
-public sealed class EmitCommand : ISimpleCommand<KimiOptions>
+[SimpleCommand(EmitCommand.Name)]
+public sealed class EmitCommand : ISimpleCommand
 {
+    public const string Name = "emit";
+
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
     private readonly Solution solution;
@@ -18,9 +20,9 @@ public sealed class EmitCommand : ISimpleCommand<KimiOptions>
         this.solution = solution;
     }
 
-    public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(string[] arguments, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, Name, arguments, async (options, args) =>
         {
             this.solution.LoadForBuild(this.logger, options, args);
             this.solution.PrepareProject(this.logger);

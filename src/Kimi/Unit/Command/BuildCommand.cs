@@ -4,14 +4,10 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("build")]
-public class BuildCommand : ISimpleCommand<BuildCommand.Options>
+[SimpleCommand(BuildCommand.Name)]
+public class BuildCommand : ISimpleCommand
 {
-    public class Options : KimiOptions
-    {
-        [SimpleOption("Manifest")]
-        public string? Manifest { get; set; }
-    }
+    public const string Name = "build";
 
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
@@ -24,9 +20,9 @@ public class BuildCommand : ISimpleCommand<BuildCommand.Options>
         this.solution = solution;
     }
 
-    public async Task Execute(Options options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(string[] arguments, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, Name, arguments, async (options, args) =>
         {
             if (options.Manifest is { } manifest)
             {
