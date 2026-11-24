@@ -3794,6 +3794,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded in part by R7-M85 (2026-11-23, Z26): the Rule's "no copy and the call's `Unsupported_Kd`" for storage verdicts and the
     Consequence: a copy over storage Binding rejected or past its bound is built, as the written call is; the Opaque path stays only
     where a formation fails and no formation owns the refusal (R7-M85's one arm).
+  - Superseded in part by R7-M99 and R7-M102 (G651 U2b and U2c, 2026-11-25): the Rule's call `Unsupported_Kd` is gone where a
+    formation fails too: a copy's `HeightLimit` rests on its site's `TypeHeightLimit_Kd` (R7-M99), and its `Incomplete` is R5-M151's
+    reading (`InternalInvariant_Kd` at the call in a complete compilation, else no record; R7-M102); the Opaque path stays for both.
 - **R4-M129 A temp's Drop registers where its value is created: temporaries are destroyed in reverse creation order** (2026-10-25; unit
   G248) SPEC 3.6, 16.2.1, 7.2.3, 14.6.2, 15.6.6.
   - Cause: `MirBuilder.Live` registered a temp's StorageDead and Drop where its storage began, and a build site allocates a temp before
@@ -22895,6 +22898,11 @@ structure is recorded here by the unit that first implements it.
     a Dependent answer per fact from TyCtxt (`Applies`, `Witness`, `Comparison`: one check per fact in Binding's hold files, and BU-38
     rejected a Rejected target kind; `View`, `Admit` and `Below` have no such fact); no collection when incomplete (drops independent
     records, SPEC 23.1.2); a filter at publication (`Compilation.MirRecords`: a consumer suppressing afterwards).
+  - Amended by R7-M102 (G651 U2c, 2026-11-25): the collector's one record path stays the collector's; the MIR builder's default copy
+    reads the same published premise, `TyCtxt.BindingComplete`, by the same rule: a copy whose formation is `Incomplete` records
+    `InternalInvariant_Kd` at the omitting call through the builder's one broken-contract path (`MirBuilder.Invariant`) only in a
+    complete compilation and is `Derived` otherwise. The per-site `Derived` rejected here stays rejected: the builder reads the one
+    premise, not a per-site cause.
 - **R5-M152 The R6-gen switch contract as applied (G0)** (2026-10-29, the owner's go 「G0 に進む」, and the owner on its items OI-1 to OI-3,
   verbatim 「推奨どおり」; plan G0, K-package §6 S1–S8 under R5-M18; R5-M4, R5-M5, R5-M88, R5-M148) S1–S8 hold with these applications:
   - S1: from G2 `Compilation.Analyze` builds, validates, analyzes (the whole `MirAnalysis.Run`, unpublished) and collects on every
@@ -25468,6 +25476,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24; G651 U2c's C2 predicate): after the pass a consultation frame takes no height
     refusal either: one private predicate for the run's site (`RunSite`) is read by `RefuseHeight` and `RefusedConformance`; a
     capability work's height refusal after the pass answers Unknown with no record, as the round bound's.
+  - Amended by R7-M102 (G651 U2c, 2026-11-25): G651 U2's outcome for the after-run queries (the round bound's bullet's "PLAN G651 U2
+    gives the after-run queries their outcome"): a request reaching the round bound after the pass keeps the Unknown with no record
+    (pqcallv, pqmovev, pqletv); a height refusal after the pass goes to its innermost after-run owner (R7-M99).
 - **R7-M39 Premise sessions (PLAN G778)** (Front, 2026-11-19; R7-C8 (plan revision 69 (B)); Major, behavior-preserving on every
   program's acceptance and records; one reviewer for design, implementation and cost (`front\notes\N4O\review.md`): design ACCEPT
   WITH NOTES, implementation ACCEPT, the cost fix 9fe0e2317 after the owner's O-299 (a), the merge reviews and the delta re-check of
@@ -26217,6 +26228,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     bullet's `RecordLimits` (`MirReport.FlushLimits`), and the G651 U2a line's `OpenStorageFormation`, its "G651's site-less record is
     still made beside it" and its rejected option "making `OpenFormation` own after the run for all three owners" (taken: their callers'
     reads now mark a site). The U2a line's N6 clause (G881b N6; U2c) stands.
+  - Superseded in part by R7-M94 (R7-C8 C6a-2, 2026-11-24; recorded with R7-M102, G651 U2c): the G651 U2a line's "unless a
+    consultation frame open after the run fails its node first (G881b N6; U2c)", which the G651 U2b line kept: after the pass no
+    consultation frame takes a height refusal (`RunSite`), so the instance's stored-Types formation owns every refusal past H after
+    the run.
 - **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
   D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
   CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
@@ -27615,6 +27630,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     site: `TypeHeightLimit_Kd` at the omitting call (copy192; c495-nest, eager or built in a missed collector round), and `Defaults`
     rests on it with an Opaque value and no record of its own. A body built during a collector or A4 round is its own body site. The
     located `Unsupported_Kd` stays only for an `Incomplete` formation (BU-36's), removed by G651 U2c.
+  - Superseded in part by R7-M102 (G651 U2c, 2026-11-25): "The one arm left" and the G651 U2b line's last sentence. A copy whose
+    formation is `Incomplete` is R5-M151's broken contract at the omitting call in a complete compilation (`InternalInvariant_Kd`
+    through `Invariant`) and a dependent otherwise (`Derived`), so no located `Unsupported_Kd` remains at the arm. The Rejected
+    "`InternalInvariant_Kd` at the call for the height arm" stands: a height refusal is the formation's `HeightLimit` (R7-M99), and a
+    length's, which would reach `Incomplete`, is ruled out by R7-M102's dominance. Row: `ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft`
+    is now `ACopyPastTheHeightIsItsOmittingCallsLimit`.
 - **R7-M86 A stored raw layer's members at its arm, and the named limits by the publication's limit marks (Z6-M: M3a with Revision 8
   on reading B)** (Middle, 2026-11-23; PLAN G148 (1), R7 plan Z6, G396 (3)'s M3a, Q-702, D-1159; Major; producer M3a, the Binding
   hunks read by the Front on C-462) SPEC 5.7 Origins, Authority, Fits and claims, Calls; 5.2.1 condition 3; 15.6.4 item 1. The
@@ -28413,6 +28434,56 @@ R8-M* and R9-M* by the stage of the recording unit.
     failure now reaches callers as a source-less call region, an erasure there recording `UnprovenConstraint_Kd` beside the Binding
     failure: Q13's dependent class): the Middle's trace on the joint O3-A + B1 head. Non-blocking: i4's Note text says "not static" for
     an Unknown proof (the diagnostics adapter's text).
+- **R7-M102 A default's copy reads its formation's Incomplete as the collector does (PLAN G651 U2c)** (Back, 2026-11-25; Q-766,
+  D-1267; Major: design `back\notes\g651-u2c\design.md` Revision 1 with B's rulings 1-13; design reviews C-503 (the Middle's ACCEPT
+  WITH CONDITIONS and delta read ACCEPT WITH CONDITIONS, the Front's ACCEPT WITH CONDITIONS and delta read ACCEPT, 2026-11-23/24);
+  implementation read by the Front (commit (1)'s contract text and commit (2)'s `Formation` text) and the Middle (commit (2)'s
+  builder hunk, RP17)) SPEC 7.2.3, 22.10.5, 23.1.2; IMPL 21.3.2, A.4. Supersedes in part R7-M85 and R4-M127; amends
+  R5-M151 and R7-M38; records in R7-M54 that R7-M94 ended the G651 U2a line's N6 clause (each entry's line states the change).
+  - **Rule.** `MirBuilder.Instantiates` gives the first failing read's `TyCtxt.Formation` in its loop order (non-Arg locals, each
+    constant's Type then its Length term, rvalues, callee substitutions): each Type and callee substitution through `TyCtxt.Answered`
+    (R7-M99), a Length constant's term through the bare `TyCtxt.InstanceLength`, whose null is the copy's `Incomplete`. `HeightLimit`
+    rests on the site's record (R7-M99: `Derived`, no record of its own). `Incomplete` (BU-36's contract substitution that does not
+    complete, a length that does not complete, or a capability work's Unknown with no record in the copy's normalization, R7-M99's
+    fourth owner) is read by R5-M151: where `TyCtxt.BindingComplete` holds, a broken contract at the omitting call
+    (`InternalInvariant_Kd` through the builder's one broken-contract path, `Invariant`, guarded at the call node, its Opaque value
+    naming the earlier slots); otherwise a dependent of Binding's records (`Derived`, no record). `Defaults`' `Unsupported` call and
+    its located `Unsupported_Kd` go, so G396 (3)'s B3 closes. The builder reads the premise as A4 does (R7-M57): no new member, table,
+    mode or second switch over `Formation`.
+  - **The dominance (the bare length read's premise).** An interpolation term's `Values` is the Tuple of the values its body writes,
+    exactly as high as the `ref/V` each write takes (SPEC 22.10.3, BU-71), and that `ref/V` is formed first: a template local
+    (`Instantiates` reads locals before constants), a region local carrying the term, or the call's argument in the run; for code
+    generation's `InstanceCollector.LengthOf` the collector forms an item's locals before acceptance. So no program reaches a height
+    refusal inside `InstanceLength`; this is stated once in `TyCtxt.InterpolationBound`/`InterpolationHint`'s contract and in
+    `InstanceLength`'s comment. Were it broken the outcome is loud with no further code: after the run the copy's read marks the
+    omitting call (`TypeHeightLimit_Kd`) and its `Incomplete` adds `InternalInvariant_Kd` beside it (alone where a capability work
+    took the refusal); code generation meets R7-M99's no-owner throw or `LengthConstant`'s `InternalInvariant_Kd`. `InstanceLength`
+    has no check, catch or mode.
+  - **After-run queries (R7-M38's pointer to G651 U2).** After the pass no consultation frame takes a height refusal (`RunSite`,
+    R7-M94, which carries U2c's predicate for `RefuseHeight` and `RefusedConformance`), and a refusal goes to its innermost after-run
+    owner (R7-M99). A request reaching the round bound after the pass keeps R7-M38's Unknown with no record: its after-run askers are
+    incidental (MIR's Copy question, a lint, the editor), and R7-M38 rejects failing it wherever the answer settles (pqcallv).
+  - **Why R7-M85's arm no longer holds.** It kept `Unsupported_Kd` because the height cause had no site (an `InternalInvariant_Kd` at
+    the call would have been a second Internal record beside G651's site-less one, Q13 (2)) and the builder had no rule for
+    `Incomplete`. R7-M99 gives the height cause its site (the formation's `HeightLimit`, `TypeHeightLimit_Kd` at the omitting call),
+    and R5-M151 is the rule; the interim between U2b's and U2c's landings (the arm kept for `Incomplete` alone) closes.
+  - **Records (Q13).** None move on a known program (compared on U2b's head; both snapshots unchanged). On no known program
+    `Unsupported_Kd` at the call becomes `InternalInvariant_Kd` (complete) or no record (incomplete). No generated-code change: the
+    arm acts only on a copy no accepted program builds.
+  - **Known limit.** `TyCtxt.Instance` still reads `Incomplete` as `StorageOutcome.Limit` for every storage reader (PLAN G1383).
+  - **Rejected.** A third `TyCtxt.Answered(BoundLength, Subst)` overload (by the dominance, a member no program reaches); a check,
+    catch or mode in `InstanceLength` (the `Incomplete` -> `Invariant` route is the broken contract's one path); a `TyCtxt` member
+    publishing the reading (`Broken(Formation)`: a second statement of one rule, the collector's `Report` still guarding its other
+    contracts); a throw at the arm (a dependent in an incomplete compilation is not a broken contract, and the copy has a site);
+    `Derived` at the arm in every compilation (R5-M151's rejected per-site `Derived`); a test hook forcing `Incomplete` (no reproducer:
+    the case is a probe key, not a row).
+  - **Rows.** `MirBuildTest.Defaults`: `ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft` (R7-M85, R7-M99) is renamed
+    `ACopyPastTheHeightIsItsOmittingCallsLimit` and asserts copy192's written twin (exactly `TypeHeightLimit_Kd` at `none(p40)`: one
+    code, two sites); `ACopyFormsItsWritesBorrowBeforeItsLength` (the loop order: past the height exactly `TypeHeightLimit_Kd` at
+    `takes(mkg(p40))`, no `InternalInvariant_Kd`; at it A4's records only); `ACopyOverAnUnnormalizedAssociatedTypeIsAccepted` (pqd,
+    pqdw: an after-pass Unknown in the copy's normalization never makes it `Incomplete`). The round bound's after-pass rows are
+    G881b's (`TypeIdentityTest.ARequestAfterThePassFailsNoNode`, `ARequestPastTheRoundBoundIsAResourceFailure`'s pqcallv, pqmovev,
+    pqletv).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
