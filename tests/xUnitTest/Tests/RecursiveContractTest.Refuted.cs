@@ -486,7 +486,9 @@ public sealed partial class RecursiveContractTest
     // base relates nothing: n.parent's P2). Arguments are read in K's view (Q1 (a): v.norm-flat, v.norm-const); a reference in a
     // function's or a generic method's premise passes nothing (v.method, v.use-only, v.use-mutual); a use or a refiner of an erroneous
     // Contract rests on its record (m.r-expand-q, n.refiner: dependent records allowed, SPEC 23.1.2). x.mg-decl and m.r-expand-q are the
-    // Middle's RP17 B1 forms (c2-5a, C-562); g563-assoc is PLAN G563's form; SPEC's Stream waits (ARowAwaitsItsUnit, Q4 (a)).
+    // Middle's RP17 B1 forms (c2-5a, C-562); g563-assoc is PLAN G563's form; SPEC's Stream waits (ARowAwaitsItsUnit, Q4 (a)). F's
+    // G563C-2 twins (p1/twins.txt): a base on no cycle whose clause K inherits stays clean, and so does a use of it (r2-base); a refiner
+    // with a clause of its own rests on the erroneous Contract's record, with no record of its own (r2-refiner-rest).
     [Theory]
     [InlineData("x.mg-decl", G563Mg, G563MgRecord)]
     [InlineData("m.r-expand-q", G563Mg + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MG<i32>\n    needMark<T.(Tree).Child, Option<i32>>(c)\n", G563MgRecord + " | ...")]
@@ -509,6 +511,8 @@ public sealed partial class RecursiveContractTest
     [InlineData("n.swap-grow", G563Tree + "contract SX<A, B>: Tree\n    Self.(Tree).Child is SX<B, Option<A>>\n", "InvalidConstraint_Kd: contract SX<A, B>: Tree <- Self.(Tree).Child is SX<B, Option<A>>")]
     [InlineData("n.proj-arg", G563Tree + "contract Holder\n    associate Item is Holder\ncontract MP<A>: Tree\n    A is Holder\n    Self.(Tree).Child is MP<A.(Holder).Item>\n", "InvalidConstraint_Kd: contract MP<A>: Tree <- Self.(Tree).Child is MP<A.(Holder).Item>")]
     [InlineData("n.refiner", G563Mg + "contract Sub: MG<i32>\n", G563MgRecord + " | ...")]
+    [InlineData("r2-base", G563Tree + "contract Mark<A>\ncontract Base<A>: Tree\n    Self.(Tree).Child is Mark<A>\ncontract MG<A>: Base<A>\n    Self.(Tree).Child is MG<Option<A>>\nfunc useBase<T>(t: ref/T) -> i32\n    T is Base<i32>\n    return 0\n", "InvalidConstraint_Kd: contract MG<A>: Base<A> <- Self.(Tree).Child is MG<Option<A>>")]
+    [InlineData("r2-refiner-rest", G563Mg + "contract Sub3<B>: MG<B>\n    Self.(Tree).Child is Mark<B>\n", G563MgRecord)]
     [InlineData("n.scc", G563Tree + "contract E<A>: Tree\n    Self.(Tree).Child is E<Option<A>>\n    Self.(Tree).Child is F<A>\ncontract F<B>: Tree\n    Self.(Tree).Child is E<B>\n", "InvalidConstraint_Kd: contract E<A>: Tree <- Self.(Tree).Child is E<Option<A>>; Self.(Tree).Child is F<A> | InvalidConstraint_Kd: contract F<B>: Tree <- Self.(Tree).Child is E<B>")]
     [InlineData("n.qual", "contract DQ<U>\n    associate M\n    Self.(DQ<Option<U>>).M is i32\n", "*: * | ...")]
     public void AnExpandingContractCycleIsItsContractsError(string form, string program, string records)
