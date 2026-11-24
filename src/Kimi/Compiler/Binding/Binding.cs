@@ -37,7 +37,7 @@ public sealed partial class Binding
     private List<BindingIssue> issues;
     private List<LibraryImport> libraryImports;
     private List<BindingObligation> obligations;
-    private HashSet<BindingObligation> obligationSet;
+    private HashSet<ObligationKey> obligationSet;
     private List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> foreignFailures;
     private bool running;
 
@@ -110,6 +110,7 @@ public sealed partial class Binding
         this.inferredConstructionTargets = new(this);
         this.qualificationStops = new(this);
         this.formationCauses = new(this);
+        this.judgedOccurrences = new(this);
         this.knownBases = new(this);
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
