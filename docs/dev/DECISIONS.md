@@ -10927,7 +10927,7 @@ resumed by R4-M86 (2026-10-20).
   member) `ClosedClause` became an instance member too. U1's entry states the states, the writer, B1's rule and the readers.
 
 - **BU-56 A declaration's written Origin that names a body local's written Type and selects a body local's atom is a located
-  `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (superseded in part by BU-89: its removal condition's E2 item;
+  `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (superseded in part by BU-89: its removal condition's E2 item, and by BU-258: narrowed to the located limit for a selection no body reads;
   the declaring body and the name link remain) (2026-10-30; PLAN G230, BU's unit bu70: option (B) of its stopped design, R4 agreeing)
   SPEC 15.3.4, 23.1.1, 23.1.2.
   - SPEC reading: a named nested function's signature may name visible Origins of enclosing functions, each a fixed Origin of it, and a
@@ -18521,6 +18521,29 @@ resumed by R4-M86 (2026-10-20).
     (2)); the intersection with the instantiated rows for every binding (accepts keepS1RawBad and G841c's W2); SPEC 15.6's callable
     clause read literally for a concrete Closure (the owner's Q2 (a)); A5 testing the case Type at the kept entry.
   - Open: PLAN G1366 (one publisher of SPEC 15.6's Type-level Loan predicate).
+- **BU-258 A named nested function's declaring body is recorded by the index walk; its signature's name of an enclosing body local names
+  that local's region (PLAN G230 (A); R7-O3 O3-A)** (Front, 2026-11-24; Binding; Q-751, D-1248; Major, an acceptance and A5-verdict mover;
+  F's rulings O3-1, O3-11..O3-26) SPEC 15.3.4, 15.6.5, 7.2.3. Supersedes in part BU-56, BU-89's "until G230 (A)" and D-990's result rule.
+  - Representation: `BindingSymbol.DeclaringBody` is the one recorded fact for the body that declares a function: a Closure's evaluating
+    body (written at its header scope; `BoundClosure.EvaluatingBody` is deleted) and a named nested function's declaring body (written by
+    the index walk's current-body state `indexBody`: a function's own body, a default template's (f, i), none in a Type's declaration or
+    for a module-level function). `EvaluatingBody` returns it for every body, so the view's row 6 (`EnclosingAtom`), `ParameterVisible`
+    (7.2.3) and `RegionBounded` read one chain: in a named nested function's body the atoms of the bodies that declare it are fixed with no
+    premise (A1's `CarriedRegion` gives a named function no value). `RegionBounded` reads that chain alone; its syntactic
+    `IsWithin(forming, owner)` tail is removed (it differed only for a member of a Type declared in a body, which is misplaced syntax).
+  - The result fit is at the value: a function's and an accessor's expression-body result fit takes the value as its use, as a `return`
+    does, so every reading at the use resolves in that body (nf_lift, an invalid program, was accepted through the function node's use
+    reading an enclosing `let` region as its value).
+  - The name link: BindFunction's re-bind, with the body's locals bound, binds a result the header could not bind like each parameter
+    (D-990's located `Unsupported_Kd` is removed); a declaration's plain name of an annotated body local is that local's region slot.
+    BU-56 is narrowed to `UnlinkedLocalType`'s located limit for a declaration's selection of a body local's annotation or set atom that
+    no body reads.
+  - A call in the declaring body (C-537, F's O3-26, R8-M56): a nested signature's `during r` read at a call in r's own body reads a `let`
+    r's region as its value, so `pass(inner@ref)` must outlive that value (t7d_fn, t7e_blk invalid, `UnsatisfiedOriginRelation_Kd`; a
+    `var r` is an inferred region, t7v_fn valid).
+  - Rejected: a FunctionKoto member (a semantic fact on syntax); a second chain beside `EvaluatingBody`; a body derived from syntax parents
+    at use; `BindingScope.Function` at DeclareFunction (gives f, not (f, i), in a default value).
+  - Open: PLAN G230's N1, N2, acc_lift and the module-level form; G1369 (t4_clause).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -31208,6 +31231,25 @@ R8-M* and R9-M* by the stage of the recording unit.
     `ProjectFile.Load` for a text `ConfigurationText` accepts (R9 part B's Revision 2). The Open line's `Project.TryCreate`'s
     catch-all (G1010) closes; G1010 keeps N5's contracts.
 
+- **R9-M13 The command line's one option table** (Middle, 2026-11-24; PLAN G1236, G1237; Q-750, D-1246; Major; the owner's O-525, O-526,
+  O-527 (a); design review REVISE then ACCEPT WITH CONDITIONS, implementation review ACCEPT WITH CONDITIONS)
+  - `KimiOptions` owns the options of every command but lsp's (PLAN G1251): one table, a row per option (name as IMPL spells it, kind
+    `Value`/`Boolean`/`BareBoolean`/`Flag`/`Removed`, the commands that take it, the values IMPL lists for it), and one reader,
+    `KimiOptions.Read(command, args)`: the values by row name, the inputs, the invalid options' texts in order. `KimiOptions.From` gives
+    the compiler options (`Manifest`, `NoBuild`, `Report` added).
+  - Rule (O-525, O-526): an option word (`SimpleParserHelper.IsOptionName`) names the row whose name equals it after its leading dashes,
+    ignoring case; a word of dashes alone is an input; a value is never an option word; a Boolean value reads as `bool.TryParse` reads it
+    and a listed value exactly but ignoring case; `--no-build` and `--locked` stand alone. An unknown option, a removed one (its removal
+    text), a missing value, a value outside the listed set and a repeated option in any spelling are invalid. `CommandExecution.Execute`
+    prints each on standard error before the action (exit 1); `TestOptions.Read` binds first, so `kimi test` reads `--Format`, and
+    `TestOptions.Validate` raises the first (exit 2). `restore` takes `--Target` (O-527 (a)); a quoted option word is an option on every
+    command; a help request runs no command and lists no options (PLAN G1367).
+  - Deleted: `ExpandFlags`, `RemovedOption`, the `[SimpleOption]` attributes and the three `Options` classes, `TestOptions`' name list,
+    value rule, `--Format` check and Boolean conversion, `CheckCommand`'s `OrdinalIgnoreCase` comparison and its "Unknown --Format" text,
+    `TestCommand`'s raw `--format` scan. Command names keep the parser's case-insensitive reading (IMPL is silent).
+  - Rejected: the parser's binding kept for every command, test on a `[SimpleOption]` class (value sets, bare Booleans, flags and removed
+    rows would still need a reader beside it: two owners); a pre-check before the parser binds (a second copy of the rule).
+
 ## Tatara (adopted 2026-11-19)
 
 Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
@@ -31778,6 +31820,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     IMPL change); an ordinal `--Name` match (C4: narrower than the parser's rule); the first hit only in the command layer (N4-2); the
     command's console writer (standard output, where `check --Format json` puts its document); copying `-Dll` beside the test
     output's `Kimi.dll` (an output the next `PreserveNewest` build does not restore).
+  - Superseded in part by R9-M13 (2026-11-24): (i) the Reading is now `KimiOptions.Read`'s own rule (names after their leading dashes, ignoring case), pinned by `CommandOptionsTest.ARemovedOptionIsNamedAsTheReaderBindsAnOption`; (ii) `Removed` is `Kind.Removed` rows of the one table (texts kept), `RemovedOption` is deleted, its two readers are the reader's errors; (iii) consequence (4): `check T --Target --LlvmBin` reports "Missing value: --Target" and the removal; (iv) the `--` sentence stands; (v) consequence (2): a help request runs no command and lists no options; (vi) consequence (3) holds for every option word on every command. Consequences (1) and (5) stand.
 - **T-M16 The toolchain root's `windows_x64` removed** (Tatara, 2026-11-22; the plan's unit B6b6, PLAN G1210 and G1228-G1230,
   Q-649, D-1066; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §7; design review C-437 with T's rulings N6-1 and
   N6-2, and T's rulings on C-444's N4-N6 (`units\B6\brief-b6b6-impl.md`); the Middle's implementation review C-452, ACCEPT, C1 met
@@ -31961,6 +32004,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: an exact object check (leafness needs disassembly; a copy of LLVM's decision), a forced entry for leaves (O2 cost), an
     IR `uwtable` check in the build (a second copy of the emitter's rule). The fact's removal is staged as PLAN G1271 states
     (removal condition: Tatara B7b7 lands).
+  - Amended by T-M43 (LinkAmbiguity phase A, 2026-11-24): the staged removal is done (PLAN G1271; B7's ruling 2):
+    `ObjectFacts.HasUnwind`, `inspect.cpp`'s unwind scans (COFF `.pdata`, ELF `.eh_frame`) and `tatara_flag` kind 0 are gone;
+    kind 0 returns -1 and its number is never reused; the tool comparison compares the default-library fact only.
 - **T-M22 Tatara's ELF side: one link export for both LLD drivers, one inspection for COFF and ELF** (Tatara, 2026-11-22; the plan's
   unit B7b1, Q-665, D-1099; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.1 §3.1; the Middle's reviews, C-445
   of the design and C-456 of the implementation, ACCEPT WITH CONDITIONS; Major).
@@ -31978,6 +32024,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     design's first reading: no managed path would link an ELF, and a test calling the export directly would bypass Tatara's lock,
     against `tatara.h`'s "callers serialize calls"); the flavor chosen from the target triple inside Tatara (a consumer deciding by
     syntax what the row publishes, B7b7's `Format`).
+  - Amended by T-M43 (2026-11-24): flag 0 is removed (see T-M21's line); `tatara_inspect` also reads archives.
 - **T-M23 Volatile access is two Raw intrinsics** (Tatara, 2026-11-23; OSF2). `Raw.readVolatile<T>(storage: raw/T) -> T` and
   `Raw.writeVolatile<T>(storage: raw/T, value: T)`, `unsafe`, `T is PrimitiveInteger`, on every target (the owner's O-489 (d) (a),
   plan decisions 36-43; design B10 Revision 2.1 §5; Q-678, D-1127). `IntrinsicId` +2 (`VolatileRead`, `VolatileWrite`; limit 27 → 29
@@ -32633,3 +32680,26 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   windows, never closes them), detection by hashing (a write and a restore pass it), LLD reading memory (its driver takes paths);
   emitting from the optimized module (the plan's §8 candidate 1: about 2 % of a warm O2 build line, but 27 of 6,981 fixtures'
   objects change by the use-list order) stays a later unit on this ABI after an owner question (design §5, §11).
+- **T-M43 Tatara's inspect reads archives** (Tatara, 2026-11-24; PLAN G1329, D-1191, Q-748, D-1244; Major; design
+  `artifacts\handoff\tatara\units\LinkAmbiguity\design.md` Revisions 0-3a, phase A of §5; the Middle's C-514 and C-533, ACCEPT;
+  T's rulings (a), 19, 22, 32 and B7's rulings 1-2). `tatara_inspect` accepts an archive and reads each member as llvm-nm does (COFF
+  and ELF objects; COFF short import members by their import type, code `T X` and `T __imp_X`; bitcode members through
+  `IRObjectFile`, since lld-link links them), and a whole input in the same formats (one predicate: a lone short import member or
+  bitcode object is read as a member is); kinds 1 and 2 hold one block per member in archive order, each ended by an empty line (an
+  object is one member); text kinds **4** (each member's form: `o` relocatable, `i` short import member, `s` linked image), **5** (the
+  defined names whose section admits copies: COFF `IMAGE_SCN_LNK_COMDAT` selecting any, same size, exact match or largest; ELF a
+  `GRP_COMDAT` group's sections; a bitcode member's names in a comdat selecting any, exact match, largest or same size, from its IR
+  symbol table; a `nodeduplicate` bitcode comdat's names are ordinary definitions by T's reading (i) of ruling 32, not by a claim
+  about LLD), **6** (a COFF member's `.drectve` `/include:` and `/alternatename:` references, and a bitcode member's COFF linker
+  options, split by LLVM's Windows command-line tokenizer as lld-link splits them, with LLD's four prefixes `/`, `-`, `/?`, `-?` and
+  any case, a reference missing a name skipped, every other option LLD's: the archive's headers hold no `lld/COFF` parser or option
+  table) and **7** (the archive's symbol index, each entry's member by its position); flag kind **2** (archive). A thin archive fails
+  (1, "thin archive"); a malformed archive fails with LLVM's text (1, Tatara can run again); so do a short import member LLD calls
+  broken ("broken import library": LLD's size and name check, which `COFFImportFile` lacks) and a listed name that is empty or holds
+  a line break (the texts are lines; an empty line ends a block). The index names members by their position in archive order;
+  llvm-lib writes its members in reverse command-line order, so its index, naming the command line's last definer, names the first
+  definer in member order. `Tatara.ObjectFacts` is `(Members, Index, IsArchive, HasDefaultLibrary)`, one representation (an object
+  is `Members[0]`, which `NativeBuild.Inspect` reads). No build reads an archive yet: the read is a published fact whose reader, the
+  native build's dependency step, lands with G1329's phase B (removal condition of that temporary state: phase B lands). Phase B's
+  full entry supersedes this one. Rejected: LLD's private COFF directive parser declared in Tatara (a mirror of an internal ABI), a
+  second managed reader of archives, keeping `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact).

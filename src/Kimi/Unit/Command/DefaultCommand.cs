@@ -4,12 +4,14 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("Default", IsDefault = true)]
+[SimpleCommand(DefaultCommand.Name, IsDefault = true)]
 public class DefaultCommand(Kimigayo kimigayo) : ISimpleCommand
 {
+    public const string Name = "Default";
+
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(kimigayo, args, () =>
+        Environment.ExitCode = await CommandExecution.Execute(kimigayo, Name, args, (_, _) =>
         {
             if (args.Length != 0)
             {
