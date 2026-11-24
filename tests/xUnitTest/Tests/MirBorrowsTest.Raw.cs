@@ -1731,14 +1731,17 @@ public sealed partial class MirBorrowsTest
     // `during self` layer or an enclosing Place through a dereference carries its owner's own-step entry at its exact lent position
     // (MirBorrows.Lent) with every Loan its parents carry, so the owner's Move under it conflicts (and departs the owner's own step where the
     // position names the owner from its root); where the read's own steps name the owner past the dereference, the base's row (g1, g2, g5,
-    // ix2: the owner the lender's Place or past it). G1276 (E-a): an owner step in a lender's steps names the lender's own Place past its
-    // Deref (Lent's LentPlace), so the read carries its parents whole through a raw lender (pr1, pr2, pr3: two lender segments; pre: an
-    // enclosing Tuple; prw: a write; pru: a uniq lender) and a shared one (n2, n2v leave the limit). Where no exact position exists and
-    // the own steps name no owner, in a view whose borrow the base marked, the read's located Unsupported_Kd (tw3: a reference stored
-    // twice); elsewhere silent (G1301's open classes: prs, a pointer stored twice, and prc2, a call's result, invalid or undecided by the
-    // text and accepted; bn1, bn2, valid reads through a call's result, accepted; bn3 conflicts by 15.6.4). The Warning of a non-direct
-    // entry is N10's (pr1: not given); a plain address is a direct entry and gives it (pra). Labels from SPEC (Z5-R1 design section 5;
-    // G1276 design section 6, before any run; pra's Warning corrected after it, as the design's section 7 measured it).
+    // ix2: the owner the lender's Place or past it). G1276 (E-a, Revision 1c): an owner step in a lender's steps applies to the Place the
+    // steps before it name from the position's root where the body has that Place's row, direct (oh1, oh2: a reference to an owning
+    // handle's payload; oh3, oha: that payload's Deref past a whole-handle lender, oha's an address, which carries no Loan), else to its
+    // Prefix row past the lender's Deref (Lent's LentPlace), so the read carries its parents whole through a raw lender (pr1, pr2, pr3:
+    // two lender segments; pre: an enclosing Tuple; prw: a write; pru: a uniq lender) and a shared one (n2, n2v leave the limit). Where
+    // no exact position exists and the own steps name no owner, in a view whose borrow the base marked, the read's located
+    // Unsupported_Kd (tw3: a reference stored twice); elsewhere silent (G1301's open classes: prs, a pointer stored twice, and prc2, a
+    // call's result, invalid or undecided by the text and accepted; bn1, bn2, valid reads through a call's result, accepted; bn3
+    // conflicts by 15.6.4). The Warning of a non-direct entry is PLAN G1277's (N10; pr1: not given); a plain address is a direct entry
+    // and gives it (pra). Labels from SPEC (Z5-R1 design section 5; G1276 design section 6 and Revision 1c section 3, before any run;
+    // pra's Warning corrected after it, as the design's section 7 measured it).
     [Theory]
     [InlineData("t5c", "let t = (b.pair@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
     [InlineData("mx", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
@@ -1771,6 +1774,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("prw", "var o = Outer.init()|let r = o@ref|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    o = Outer.init()|    usep(x)", "", "o = Outer.init()")]
     [InlineData("pru", "var o = Outer.init()|let r = o@uniq|let p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o")]
     [InlineData("pra", "let o = Outer.init()|let p = o.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "o OwnStepDeparture_Kd")]
+    [InlineData("oh1", "let h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|let m = h@move|usep(x)", "", "h|h OwnStepDeparture_Kd")]
+    [InlineData("oh1v", "let h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|usep(x)|let m = h@move", "", "")]
+    [InlineData("oh2", "var h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|let w = h@uniq|usep(x)", "", "h@uniq|h@uniq OwnStepDeparture_Kd")]
+    [InlineData("oh2v", "var h = Packet.init()@obj|let r = h@follow@ref|let x = r@follow.pair.0|usep(x)|let w = h@uniq", "", "")]
+    [InlineData("oh3", "var h = Packet.init()@obj|let rr = h@ref|let r = rr@follow@follow@ref|let x = r@follow.pair.0|let w = h@uniq|usep(x)", "", "h@uniq|h@uniq OwnStepDeparture_Kd")]
+    [InlineData("oh3v", "var h = Packet.init()@obj|let rr = h@ref|let r = rr@follow@follow@ref|let x = r@follow.pair.0|usep(x)|let w = h@uniq", "", "")]
+    [InlineData("oha", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    let w = h@uniq|    usep(x)", "", "h@uniq OwnStepDeparture_Kd")]
+    [InlineData("ohav", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    usep(x)|    let w = h@uniq", "", "")]
     [InlineData("prs", "let o = Outer.init()|let o2 = Outer.init()|let r = o@ref|let s = o2@ref|var p = s@follow.inner.pair@raw|p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "")]
     [InlineData("prc2", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw\n", "")]
     [InlineData("prc2v", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw\n", "")]

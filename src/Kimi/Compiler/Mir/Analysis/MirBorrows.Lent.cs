@@ -13,8 +13,9 @@ namespace Kimi.Compiler.Mir;
 // written through a pointer (ExposedHolder; an own-step entry's OwnerExposed is not read), a reference reached past a Deref, a runtime
 // Index or a Downcast, a Cast, an Adt or Fill aggregate.
 // A position's steps keep their kinds, classes, arguments and prefixes; a resolved step's Prefix is its own Place's, whose Type it reads.
-// Each step keeps the root of the Place whose walk gave it (the position's root, a lender's or the Place's own), so a step names the
-// body Place it applies to (LentPlace): the root for the first step, else its Prefix row from that root (G1276, E-a).
+// Each step keeps the body Place it applies to (LentPlace; G1276, E-a): the Place the position's steps before it name from the position's
+// root (the root for the first step; for a later step, its Prefix row where that row continues the previous step's Place, so named, by
+// the previous step); else its Prefix row from the root of the walk that gave it (a lender's or the Place's own), past that walk's Deref.
 // Inputs: the view's body, the Loans' store record and Exposed, final once the Addresses pre-pass has run (it completes Exposed with the
 // holders a direct address names), and MirSteps' walk. Precondition: no Lent before the view's Addresses pre-pass has walked its uses
 // (its Place asks every position after the walk and before any own-step entry it makes).
@@ -34,7 +35,7 @@ internal sealed partial class MirBorrows
     private readonly List<int> lenderSteps = []; // Lender: the projections still to take from the Place followed, the next one last.
     private readonly List<int> lenderLocals = []; // Lender: the whole locals passed with no step left, whose lender the walk's is.
     private MirStep[] lentSteps = [];
-    private int[] lentRoots = []; // By lentSteps index: the root of the Place whose walk gave the step (LentPlace).
+    private MirPlace[] lentPlaces = []; // By lentSteps index: the body Place the step applies to (LentPlace).
     private MirStep[] lentWalk = []; // Lent's own step buffer (Resolved).
     private MirStep[] suffixes = []; // Resolve: the steps after each Deref passed.
     private int[] lentAt = []; // By location: a borrow's exact lent position, -1 for none, or Unmade.
@@ -68,17 +69,13 @@ internal sealed partial class MirBorrows
         return this.lentSteps.AsSpan(start, count);
     }
 
-    /// <summary>Gets the body Place a position's step applies to, which the steps before it name: the position's root for its first step,
-    /// else the step's Prefix row from the root of the Place whose walk gave it (past the first lender's Deref, the lender's own Place, or
-    /// the Place asked).</summary>
+    /// <summary>Gets the body Place a position's step applies to: the Place the steps before it name from the position's root, which
+    /// passes no borrow or raw Deref, where the body has its row; else the step's Prefix row from the root of the walk that gave it, past
+    /// that walk's Deref (decided once, when the position is made).</summary>
     /// <param name="position">A position of the view (<see cref="Lent"/>).</param>
     /// <param name="step">The index of one of its steps.</param>
     /// <returns>The Place.</returns>
-    internal MirPlace LentPlace(int position, int step)
-    {
-        var (root, start, _) = this.lentRuns[position];
-        return step == 0 ? new(this.RootOf(root), 0) : new(this.lentRoots[start + step], this.lentSteps[start + step].Prefix);
-    }
+    internal MirPlace LentPlace(int position, int step) => this.lentPlaces[this.lentRuns[position].Start + step];
 
     // Forgets the view's positions, at the start of its Loans.
     private void Unlend() => this.lentBegun = false;
@@ -279,23 +276,47 @@ internal sealed partial class MirBorrows
         return lender;
     }
 
-    // A new position: a root key, the steps of a position (-1: none), then the given steps, walked from the Place root `from`.
+    // A new position: a root key, the steps of a position (-1: none), then the given steps, walked from the Place root `from`. A lender's
+    // steps keep their Places (the same root); each given step takes its Place by Applied.
     private int Exact(int root, int lent, ReadOnlySpan<MirStep> steps, int from)
     {
         var (start, head) = (this.lentStepCount, lent < 0 ? 0 : this.lentRuns[lent].Count);
         MirDataflow.Grow(ref this.lentSteps, start + head + steps.Length);
-        MirDataflow.Grow(ref this.lentRoots, start + head + steps.Length);
+        MirDataflow.Grow(ref this.lentPlaces, start + head + steps.Length);
         if (lent >= 0)
         {
             this.lentSteps.AsSpan(this.lentRuns[lent].Start, head).CopyTo(this.lentSteps.AsSpan(start));
-            this.lentRoots.AsSpan(this.lentRuns[lent].Start, head).CopyTo(this.lentRoots.AsSpan(start));
+            this.lentPlaces.AsSpan(this.lentRuns[lent].Start, head).CopyTo(this.lentPlaces.AsSpan(start));
         }
 
         steps.CopyTo(this.lentSteps.AsSpan(start + head));
-        this.lentRoots.AsSpan(start + head, steps.Length).Fill(from);
+        var named = this.RootOf(root);
+        for (var i = start + head; i < start + head + steps.Length; i++)
+        {
+            this.lentPlaces[i] = this.Applied(named, from, start, i);
+        }
+
         this.lentStepCount += head + steps.Length;
         this.Work += head + steps.Length;
         this.lentRuns.Add((root, start, head + steps.Length));
         return this.lentRuns.Count - 1;
+    }
+
+    // The body Place the step at lentSteps index `i` of a position run from `start` applies to (LentPlace): the Place the steps before it
+    // name from the position's root `named`, which passes no borrow or raw Deref (R4-M234), where the body has its row: the root itself for
+    // the first step; for a later one its Prefix row where that row continues the previous step's Place, so named, by the previous step
+    // (rows are independent of their roots, so a lender's row may name it: `*r` where r lends a handle's payload `*h`). Else the Prefix
+    // row from `from`, the root of the walk that gave the step, past that walk's Deref.
+    private MirPlace Applied(int named, int from, int start, int i)
+    {
+        if (i == start)
+        {
+            return new(named, 0);
+        }
+
+        var (before, last, prefix) = (this.lentPlaces[i - 1], this.lentSteps[i - 1], this.lentSteps[i].Prefix);
+        var row = this.body.Projections[prefix];
+        return before.Root == named && row.Prefix == before.Projection && row.Kind == last.Kind && row.Arg == last.Arg
+            ? new(named, prefix) : new(from, prefix);
     }
 }
