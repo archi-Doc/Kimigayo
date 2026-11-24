@@ -589,9 +589,14 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[this.nodes[n]];
+            // PLAN G651 a2 (C1, BU-161; IMPL 21.3.2): the element's checks form the pairs and the members' signatures in a site frame at
+            // its owner where none is open (the agreement's proofs and the member loop's record name it), so a Type past the limit formed
+            // there is refused at the owner.
+            var site = this.OpenQuerySite(scope.Owner);
             this.ValidateAssociatedOverlapAgreement(scope); // SPEC 8.2.3's premise error is the identity classes' (Binding.TypeIdentity).
             if (scope.Owner is not ContractKoto contract || contract.BoundSymbol!.Contract is not { } shape)
             {
+                this.CloseQuerySite(site);
                 continue;
             }
 
@@ -681,6 +686,8 @@ public sealed partial class Binding
                     this.Fail(contract, BindingFailure.Access);
                 }
             }
+
+            this.CloseQuerySite(site);
         }
     }
 }

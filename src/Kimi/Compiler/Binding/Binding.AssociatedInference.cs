@@ -210,6 +210,9 @@ public sealed partial class Binding
 
         foreach (var path in this.impls.InPass.Paths)
         {
+            // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the conformance (PrepareAssociatedBindings' site, R7-M38) is the site of a Type its
+            // bindings form past the limit, in a site frame where none is open.
+            var site = this.OpenQuerySite(path.Declaration);
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
                 if (this.ResolveAssociated(path, identity, out _) is { } result && !this.PendingAssociatedType(result))
@@ -225,6 +228,8 @@ public sealed partial class Binding
                     }
                 }
             }
+
+            this.CloseQuerySite(site);
         }
 
         foreach (var path in this.impls.InPass.Paths)
