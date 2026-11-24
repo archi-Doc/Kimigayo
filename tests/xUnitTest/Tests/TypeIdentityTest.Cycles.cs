@@ -362,8 +362,8 @@ public partial class TypeIdentityTest
     // itself (pathqn above; before the bound it did not finish). Each row is a whole program after CyclePrelude. A declaration
     // whose requests are refused has the limit's record, PremiseClosureLimit_Kd, once (SPEC 8.3.3 Limits: "reported once ... at
     // the declaration that reaches it"), at its first refused use, and a later refused use rests on it (pq2: two uses, one record;
-    // F's ruling 206), alone (pqmix beside a proven use, pqorn, pqand, pqdn, pqodd); a request refused where no check's frame is
-    // open (a bare acquisition's Copy, judged at HIR publication) has it at the function whose premises it read (pqcopy, pqcopy2);
+    // F's ruling 206), alone (pqmix beside a proven use, pqorn, pqand, pqdn, pqodd); a bare acquisition's Copy, judged at HIR
+    // publication in a site frame at the Place it acquires (R7-C6 a), has it at that use (pqcopy, and pqcopy2's first read);
     // a judgment other evidence proves stands and nothing is
     // recorded (pqor, pqoro: a disjunction's Proven operand; before the bound they did not finish); a request proven within the
     // bound is proven (pqd1, pqd2, pqcopyv); a value that is moved needs no such judgment (pqmovev, pqletv, pqrefv ask none;
@@ -557,7 +557,8 @@ public partial class TypeIdentityTest
     // an `if`, `do`, `while` or `for` body, a match arm or a Closure (none states premises: a Closure's body is an ExecutableBody,
     // F.9.1) is its definition's and rests on the definition's one record, at its first refused use (the review's tw-blk, tw-blk2,
     // tw-do, tw-while with the nested use on `y`, so the record's line names the use: N1); a named function written in the body is
-    // its own declaration (tw-local: two records); a Copy judged with no check frame open records at the declaration (tw-copyblk).
+    // its own declaration (tw-local: two records); a bare acquisition's Copy, judged at HIR publication in a site frame at the Place
+    // (R7-C6 a), records at its first refused use (tw-copyblk; before, with no frame open, at the declaration).
     // Each row is a whole declaration after CyclePrelude and Pq; b0cec6e90 gave the block's, arm's or Closure's own record too.
     // F's ruling 220 (SPEC 8.2.3, 8.8.1: a conditional conformance's scope is a constrained declaration of its own): a conformance
     // path's requests extend the closure of the declaration whose premises it extends, so each conditional conformance has its own
@@ -572,7 +573,7 @@ public partial class TypeIdentityTest
         { "tw-arm", PqUses + "    need(x)\n    match 1\n        1 => need(y)\n        _ => ()\n", "PremiseClosureLimit_Kd: need(x)" },
         { "tw-closure", PqUses + "    need(x)\n    let g = func () => need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
         { "tw-local", PqUses + "    need(x)\n    func g<U>(z: ref/U.(Pq).Up)\n        U is Pq\n        need(z)\n", "PremiseClosureLimit_Kd: need(x) | PremiseClosureLimit_Kd: need(z)" },
-        { "tw-copyblk", "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    if true\n        return x\n    return x\n", "PremiseClosureLimit_Kd: func f<T>(x: T.(Pq).Up) -> T.(Pq).Up" },
+        { "tw-copyblk", "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    if true\n        return x\n    return x\n", "PremiseClosureLimit_Kd: return x" },
         { "tw-cc2", BoxWhen, "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq" },
         { "tw-cc3", BoxWhen + "    Self is Has3 when T is Pq\n        associate Has3.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq | PremiseClosureLimit_Kd: Self is Has3 when T is Pq" },
         { "tw-ccdir", HasItems + "struct Box<T>\n    T is Pq\n    var v: i32\n    Self is Has1\n    associate Has1.Item is T.(Pq).Up\n    Self is Has2\n    associate Has2.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1" },

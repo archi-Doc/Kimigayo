@@ -173,7 +173,7 @@ public partial class KimiLibraryShapeTest
         }
 
         var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
-        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Depends", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
+        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Depends", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
         {
             var value = (IEnumerable)LibraryLayer.ValueAt(binding, store);

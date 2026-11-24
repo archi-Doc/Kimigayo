@@ -111,7 +111,8 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 // it here; the first one is kept. Its failed premises' cause is what a proof that consults one rests on (PremiseFailure,
 // the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
 // otherwise.
-// R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is.
+// R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is; also a failed
+// Copy opt-in's clause, read by the engine's NominalCopy (R7-C6 a, F's C8 ruling 25: CopyDeclaration.Failed).
 // R7-E5 c1 (design-inputs-read Rev 2 R2.2 (2), F's ruling 343): and the failed fact's origin, the clause whose own check failed it
 // (ConstraintEnvironment.CauseOf), none for a premise FailPremise failed.
 internal sealed class PremiseFailure(Koto owner, IsKoto? origin) : ICheckCause
