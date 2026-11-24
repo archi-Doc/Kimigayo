@@ -162,7 +162,7 @@ internal sealed partial class TyCtxt
     // instance: the definition's case-free receiver unless it is Shared, else Exclusive where a capture whose bare acquisition Reborrows
     // by case (BoundCapture.BareReborrows) has an exclusive layer as its component in this Type (`uniq`, `objuniq`, or a pair layer
     // admitting one), else Shared; the instance gives Receiver. MirCases.Branch decides a by-case call's side by it, and MirValidator's
-    // case row checks that no view acquires a Closure more strongly than it admits (SPEC 7.7.3, PLAN G13).
+    // case row checks that each view borrows a Closure callee in the receiver it admits (SPEC 7.7.3, PLAN G13).
     internal SemanticsKind ClosureReceiverIn(BoundType closure)
     {
         var definition = BoundClosure.Of(closure)!;

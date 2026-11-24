@@ -9,8 +9,8 @@ namespace Kimi.Compiler.Mir;
 //   premises make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
 //   Adapts; an operator takes its operands in the operator table's domain, Operates; a keyed Storage's key is one whose start is
 //   open by the one rule of the start, MirTypes.StartsAtStorage: Keyed); every Semantics case view resolves each
-//   Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); no view acquires a
-//   Closure callee more strongly than its case admits (Receivers, SPEC 7.7.3); and the temps whose Type the tier reads as unknown
+//   Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); each view borrows a
+//   Closure callee in the receiver its case admits (Receivers, SPEC 7.7.3); and the temps whose Type the tier reads as unknown
 //   (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
 //   and their Places; the body's case views (MirCases).
@@ -126,10 +126,12 @@ internal sealed partial class MirValidator
             }
         }
 
-        // SPEC 7.7.3 (PLAN G13): a value call acquires its Closure callee no more strongly than the view's case admits. A callee operand
-        // whose case Type is `uniq/C`, C a Closure with the call receiver input (TyCtxt.HasReceiverInput), in a view whose case of C has a
-        // Shared receiver (TyCtxt.ClosureReceiverIn) breaks the builder's contract (MirBuilder.Calls: a by-case call's shared side is
-        // reached in those views); one finding per call, at the first view that breaks it, only in views that reach its block.
+        // SPEC 7.7.3 (PLAN G13): a value call borrows its Closure callee as the view's case admits. A callee operand whose case Type is a
+        // reference to C, a Closure with the call receiver input (TyCtxt.HasReceiverInput), in a view whose case of C has a Shared or
+        // Exclusive receiver (TyCtxt.ClosureReceiverIn) other than the reference's breaks the builder's contract (MirBuilder.Calls: each
+        // side of a by-case call is reached in the views of its receiver): `uniq/C` acquires more than a Shared receiver admits and `ref/C`
+        // supplies no Exclusive call. A callee of unknown Type (TypeOf: an Opaque value's, where Binding failed its acquisition) is not
+        // read. One finding per call, at the first view that breaks it, only in views that reach its block.
         internal void Receivers(MirCases cases, ulong[]? reached)
         {
             var views = MirCases.Count(body);
@@ -142,6 +144,7 @@ internal sealed partial class MirValidator
                 }
 
                 this.at = call.Source;
+                var operand = this.TypeOf(call.Operand);
                 for (var view = 0L; view < views; view++)
                 {
                     if (reached is not null && (reached[block] & (1UL << (int)view)) == 0)
@@ -150,8 +153,9 @@ internal sealed partial class MirValidator
                     }
 
                     _ = cases.Select(body, view);
-                    if (cases.KnownTypeOf(call.Operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var closure] } callee &&
-                        types.HasReceiverInput(callee) && types.ClosureReceiverIn(closure) == SemanticsKind.Ref)
+                    if (cases.KnownType(operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var closure] } callee &&
+                        types.HasReceiverInput(callee) && types.ClosureReceiverIn(closure) is (SemanticsKind.Ref or SemanticsKind.Uniq) and var receiver &&
+                        receiver != callee.Semantics)
                     {
                         this.Report(MirViolation.Operation);
                         break;

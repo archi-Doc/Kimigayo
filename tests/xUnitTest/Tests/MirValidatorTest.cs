@@ -1723,11 +1723,11 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // R7 plan Z4 (SPEC 7.7.3; PLAN G13): a value call whose Closure receiver is by case borrows its callee exclusively only in the views
-    // whose case receiver is Exclusive (MirBuilder.Calls' case branch), so the built body is valid; with the branch's sides swapped, the
-    // owner view reaches the call whose callee operand is `uniq/C` while C's case admits a Shared receiver: one Operation finding at that
-    // call (MirValidator.Types' Receivers), and none for the uniq view's shared borrow.
+    // whose case receiver is Exclusive (MirBuilder.Calls' case branch), so the built body is valid; with the branch's sides swapped, each
+    // call breaks it in the view that now reaches it (MirValidator.Types' Receivers), an Operation finding each: the owner view's `uniq/C`
+    // callee where C's case admits a Shared receiver, and the uniq view's `ref/C` callee, which supplies no Exclusive call.
     [Fact]
-    public void NoViewAcquiresAClosureMoreStronglyThanItsCaseAdmits()
+    public void EachViewBorrowsAClosureCalleeInTheReceiverItsCaseAdmits()
     {
         var c = MirBuildTest.Compile("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
             "    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n");
@@ -1741,7 +1741,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(2, calls.Length); // The call on each side, into one destination.
         var branch = blocks[at].Terminator;
         body.Terminate(at, MirTerminator.CaseSwitch(branch.Operand, body.AddCase(1, branch.Target), body.Cases[branch.Start].Target, branch.Source));
-        Assert.Equal([(MirViolation.Operation, body.Subject(calls[0].Source))], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+        Assert.Equal(
+            [(MirViolation.Operation, body.Subject(calls[0].Source)), (MirViolation.Operation, body.Subject(calls[1].Source))],
+            Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // SPEC 8.15, 23.1.1, 8.3.4: Binding publishes no part of a definition beyond PairBinder.CaseBound views or whose binders admit no case

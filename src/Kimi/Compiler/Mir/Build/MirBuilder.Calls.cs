@@ -72,7 +72,8 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var (info, frame) = (this.Info(node), this.Open(node, decider!, decision, this.located.Count));
+        var frame = this.Open(node, decider!, decision, this.located.Count); // Its CaseSwitch takes the statement start (Info).
+        var info = this.Info(node);
         this.Assemble(destination, call, node, first, given);
         this.Turn(frame, info);
         this.Assemble(destination, call, node, first, given);
