@@ -192,7 +192,7 @@ public sealed partial class Binding
     // reset empties, so a layer record would be dropped or explained by another pass's tables; a siteless height refusal too: its
     // at-once report does not survive ReportDiagnostics, which invalidates the Binding partition and re-reports it only while the flag
     // holds, and the program pass's ResetPass clears the flag, so a library one would be dropped silently; the term goes with the flag's
-    // Transitional, G651 a1. A startup record is never the library pass's: CheckStartup runs after a Final Bind, outside every pass,
+    // Transitional, G651 a4. A startup record is never the library pass's: CheckStartup runs after a Final Bind, outside every pass,
     // over the source modules only; and, from PLAN G949 Stage 2 U2a (C1 (x)), no record in the library module's syntax list), else it
     // is refused: its records are reported by the per-record steps while its tables stand and kept as typed facts in the layer's
     // refusal (LibraryLayer.Refusal; a syntax record stays its module's list's, which the refusal only notes: form (R)), false
@@ -347,6 +347,7 @@ public sealed partial class Binding
             ResolvedCount = layer.ResolvedCount + program.ResolvedCount,
             UnresolvedCount = layer.UnresolvedCount + program.UnresolvedCount,
             InvalidCount = layer.InvalidCount + program.InvalidCount,
+            LimitedCount = layer.LimitedCount + program.LimitedCount,
         };
     }
 
@@ -360,14 +361,12 @@ public sealed partial class Binding
     // the layer's when the running part is not the layer's (R1.1's list order), which the driver hands over with the part
     // (selectableEffectClauses), so no pass reads another pass's part of the previous Bind. Two forms of access, by meaning: a composed
     // list, a collection found by the find and a per-pass memo (EnumerateIndex) are handed over as the fields their steps write or read
-    // (EnterPass); a per-pass node-keyed table (a member the "Node-keyed table members in Binding" ratchet counts: PatternNodes and
-    // CandidateScopes, with their previous-run lists) is declared here once and read through the running pass's part (this.pass.Part),
-    // so a member that ratchet counts never returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch).
-    // ForeignFailures lists the nodes of a module the pass does not bind that it wrote, each with its state before and the state and
-    // failure the pass recorded in place of the node's columns (the recorder, Binding.Diagnostics.Prerequisites.cs): their records and
-    // counts are the failing pass's (CountStates). Counts is the pass's
-    // contribution to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: a program pass's
-    // own nodes plus each foreign node's final state less its earlier one.
+    // (EnterPass); a previous-run list (PreviousPatternNodes, PreviousCandidateScopes) is read through the running pass's part
+    // (this.pass.Part). ForeignFailures lists the nodes of a module the pass does not bind that it wrote, each with its state before
+    // and the state and failure the pass recorded in place of the node's columns (the recorder, Binding.Diagnostics.Prerequisites.cs):
+    // their records and counts are the failing pass's (CountStates). Counts is the pass's contribution to the Bind's Result
+    // (ComposeResult), not a tally of the part's nodes, which only the views count: a program pass's own nodes plus each foreign node's
+    // final state less its earlier one.
     internal sealed class PassPart
     {
         // The facts the failures in ForeignFailures carry, each at its entry's index (Binding.SetRecordedFact).
@@ -417,15 +416,10 @@ public sealed partial class Binding
         // The pass's import declarations (Binding.Attributes.cs).
         internal List<BindingSymbol> ImportDeclarations { get; } = new();
 
-        // The pattern nodes and guard scopes the pass indexed, and those of its previous run, which its prune steps compare
-        // (Binding.Patterns.cs: PruneCandidateScopes, PrunePatternScopes): each pass's own, so a pass prunes against its own previous
-        // run and never removes a scope or symbol another pass indexed. Their one declaration is here (a node-keyed table is counted
-        // once, DECISIONS BU-220's ratchet), so their steps read them through the running pass's part.
-        internal HashSet<Koto> PatternNodes { get; } = new(ReferenceEqualityComparer.Instance);
-
+        // The pattern nodes and guard scopes the pass's previous run indexed, copied from their family (IndexedPatterns) at its reset,
+        // which its prune steps compare with the new run's (Binding.Patterns.cs: ResetMatches, PruneCandidateScopes, PrunePatternScopes):
+        // each pass's own, so a pass prunes against its own previous run and never removes a scope or symbol another pass indexed.
         internal List<Koto> PreviousPatternNodes { get; } = new();
-
-        internal HashSet<Koto> CandidateScopes { get; } = new();
 
         internal List<Koto> PreviousCandidateScopes { get; } = new();
 

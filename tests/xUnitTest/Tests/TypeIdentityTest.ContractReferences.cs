@@ -36,6 +36,20 @@ public partial class TypeIdentityTest
 
     private const string Nest = "struct Outer<A>\n    public struct Inner\n        public init() => ()\n";
 
+    private const string Converge = "contract C<E>\ncontract Q<U>: C<i32>, C<U>\nfunc need<T>(x: ref/T) -> i32\n    T is C<i32>\n    return 1\n";
+
+    private const string Agree = "contract C<E>\n    associate Item\ncontract Q<U>: C<i32>, C<U>\nstruct Gx<A>\n    Self is Q<A>\n";
+
+    private const string UseItem = "    public init() => ()\nfunc f(a: ref/Gx<i32>) -> ()\n    let v: Gx<i32>.(C<i32>).Item = 1\n    return\n";
+
+    private const string Merged = "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n";
+
+    private const string UseTag = "func f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true\n    return\n";
+
+    private const string Two = "contract Q<U, V>: Iter<U>, Iter<V>\n";
+
+    private const string Direct = "contract Q2<U>: Iter<U>\n";
+
     private const string Key = "struct Name\n    Self is Copy\n    public let id: isize\n    public init(id: isize) => self.id = id\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -134,9 +148,35 @@ public partial class TypeIdentityTest
 
     // SPEC 8.5.1, 8.5.5, 8.6.1: a specification's qualifier is a direct conformance, normalized; a Tag left unspecified and uninferred fails at the
     // conformance on its own.
-    [InlineData("C3", "sp2", HasItem + Tagged + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\nfunc f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true\n    return\n", "", Explicit = true)]
+    [InlineData("C3", "sp2", HasItem + Tagged + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\nfunc f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
     [InlineData("guard", "sp2n", HasItem + Tagged + "struct B<S>\n    S is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n", "AssociatedTypeInferenceFailed_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: associate Iter<i32>.Tag is bool")]
     [InlineData("guard", "sp2u", HasItem + Tagged + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<u8>.Tag is bool\n", "AssociatedTypeInferenceFailed_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: associate Iter<u8>.Tag is bool")]
+    [InlineData("C3", "sp3", HasItem + TagSeq + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Seq<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\nfunc f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
+    [InlineData("guard", "sp3u", HasItem + TagSeq + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Seq<S.(HasItem).Item>\n    associate Iter<u8>.Tag is bool\n", "AssociatedTypeInferenceFailed_Kd: Self is Seq<S.(HasItem).Item> | InvalidAssociatedType_Kd: associate Iter<u8>.Tag is bool")]
+
+    // SPEC 8.6.1, 8.9.2 (PLAN G798): conformances naming one bound reference at an instance are one conformance, explicit or implied by
+    // refinement, through one direct conformance or two; two direct conformances that collide are an error at the later clause (8.9.1).
+    [InlineData("guard", "cv1", Converge + "struct Gx<A>\n    Self is Q<A>\n    public init() => ()\nlet g = Gx<i32>.init()\nlet n = need(g@ref)\n", "")]
+    [InlineData("guard", "cv2", Converge + "struct G<A>\n    Self is Q<A>\n    Self is C<i32>\n    public init() => ()\nlet g = G<i32>.init()\nlet n = need(g@ref)\n", "")]
+    [InlineData("guard", "cv3", "contract C<E>\ncontract Q1<U>: C<U>\ncontract Q2: C<i32>\nfunc need<T>(x: ref/T) -> i32\n    T is C<i32>\n    return 1\nstruct H<A>\n    Self is Q1<A>\n    Self is Q2\n    public init() => ()\nlet h = H<i32>.init()\nlet n = need(h@ref)\n", "")]
+    [InlineData("guard", "cv4", "contract C<E>\nfunc need<T>(x: ref/T) -> i32\n    T is C<i32>\n    return 1\nstruct M<S>\n    Self is C<S>\n    Self is C<i32>\n    public init() => ()\nlet m = M<i32>.init()\nlet n = need(m@ref)\n", "DuplicateBinding_Kd: Self is C<i32> | UnprovenConstraint_Kd: let n = need(m@ref)")]
+    [InlineData("guard", "cv5", "contract C<E>\ncontract Q<U, V>: C<U>, C<V>\nfunc need<T>(x: ref/T) -> i32\n    T is C<i32>\n    return 1\nstruct G<A, B>\n    Self is Q<A, B>\n    public init() => ()\nlet g = G<i32, i32>.init()\nlet n = need(g@ref)\n", "")]
+
+    // SPEC 8.9.2: one conformance's paths at an instance agree, so a use selects it through any of them; a disagreement is the declaration's error.
+    [InlineData("C3", "cv6", Agree + "    associate C<i32>.Item is i32\n    associate C<A>.Item is i32\n" + UseItem, "")]
+    [InlineData("guard", "cv6n", Agree + "    associate C<i32>.Item is i32\n    associate C<A>.Item is i64\n" + UseItem, "IncompatibleContractImplementation_Kd: Self is Q<A> | InvalidConstraint_Kd: let v: Gx<i32>.(C<i32>).Item = 1")]
+
+    // SPEC 8.6.1, 8.9.2 (PLAN C3b-2): a specification whose qualifier names one conformance through several members (merging paths under the
+    // premises) belongs to the whole set, which is not implemented yet: the located limit at each such specification, whatever the members' order.
+    // The use's Constraint rests on that limit (rule W, F's ruling 5: no record at the use; mg2bm without the marker); the marker `= true`
+    // keeps dev's TypeMismatch_Kd against the projection, which names no Type (PLAN C3b-2).
+    [InlineData("guard", "mg1", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<i32>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
+    [InlineData("guard", "mg2", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<i32>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
+    [InlineData("guard", "mg2r", HasItem + Tagged + Direct + Merged + "    Self is Q2<R.(HasItem).Item>\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<i32>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
+    [InlineData("guard", "mg1b", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
+    [InlineData("guard", "mg2b", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
+    [InlineData("guard", "mg2bm", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\nfunc f(a: ref/B<SrcI, SrcI>, t: B<SrcI, SrcI>.(Iter<i32>).Tag) -> ()\n    return\n", "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is bool")]
+    [InlineData("guard", "mg3", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is i64\n", "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is i64")]
 
     // SPEC 8.9.1: conformances that can collide are an error at the later clause, an unresolved projection included (step 4); the use is ambiguous.
     [InlineData("guard", "x2", "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "DuplicateBinding_Kd: Self is Indexable<i32> | AmbiguousBinding_Kd: let b = m[k]")]

@@ -121,7 +121,7 @@ public sealed partial class Binding
             this.FindResultEvidence(target, scope, context);
         }
 
-        context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
+        context.Expected = this.SelectCommonType(context.Evidence, scope, target, out var conflict);
         if ((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesAnyOrigin: true })
         {
             // SPEC 14.9.2, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
@@ -138,7 +138,7 @@ public sealed partial class Binding
 
         if (context.HasLiteral)
         {
-            context.Expected = this.BesideLiterals(context.Expected, scope);
+            context.Expected = this.BesideLiterals(context.Expected, scope, target);
         }
 
         if (conflict)
@@ -213,7 +213,7 @@ public sealed partial class Binding
                 var operandSyntax = KotoHelper.UnwrapParentheses(conversion.Left);
                 if (readConversions && (operandSyntax.BindingState == BindingState.Resolved || operandSyntax is IdentifierNameKoto) &&
                     this.ResultEvidence(conversion.Left, conversionScope) is { } operandType &&
-                    (this.IsReadType(operandType, conversionScope) || this.ReadTypeReferent(operandType, conversionScope) is not null))
+                    (this.IsReadType(operandType, conversionScope, source) || this.ReadTypeReferent(operandType, conversionScope, source) is not null))
                 {
                     return this.BindNode(conversion, conversionScope);
                 }
@@ -256,7 +256,7 @@ public sealed partial class Binding
                 return null;
             case InvocationKoto { Method: IdentifierNameKoto callee }:
                 var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee);
-                return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? this.CallResultEvidence(function.Type, scope, readConversions) : null;
+                return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? this.CallResultEvidence(function.Type, scope, source, readConversions) : null;
             case InvocationKoto { Method: MemberAccessKoto member } when !this.MayBeValueQualifier(member.Left is GenericsKoto generic ? generic.Identifier! : member.Left, this.NodeScope(member, scope)):
                 // A Type-qualified, fully formed container supplies its constructor/Case result without surveying arguments
                 // or evaluating a receiver. Unbound qualifiers and overloaded functions still wait for ordinary binding.
@@ -279,10 +279,10 @@ public sealed partial class Binding
                         }
                     }
 
-                    return this.CallResultEvidence(declaring, scope, readConversions);
+                    return this.CallResultEvidence(declaring, scope, source, readConversions);
                 }
 
-                return selected is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 }, Type: { } result } ? this.CallResultEvidence(this.MemberType(result, declaring), scope, readConversions) : null;
+                return selected is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 }, Type: { } result } ? this.CallResultEvidence(this.MemberType(result, declaring), scope, source, readConversions) : null;
             case RangeKoto or FromEndIndexKoto when !IsUnfittedLiteral(source) && SurveyablePosition(source):
                 // SPEC 4.6.2, 14.9.2: a written `^x` or range with a typed operand has an independent Type, which a
                 // literal-only source such as `0..3` beside `0..n` then fits.
@@ -318,13 +318,13 @@ public sealed partial class Binding
         }
 
         terminal = this.OperandTerminal(operand, type);
-        return this.BuiltinNumeric(terminal, scope);
+        return this.BuiltinNumeric(terminal, scope, operand);
     }
 
     // A signature's result Origins belong to the declaration and must be instantiated by the actual call before a join.
     // Its terminal read Type can still fit a literal; no borrowed Origin is taken from this survey.
-    private BoundType? CallResultEvidence(BoundType? result, BindingScope scope, bool readConversions)
-        => result is not { CarriesAnyOrigin: true } ? result : readConversions ? this.ReadTypeReferent(result, scope) : null;
+    private BoundType? CallResultEvidence(BoundType? result, BindingScope scope, QuerySite site, bool readConversions)
+        => result is not { CarriesAnyOrigin: true } ? result : readConversions ? this.ReadTypeReferent(result, scope, site) : null;
 
     private void FindResultEvidence(Koto target, BindingScope scope, ResultContext context)
     {

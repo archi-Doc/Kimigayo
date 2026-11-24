@@ -65,6 +65,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
+        MirDataflow.Grow(ref this.eStores, body.Statements.Length + body.Blocks.Length);
         var liveness = new Liveness(this, state);
         flow.Backward(ref liveness);
         liveness.Recording = true;

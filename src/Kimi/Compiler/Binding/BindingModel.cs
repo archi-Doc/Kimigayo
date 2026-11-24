@@ -78,6 +78,11 @@ public enum BoundTypeKind : byte
     // check that reads it rests, as rule W's failed part does. Never a node's published Type (the split call's completion unmarks what
     // it publishes, CompleteOnSplit; the HIR publisher lists one that holds it as Broken, InternalInvariant_Kd).
     Open,
+
+    // PLAN G924 AF-3b v3-A (the owner's O-499 (a)): an open atom, the slot Symbol of the candidate at owner level Length, which no
+    // evidence binds at an open position (Binding.OpenSlots: OpenType forms it, TyCtxt.OpenSlot interns it). No components, no Origin;
+    // never a Parameter: identical only to itself, and nothing binds it. Never a node's published Type (the HIR publisher's Broken check).
+    OpenSlot,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.7.2).</summary>
@@ -174,6 +179,7 @@ internal enum BindingFailure : byte
     CaseLimit,
     TypeHeightLimit,
     PremiseClosureLimit,
+    ResolutionWorkLimit,
     InvalidAssignment,
     InvalidLiteral,
     Access,
@@ -368,15 +374,32 @@ public sealed class BindingSymbol
     // requirement checked at the conformance, never a reference input condition (SPEC 6.1.4, 8.7.1).
     internal bool IsGenericInput => this.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter && this.SelfOf is null;
 
-    // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
+    // SPEC 6.1.5, 8.4, 9.1: the declaration whose Self this symbol is: a Contract's dedicated Self Type parameter (the conforming-Type
+    // binder), a struct's or enum's Self (Kind Type, the declaration with all its bindings); null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
 
-    // SPEC 8.4: the dedicated Self Type parameter of a Contract, created at its first use.
-    internal BoundType? ContractSelf { get; set; }
+    // SPEC 6.1.5, 9.5: the Self this declaration's scope declares beside its formal parameters (BindingScope.Parameters), made once and
+    // kept: a Contract's Self Type parameter (Binding.ContractSelfType), a struct's or enum's Self symbol (Binding.DeclareSelf).
+    internal BindingSymbol? SelfSymbol { get; set; }
+
+    // SPEC 6.1.5, 9.1: the declaration this selection names: a struct's or enum's Self names its declaration (SelfOf); every other symbol,
+    // a Contract's Self (a binder, BU-150) among them, names itself. Read where a selection's declaration facts (its raw Type, Schema or
+    // identity) are asked, never its Type as written (a Self symbol's Type is the declaration applied to its own parameters).
+    internal BindingSymbol Named => this.SelfOf is { Declaration: not ContractKoto } declaration ? declaration : this;
+
+    // SPEC 9.1, 9.7: the symbol's own generic arity, which a written argument list must match: a Type declaration's generic parameter
+    // count (length slots included); none for a Self, which takes no Type arguments, and for every other symbol.
+    internal int GenericArity => this.SelfOf is null && this.Declaration is DeclarationContainerKoto container ? container.GenericParameterNodes.Count : 0;
 
     internal BindingSymbol? Pair { get; set; }
 
     internal BindingScope Scope { get; set; }
+
+    /// <summary>Gets or sets the executable body that declares this function and that EvaluatingBody returns (SPEC 15.3.4;
+    /// Binding.ExecutableBodies.cs): a Closure's evaluating body, which binds its header and captures, written by its header scope
+    /// (ClosureHeaderScope) before any header binding; a named nested function's declaring body, written by the index walk that
+    /// declares it (DeclareFunction); no body for any other symbol. MIR never reads it.</summary>
+    internal ExecutableBody DeclaringBody { get; set; }
 
     internal SyntaxFormKoto? ConditionalDeclaration { get; set; }
 
@@ -488,6 +511,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     private readonly bool containsPairLayer;
     private readonly bool containsNested;
     private readonly bool containsOpen;
+    private readonly bool containsOpenSlot;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
@@ -527,6 +551,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         var abstractPart = this.IsAbstract;
         var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
         var open = kind == BoundTypeKind.Open;
+        var openSlot = kind == BoundTypeKind.OpenSlot || lengthExpression is { ContainsOpenSlot: true };
         var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
@@ -538,6 +563,7 @@ public sealed class BoundType : IEquatable<BoundType?>
             pair |= components[i].containsPairLayer;
             nested |= components[i].containsNested;
             open |= components[i].containsOpen;
+            openSlot |= components[i].containsOpenSlot;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -549,6 +575,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         foreach (var argument in this.LengthArguments)
         {
             parameter |= argument is { IsConstant: false };
+            openSlot |= argument is { ContainsOpenSlot: true };
         }
 
         // R8-W2: a fixed array's interpolation-bound term over abstract value Types is an abstract part, open until its instance folds it.
@@ -571,6 +598,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.containsPairLayer = pair;
         this.containsNested = nested;
         this.containsOpen = open;
+        this.containsOpenSlot = openSlot;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -732,6 +760,9 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     // DECISIONS BU-240 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
     internal bool ContainsOpen => this.containsOpen;
+
+    // PLAN G924 AF-3b v3-A (Binding.OpenSlots): whether this subtree holds an open atom, of a Type or of a length (BoundLength.OpenSlot).
+    internal bool ContainsOpenSlot => this.containsOpenSlot;
 
     /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
     /// wrapping integer Core (SPEC 3.1.1); no layer is followed. The one definition every phase reads: Binding, the MIR builder's
@@ -915,8 +946,15 @@ internal sealed class BindingScope(Koto owner)
 
     internal FunctionKoto? Function { get; set; }
 
+    // The scope's Type-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
 
+    // SPEC 9.1, 9.5, 9.6, 4.4.1: the formal parameters the scope's declaration declares, by namespace as its members are, found by the
+    // stage walk at their declaring position and never a member a path or an opening alias reaches; null until the scope declares one
+    // (AddParameters), so a scope that declares none allocates no table.
+    internal ScopeParameters? Parameters { get; private set; }
+
+    // The scope's Value-namespace members: never a formal parameter (Parameters).
     internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
@@ -947,9 +985,13 @@ internal sealed class BindingScope(Koto owner)
         set => this.Link(ref this.conformancePath, value);
     }
 
+    internal ScopeParameters AddParameters() => this.Parameters ??= new();
+
     internal void Reset()
     {
         this.Types.Clear();
+        this.Parameters?.Types.Clear();
+        this.Parameters?.Values?.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
         this.OriginSets?.Clear();
@@ -966,6 +1008,17 @@ internal sealed class BindingScope(Koto owner)
             this.LinkVersion++;
         }
     }
+}
+
+// A scope's formal parameters by namespace (BindingScope.Parameters): Type parameters, pair targets and their binders in Types, a
+// function's length slots (SPEC 4.4.1) in Values, null until the scope declares one (AddValues), as Parameters itself is.
+internal sealed class ScopeParameters
+{
+    internal Dictionary<string, BindingSymbol> Types { get; } = new(StringComparer.Ordinal);
+
+    internal Dictionary<string, BindingSymbol>? Values { get; private set; }
+
+    internal Dictionary<string, BindingSymbol> AddValues() => this.Values ??= new(StringComparer.Ordinal);
 }
 
 /// <summary>How a check judged a repair condition from its own facts (SPEC 23.1.3); a refuted condition withholds the candidate.</summary>
@@ -992,16 +1045,18 @@ public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
     internal int Problem { get; init; } = -1;
 }
 
-/// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>
-public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount)
+/// <summary>Summarizes the current pass. Provisional completion never certifies a final program; a Final pass is complete when it rejected
+/// no part: no node Unresolved or Invalid and no Resolved node with a published problem of its own (LimitedCount: a located limit beside
+/// its Resolved node, PLAN G254c, or a report's Defect, an Internal record).</summary>
+public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount, int LimitedCount = 0)
 {
-    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
+    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0 && this.LimitedCount == 0;
 }
 
-/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol and the supply kind
-/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6).</summary>
+/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol, the supply kind
+/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6), and its physical signature (ImportAbi).</summary>
 // R5-M25: the extern names its definition the way MirDefKey does; a syntax reader takes Decl.Declaration.
-internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind);
+internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind, string Signature);
 
 /// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
 /// position, at the value that supplies the longer end; <c>Refuted</c> when the longer end is a body-local finite Origin.</summary>
@@ -1014,17 +1069,13 @@ internal enum OriginJudgment : byte
     Unrepresentable,
 }
 
-// SPEC 10.5: why a single generic function reference's slots did not bind from its fixed expected call signature (its TypeMismatch_Kd
-// reads the declaration's own signature then): no binding fits structurally, a bound argument fails its Constraints, the bindings of one
-// slot differ only in their Origins, or a bound argument would hold an input Origin that is bound at each call; or (SlotVariables, any
-// candidate) a slot's distinct bindings would take slot variables, which a reference does not solve: the located Unsupported_Kd (G1128).
+// SPEC 10.5: whether a generic function reference's slots bound from its fixed expected call signature, the one fact its readers need:
+// Unbound (a single candidate's TypeMismatch_Kd then reads the declaration's own signature), or SlotVariables (any candidate): a slot's
+// distinct bindings would take slot variables, which a reference does not solve, the located Unsupported_Kd (G1128).
 internal enum ReferenceSlotFailure : byte
 {
     None,
-    Structure,
-    Constraint,
-    OriginConflict,
-    InputOrigin,
+    Unbound,
     SlotVariables,
 }
 

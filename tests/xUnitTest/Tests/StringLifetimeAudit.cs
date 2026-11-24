@@ -13,7 +13,7 @@ internal static class StringLifetimeAudit
     internal static string Instrument(string ir, (string? Symbol, int Length, int Count)[] handles, bool duplicate = false, int[]? order = null)
     {
         // The exit hook sees the counts only when every exit passes through __kimi_exit.
-        NativeAllocationAudit.AssertExitsThroughHook(ir);
+        AssertExitsThroughHook(ir);
         var destroy = new Regex(@"(?m)^(define internal void @__kimi_destroy_string\([^\n]+\nentry:\n)");
         var exit = new Regex(@"(?m)^(define internal void @__kimi_exit\([^\n]+\nentry:\n)");
         Assert.Single(destroy.Matches(ir));
@@ -76,5 +76,17 @@ internal static class StringLifetimeAudit
 
         output.AppendLine($"test{handles.Length}:\n  ret void\nfail:\n  call void @ExitProcess(i32 120)\n  unreachable\n}}");
         return output.ToString();
+    }
+
+    // This audit's premise, which it owns (C-478 B1): ExitProcess, which no import can share (SPEC 21.2), is mentioned only inside
+    // __kimi_exit's definition and on its one declaration line, whatever else the module calls (a program's own kernel32 imports too).
+    private static void AssertExitsThroughHook(string ir)
+    {
+        var hook = Regex.Matches(ir, @"(?ms)^define [^\n]*?@__kimi_exit\(.*?^\}");
+        Assert.Single(hook);
+        var rest = ir.Remove(hook[0].Index, hook[0].Length);
+        string[] mentions = [.. rest.Split('\n').Where(static x => Regex.IsMatch(x, @"@ExitProcess(?![\w.$])"))];
+        var declared = mentions is [var line] && line.StartsWith("declare ", StringComparison.Ordinal);
+        Assert.True(declared, "ExitProcess outside __kimi_exit: " + string.Join(" | ", mentions));
     }
 }

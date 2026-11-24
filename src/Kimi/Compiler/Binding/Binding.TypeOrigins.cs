@@ -11,6 +11,12 @@ public sealed partial class Binding
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
+        // A Self symbol carries its Type (SPEC 9.1: `S<Slot(0), ...>` or the Contract's Self parameter); no Type is headed by it.
+        if (symbol.SelfOf is not null)
+        {
+            return symbol.Type!;
+        }
+
         var schema = symbol.Schema!;
         var types = this.RentTypes(schema.GenericSlots.Count);
         var origins = this.originScratch.Rent(schema.Origins.Count);
@@ -170,7 +176,7 @@ public sealed partial class Binding
             // an obligation of each call (RequireInputPremises), never a relation of the body it is written in (SPEC 15.3.4, 15.6.1).
             // A transparent wrapper returns its inner node's Type, whose well-formedness that node formed: it forms the relation only
             // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record).
-            if (origin is not null && type.Components.Count != 0 && (supplied || TransparentInner(use) is null) && !this.InactiveOuterOrigin(type, this, use, default) &&
+            if (origin is not null && type.Components.Count != 0 && (supplied || TransparentInner(use) is null) && !this.InactiveOuterOrigin(type, this, use, use, default) &&
                 context is not { Position: TypePosition.Parameter, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
@@ -275,15 +281,23 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value.
-    // `discharge` applies to the Origins stored directly in `inner`; those of its components are judged. `condition` is the Semantics
-    // case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o` of an original `s/T` included, is stored only in
-    // its binder's borrow cases (SPEC 15.6.5). The layers below one written layer share its use's scope.
+    // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value: every Origin
+    // of OwnedOrigins(inner) (SPEC 15.2.3) outlives `outer`. A held Function Type's part is its call signature with its own per-call
+    // Origins closed (DECISIONS BU-73's ClosedSignature, as Owned reads it): its fixed Origins relate, its per-call Origins never do, as
+    // they cannot escape their binder (SPEC 15.3.4). `discharge` applies to the Origins stored directly in `inner`; those of its
+    // components are judged. `condition` is the Semantics case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o`
+    // of an original `s/T` included, is stored only in its binder's borrow cases (SPEC 15.6.5). The layers below one written layer share
+    // its use's scope.
     private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, ref UseScope use, OriginDischarge discharge = OriginDischarge.Judgment, ulong condition = 0)
     {
         if (!inner.StoresOrigin)
         {
             return;
+        }
+
+        if (inner.Kind == BoundTypeKind.Function && inner.Binder is { } binder)
+        {
+            inner = this.ClosedSignature(inner, binder);
         }
 
         // A written Type's retention at its use, in no comparison (default).

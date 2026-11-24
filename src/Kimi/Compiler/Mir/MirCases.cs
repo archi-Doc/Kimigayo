@@ -201,7 +201,11 @@ internal sealed class MirCases(TyCtxt types)
     /// validated body states for every Place a location reads, borrows, drops or projects (<see cref="MirValidator"/> checks each Place a
     /// location names, a diverging Call's destination included; a Place of no Type, a failed slot or a temp derived from one, is only
     /// written whole, begun, ended, returned, delivered into <c>_0</c>, an Opaque site's root or read by an rvalue that takes its Type from
-    /// its operands, as MirValidator's Bounded admits, whose readers take <see cref="KnownTypeOf(MirPlace)"/>), as a case Type
+    /// its operands, and a Field step of no Type, a stored Field whose slot failed, only written (PLAN G1184), as MirValidator's Bounded
+    /// admits, whose readers take <see cref="KnownTypeOf(MirPlace)"/>: a case reader of a written Place takes it (rule W: A5's Store and
+    /// its pun rule), and every other reads a Place the validator states typed, a step's prefix or the storage below a layer
+    /// (<see cref="Layer"/>'s included) or a read, moved, borrowed, dropped or called Place (<see cref="Reborrows"/>' included); Binding's
+    /// key walk gives such a Field's key no Type, a part Binding did not bind, PlaceKeys.Select, BU-36), as a case Type
     /// (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
     /// <param name="place">A Place of the selected body.</param>
     /// <returns>The case Type.</returns>

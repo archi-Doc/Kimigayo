@@ -290,7 +290,8 @@ internal sealed partial class MirBorrows
     }
 
     // The one step walk (A3 5, E3) over a Place's first end steps in the walk buffer: val of that prefix (its layer) and the parents a
-    // borrow of it follows, from the last shared layer on the values its Derefs go through. Read, Issued and Store's prefix read it.
+    // borrow of it follows, from the last shared layer on the values its Derefs go through; a Deref's layer is the pun rule's read
+    // (MirBorrows.Puns' PunRead: a raw pointer read punned over bytes no raw pointer wrote). Read, Issued and Store's prefix read it.
     private (int Layer, int Parents) Prefix(ulong[] state, int root, int end)
     {
         var (layer, parents) = (this.Root(state, root), 0);
@@ -299,9 +300,9 @@ internal sealed partial class MirBorrows
             var pointer = this.PointerOf(root, layer, parents, i);
             (parents, layer) = this.walk[i].Class switch
             {
-                MirStepClass.Shared => (pointer, this.Content(state, pointer)),
-                MirStepClass.Raw => (pointer, this.Indirect(this.Content(state, pointer))), // A fresh anchor (5.2.2); no reference (rule W).
-                MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.Content(state, pointer)),
+                MirStepClass.Shared => (pointer, this.PunRead(root, i, pointer, this.Content(state, pointer))),
+                MirStepClass.Raw => (pointer, this.PunRead(root, i, pointer, this.Indirect(this.Content(state, pointer)))), // A fresh anchor (5.2.2); no reference (rule W).
+                MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.PunRead(root, i, pointer, this.Content(state, pointer))),
                 _ => (parents, this.Indirect(layer)), // Rule W: a part of a holder is no Copy of a borrow it holds.
             };
         }
@@ -375,11 +376,18 @@ internal sealed partial class MirBorrows
         return this.PointerOf(root, layer, parents, last);
     }
 
-    // A Place's read on its layer and parents (SPEC 5.7 Reading a Field; B §5.4): a `during self` layer's adds what `@raw` of the layer's
-    // storage carries, the parents and its own-step entry; another Place's is its layer.
+    // A Place's read on its layer and parents (SPEC 5.7 Reading a Field; B §5.4): a `during self` layer's, or a Tuple's or fixed array's
+    // enclosing one inline (read element by element, a Copy and a Move alike), adds what `@raw` of the layer's storage carries, the
+    // parents and its own-step entry; another Place's is its layer.
+    // R-C (SPEC 15.6 Holders, 15.6 Addresses): the read carries its Place's one own-step row (MirBorrows.Addresses: the entry of the body
+    // Place its owner step applies to at its exact lent position, direct or past a dereference (G1276); else the base's past a
+    // dereference; or none) with its parents whole; an Unplaced one (no exact position, no owner in its own steps: G1301's classes)
+    // carries its layer and is the location's limit where a borrow of the view lends a layer's or enclosing Place (PQ-10, narrowed;
+    // MirBorrows.Locations records it).
     private int Layered(int root, int projection, int layer, int parents)
     {
         var entry = this.OwnStepAt(root, projection);
+        this.limit |= entry == Unplaced && this.replaying && this.tabling;
         return entry < 0 ? layer : this.sets.Union(layer, this.Indirect(this.sets.Add(parents, this.loanBase + entry)));
     }
 }

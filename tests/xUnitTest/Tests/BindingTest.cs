@@ -22,8 +22,8 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
-    // PLAN G724, B4: a member access's side is published beside its selection in a table cleared each pass, so a warm Bind of Type-side,
-    // value-side, constructor and Case accesses allocates nothing.
+    // PLAN G724, B4: a member access's side is published beside its selection in a pass family (MemberSelections, R7-N5 B1b-2), so
+    // a warm Bind of Type-side, value-side, constructor and Case accesses allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindOfMemberSidesAllocatesNothing()
@@ -511,6 +511,80 @@ public class BindingTest
         Assert.IsType<InvalidOperationException>(fault.InnerException);
     }
 
+    // R7-D2 c: the indexer's walk empties its pooled stack when it ends, a faulted walk included, so a walk that faults with entries
+    // pending faults no later Bind (a walk entered over a non-empty stack is InternalInvariant). No program faults the walk, so the test
+    // drives it: a body's entry without a scope faults at its first declaration while its later statements wait on the stack.
+    [Fact]
+    public void AFaultedIndexWalkFaultsNoLaterBind()
+    {
+        const string Source = "func f()\n    let a = 1\n    let b = 2\n    ()\nf()";
+        var compilation = CompilationTestHelper.ParseSuccess(Source);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        var body = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Body!;
+        var entry = typeof(Binding).GetNestedType("IndexEntry", BindingFlags.NonPublic)!;
+        var kind = Enum.ToObject(typeof(Binding).GetNestedType("IndexEntryKind", BindingFlags.NonPublic)!, 0); // Index
+        var walk = typeof(Binding).GetMethod("IndexWalk", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var fault = Assert.Throws<TargetInvocationException>(() => walk.Invoke(compilation.Binding, [Activator.CreateInstance(entry, body, null, kind, 0)]));
+        Assert.IsType<NullReferenceException>(fault.InnerException);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // R7-D2 c (design section 3.1's c2): a loop's Iterable is walked in the loop's scope and its binding in the body scope, so the
+    // Iterable reads the outer local its binding shadows. Valid: SPEC 9.3 (an inner block may shadow an outer local), 14.6 (each
+    // iteration has a fresh body scope; the Subject is acquired once).
+    [Fact]
+    public void ALoopsIterableReadsTheLocalItsBindingShadows()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess("let x: [2 of i32] = [1, 2]\nfor x in x => ()");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // R7-D2 c (design section 3.1's c7, the file contract's "the walk's depth is its stack's, not the host's"): every context pushes a
+    // node's children onto the walk's one stack, so the walk's loop, not the host, holds a tree's depth. The chain of labeled `do`
+    // values at the syntax nesting limit (valid: IMPL A.4, past which the tree is cut, so the design's 3,000-deep chain is the limit's)
+    // binds, then the walk resets its rows (the ResetOnly context, which declares and records nothing) on a thread whose 256 KB stack a
+    // host frame per level (dev's recursive RowReset and IndexVisitor) would not fit, and the next Bind finds the program as the first did.
+    [Fact]
+    public void TheIndexWalkHoldsATreesDepthOnItsOwnStack()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(IndexShape("chain"));
+        Assert.True(SyntaxNestingTest.Depth(compilation.Kotonoha.RootKoto) > 1000);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        var entry = typeof(Binding).GetNestedType("IndexEntry", BindingFlags.NonPublic)!;
+        var kind = Enum.ToObject(typeof(Binding).GetNestedType("IndexEntryKind", BindingFlags.NonPublic)!, 3); // ResetOnly
+        var walk = typeof(Binding).GetMethod("IndexWalk", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Exception? fault = null;
+        var thread = new Thread(() => fault = Record.Exception(() => walk.Invoke(compilation.Binding, [Activator.CreateInstance(entry, compilation.Kotonoha.RootKoto, null, kind, 0)])), 256 * 1024);
+        thread.Start();
+        thread.Join();
+        Assert.Null(fault);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
+    }
+
+    // R7-D2 c (design section 8.6): the walk's stack is one array kept across passes, so a warm Bind of each form whose row pushes its
+    // own entries or steps allocates nothing: an excluded test in a Product build (its subtree in the ExcludedTest context), a loop's
+    // bindings (Declare steps), a guarded match (the arms' and candidates' steps), a try over Option and one over Result (the arms
+    // BindMatch indexes), the chain at the syntax nesting limit, 120 guarded arms and 1,000 root functions (the stack's widest case).
+    // Each valid: SPEC 6.7.2 and 18.6; 14.6; 14.8.2 and 14.8.3; 17.3; IMPL A.4; 6.1.1.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("excluded test")]
+    [InlineData("for")]
+    [InlineData("guarded match")]
+    [InlineData("try")]
+    [InlineData("chain")]
+    [InlineData("arms")]
+    [InlineData("functions")]
+    public void AWarmBindOfTheIndexWalksFormsAllocatesNothing(string shape)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(IndexShape(shape));
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void ParenthesizedArrayLengthsBindEverySyntaxNode()
     {
@@ -696,21 +770,29 @@ public class BindingTest
     // program fails one today (the census), so each row fails one through the private writer after a Final Bind, as a check of the
     // program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce): a qualification stop's QualificationRequired (B1a's
     // `qualificationFailures`, written by FailUnselected, the resolver's miss (R7-E2 E2-0), where B1a's HirTables.Of refused the frozen
-    // library table) and FailExplained's per-call Origin fact (MissingOrigin).
+    // library table) and FailExplained's per-call Origin fact (MissingOrigin). A program pass never stops a library use's lookup, and
+    // the frozen library's QualificationStops column refuses such a stop (R7-N5 B1b-2), so the row writes the two effects FailUnselected
+    // writes after it reads one: the stop as the failure's fact, and the failure.
     [Fact]
     public void AFactALibraryNodesFailureCarriesIsRecordedWithIt()
     {
         var c = CompilationTestHelper.Parse("struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n");
         Assert.False(c.Bind().IsComplete);
-        var stops = (Dictionary<(Koto Use, bool Type), Binding.QualificationFact>)typeof(Binding).GetField("qualificationStops", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        var stop = Assert.Single(stops).Value;
+        var stops = typeof(Binding).GetField("qualificationStops", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Koto failed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().Single(x => x.FailureOf(c) == BindingFailure.QualificationRequired);
+        object?[] read = [(failed, false), null];
+        Assert.True((bool)stops.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(stops, read)!);
+        var stop = (Binding.QualificationFact)read[1]!;
         Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
-        stops[(node, false)] = stop with { At = node };
-        typeof(Binding).GetMethod("FailUnselected", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, BindingFailure.MissingName]);
+        var record = typeof(Binding).GetMethod("RecordQualificationStop", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var refused = Assert.IsType<InvalidOperationException>(Assert.Throws<TargetInvocationException>(() => record.Invoke(c.Binding, [node, stop])).InnerException);
+        Assert.Contains("wrote the frozen library table", refused.Message);
+        var rows = typeof(Binding).GetField("qualificationFailures", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(rows, stop with { At = node }, [node]);
+        typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic, [typeof(Koto), typeof(BindingFailure), typeof(bool)])!.Invoke(c.Binding, [node, BindingFailure.QualificationRequired, false]);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Equal((node, BindingFailure.QualificationRequired), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
         Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
-        var rows = typeof(Binding).GetField("qualificationFailures", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Equal(stop with { At = node }, rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rows, [node]));
         Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.QualificationFailures.Used);
         Assert.Empty(c.Library.Layer.Part.ForeignFailures); // So the library part's ForeignFacts has no row a reader reaches.
@@ -952,20 +1034,23 @@ public class BindingTest
     // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).
     // A Type's member whose qualifier is missing (`Missing.Inner`) is derived from that unresolved input; a further missing Name there
     // rests on the same recorded input, so it is a derived issue under its own requirement, suppressed while its cause publishes, and a
-    // further problem that no recorded input explains stays direct. No check records either today, so the row records them through the
-    // recorder after a Final Bind.
+    // further problem that no recorded input explains stays direct. No check records any of them today (since R7-N1 e3, F's ruling N1-13
+    // B1, a re-read of the member's published lookup records at the failing `Missing` too, so the member no longer gets the derived
+    // MissingType the row first read), so the row records them through the recorder after a Final Bind.
     [Fact]
     public void ADerivedNodesFurtherProblemFollowsItsOwnRequirement()
     {
         var c = CompilationTestHelper.Parse("func f(x: Missing.Inner) -> i32 => 1\n");
         Assert.False(c.Bind().IsComplete);
-        var node = Assert.Single(c.Binding.DerivedIssues, static x => x.Failure == BindingFailure.MissingType).Node;
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         var unresolved = CompilationTestHelper.BindingErrors(c).Count(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
             .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.MissingType, [], 0, false);
         record(node, BindingFailure.MissingName, [], 0, false);
         record(node, BindingFailure.InvalidInlineLayout, [], 0, false);
         c.Binding.CheckBound();
+        Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.MissingType && x.Problem >= 0);
         Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.MissingName && x.Problem >= 0);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.InvalidInlineLayout && x.Problem >= 0);
         Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure != BindingFailure.InvalidInlineLayout);
@@ -1091,6 +1176,21 @@ public class BindingTest
         layer.AddRange(own);
         own.Clear();
     }
+
+    // The index walk's row shapes (R7-D2 c), each valid.
+    private static string IndexShape(string shape)
+        => shape switch
+        {
+            "excluded test" => "Console.writeLine(\"p\")\n#Test\nfunc t()\n    let v = 1\n    $expect(v == 1)",
+            "for" => "let pairs: [2 of (i32, i32)] = [(1, 2), (3, 4)]\nfor (a, b) in pairs => ()",
+            "guarded match" => "func f(x: Option<i32>) => match x\n    .Some(let n) if n > 0 => ()\n    .Some(_) => ()\n    .None => ()",
+            "try" => "func source() -> i32? => .Some(7)\nfunc run() -> i32? => .Some((try source()) + 1)\nfunc load() -> Result<i32, i32> => .Err(9)\n" +
+                "func check() -> Result<bool, i32>\n    let n = try load()\n    return .Ok(n == 1)",
+            "chain" => CompilationEntryTest.LabeledDos(SyntaxNestingTest.LevelsWithin("labeled do")),
+            "arms" => "func f(x: Option<i32>) => match x\n" + string.Concat(Enumerable.Range(0, 120).Select(static i => $"    .Some(let n) if n > {i} => ()\n")) +
+                "    .Some(_) => ()\n    .None => ()",
+            _ => string.Concat(Enumerable.Range(0, 1000).Select(static i => $"func item{i}() => ()\n")),
+        };
 
     private sealed class TestReplacement(CodeContext context) : ExpressionKoto(context, default)
     {

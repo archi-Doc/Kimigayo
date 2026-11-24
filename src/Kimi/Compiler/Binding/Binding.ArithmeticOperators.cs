@@ -23,9 +23,9 @@ public sealed partial class Binding
     private bool HasArithmeticPremise(BoundType type, KimiDeclarationId id, BindingScope scope)
         => this.Library.GetSymbol(id) is { } contract && this.PremiseRefines(type, contract, scope);
 
-    private bool ArithmeticNumericDomain(BoundType type, BindingScope scope)
+    private bool ArithmeticNumericDomain(BoundType type, BindingScope scope, QuerySite site)
     {
-        if (this.BuiltinNumeric(type, scope))
+        if (this.BuiltinNumeric(type, scope, site))
         {
             return true;
         }
@@ -41,7 +41,7 @@ public sealed partial class Binding
             foreach (var fact in environment.Facts)
             {
                 if (fact.Kind == ConstraintKind.Contract && fact.Contract is { Type.Components: [var counterpart] } contract &&
-                    ArithmeticContractSyntax.Identity(contract) is { } id && ArithmeticContracts.IsLeft(id) && AssociatedIdentityMatches(type, counterpart) &&
+                    ArithmeticContractSyntax.Identity(contract) is { } id && KimiLibraryCatalog.IsLeftContract(id) && AssociatedIdentityMatches(type, counterpart) &&
                     this.AvailableConstraintFact(environment, fact, out _))
                 {
                     return true;
@@ -71,7 +71,7 @@ public sealed partial class Binding
         var ordinary = leftCore is not null && (UserArithmeticProvider(leftCore) || this.HasArithmeticPremise(leftCore, ArithmeticContract(operation), scope));
         // SPEC 14.9.2, 10.5.1: a built-in input Type still guides a Literal control-flow operand, every result source a literal, surveyed
         // without committing their defaults; such an operand cannot supply a user provider.
-        if (!ordinary && leftCore is not null && this.BuiltinNumeric(leftCore, scope) &&
+        if (!ordinary && leftCore is not null && this.BuiltinNumeric(leftCore, scope, binary) &&
             ControlFlowExpression(binary.Right) is { } operand && this.SurveyResult(operand, scope).AllLiteral)
         {
             return false;
@@ -89,16 +89,13 @@ public sealed partial class Binding
             return true;
         }
 
-        var reverse = ((leftLiteral && NumericLiteralDefault(binary.Left) is not null) || (leftCore is not null && this.ArithmeticNumericDomain(leftCore, scope))) &&
+        var reverse = ((leftLiteral && NumericLiteralDefault(binary.Left) is not null) || (leftCore is not null && this.ArithmeticNumericDomain(leftCore, scope, binary))) &&
             rightCore is not null && (UserArithmeticProvider(rightCore) || this.HasArithmeticPremise(rightCore, ArithmeticContract(operation, true), scope));
         if (!ordinary && !reverse)
         {
             if (leftCore is not null && rightCore is not null && UserArithmeticProvider(rightCore) && !ReferenceEquals(ComparisonReferent(leftCore), BoundType.String) && !leftCore.IsPointer)
             {
-                var rejected = binary.ArithmeticStorage ??= new();
-                rejected.Candidates.Clear();
-                rejected.Sources.Clear();
-                this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, rightCore, leftCore, ArithmeticContract(operation, true), ArithmeticSelectionCause.NonNumericLeft));
+                this.RecordArithmeticSelection(binary, rightCore, leftCore, ArithmeticContract(operation, true), ArithmeticSelectionCause.NonNumericLeft, null);
                 return true;
             }
 
@@ -113,7 +110,7 @@ public sealed partial class Binding
         }
 
         // The whole built-in operation must be proven, rather than just one numeric operand.
-        if (leftCore is not null && ReferenceEquals(leftCore, rightCore) && this.BuiltinNumeric(leftCore, scope))
+        if (leftCore is not null && ReferenceEquals(leftCore, rightCore) && this.BuiltinNumeric(leftCore, scope, binary))
         {
             return false;
         }
@@ -146,7 +143,7 @@ public sealed partial class Binding
     // SPEC 23.1.2, rule W (DECISIONS BU-79): a probed operand that bound to nothing and is no deferred call or waiting callable has failed,
     // itself or through a part it rests on, so its operator rests at once; binding it again would bind the failed subtree again (PLAN G506).
     private bool RestsOn(Koto operand, BoundType? bound)
-        => bound is null && !this.IsWaitingPart(operand) && !this.IsWaitingCallable(operand);
+        => bound is null && !this.IsCheckedCall(operand) && !this.IsWaitingCallable(operand);
 
     private bool TryArithmetic(UnaryKoto unary, BindingScope scope, out BoundType? result)
     {
@@ -170,7 +167,7 @@ public sealed partial class Binding
         }
 
         var self = this.OperandTerminal(unary.Operand, operand);
-        if ((self.IsNumeric || this.IsGenericWrapping(self, scope)) || !(UserArithmeticProvider(self) || this.HasArithmeticPremise(self, KimiDeclarationId.Negatable, scope)))
+        if ((self.IsNumeric || this.IsGenericWrapping(self, scope, unary)) || !(UserArithmeticProvider(self) || this.HasArithmeticPremise(self, KimiDeclarationId.Negatable, scope)))
         {
             return false;
         }
@@ -205,7 +202,7 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, self) && fact.Contract is { } contract && this.AvailableConstraintFact(environment, fact, out _))
                 {
-                    Add(this.AppliedAssociatedContract(fact, self), this.ArithmeticFactUse(fact, current));
+                    Add(this.AppliedAssociatedContract(fact, self), this.PremiseUse(fact, current));
                 }
             }
         }
@@ -236,7 +233,7 @@ public sealed partial class Binding
                 }
             }
 
-            var proof = this.ProveConformance(self, candidate, scope);
+            var proof = this.ProveConformance(self, candidate, scope, use);
             if (proof == ConstraintProof.Error)
             {
                 this.Fail(use, BindingFailure.InvalidConstraint);
@@ -253,7 +250,7 @@ public sealed partial class Binding
 
         if (pending || count != 1)
         {
-            this.FailExplained(ref this.arithmeticSelectionFailures, use, BindingFailure.ArithmeticSelection, new(plan, self, counterpart, id, pending ? ArithmeticSelectionCause.Unproven : count == 0 ? ArithmeticSelectionCause.NoFit : ArithmeticSelectionCause.Ambiguous));
+            this.RecordArithmeticSelection(use, self, counterpart, id, pending ? ArithmeticSelectionCause.Unproven : count == 0 ? ArithmeticSelectionCause.NoFit : ArithmeticSelectionCause.Ambiguous, plan);
             return null;
         }
 

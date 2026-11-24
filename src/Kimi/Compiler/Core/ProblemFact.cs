@@ -16,22 +16,30 @@
 // a collection record's Limit fact (R7-T1) its subject and IMPL A.4's Type height limit, TypeHeightLimit_Kd's limit,
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
 // problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
-// the site (A3's guessed sites, R5-M186; 2g-1's), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
+// the site (A3's guessed sites, R5-M186), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
 // in BindingReport's kept sides, a Type, or a length where its requirement compares lengths (SPEC 4.3.1), an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
 // start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept sides,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
 // the subject and as its Value an index in the kept Origin records, a Related fact a location the record shows (its own or a related one) and as its Value the
 // role's ordinal in its code's adapter row, a Count fact the subject and as its Value a count the requirement states, in the row's order,
-// a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names (ParameterShapeMismatch_Kd's packs
-// its mode, the other mode and the matching key, a byte each), and a Key fact the conflicting
+// a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names, or its code's packed rows
+// (ParameterShapeMismatch_Kd's packs its mode, the other mode and the matching key, a byte each; a selection's candidate its CandidateFlags
+// and two receivers), and above them an ordinal into its party's own parameters or Type parameters (a candidate's receiver parameter, a
+// correlation's slot, E3c-2's Case index, a Callable call's position in its candidates' common signature), and a Key fact the conflicting
 // parameter and as its Value an index in BindingReport's kept sides, the Type at which two parameter shapes' matching keys overlap (SPEC
 // 7.4), neither side of a mismatch (R7-E2), and an Instance fact (R7-E2 E2-5b) as its Value an index in BindingReport's kept sides, a
 // Type its location does not determine, read by its site: at the preceding Related fact's own site, the instance that party is (a related
 // Contract's or associated declaration's declaring instance, or a construction's constructed Type), and at a member declaration of that
-// party, the Type that instance binds the member to; a kind that names no value has -1; a problem has at most one fact of each kind but
+// party, the Type that instance binds the member to, and a Checked fact (AF-3b) a candidate party's argument part checked against its
+// expected Type whose own resolution there failed (SPEC 10.5.1) and as its Value that Type's index in BindingReport's kept sides times
+// two, plus one where the resolution is ambiguous (else none applies), packed and unpacked by BindingReport only (KeepChecked, Checked),
+// at most one per party, after its Reason; a kind that names no value has -1; a problem has at most one fact of each kind but
 // its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order its site
-// records them, and its Count and Instance facts, in their row's order.
+// records them, its Count and Instance facts, in their row's order, and an acquisition record's second Reason, a transfer's moving
+// cases after its packed Reason (R7-E4 E4a-2, read by position); a selection's record is the subject's facts, then per party its
+// Related (role 3 or 5) and that party's entries up to the next party Related, in the order its adapter renders them, read by position,
+// never by a kind's first fact.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -44,7 +52,7 @@ namespace Kimi.Compiler;
 /// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), a problem this one is caused only by (rule W,
 /// R4-M132), or, for Binding, the syntax that shows a mismatch with one of its two sides, the subject with its located part, a failed operator's
 /// operand, judged Type or proposition, a further Origin record (R7-E1), a related location, a stated count, a closed reason, the Type two
-/// parameter shapes overlap at or the Type a related party stands for (R7-E2).</summary>
+/// parameter shapes overlap at, the Type a related party stands for (R7-E2) or a candidate's checked part with its expected Type (AF-3b).</summary>
 internal enum ProblemFactKind : byte
 {
     Anchor,
@@ -74,6 +82,7 @@ internal enum ProblemFactKind : byte
     Reason, // Binding: the subject, a row of the closed enumeration its requirement names, or its code's packed rows (Value; text the adapter's).
     Key, // Binding: the conflicting parameter, the Type at which its matching key overlaps an earlier one's (Value, a kept side's index; SPEC 7.4).
     Instance, // Binding: at the preceding Related fact's site, the instance that party is; at a member declaration of that party, the Type that instance binds the member to (Value, a kept side's index; SPEC 8.4.3, 8.9.2).
+    Checked, // Binding: at a candidate party, the argument part checked against its expected Type whose own resolution there failed (Value, that Type's kept side index times two, plus one where the resolution is ambiguous, else none applies: BindingReport.KeepChecked, Checked; SPEC 10.5.1).
 }
 
 /// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>

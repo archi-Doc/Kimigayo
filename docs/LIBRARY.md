@@ -514,6 +514,8 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 | `unsafe release<T>(storage: raw/T) -> ()` | Releases an `allocate` result at its start address without destroying any value. Null is ignored, and nothing is freed for a zero-byte result, which may be released again. Every Non-Copy value placed in the storage must already be destroyed, taken or relocated, whole or, if destroying it whole would only destroy its components, by its remaining Non-Copy components under the same rule (SPEC §5.6). |
 | `unsafe initialize<T>(storage: raw/T, value: T) -> ()` | Moves `value` into a Place of `T` at `storage`, an existing one or, in raw storage, a new one, destroying nothing. The write meets the raw access conditions: `storage` is live, aligned and writable, the Place lies within its provenance, and no live Loan conflicts. The Place holds no value, and no Initialized Place other than its ancestors holds any of its bytes (SPEC §5.2, §5.2.1). |
 | `unsafe slice<T>(storage: raw/T, length: isize) -> Slice<T> during s` | Forms a shared Slice of `length` elements at `storage` without reading them; `s` is fixed by the caller's expected Type, within the Origin the argument states, if any (SPEC §5.7). A positive length requires a nonnull, aligned `storage` with `length * stride(T)` fitting in `isize`, such that each `storage[i]` below `length` designates a distinct Place that holds a complete, valid value or belongs to a `noinit` array, and no element is written for `s`; a zero length accepts any storage. |
+| `unsafe readVolatile<T>(storage: raw/T) -> T`, where `T is PrimitiveInteger` | Reads the `T` at `storage` with one volatile access (two 8-byte accesses in an unspecified order for `i128` and `u128`), which the compiler never merges, removes, duplicates, splits further or reorders with another volatile access. The read meets the raw access conditions: `storage` is live, aligned for `T` and readable, it holds a valid, initialized value of `T` within its provenance, and no live Loan conflicts (SPEC §5.2.1, §5.6). |
+| `unsafe writeVolatile<T>(storage: raw/T, value: T) -> ()`, where `T is PrimitiveInteger` | Writes `value` to the Place of `T` at `storage` with a volatile access, ordered as `readVolatile`'s; the Place may hold a value or none. The write meets the raw access conditions: `storage` is live, aligned for `T` and writable, the Place lies within its provenance, and no live Loan conflicts (SPEC §5.2.1, §5.6). A volatile access is not atomic. |
 
 Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@move`). None of these operations is an environment effect: `allocate` is an allocation and the others are raw accesses.
 
@@ -529,14 +531,14 @@ Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@mov
 
 [Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#228-time).
 
-`Windows` groups Windows x64 native APIs. Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
+`Windows` groups Windows x64 native APIs and is declared where the Condition `windows` holds (on another target `Windows` is an unknown name). Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
 
 | Function | Guarantee |
 | --- | --- |
 | `Windows.queryPerformanceCounter(value: uniq/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
 | `Windows.queryPerformanceFrequency(value: uniq/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
 
-`Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation. Getters use shared receivers.
+`Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation: where `windows` holds it reads the `Windows` counter, elsewhere the platform's monotonic clock in nanoseconds. Getters use shared receivers.
 
 | Declaration | Guarantee |
 | --- | --- |

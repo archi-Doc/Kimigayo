@@ -114,6 +114,86 @@ public class ForeignEmissionTest
         Assert.Matches(@"= call i32 @shared\(i32 2\)", ir);
     }
 
+    // The Tatara plan's B7b2b (IMPL 21.2, 21.5.2; decision 21; design §5 row 17): Ffi's linux-x64 module, whose program library takes the
+    // C path: c (static) required after codec, main defined (the layer's setup, the startup body, then 0 returned to crt1.o's exit) and no
+    // libc-free entry; codec_add's i16 parameter sign-extended at its call (System V x86-64), its declaration unextended. Windows' module
+    // is unchanged: the exported __kimi_start and the call without an attribute.
+    [Fact]
+    public void AProgramLibraryTakesTheCPathOnTheLinuxRow()
+    {
+        const string Ffi = """
+            group Codec
+                #LibraryImport("codec", "codec_add")
+                public func add(a: i32, b: i16) -> i32
+            public func main()
+                require Codec.add(40, -2) == 38 else => $abort("add")
+                Console.writeLine("ffi ok")
+            """;
+        var c = AnalyzeAs(TargetProfile.Linux, Ffi, "static", OutputKind.Application);
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Equal([("codec", "static"), ("c", "static")], c.Generated.Libraries);
+        Assert.Contains("define i32 @main() #0 {\nentry:\n  call void @__kimi_platform_start()\n", ir, StringComparison.Ordinal);
+        Assert.Matches(@"\n  call void @[\w.]+\(\)\n  ret i32 0\n}\n", ir);
+        Assert.DoesNotContain("__kimi_start", ir, StringComparison.Ordinal);
+        Assert.Contains("declare i32 @codec_add(i32, i16)\n", ir, StringComparison.Ordinal);
+        Assert.Matches(@"= call i32 @codec_add\(i32 40, i16 signext -2\)", ir);
+
+        var windows = Emit(Ffi, "static");
+        Assert.Contains("define void @__kimi_start() noreturn #0 {\n", windows, StringComparison.Ordinal);
+        Assert.DoesNotContain("@main(", windows, StringComparison.Ordinal);
+        Assert.Contains("declare i32 @codec_add(i32, i16)\n", windows, StringComparison.Ordinal);
+        Assert.Matches(@"= call i32 @codec_add\(i32 40, i16 -2\)", windows);
+    }
+
+    // The Tatara plan's B7b2b (IMPL 21.2; design §5 row 40): on linux-x64 an import's 8- and 16-bit integer parameters and results are
+    // extended by signedness at each call (a u16 parameter zeroext, an i8 result signext, a u16 result zeroext, an i8 parameter
+    // signext), its declaration states Types only; windows-x64 writes no attribute.
+    [Theory]
+    [InlineData("x86_64-unknown-linux-musl", "call signext i8 @narrow(i16 zeroext -1)", "call zeroext i16 @wide(i8 signext -1)")]
+    [InlineData("x86_64-pc-windows-msvc", "call i8 @narrow(i16 -1)", "call i16 @wide(i8 -1)")]
+    public void NarrowIntegersAreExtendedAtEachCallOnTheLinuxRow(string triple, string narrow, string wide)
+    {
+        const string Source = """
+            group Native
+                #LibraryImport("codec", "narrow")
+                public func narrow(value: u16) -> i8
+                #LibraryImport("codec", "wide")
+                public func wide(value: i8) -> u16
+            public func main()
+                var n: i8 = 0
+                var w: u16 = 0
+                n = Native.narrow(65535)
+                w = Native.wide(-1)
+            """;
+        var ir = Emit(Assert.Single(TargetProfile.Rows, x => x.Target == triple), Source);
+        Assert.Contains("declare i8 @narrow(i16)\n", ir, StringComparison.Ordinal);
+        Assert.Contains("declare i16 @wide(i8)\n", ir, StringComparison.Ordinal);
+        Assert.Contains(" = " + narrow + "\n", ir, StringComparison.Ordinal);
+        Assert.Contains(" = " + wide + "\n", ir, StringComparison.Ordinal);
+    }
+
+    // The Tatara plan's B7b2b (SPEC 22.6, IMPL 21.2; the owner's O-504 Q1 (a); design §5 row 44): two imports of one symbol whose 16-bit
+    // parameter differs in signedness share one declaration, which states no extension, and each call passes its argument as its own
+    // import's Type: on linux-x64 widen's call sign-extends, in either import order, and a call of widenBits zero-extends; windows-x64
+    // writes no attribute.
+    [Theory]
+    [InlineData("x86_64-unknown-linux-musl", false, "", "i16 signext -2")]
+    [InlineData("x86_64-unknown-linux-musl", true, "", "i16 signext -2")]
+    [InlineData("x86_64-unknown-linux-musl", false, "i16 zeroext -2", "i16 signext -2")]
+    [InlineData("x86_64-pc-windows-msvc", false, "", "i16 -2")]
+    [InlineData("x86_64-pc-windows-msvc", false, "i16 -2", "i16 -2")]
+    public void EachCallExtendsByItsOwnImportsTypes(string triple, bool widenFirst, string bitsCall, string widenCall)
+    {
+        const string Bits = "    #LibraryImport(\"codec\", \"widen\")\n    public func widenBits(x: u16) -> i32\n";
+        const string Signed = "    #LibraryImport(\"codec\", \"widen\")\n    public func widen(x: i16) -> i32\n";
+        var source = "group Native\n" + (widenFirst ? Signed + Bits : Bits + Signed) +
+            (bitsCall.Length == 0 ? string.Empty : "Console.writeLine(\"\\(Native.widenBits(65534))\")\n") + "Console.writeLine(\"\\(Native.widen(-2))\")\n";
+        var ir = Emit(Assert.Single(TargetProfile.Rows, x => x.Target == triple), source);
+        Assert.Equal("declare i32 @widen(i16)", Assert.Single(Regex.Matches(ir, @"declare [^\n]*@widen\([^\n]*")).Value);
+        var calls = Regex.Matches(ir, @"= call i32 @widen\(([^\n]*)\)\n").Select(static x => x.Groups[1].Value);
+        Assert.Equal(bitsCall.Length == 0 ? new[] { widenCall } : new[] { bitsCall, widenCall }, calls);
+    }
+
     [Fact]
     public void SymbolsOutsideLlvmIdentifiersAreQuoted()
     {
@@ -1723,14 +1803,21 @@ public class ForeignEmissionTest
         return CompilationTestHelper.WriteIr(c);
     }
 
+    // An Application's module on a target row, codec a static library.
+    private static string Emit(TargetProfile row, string source)
+        => CompilationTestHelper.WriteIr(AnalyzeAs(row, source, "static", OutputKind.Application));
+
     private static Compilation Analyze(string source, string kind)
         => AnalyzeAs(source, kind, OutputKind.Application);
 
     private static Compilation AnalyzeAs(string source, string kind, OutputKind output)
+        => AnalyzeAs(TargetProfile.Windows, source, kind, output);
+
+    private static Compilation AnalyzeAs(TargetProfile row, string source, string kind, OutputKind output)
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        c.Project.ProjectFile.NativeRequirements[row.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
+        Assert.True(c.Prepare(row.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(output);

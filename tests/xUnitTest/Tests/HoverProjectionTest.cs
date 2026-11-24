@@ -144,6 +144,30 @@ public sealed class HoverProjectionTest
         Assert.Same(contract, Assert.Single(At(snapshot, text.IndexOf("other: Self", StringComparison.Ordinal) + 7).Declarations));
     }
 
+    // SPEC 6.1.5, 9.5 (R7-N1 f): a written `Self` in a struct or an enum selects the declaration's Self symbol and is described as that
+    // declaration with its own Type, generic or not, in a receiver and in a parameter.
+    [Fact]
+    public void SelfInAStructOrAnEnumIsDescribedAsItsDeclaration()
+    {
+        const string text = "struct Box<T>\n    public init() => ()\n    func f(self: ref/Self, x: Self) => ()\nenum E<T>\n    A(T)\n    B\n    public func g(self: ref/Self, x: Self) => ()\nstruct S\n    public init() => ()\n    func h(x: Self) => ()\n";
+        var snapshot = Project(text);
+        (string Header, string Type, string[] Uses)[] declarations =
+            [("struct Box<T>", "Box<T>", ["ref/Self", "x: Self"]), ("enum E<T>", "E<T>", ["ref/Self", "x: Self"]), ("struct S", "S", ["x: Self"])];
+        foreach (var (header, type, uses) in declarations)
+        {
+            var start = text.IndexOf(header, StringComparison.Ordinal);
+            var declaration = Assert.Single(At(snapshot, start + header.IndexOf(' ') + 1).Declarations);
+            Assert.Equal(header, declaration.Header);
+            foreach (var use in uses)
+            {
+                var self = At(snapshot, text.IndexOf(use, start, StringComparison.Ordinal) + use.IndexOf("Self", StringComparison.Ordinal));
+                Assert.Same(declaration, Assert.Single(self.Declarations));
+                Assert.Equal(type, self.CopyType);
+                Assert.Equal(ConstraintProof.Refuted, self.Copy);
+            }
+        }
+    }
+
     [Fact]
     public void SyntaxErrorDefersAllFragmentsWithoutErasingTheEstablishedDeclaration()
     {
@@ -312,27 +336,28 @@ public sealed class HoverProjectionTest
     [Fact]
     public void TypeDisplayPreservesGroupingAndBoundsDepthAndRepeatedExpansion()
     {
-        var types = CompilationTestHelper.BindSuccess("()").Types;
+        var c = CompilationTestHelper.BindSuccess("()");
+        var types = c.Types;
         var integer = BoundType.I32;
         var tuple = types.Tuple([integer]);
-        Assert.Equal("(i32,)", Binding.HoverTypeName(tuple));
+        Assert.Equal("(i32,)", c.Binding.HoverTypeName(tuple));
         var function = types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.Unit, integer]);
         var reference = types.Reference(SemanticsKind.Ref, function);
-        Assert.Equal("ref/(() -> i32)", Binding.HoverTypeName(reference));
+        Assert.Equal("ref/(() -> i32)", c.Binding.HoverTypeName(reference));
         var deep = integer;
         for (var i = 0; i < 128; i++)
         {
             deep = types.Tuple([deep]);
         }
 
-        Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(deep));
+        Assert.Throws<HoverLimitException>(() => c.Binding.HoverTypeName(deep));
         var repeated = integer;
         for (var i = 0; i < 24; i++)
         {
             repeated = types.Tuple([repeated, repeated]);
         }
 
-        Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(repeated));
+        Assert.Throws<HoverLimitException>(() => c.Binding.HoverTypeName(repeated));
     }
 
     private static string Extract(HoverDocumentation documentation)

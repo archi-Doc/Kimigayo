@@ -22,10 +22,12 @@ public sealed partial class Binding
     // (CompleteProjections, DECISIONS BU-50), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
-    // (R5-M39). The formation owns its height refusals inside the instance collector's answer frame (Binding.TypeHeight, R7-T1): a stored
-    // Type past IMPL A.4's height leaves its part null and the instance's HeightLimit set, the cause every reader of the instance reads
-    // (Binding's storage walk a limit, Layout its HeightLimit), so no record is made here and none at a second reader; outside the frame
-    // the refusal is recorded as before and HeightLimit stays false.
+    // (R5-M39). The formation owns its height refusals inside the instance collector's answer frame (Binding.TypeHeight, R7-T1) and,
+    // after Binding's run, in every frame (PLAN G651 U2a): a stored Type past IMPL A.4's height leaves its part null and the instance's
+    // HeightLimit set, the cause every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit), so no record
+    // is made here inside the frame and none at a second reader; after the run outside the frame G651's site-less record is made beside
+    // it (U2b gives those readers a site). During the run the refusal is recorded at its site, or site-less in a pass not yet framed
+    // (a1-a4), and HeightLimit stays false.
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -38,9 +40,16 @@ public sealed partial class Binding
         {
             // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
             // refreshes it in this run) is never current, so the refreshed ADT forms it again.
-            var formation = this.OpenFormation();
-            this.Substitute(type, adt, instance);
-            instance.HeightLimit = this.CloseAnswer(formation);
+            var formation = this.OpenStorageFormation();
+            try
+            {
+                this.Substitute(type, adt, instance);
+            }
+            finally
+            {
+                instance.HeightLimit = this.CloseAnswer(formation); // No throw leaves it open (as InstanceCollector.Run's frame).
+            }
+
             instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
         }
 
@@ -127,8 +136,9 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.PartsBase = declaration.BaseClause is { } clause ? this.KeptType(clause, type) : null;
-            instance.Base = this.WithoutRawOrigins(instance.PartsBase);
+            // DECISIONS BU-37 (PLAN G651 a2, R13.2): a base clause with a recorded failure gives no stored base part (AdtDef.BaseNotStored).
+            (instance.PartsBase, instance.Base) = declaration.BaseClause is { } clause && this.RecordedState(clause) != BindingState.Invalid
+                ? this.KeptPart(clause, type) : default;
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)
             {
@@ -137,8 +147,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < count; i++)
             {
-                instance.Parts[i] = this.KeptType(adt!.Fields[i], type);
-                instance.Fields[i] = this.WithoutRawOrigins(instance.Parts[i]);
+                (instance.Parts[i], instance.Fields[i]) = this.KeptPart(adt!.Fields[i], type);
             }
 
             return;
@@ -155,6 +164,23 @@ public sealed partial class Binding
             instance.Parts[i] = cases[i] is { } selected ? this.PayloadTuple(selected, type) : null;
             instance.Cases[i] = this.WithoutRawOrigins(instance.Parts[i]);
         }
+    }
+
+    // SPEC 6.3.3 (G651 a2-2): the base a constructor's selection reads: the base clause under the struct's Self as Substitute forms Base
+    // (KeptPart's view), also where the instance does not store it, so an independent selection failure stays judged, as LookupMember's
+    // base step reads a failed clause (R7-N3b, R7-N2c); none where the clause names no Type or the struct lies on an inline cycle
+    // (AdtDef.Base's reading), which no selection reads past.
+    private BoundType? SelectionBase(StructKoto declaration)
+        => declaration.BaseClause is { } clause && declaration.BoundSymbol!.Adt is not { InlineCycle: true }
+            ? this.KeptPart(clause, this.SelfType(declaration.BoundSymbol!)).View : null;
+
+    // A declared Field's or base clause's two stored forms under an instance (AdtDef.InstanceStorage): its kept part with the raw Origins
+    // it gives (KeptType: Parts, PartsBase) and AdtDef's view of it without them (WithoutRawOrigins: Fields, Base). The one formula
+    // Substitute's struct lines and SelectionBase read.
+    private (BoundType? Part, BoundType? View) KeptPart(Koto syntax, BoundType owner)
+    {
+        var part = this.KeptType(syntax, owner);
+        return (part, this.WithoutRawOrigins(part));
     }
 
     // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
@@ -282,7 +308,7 @@ public sealed partial class Binding
 
     private BoundType? CompletedProjection(BoundType projection, Koto declaration)
     {
-        var outcome = this.ProjectionSpecification(projection, this.scopes[declaration]);
+        var outcome = this.ProjectionSpecification(projection, this.scopes[declaration], declaration);
         if (outcome.Type is not { } specified)
         {
             return outcome.Pending ? projection : null;

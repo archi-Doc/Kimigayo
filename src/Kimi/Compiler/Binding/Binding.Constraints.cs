@@ -26,7 +26,7 @@ public sealed partial class Binding
     /// <param name="context">The use site supplying lexical assumptions.</param>
     /// <returns>The four-valued proof result; Unknown is never permission to proceed.</returns>
     public ConstraintProof Prove(BoundConstraint constraint, Koto context)
-        => this.ProveConstraint(constraint, this.ConstraintScope(context));
+        => this.ProveConstraint(constraint, this.ConstraintScope(context), context);
 
     /// <summary>Substitutes declaration slots and queries the result in a caller's lexical environment.</summary>
     /// <param name="constraint">The bound declaration constraint.</param>
@@ -35,7 +35,7 @@ public sealed partial class Binding
     /// <param name="context">The caller's syntax node.</param>
     /// <returns>The proof result after identity-preserving substitution.</returns>
     public ConstraintProof Prove(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto context)
-        => this.ProveConstraint(this.SubstituteConstraint(constraint, new CallSubstitution(binder, arguments)), this.ConstraintScope(context));
+        => this.ProveConstraint(this.SubstituteConstraint(constraint, new CallSubstitution(binder, arguments)), this.ConstraintScope(context), context);
 
     // The scope a node's names and premises are judged in: its nearest enclosing scope, where a match arm's body is in its pattern's
     // scope (SPEC 14.8.2) and a standard witness bridge has its conformance path's premises (SPEC 11.9.2).
@@ -174,6 +174,13 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
+        // PLAN G924 AF-3b v3-A (Binding.OpenSlots; SPEC 10.8 Unbound slots, 8.3.2): an operand holding an open atom is an unbound slot's,
+        // so its Constraint is not judged: the prover's one intake guard (UnsolvedSlots keeps a candidate's own Constraints from it).
+        if (proposition.Subject is { ContainsOpenSlot: true } || proposition.RequiredType is { ContainsOpenSlot: true })
+        {
+            return ConstraintProof.Unknown;
+        }
+
         // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1): an identity, Callable or Semantics atom is judged on its subject's Member
         // (MemberOf); the Contract and capability judges read it at their own entries (ProveConformance, RequestCapability).
         if (proposition.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Callable or ConstraintKind.Semantics &&
@@ -255,7 +262,7 @@ public sealed partial class Binding
             if (subject.IsAbstract)
             {
                 // SPEC 8.3: a requirement on a Semantics binding is decided by containment of its admitted set.
-                var admitted = this.ResultSemantics(subject, scope);
+                var admitted = this.ResultSemantics(subject, scope, QuerySite.Nested);
                 return admitted == SemanticsMask.None ? ConstraintProof.Error :
                     (admitted & ~proposition.Mask) == 0 ? ConstraintProof.Proven :
                     (admitted & proposition.Mask) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
@@ -266,11 +273,11 @@ public sealed partial class Binding
 
         if (proposition.Contract is { } intrinsic && IntrinsicContract.Of(intrinsic.Intrinsic).Judged)
         {
-            return this.RequestCapability(proposition.Subject!, intrinsic, scope);
+            return this.RequestCapability(proposition.Subject!, intrinsic, scope, QuerySite.Nested);
         }
 
         // Registration is not verified conformance. In particular, absence is not refutation.
-        return proposition.Contract is { } contract ? this.ProveConformance(proposition.Subject!, contract, scope) : ConstraintProof.Unknown;
+        return proposition.Contract is { } contract ? this.ProveConformance(proposition.Subject!, contract, scope, QuerySite.Nested) : ConstraintProof.Unknown;
     }
 
     // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4; C-380 F3 (a)): content in no level is inserted at the
@@ -594,7 +601,7 @@ public sealed partial class Binding
             // R7-C3 gate 2: a clause that failed, or holds a recovery, adds its Error fact; the environment writer fails that premise
             // alone (ValidateConstraintEnvironments, FailPremise), so nothing else in the environment reads it.
             var environment = scope.Constraints ??= new();
-            this.AddConstraintFact(environment, requirement);
+            this.AddConstraintFact(environment, requirement, origin: requirement.Kind == ConstraintKind.Error ? clause : null); // its origin (R7-E5 c1)
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
             {
@@ -645,9 +652,9 @@ public sealed partial class Binding
         {
             ConstraintKind.Error => ConstraintProof.Error,
             ConstraintKind.Unresolved => ConstraintProof.Unknown,
-            ConstraintKind.Not => NegateProof(this.ProveConstraint(proposition.Left!, scope)),
-            ConstraintKind.And => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), true),
-            ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), false),
+            ConstraintKind.Not => NegateProof(this.ProveConstraint(proposition.Left!, scope, QuerySite.Nested)),
+            ConstraintKind.And => CombineProof(this.ProveConstraint(proposition.Left!, scope, QuerySite.Nested), this.ProveConstraint(proposition.Right!, scope, QuerySite.Nested), true),
+            ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope, QuerySite.Nested), this.ProveConstraint(proposition.Right!, scope, QuerySite.Nested), false),
             // R7-C3 (C7; J1): the written atom is checked for its operands' contexts only; the judge forms at its own intake, so judging it
             // again would be the normalized judgment twice (two outermost requests per projection-input proof).
             _ => !ReferenceEquals(proposition, normalized) && this.OperandContexts(proposition).Invalid ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -232,6 +233,12 @@ public sealed partial class Binding
     private bool BoundMethodReference(Koto use, BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 && ReferenceName(use) is MemberAccessKoto member && this.CallReceiver(member) is not null;
 
+    // SPEC 7.3.4: the family's one record (R7-E3 E3c-2), the method the value names as Related role 0, whose declaration shows the receiver
+    // it would need; fact-less when no method is at hand. B1 none at each site: each returns at once, and BoundMethodReference fails nothing.
+    private BoundType? FailBoundMethodValue(Koto use, Koto? method)
+        => method is FunctionKoto declaration ? this.Record(use, BindingFailure.BoundMethodValue, [new(ProblemFactKind.Related, this.FactSite(declaration), 0)])
+            : this.Record(use, BindingFailure.BoundMethodValue, []);
+
     // SPEC 10.5.3: the one closed declaration of a group whose reference needs no S, or none.
     private BindingSymbol? IndependentFunctionItem(Koto use, BindingSymbol? head)
     {
@@ -249,7 +256,7 @@ public sealed partial class Binding
 
         if (this.BoundMethodReference(use, symbol))
         {
-            return this.Fail(use, BindingFailure.BoundMethodValue);
+            return this.FailBoundMethodValue(use, symbol.Declaration);
         }
 
         if (KotoHelper.UnwrapParentheses(use) is GenericsKoto explicitReference)
@@ -264,7 +271,7 @@ public sealed partial class Binding
 
         var container = this.ReferenceContainer(use, single);
         this.failedCause = null;
-        var proof = this.ReferenceArgumentProof((FunctionKoto)single.Declaration, [], scope, container);
+        var proof = this.ReferenceArgumentProof((FunctionKoto)single.Declaration, [], scope, container, use);
         if (proof != ConstraintProof.Proven)
         {
             this.RequireClauses(use, proof, this.capabilityMode);
@@ -282,6 +289,7 @@ public sealed partial class Binding
         var declaring = this.ReferenceDeclaringType(use);
         var group = this.GroupOf(use, symbol);
         var count = 0;
+        FunctionKoto? only = null;
         foreach (var candidate in group)
         {
             this.BindHeader(candidate);
@@ -295,23 +303,27 @@ public sealed partial class Binding
                 return this.Fail(use, BindingFailure.Unsupported, true);
             }
 
-            count++;
+            (only, count) = (function, count + 1);
         }
 
         if (count == 1)
         {
-            return this.Fail(use, BindingFailure.UnboundTypeArgument);
+            // SPEC 10.5: its first Type parameter is the slot nothing binds (role 0), as at a call (FailUnboundSlots).
+            return only!.GenericArguments.Count != 0
+                ? this.Record(use, BindingFailure.UnboundTypeArgument, [new(ProblemFactKind.Related, this.FactSite(only.GenericArguments[0]), 0)])
+                : this.Record(use, BindingFailure.UnboundTypeArgument, []);
         }
 
-        var start = this.rejectedRows.Count;
+        // A reference use, no call: each earlier failure returns, so the record is always written (R7-E3 E3b delta 2.4).
         foreach (var candidate in group)
         {
             var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-            this.rejectedRows.Add(new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true));
+            this.CandidateFacts((FunctionKoto)candidate.Declaration, null, CandidateFlags.UnfixedReference, this.FunctionItemSignature(item) is { } signature ? (use, signature, null) : null);
         }
 
-        this.RecordRejected(use, start);
-        return this.Fail(use, BindingFailure.Ambiguous);
+        this.Record(use, BindingFailure.Ambiguous, CollectionsMarshal.AsSpan(this.candidateFacts));
+        this.candidateFacts.Clear();
+        return null;
     }
 
     // SPEC 10.5: a reference whose explicit Type arguments select exactly one candidate does not need the call's signature; it
@@ -365,7 +377,7 @@ public sealed partial class Binding
 
         if (candidates != 1)
         {
-            return this.Fail(use, candidates == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+            return this.Record(use, candidates == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous, []);
         }
 
         var target = (FunctionKoto)selected!.Declaration;
@@ -380,12 +392,12 @@ public sealed partial class Binding
         {
             if (!this.ExplicitReferenceArguments(explicitReference, target, scope, arguments, lengths))
             {
-                return this.Fail(use, BindingFailure.NoApplicableCandidate, true);
+                return this.Record(use, BindingFailure.NoApplicableCandidate, [], unresolved: true);
             }
 
             var container = this.ReferenceContainer(use, selected);
             this.failedCause = null;
-            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths);
+            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, use, lengths);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireClauses(use, proof, this.capabilityMode);

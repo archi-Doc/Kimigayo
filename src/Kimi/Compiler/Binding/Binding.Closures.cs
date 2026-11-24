@@ -4,7 +4,8 @@
 // - Responsibility: the literal's header against a fixed expected signature (ClosureExpectation restates it over the literal's
 //   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
 //   ClosureResultType, and formed once per binding, at its commitment or its failed fit, as every nested signature's is,
-//   FormNestedResult); its capture entries, body and result, and the published Signature and EnvironmentType
+//   FormNestedResult), each binding of the written header in the scope Binding.Captures' ClosureHeaderScope gives (R7-O2 O2-H); its
+//   capture entries, body and result, and the published Signature and EnvironmentType
 //   (BindConcreteClosure, by BindClosureHeader, CaptureEntriesFail, BindClosureBody and PublishClosure); a Closure argument bound under
 //   a consultation (BindClosureArgument); for TryCandidate, the one Closure
 //   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers,
@@ -12,15 +13,17 @@
 // - Inputs: the literal, its scope, an expected Type and its open parts (OpenParts), the capture sources it looks up; capture
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
-// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
-//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located InternalInvariant_Kd of each use no consumer takes.
+// - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Signature, EnvironmentType and InfersResult (its
+//   Storage and Carried, and the symbol's DeclaringBody, are Binding.Captures'); a ClosureReceiverRefutation; the located
+//   InternalInvariant_Kd of each use no consumer takes.
 // - Invariants: BindClosure clears the published Signature, Published and Classified before a binding, and the pending relations an
 //   earlier binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause)
 //   and has them classified right after the body is bound, its pending relations judged then (Binding.OriginProof.cs); PublishClosure
 //   publishes the definition on both paths, with no Signature where a parameter's or the result's slot failed (BoundClosure's Access
 //   paragraph), and, in a Property header's frame, for a literal its header types before any body (TypedByHeader), whose body the
 //   Property's variable binding binds with its parts (BindLeftBodies); a header probe binds no parameter, visits no body and restores
-//   the enclosing probe on exit.
+//   the enclosing probe on exit (its header scope records the literal's evaluating body and its written entries' regions, as the
+//   binding's does, and forms no capture).
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
 //   Binding.Captures.cs, Binding.CaptureDiagnostics.cs).
 
@@ -60,9 +63,9 @@ public sealed partial class Binding
     // SPEC 7.7.3, 8.10: a refuted candidate's closure argument whose minimum call receiver its Callable Constraint does not permit is the
     // candidate's failure only when the candidate applies once that receiver is permitted (TryCandidate); a rejected candidate then names
     // both receivers (NoApplicableOverload_Kd).
-    private ClosureReceiverRefutation? PermittedClosureReceiver(int[] mapping, in SlotSolution solution, bool waitingCallables)
+    private ClosureReceiverRefutation? PermittedClosureReceiver(in SlotSolution solution, bool waitingCallables)
     {
-        if (this.ClosureReceiverMismatch(solution.Call, solution.Function, mapping) is not { } mismatch)
+        if (this.ClosureReceiverMismatch(solution.Call, solution.Function, solution.Mapping) is not { } mismatch)
         {
             return null;
         }
@@ -81,7 +84,7 @@ public sealed partial class Binding
 
     // SPEC 7.7.3, 8.10: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
     // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
-    private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, int[] mapping)
+    private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, ReadOnlySpan<int> mapping)
     {
         ClosureReceiverRefutation? found = null;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -173,7 +176,7 @@ public sealed partial class Binding
             return this.RecordMismatch(function, function, found, expected, ComparisonFailure.Shape);
         }
 
-        var scope = this.scopes[function];
+        var scope = this.ClosureHeaderScope(function);
         var types = this.RentTypes(count);
         try
         {
@@ -225,7 +228,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var scope = this.scopes[function];
+        var scope = this.ClosureHeaderScope(function);
         for (var i = 0; i < count; i++)
         {
             if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } || open.Input(i))
@@ -293,14 +296,16 @@ public sealed partial class Binding
         expected = expected is null ? null : this.ClosureExpectation(function, expected);
         var plan = function.ClosureStorage ??= new();
         plan.Storage.Clear();
+        plan.Carried.Clear();
+        plan.Walk.Clear();
+        plan.WalkVersion = -1;
         plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
-        plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        this.BindClosureHeader(function, scope, expected, open, plan);
+        this.BindClosureHeader(function, expected, open, plan);
         if (this.CaptureEntriesFail(function, scope, out var failed))
         {
             return failed;
@@ -348,10 +353,12 @@ public sealed partial class Binding
         return this.PublishClosure(function, plan, expected, open);
     }
 
-    // The header (SPEC 10.5): each parameter, the result a written annotation or the expectation fixes, the Origin declaration over them.
-    // An omitted parameter Type at an open input takes the expected input in the header, and the body reads it as resting (OpenParts).
-    private void BindClosureHeader(FunctionKoto function, BindingScope scope, BoundType? expected, OpenParts open, BoundClosure plan)
+    // The header (SPEC 10.5): each parameter, the result a written annotation or the expectation fixes, the Origin declaration over them,
+    // in the literal's header scope (ClosureHeaderScope, which also states its evaluating body). An omitted parameter Type at an open
+    // input takes the expected input in the header, and the body reads it as resting (OpenParts).
+    private void BindClosureHeader(FunctionKoto function, BoundType? expected, OpenParts open, BoundClosure plan)
     {
+        var scope = this.ClosureHeaderScope(function);
         var symbol = this.symbols[function];
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)

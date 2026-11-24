@@ -132,6 +132,18 @@ public class StringEmissionTest
         ScalarEmissionTest.WriteFixture("StringAuditMissing", missing, "single\n", 120, string.Empty);
     }
 
+    // The audit's own premise (C-478 B1): an exit around __kimi_exit would skip the counts, so it fails the audit before any run; a program
+    // calling its own kernel32 imports passes (ForeignEmissionTest's audited raw-pointer fixtures).
+    [Fact]
+    public void AuditRejectsAnExitAroundTheHook()
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("let text = \"single\"\nConsole.writeLine(text)"));
+        (string? Symbol, int Length, int Count)[] handles = [("__kimi_text", 6, 1)];
+        _ = StringLifetimeAudit.Instrument(ir, handles);
+        var failure = Assert.Throws<Xunit.Sdk.TrueException>(() => StringLifetimeAudit.Instrument(ir + NativeAllocationAuditTest.DirectExit, handles));
+        Assert.Contains("ExitProcess outside __kimi_exit", failure.Message, StringComparison.Ordinal);
+    }
+
     // Audits the destructions of the module's string constants (count, and optionally order, per text). A constant is found by its bytes
     // among the definitions of the audited text itself, which code generation writes through LlvmConstantPool; a text the module
     // defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.

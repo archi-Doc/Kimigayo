@@ -53,7 +53,7 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Equal(
             "Addable Subtractable Multipliable Dividable RemainderProvider LeftAddable LeftSubtractable LeftMultipliable LeftDividable LeftRemainderProvider Negatable",
-            string.Join(' ', Enum.GetValues<KimiDeclarationId>().Where(static x => ArithmeticContracts.IsArithmetic(x))));
+            string.Join(' ', Enum.GetValues<KimiDeclarationId>().Where(static x => KimiLibraryCatalog.IsArithmeticContract(x))));
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
             var contract = c.Library.GetSymbol(id)!.Contract!;
@@ -110,6 +110,21 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         output.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
         Assert.Equal(proven, result.Accepted);
         Assert.Equal(!proven, result.Diagnostics.Any(static x => x.Code == nameof(DiagnosticCode.InvalidArithmeticConformance_Kd)));
+    }
+
+    // SPEC 13.3.3 under an identity premise (`T is U`): the record names the Type the conformance binds Rhs to, as the conformance
+    // writes it (R7-E3 E3c-1: the argument of the Contract instance it states, the Instance at the Contract's declaration), with the
+    // Contract's declaration related.
+    [Fact]
+    public void AnIdentityPremiseKeepsTheConformancesCounterpart()
+    {
+        const string Program = "struct Box<T, U>\n    T is U\n    Self is Addable<T>\n    associate Output is i32\n    public func added(self: ref/Self, right: ref/T) -> i32 => 1\n()";
+        var result = DiagnosticCorpus.Check(Program);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.InvalidArithmeticConformance_Kd), error.Code);
+        Assert.Equal(new[] { "T", "Addable", "RhsNotOwner" }, error.Reason!.Select(static x => x.Value));
+        Assert.Equal("Self is Addable<T>", Program.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal("contract", Assert.Single(error.Related!).Role);
     }
 
     [Fact]

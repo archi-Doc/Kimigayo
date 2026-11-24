@@ -45,6 +45,62 @@ public class MinimalEmissionTest
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
     }
 
+    // The Tatara plan's B7b2a: Hello's linux-x64 module in the row's frame: its header without a float marker, its footer (#0 with
+    // "probe-stack"="inline-asm"; no PIC Level module flag, a static row's), the libc-free start (module asm defining __kimi_start, which
+    // calls the internal start body, which sets the process up before the startup body), no dllimport, the memory part and the Linux
+    // layer's own routines defined; Windows' module defines neither routine. B7b2b's twin of the C path: the module requires no library
+    // (the Kimi library imports nothing on linux-x64), so it defines no main.
+    [Fact]
+    public void HelloOnTheLinuxRowIsLibcFree()
+    {
+        const string Hello = "::Kimi.Console.writeLine(\"Hello, world!\")";
+        var hello = Analyze(TargetProfile.Linux, Hello, "Hello.kimi", OutputKind.Application);
+        var ir = CompilationTestHelper.WriteIr(hello);
+        Assert.Empty(hello.Generated.Libraries);
+        Assert.StartsWith(
+            "; Kimigayo checked pre-optimization IR (linux-x64-v1)\ntarget triple = \"x86_64-unknown-linux-musl\"\ntarget datalayout = \"" +
+            TargetProfile.Linux.DataLayout + "\"\n%kimi.string = type { ptr, i64, i8 }\n@",
+            ir,
+            StringComparison.Ordinal);
+        const string Profile = "uwtable(async) \"target-cpu\"=\"x86-64\" \"target-features\"=\"+sse2\" \"denormal-fp-math\"=\"ieee,ieee\" \"probe-stack\"=\"inline-asm\"";
+        Assert.EndsWith($"}}\nattributes #0 = {{ {Profile} }}\nattributes #1 = {{ {Profile} \"no-builtins\" }}\n", ir, StringComparison.Ordinal);
+        Assert.Contains(
+            "module asm \".globl __kimi_start\"\nmodule asm \".type __kimi_start, @function\"\nmodule asm \"__kimi_start:\"\n" +
+            "module asm \"  xorl %ebp, %ebp\"\nmodule asm \"  andq $-16, %rsp\"\nmodule asm \"  callq __kimi_start_body\"\nmodule asm \"  ud2\"\n" +
+            "@llvm.used = appending global [1 x ptr] [ptr @__kimi_start_body], section \"llvm.metadata\"\n" +
+            "define internal void @__kimi_start_body() noreturn #0 {\nentry:\n  call void @__kimi_platform_start()\n",
+            ir,
+            StringComparison.Ordinal);
+        Assert.Contains("  call void @__kimi_exit(i32 0)\n  unreachable\n}\n", ir, StringComparison.Ordinal);
+        Assert.Contains(LlvmModuleText.MemoryRuntime, ir, StringComparison.Ordinal);
+        Assert.Contains(RuntimeAbi.PlatformStart.GetDefinition(exported: false), ir, StringComparison.Ordinal);
+        Assert.Contains(RuntimeAbi.Clock.GetDefinition(exported: false), ir, StringComparison.Ordinal);
+        foreach (var absent in new[] { "define void @__kimi_start(", "@main(", "_fltused", "dllimport", "PIC Level", "llvm.module.flags" })
+        {
+            Assert.DoesNotContain(absent, ir, StringComparison.Ordinal);
+        }
+
+        var windows = CompilationTestHelper.WriteIr(Analyze(Hello));
+        Assert.DoesNotContain("@__kimi_platform_start(", windows, StringComparison.Ordinal);
+        Assert.DoesNotContain("@__kimi_clock(", windows, StringComparison.Ordinal);
+    }
+
+    // The Tatara plan's B7b2a: a test build on the Linux row, whose layer runs no test build (B7b8 refuses a Linux test before any build),
+    // is a broken contract at generation.
+    [Fact]
+    public void ATestBuildOnTheLinuxRowIsABrokenContract()
+    {
+        var c = Compilation.CreateForTest();
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(TargetProfile.Linux.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Tests.kimi", "#Test\nfunc sample() => $expect(true)"));
+        c.Bind();
+        c.Binding.CheckTestStartup();
+        Assert.True(c.Analyze().IsVerified, Describe(c));
+        c.Tests.Discover(c);
+        Assert.Throws<InvalidOperationException>(() => c.Generate(TextWriter.Null));
+    }
+
     [Theory]
     [InlineData("func unused() -> ()\n    " + FloatExpression + "\nConsole.writeLine(\"a\")", true)]
     [InlineData("func unused<T>() => ()\nConsole.writeLine(\"a\")", true)]
@@ -290,11 +346,15 @@ public class MinimalEmissionTest
         }
     }
 
-    // A program analyzed for `output`, an Application unless the caller names another.
+    // A program analyzed for `output`, an Application unless the caller names another, on the Windows row.
     internal static Compilation Analyze(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
+        => Analyze(TargetProfile.Windows, source, path, output);
+
+    // A program analyzed for `output` on a target row.
+    internal static Compilation Analyze(TargetProfile row, string source, string path, OutputKind output)
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        Assert.True(c.Prepare(row.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();
         c.Binding.CheckStartup(output);
@@ -303,12 +363,17 @@ public class MinimalEmissionTest
         return c;
     }
 
-    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published.
+    // A program checked for `output` as a build checks it (Compilation.Check): every phase run and its records published, on the Windows
+    // row.
     internal static Compilation Check(string source, string path = "Hello.kimi", OutputKind output = OutputKind.Application)
+        => Check(TargetProfile.Windows, source, path, output);
+
+    // A program checked for `output` on a target row as a build checks it.
+    internal static Compilation Check(TargetProfile row, string source, string path, OutputKind output)
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = output;
-        Assert.True(c.Prepare(TargetProfile.Windows.Target));
+        Assert.True(c.Prepare(row.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Check();
         Assert.Equal(0, c.Binding.IdlessFactSites);

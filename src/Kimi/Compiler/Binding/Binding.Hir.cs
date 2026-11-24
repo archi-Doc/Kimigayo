@@ -125,9 +125,10 @@ public sealed partial class Binding
             {
                 // A failure fact without its causes is a broken HIR contract, such as an Error Binding resolved without rejecting it, which
                 // lacks the facts its Op guarantees (HasFacts); so is an Error with a slot neither typed nor failed, whatever its state
-                // (SlotsStated, PLAN G1073), and a Type holding a split's mark, which is never a node's (BoundTypeKind.Open; G812 ruling 156).
+                // (SlotsStated, PLAN G1073), and a Type holding a split's mark, which is never a node's (BoundTypeKind.Open; G812 ruling 156),
+                // or an open atom, which ends at selection (Binding.OpenSlots).
                 if ((FailureFact(node, op) && !binding.HasRestingCauses(node)) || (op == HirOp.Error && !binding.SlotsStated(node)) ||
-                    node.BoundType is { ContainsOpen: true })
+                    node.BoundType is { ContainsOpen: true } or { ContainsOpenSlot: true })
                 {
                     node.SyntaxOwner.Hir.Broken!.Add(node);
                 }
@@ -162,7 +163,7 @@ public sealed partial class Binding
                 (parts != HirOp.Syntax || (node is FunctionKoto function && binding.PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
                 // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1, 8.14), and a
-                // selection by case with its decider, read through HirTables.IndexCaseDecider (R7 plan Z23).
+                // selection by case with its decider, read through HirTables.CaseDecider (R7 plan Z23).
                 if (node is IndexKoto)
                 {
                     var mode = binding.SelectionMode(node, this.need.Use);

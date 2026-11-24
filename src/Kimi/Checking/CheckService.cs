@@ -45,19 +45,14 @@ internal static class CheckService
                 ? project.Check(context, cancellationToken)
                 : project.PrepareTests(cancellationToken, context) is not null;
         }
-        catch (InvalidDataException ex) when (context.Compilation is null)
-        {
-            // Test preparation reports an invalid configuration as an exception before the front end (SPEC 23.2.2: Blocked).
-            context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: ex.Message);
-        }
         catch (DiagnosticContractException ex)
         {
             // SPEC 23.2.2: a violated contract discards every partial record.
-            return Faulted(ex.Fault, ex.Message, location);
+            return Faulted(ex.Fault, ex, location);
         }
         catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
         {
-            failure = ex; // Analysis threw while collection stayed intact: the valid records are kept.
+            failure = ex; // The check threw, before its front end or in it, while collection stayed intact: the valid records are kept.
         }
 
         DiagnosticResult result;
@@ -69,12 +64,12 @@ internal static class CheckService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return Faulted(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Collection, ex.Message, location);
+            return Faulted(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Collection, ex, location);
         }
 
         if (failure is not null)
         {
-            return Faulted(DiagnosticFault.Exception, failure.Message, location, result);
+            return Faulted(DiagnosticFault.Exception, failure, location, result);
         }
 
         // SPEC 23.2.2: the outcome follows from how the check ended. Inputs that were never established leave no compilation and the
@@ -90,6 +85,29 @@ internal static class CheckService
         var hover = collectHover ? TryCreateHover(compilation, static c => HoverBuilder.Create(c), out hoverFault) : null;
         hoverFault ??= compilation.DocumentationFailure;
         return new(CheckOutcome.Completed, accepted, presence, result) { Hover = hover, HoverFault = hoverFault };
+    }
+
+    /// <summary>The check entry's load of a unit's project (SPEC 23.2.3, PLAN G1010): the unit's output when the project did not load,
+    /// Blocked by the load's own failures (one <c>ProjectLoadFailed_Kd</c> per failure) or Faulted by any other exception (one
+    /// <c>CheckFaulted_Kd</c> at the project file); every unit of the project shares it.</summary>
+    /// <param name="kimigayo">The compiler service.</param>
+    /// <param name="path">The project file.</param>
+    /// <param name="inputs">The input source.</param>
+    /// <param name="project">The loaded project, or <see langword="null"/> with an output.</param>
+    /// <returns>The failed unit's output, or <see langword="null"/> when the project loaded.</returns>
+    /// <exception cref="PendingInputException">The load needs an input with an event after its base.</exception>
+    internal static CheckOutput? Load(Kimigayo kimigayo, SourceIdentity path, CheckInputSource inputs, out Project? project)
+    {
+        try
+        {
+            return Project.TryCreate(kimigayo, null, path.Value, inputs, out project, out var failures) ? null
+                : CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, path, failures);
+        }
+        catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
+        {
+            project = null;
+            return Faulted(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Exception, ex, path.Value);
+        }
     }
 
     // SPEC 23.4: optional projection has no authority to alter finalized diagnostics, acceptance or TestPresence.
@@ -120,8 +138,8 @@ internal static class CheckService
     }
 
     // SPEC 23.2.2: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
-    private static CheckOutput Faulted(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
-        => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, detail, location, kept));
+    private static CheckOutput Faulted(DiagnosticFault fault, Exception exception, string? location, DiagnosticResult? kept = null)
+        => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, exception, location, kept));
 
     private sealed class MarkerFinder : KotoVisitor
     {

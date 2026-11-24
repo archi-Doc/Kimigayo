@@ -11,8 +11,9 @@ namespace Kimi.Compiler;
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
 //   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads, and in
 //   whose view the root's two sides are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), which Origin bindings
-//   count (OriginPart), and the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
-//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven).
+//   count (OriginPart), the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
+//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven), and a placing fit's raw-fit sink
+//   (RawFits), to which FitOuterOrigins appends each raw fit of the parts outside every Callable comparison.
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided, with the components down to the failure that ended it
 //   and whether it is that part's own shape (ComponentPath); a recording root's walk also keeps one fact per failing position
@@ -207,6 +208,7 @@ public sealed partial class Binding
         private int endedAt;
         private ComponentPath components;
         private bool formed; // whether the root's pair was formed (J3: only the root forms; its parts are parts of formed Types)
+        private bool metOpenSlot;
         private (BoundType Actual, BoundType Expected) root; // the pair formed at the intake, which the walk walked
 
         internal RelationWalk(Binding owner, Binding? binding, Koto? use, OriginPart part)
@@ -241,11 +243,23 @@ public sealed partial class Binding
         // past (a recording root's, outside every Callable comparison) adds no step.
         internal readonly ComponentPath FailedComponents => this.components;
 
+        // PLAN G924 AF-3b v3-A (ArgFlow ruling 151 B-a): whether the walk held a part against an open atom (Binding.OpenSlots), which an
+        // identity question reads: such a pair holds for a fit and is identical for none (SPEC 10.8 Unbound slots). A reference-equal
+        // pair is discharged before the atom arm, so one atom met by itself never sets it.
+        internal readonly bool MetOpenSlot => this.metOpenSlot;
+
         // The pair the walk walked (Intake), whose parts its recorded parts and facts are: every reader of them reads this pair.
         internal readonly (BoundType Actual, BoundType Expected) Root => this.root;
 
         // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
         internal List<BindingObligation>? Rows { get; init; }
+
+        // The query's raw-fit sink, set by a placing fit's walk (FitsTypeAt's for a placing caller, CheckTypeUse's; G147 ruling 75 Q-A
+        // (a)); none: the walk places no value.
+        internal List<RawFit>? RawFits { get; init; }
+
+        // The node of its proofs' judgment (QuerySite): its use, else Nested (the context-free relations Fits reads).
+        private readonly QuerySite Site => this.use is { } at ? at : QuerySite.Nested;
 
         // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
         // `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the Callable comparison whose
@@ -295,14 +309,18 @@ public sealed partial class Binding
         }
 
         // The parts of the relation no Origin binding decides: Kind, Semantics, Symbol, Closure context, lengths and arity; an inferred
-        // length (`[_ of T]`) admits any.
-        private static bool SameShape(BoundType actual, BoundType expected)
+        // length (`[_ of T]`) admits any, and a length holding an atom (Binding.OpenSlots) holds against any length, which the walk publishes
+        // (MetOpenSlot) when the rest of the shape holds.
+        private bool SameShape(BoundType actual, BoundType expected)
         {
             var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
-            return actual.Kind == expected.Kind && actual.Semantics == expected.Semantics && ReferenceEquals(actual.Symbol, expected.Symbol) &&
+            var openLength = actual.LengthExpression is { ContainsOpenSlot: true } || expected.LengthExpression is { ContainsOpenSlot: true };
+            var same = actual.Kind == expected.Kind && actual.Semantics == expected.Semantics && ReferenceEquals(actual.Symbol, expected.Symbol) &&
                 ReferenceEquals(actual.InstanceContext, expected.InstanceContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
-                (inferredLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
+                (inferredLength || openLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
+            this.metOpenSlot |= same && openLength && !ReferenceEquals(actual.LengthExpression, expected.LengthExpression);
+            return same;
         }
 
         // R7-C2c2 c2-4b (design R4.12b, J3), F's C2 ruling 315: the relation's one intake, the one formation of the root's pair: at a use,
@@ -338,7 +356,13 @@ public sealed partial class Binding
                 return true; // DECISIONS BU-240 (rule W): a position a split binding decides holds without a record, judged case by case.
             }
 
-            if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
+            if (actual.Kind == BoundTypeKind.OpenSlot || expected.Kind == BoundTypeKind.OpenSlot)
+            {
+                this.metOpenSlot = true; // Binding.OpenSlots: an atom holds against any part and binds nothing.
+                return true;
+            }
+
+            if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !this.SameShape(actual, expected))
             {
                 _ = this.End(instance);
                 this.components = ComponentPath.AtShape; // The failure is this part's own shape.
@@ -349,7 +373,7 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = this.owner.FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
+                (outer, longer, shorter) = this.owner.FitOuterOrigins(actual, expected, this.use, this.Site, instance, this.RawFits, invariant);
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;

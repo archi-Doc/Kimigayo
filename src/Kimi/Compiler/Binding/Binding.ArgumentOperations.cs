@@ -56,8 +56,12 @@ public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, Bound
 /// the Type the adaptation supplies, whose Origin relations to ParameterType are judged after selection (SPEC 15.6.1). MissingOrigin
 /// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).
 /// Positions: a Tuple or array literal argument's element positions' operations in the fit's order, recursively (SPEC 10.5.1; ranked
-/// by their classes, 10.4 step 1), a range of the candidate evaluation's positionOperations; Adaptation is then the literal's own fit.</summary>
-public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false, Range Positions = default);
+/// by their classes, 10.4 step 1), a range of the candidate evaluation's positionOperations; Adaptation is then the literal's own fit.
+/// ValueAtParameter marks a SourceType and AdaptedType its fit derived from ParameterType (a composite checked against its expected
+/// Type, ExpectedValueType: its value Type and, at `ref/U`, its owner temporary's borrow), which the call's completion derives again
+/// from the completed ParameterType (SPEC 10.2 row 2, 15.6.4 step 1); every other SourceType is the source's own Type and is never
+/// rewritten.</summary>
+public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false, Range Positions = default, bool ValueAtParameter = false);
 
 public sealed partial class Binding
 {
@@ -133,9 +137,10 @@ public sealed partial class Binding
         => this.DeclarationFailed(implementation.Declaration) || (accessor?.Declaration is { } declaration && this.DeclarationFailed(declaration)) ? ConstraintProof.Error
             : (accessor?.Receiver?.Semantics ?? ReceiverShape(implementation)) is SemanticsKind.Ref or SemanticsKind.ObjRef ? ConstraintProof.Proven : ConstraintProof.Unknown;
 
-    // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
-    // so a call without applicable candidates names the required spelling (SPEC 15.1.5), the Place that needs it and,
-    // for an exclusive borrow, whether the Place is an object handle (@objuniq) (SPEC 23.1.3).
+    // Set while an input is adapted (AdaptInput's out-channel): the reason an otherwise fitting bare Place was not applicable, which a
+    // candidate trial takes into its row (EvaluatedCandidate.Acquisition), so a call without applicable candidates names the required
+    // spelling (SPEC 15.1.5), the Place that needs it and, for an exclusive borrow, whether the Place is an object handle (@objuniq)
+    // (SPEC 23.1.3).
     private AcquisitionFailure? acquisitionFailure;
 
     private bool RequireAcquisition(Koto source, BoundType actual, BoundType expected, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
@@ -150,6 +155,28 @@ public sealed partial class Binding
     }
 
     private readonly record struct AcquisitionFailure(Koto Place, BindingFailure Kind, bool Object);
+
+    // SPEC 23.1.1, 23.1.2, 10.1 (PLAN P42, G254c): the located limits of a selected input, judged where its operation is final and nowhere
+    // else, so selection never depends on them; each limit is its owner's decision. An implicit Borrow of a static root (BorrowsStaticRoot)
+    // fails the input, before its Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged
+    // (BorrowFailure). Otherwise a Reborrow whose supplied Type `supplied` no one Type carries (BareReborrowLimit on `read`, the Type the
+    // operation adapted) is the bare Reborrow rule's limit, recorded beside its Resolved source (RecordLocatedLimit), so every other case's
+    // verdict stands (SPEC 8.15.2). True when the input fails.
+    private bool JudgeSelectedInput(Koto source, ArgumentOperationKind kind, SemanticsKind mode, BoundType? read, BoundType? supplied)
+    {
+        if (this.BorrowsStaticRoot(source, kind, mode))
+        {
+            this.Fail(source, BindingFailure.Unsupported);
+            return true;
+        }
+
+        if (kind == ArgumentOperationKind.Reborrow && this.BareReborrowLimit(source, read, supplied))
+        {
+            this.RecordLocatedLimit(source, source.Span);
+        }
+
+        return false;
+    }
 
     // SPEC 10.2: fixed destinations and candidate result filtering use the argument adaptation rules. A probe
     // records no pair-follow plan; the selected destination records the one operation consumed by later phases.
@@ -168,7 +195,7 @@ public sealed partial class Binding
 
         if (recordPair)
         {
-            _ = this.FailStaticBorrow(node, operation, adapted.Semantics); // The selected destination's Borrow; a probe adapts a call result.
+            _ = this.JudgeSelectedInput(node, operation, adapted.Semantics, actual, adapted); // The selected destination's limits; a probe adapts a call result.
         }
 
         return operation switch
@@ -319,20 +346,21 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source, out _) && this.ReadTypeReferent(actual, scope) is { } read &&
-                this.FitsTypeAt(read, pattern, source, out _))
+            if (!this.FitsTypeAt(actual, pattern, source, out _, null) && this.ReadTypeReferent(actual, scope, source) is { } read &&
+                this.FitsTypeAt(read, pattern, source, out _, null))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
+            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.ReborrowedType(actual, source, null, [], out _) is { } reborrowed)
             {
-                // SPEC 3.5.1, 8.14, 10.1 step 1 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T` or
-                // `objuniq/T` or a pair layer in an exclusive case, is Reborrowed in its own Semantics before inference, so a parameter that
-                // is no reference binds the Reborrow's Type; the path is walked only then (ReachOf). A receiver is taken by its call's
-                // receiver operation (TryPairReceiver, SPEC 7.3), never by bare acquisition.
-                adapted = this.ReborrowedType(actual, layer, this.ReachOf(source));
+                // SPEC 3.5.1, 8.14, 10.1 step 1, 10.2.2 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T`
+                // or `objuniq/T`, a pair layer in an exclusive case or its owner case's nested layer, is Reborrowed in its own Semantics
+                // before inference (a plan Reborrowing in the owner case alone too: Same-Semantics, not Exact), so a parameter that is no
+                // reference binds the Reborrow's Type; the path is walked only then (ReachOf). A receiver is taken by its call's receiver
+                // operation (TryPairReceiver, SPEC 7.3), never by bare acquisition.
+                adapted = reborrowed;
                 quality = ArgumentAdaptation.SameSemanticsReborrow;
                 kind = ArgumentOperationKind.Reborrow;
             }
@@ -347,7 +375,7 @@ public sealed partial class Binding
         // A comparison's Copy read is a temporary value, even though its syntax retains ref/T.
         // Borrow that snapshot; borrowing the original storage would change left-to-right semantics.
         if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
-            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _))
+            ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _, null))
         {
             adapted = this.PreparedBorrowType(source, pattern);
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

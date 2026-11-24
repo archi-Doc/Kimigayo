@@ -66,9 +66,9 @@ internal sealed partial class TyCtxt
         ? contract : throw new InvalidOperationException($"{requirement.Name} is not a requirement.");
 
     // SPEC 8.6.1: a shim's Contract (Binding.PrepareBuiltinTargets) by its lang item, which names what the shim runs: Equatable's or
-    // Comparable's comparison, or an arithmetic Contract's operation (ArithmeticContracts.IsArithmetic); null for a function of another
-    // disposition. Its readers are Binding's comparison plans (Binding.RequirementInstances' Witnesses) and the Backend's shim targets
-    // (InstanceCollector.Witnesses' Shim), capability gaps (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
+    // Comparable's comparison, or an arithmetic Contract's operation (KimiLibraryCatalog.IsArithmeticContract); null for a function of
+    // another disposition. Its readers are Binding's comparison plans (Binding.RequirementInstances' Witnesses) and the Backend's shim
+    // targets (InstanceCollector.Witnesses' Shim), capability gaps (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
     internal static KimiDeclarationId? ShimContract(BindingSymbol function)
         => function.Definition.Kind == DispositionKind.Shim ? Contract(function).LibraryDeclaration : null;
 
@@ -152,8 +152,8 @@ internal sealed partial class TyCtxt
             return default;
         }
 
-        var instance = binding.InstanceContract(contract, self, subst.Declaring);
-        var witness = binding.ResolveRequirementWitness(requirement, self, instance, binding.EffectPremises(null));
+        var instance = binding.InstanceContract(contract, self, subst.Declaring, Binding.QuerySite.AfterPass);
+        var witness = binding.ResolveRequirementWitness(requirement, self, instance, binding.EffectPremises(null), Binding.QuerySite.AfterPass);
         return witness.Kind switch
         {
             Binding.RequirementWitnessKind.Builtin => new(RequirementTargetKind.Builtin, witness.Target, subst, default),

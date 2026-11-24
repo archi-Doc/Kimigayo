@@ -91,7 +91,7 @@ public sealed partial class Binding
         {
             if (this.inlineSummaryPool[i] is { Path: { InheritedBase: null } path, Cyclic: true } node)
             {
-                this.Fail(this.SpecificationPart(path, node.Identity) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
+                this.Fail(this.SpecificationPart(path, node.Identity, path.Use) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
                 if (this.AssociatedBindingOf(path.RootPath, node.Identity) is { } binding)
                 {
                     binding.InlineCycle = true;
@@ -251,7 +251,7 @@ public sealed partial class Binding
             return;
         }
 
-        var outcome = this.ProjectionSpecification(part, summary.Scope);
+        var outcome = this.ProjectionSpecification(part, summary.Scope, summary.Site);
         if (outcome.Type is not { } specified)
         {
             if (outcome.Pending)
@@ -370,7 +370,7 @@ public sealed partial class Binding
             var contract = step.Symbol!.Scope.Owner.BoundSymbol!;
             if (!subject.IsProofDecided ||
                 this.RecursiveInStorage(contract) ||
-                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract)), summary.Scope) != ConstraintProof.Proven)
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract)), summary.Scope, summary.Site) != ConstraintProof.Proven)
             {
                 return;
             }
@@ -405,6 +405,8 @@ public sealed partial class Binding
         internal BoundType? Binding { get; private set; } // A binding node's binding, in its subject declaration's terms.
 
         internal BindingScope Scope { get; private set; } = null!;
+
+        internal Koto Site => (Koto?)this.Container ?? this.Path!.Use; // The node of its proofs' judgment (QuerySite): the declaration, else the path's use.
 
         internal List<BoundType> Parts { get; } = new(); // The abstract parts its storage reaches by value.
 

@@ -15,7 +15,7 @@ using Kimi.Compiler.Parsing;
 //   blocks, Binding.Contracts.Registration; inherited paths, Binding.InheritedConformances); Begin's pass counter and the pass's modules
 //   (Binding.ResetContracts);
 //   Sweep at the end of a Bind (Binding.Bind); Builtin's Type and Contract symbol (its declaration's `#Lang` id), read through
-//   ArithmeticContracts.Supports, Binding.ComparisonKindOf, TyCtxt.OperatorTableRuns and Binding.WitnessGroup.
+//   TyCtxt.HasBuiltinArithmetic, Binding.ComparisonKindOf, TyCtxt.OperatorTableRuns and Binding.WitnessGroup.
 // - Outputs: Paths, Identities and ByType (LayerList: the overlay's part, then the base's), InPass (the same lists of the running
 //   pass's stores only, PLAN G949 S1-r2), OfType(type), Find(type, contract) and TryPath(key), each only what the running pass
 //   registered, as it reads it (an identity with a path, an Active path; R7-V2a2), Path(key), a path a registration names;
@@ -179,7 +179,7 @@ internal sealed class ImplTable
 
     // SPEC 13.3.3, 13.4.1, 4.6.1, 8.7.5, 22.1, 22.10.2 (R7-V2c): the built-in rows, a closed table over a Type and a Contract
     // declaration's identity (the keying invariant in the contract above): a conformance no declaration states, one row per Type and
-    // Contract. Arithmetic: each numeric Type to each arithmetic Contract it supports (ArithmeticContracts.Supports), whose bound
+    // Contract. Arithmetic: each numeric Type to each arithmetic Contract it supports (TyCtxt.HasBuiltinArithmetic), whose bound
     // reference is `C<Self>` (no Left row); a Type parameter's or projection's five binary ones and a `Wrapping<T>`'s six over such a T,
     // entailed by the subject's PrimitiveInteger. Comparison: by the one composition rule (Binding.ComparisonKindOf), the operator
     // table's Types and the composed Tuple and safe `ref` layer, Absent under Comparable where only Equatable runs. Library: the witness
@@ -191,10 +191,10 @@ internal sealed class ImplTable
             return default;
         }
 
-        if (ArithmeticContracts.IsArithmetic(id))
+        if (KimiLibraryCatalog.IsArithmeticContract(id))
         {
-            return ArithmeticContracts.Supports(self, id) ? new(BuiltinKind.Target, id)
-                : ArithmeticContracts.IsLeft(id) ? default
+            return TyCtxt.HasBuiltinArithmetic(self, id) ? new(BuiltinKind.Target, id)
+                : KimiLibraryCatalog.IsLeftContract(id) ? default
                 : self is { Kind: BoundTypeKind.Constructed, Components: [{ IsProofDecided: true } argument], Symbol.LibraryDeclaration: KimiDeclarationId.Wrapping }
                     ? new(BuiltinKind.Entailed, id, default, argument)
                 : self.IsProofDecided && id != KimiDeclarationId.Negatable ? new(BuiltinKind.Entailed, id, default, self) : default;

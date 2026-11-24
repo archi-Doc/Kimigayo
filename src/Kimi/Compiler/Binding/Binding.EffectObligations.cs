@@ -44,7 +44,7 @@ public sealed partial class Binding
                 // A virtual witness dispatches: its slot's bound decides, never its own body (virtual-dispatch 6).
                 var slot = witness.Implementation.Declaration as FunctionKoto;
                 var dispatched = slot is { IsVirtual: true };
-                if (!dispatched || !this.AvailableEffectBounds(slot!, null, path.Scope))
+                if (!dispatched || !this.AvailableEffectBounds(slot!, null, path.Scope, QuerySite.AfterPass))
                 {
                     var target = dispatched ? null : witness.Implementation;
                     var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.EffectBound);
@@ -92,22 +92,19 @@ public sealed partial class Binding
         // SPEC 8.7.5: every `tryResolve` implementation, the one requirement a closed Contract declares, reads only its boundaries and
         // the length and has no other effect. The `format` they inherit is Utf8Format's and takes its bound from their effect item.
         return callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange
-            ? true : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), reference: contract);
+            ? true : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), QuerySite.AfterPass, reference: contract);
     }
 
-    // SPEC 8.11.4: the bounds a call through an abstract Callable input may use under the calling definition's premises, those its one
-    // Callable signature declares for the receiver (TryCallable, the selection rule of the call); null where the input has several
-    // signatures, among which only the call's arguments chose (MIR does not keep that choice).
-    internal bool? CallableBounds(BindingSymbol? definition, BoundType input, SemanticsKind receiver)
-    {
-        var scope = this.EffectPremises(definition);
-        return this.TryCallable(input, scope, out var signature, out _) ? this.AvailableCallableEffects(input, signature, receiver, scope) : null;
-    }
+    // SPEC 8.11.4: the bounds a call through an abstract Callable input may use under the calling definition's premises, those of the
+    // premises with the call's signature and an equal or stronger receiver: the signature its selection chose (CallPlan.DeclaredSignature,
+    // a published row's OneCallable), never chosen again here.
+    internal bool CallableBounds(BindingSymbol? definition, BoundType input, BoundType signature, SemanticsKind receiver)
+        => this.AvailableCallableEffects(input, signature, receiver, this.EffectPremises(definition));
 
-    // SPEC 8.10: the receiver access of a Callable input's one signature under a definition's premises (TryCallable), which a published
+    // SPEC 8.10: a Callable input's one signature and its receiver access under a definition's premises (TryCallable), which a published
     // row's Callable input must declare (TyCtxt.Published); null where it has several signatures or none.
-    internal SemanticsKind? CallableReceiver(BindingSymbol definition, BoundType input)
-        => this.TryCallable(input, this.EffectPremises(definition), out _, out var receiver) ? receiver : null;
+    internal (BoundType Signature, SemanticsKind Receiver)? OneCallable(BindingSymbol definition, BoundType input)
+        => this.TryCallable(input, this.EffectPremises(definition), out var signature, out var receiver) ? (signature, receiver) : null;
 
     // SPEC 8.11.3, virtual-dispatch 6: the premises a definition's effects are judged under (null: a module's top-level statements),
     // an override's inherited implementation premises where present.

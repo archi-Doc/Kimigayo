@@ -31,14 +31,14 @@ public sealed partial class Binding
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result, without choosing any acquisition operation.</returns>
-    public ConstraintProof ProveCopy(BoundType type, Koto context) => this.ProveCopy(type, this.ConstraintScope(context));
+    public ConstraintProof ProveCopy(BoundType type, Koto context) => this.ProveCopy(type, this.ConstraintScope(context), context);
 
     /// <summary>Queries the recursive Owned guarantee, independently of heap/global borrow restrictions.</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result; unresolved Origins remain Unknown.</returns>
     public ConstraintProof ProveOwned(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context));
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context), context);
 
     /// <summary>Queries compiler-intrinsic PrimitiveInteger (SPEC 8.7.4) under lexical Constraints. Its reader, WrappingIntegerTest,
     /// observes through it that a wrapping integer Type satisfies no PrimitiveInteger (SPEC 3.1.1); no program of that class reaches
@@ -47,19 +47,24 @@ public sealed partial class Binding
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The proof result; a proven Type is an owner integer scalar in every instance.</returns>
     public ConstraintProof ProvePrimitiveInteger(BoundType type, Koto context)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context));
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context), context);
 
     /// <summary>Queries complete owner Core evidence without inspecting stored fields.</summary>
     /// <param name="type">The normalized complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
     /// <returns>The four-valued Sealed proof.</returns>
-    public ConstraintProof ProveSealed(BoundType type, Koto context) => this.ProveSealed(type, this.ConstraintScope(context));
+    public ConstraintProof ProveSealed(BoundType type, Koto context) => this.ProveSealed(type, this.ConstraintScope(context), context);
 
-    // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises).
-    internal ConstraintProof ProveCopy(BoundType type, BindingScope scope)
-        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope);
+    // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises), from `site`
+    // (QuerySite): during the pass a judgment's query runs in its caller's consultation frame, or in a site frame at its node where none
+    // is open (BeginProof), so what its proof forms past the height limit is refused at that site (Binding.TypeHeight). MIR's query is
+    // QuerySite.AfterPass: after the pass a capability work's height refusal fails no node, so the work answers Unknown with no record,
+    // as the round bound's (RefuseProof, R7-M38; a lint's, MIR's or the editor's question is no judgment); the instance collector's own
+    // formations keep R7-T1's answer. PLAN G651 U2 gives the after-run queries their outcome.
+    internal ConstraintProof ProveCopy(BoundType type, BindingScope scope, QuerySite site)
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope, site);
 
-    internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
+    internal ConstraintProof ProveSealed(BoundType type, BindingScope scope, QuerySite site) => this.RequestCapability(type, this.Library.Sealed, scope, site);
 
     // SPEC 3.5.2, 8.7.2, 8.7.3: what a set of outer Semantics, other than owner alone, states of an intrinsic capability of a layer
     // whatever its target: a shared or raw layer Copies and an exclusive or object layer does not; a Sealed or ObjectPayload Type has
@@ -273,7 +278,10 @@ public sealed partial class Binding
     private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) CapabilityKey(BoundType member, BindingSymbol intrinsic, BindingScope scope, bool derivation)
         => (this.InternConstraint(new(ConstraintKind.Contract, member, contract: intrinsic)), scope, derivation);
 
-    private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation = false)
+    // A capability request from `site` (QuerySite; PLAN G651 a1): the outermost request drains the engine (a judgment's, or a
+    // proposition's atom inside its proof, JudgeConstraintAtom: QuerySite.Nested), a request inside a work's evaluation is the work's
+    // read (QuerySite.Nested).
+    private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, QuerySite site, bool derivation = false)
     {
         var contexts = this.OperandContexts(type);
         if (contexts.Unresolved)
@@ -298,32 +306,10 @@ public sealed partial class Binding
             return this.WithClassPremises(leaf, type, intrinsic, scope);
         }
 
-        // A proof can re-enter a declaration with ever larger arguments: Copy's conditional premise over a projection, and Owned's
-        // projection normalized at the use through a conformance binding that uses itself (SPEC 8.3.3, DECISIONS BU-22); the second
-        // growth step stays Unknown. Removal condition: SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200).
-        if (!derivation && type.Symbol is not null)
-        {
-            var growing = false;
-            var depth = type.Height;
-            for (var ancestor = this.capabilityConsumer; ancestor is not null; ancestor = ancestor.Parent)
-            {
-                if (ReferenceEquals(ancestor.Type.Symbol, type.Symbol) && !ReferenceEquals(ancestor.Type, type))
-                {
-                    var previous = ancestor.Type.Height;
-                    if (depth > previous)
-                    {
-                        if (growing)
-                        {
-                            return ConstraintProof.Unknown;
-                        }
-
-                        growing = true;
-                        depth = previous;
-                    }
-                }
-            }
-        }
-
+        // A proof can re-enter a declaration with ever larger arguments (Copy's conditional premise over a projection; Owned's projection
+        // normalized at the use through a conformance binding that uses itself): each re-entry forms a higher Type, so the first one past
+        // the height limit is refused where it is formed, the limit's one Resource record, which the proof rests on (SPEC 8.3.3 Limits,
+        // Binding.TypeHeight; R7-C6 a, PLAN G200). No guard of the proof's own: whether the limit is reached depends on the Type alone.
         var key = this.CapabilityKey(type, intrinsic, scope, derivation);
         if (!this.capabilityNodes.TryGetValue(key, out var work))
         {
@@ -333,7 +319,6 @@ public sealed partial class Binding
 
         if (!work.Evaluated && !work.Queued)
         {
-            work.Parent = this.capabilityConsumer;
             work.Queued = true;
             this.capabilityQueue.Enqueue(work);
         }
@@ -364,7 +349,8 @@ public sealed partial class Binding
             return this.ReadVerdict(work.Result, null, work.Fact);
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
+        this.BeginClearParts(); // A chain of works over shared parts walks each part once (OperandContexts; R7-C6 a).
         try
         {
             do
@@ -379,6 +365,7 @@ public sealed partial class Binding
             this.capabilityConsumer = null;
             this.assuming = false;
             this.capabilityEvaluated.Clear();
+            this.EndClearParts();
         }
 
         this.ScopeReads = default;
@@ -404,7 +391,9 @@ public sealed partial class Binding
             var mark = this.BeginAnswer();
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
+            var bodyBinding = this.dependence == BodyBinding;
             next.Depends = this.EndAnswer(mark, result);
+            next.ReadsBodyBinding = next.Depends && bodyBinding;
             if (next.Depends)
             {
                 this.dependentCapabilities.Add(next);
@@ -647,8 +636,7 @@ public sealed partial class Binding
     // initial state, keeping Depends until it is evaluated again when next requested (read as Final by the erasure's Owned owner,
     // OwnedMember). A work whose last evaluation depends on none stays, unless it read one that does (a decided reader holds whatever
     // that one settles to, EndAnswer, so evaluating it again changes no verdict: one spread for every reader). A forgotten work stays in
-    // its sources' Dependents and edges: a later change of a source evaluates it again with no Parent, which only the growth guard reads
-    // (no verdict depends on it).
+    // its sources' Dependents and edges: a later change of a source evaluates it again.
     private void ForgetDependentCapabilities()
     {
         var dependents = this.dependentCapabilities;
@@ -666,12 +654,12 @@ public sealed partial class Binding
                 if (dependent.Evaluated && !dependent.Depends)
                 {
                     dependent.Depends = true;
+                    dependent.ReadsBodyBinding = work.ReadsBodyBinding;
                     dependents.Add(dependent);
                 }
             }
 
-            work.Reset();
-            work.Depends = true; // Forgotten, not judged: its last evaluation's answer depends on an open obligation (the erasure's Final, OwnedMember).
+            work.Forget(); // Forgotten, not judged (Depends stays): its last evaluation's answer depends on an open obligation or the body's binding (the erasure's Final, OwnedMember).
         }
 
         dependents.Clear();
@@ -706,7 +694,7 @@ public sealed partial class Binding
             {
                 var saved = this.ScopeReads.Origin;
                 this.ScopeReads.Origin = null;
-                var child = this.RequestCapability(type.Components[i], work.Intrinsic, work.Scope);
+                var child = this.RequestCapability(type.Components[i], work.Intrinsic, work.Scope, QuerySite.Nested);
                 this.ScopeReads.Origin = work.Part(i, child, this.ScopeReads.Origin, saved, type.Components[i]);
                 if (child == ConstraintProof.Error)
                 {
@@ -763,7 +751,7 @@ public sealed partial class Binding
     // The capability engine stays coinductive over structure (SPEC 15.3.5); the formation of an instance it reads is a
     // nominal judgment, read inductively through the solver's re-entry rule (InstanceFormation, SPEC 8.6.1, 8.3.3).
     private ConstraintProof InstanceCapability(CapabilityWork work, ConstraintProof result)
-        => result == ConstraintProof.Proven ? CombineProof(result, this.InstanceFormation(work.Type, work.Scope), true) : result;
+        => result == ConstraintProof.Proven ? CombineProof(result, this.InstanceFormation(work.Type, work.Scope, QuerySite.Nested), true) : result;
 
     private ConstraintProof NominalCopy(CapabilityWork work, DeclarationContainerKoto container)
     {
@@ -794,13 +782,21 @@ public sealed partial class Binding
         for (var i = 0; i < declarations.Count; i++)
         {
             var declaration = declarations[i];
-            var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Library.Copy, declaration.Scope, derivation: true);
-            if (declaration.Clause.BindingState == BindingState.Invalid || validation is ConstraintProof.Error or ConstraintProof.Refuted)
+            var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Library.Copy, declaration.Scope, QuerySite.Nested, derivation: true);
+            if (declaration.Clause.BindingState == BindingState.Invalid)
+            {
+                // SPEC 23.1.2 (R7-C6 a, F's C8 rulings 25 and 29): the failed opt-in keeps its own record, on which this Error rests (the
+                // proof channel's cause): a judgment reading the Type's Copy rests on a limit's record (ProofRestsOnLimit); after a
+                // Language failure its readers keep their records as before (RestsOnRecoveryOrLimit).
+                return this.ReadVerdict(ConstraintProof.Error, declaration.Failed, null);
+            }
+
+            if (validation is ConstraintProof.Error or ConstraintProof.Refuted)
             {
                 return ConstraintProof.Error;
             }
 
-            var condition = this.ProveConditionalPremises(declaration.Premises, work.Type, work.Scope);
+            var condition = this.ProveConditionalPremises(declaration.Premises, work.Type, work.Scope, QuerySite.Nested);
 
             result = CombineProof(result, CombineProof(validation, condition, true), false);
         }
@@ -818,7 +814,7 @@ public sealed partial class Binding
             var closed = this.ClosedSignature(own, binder);
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
-            var signature = this.RequestCapability(closed, work.Intrinsic, work.Scope);
+            var signature = this.RequestCapability(closed, work.Intrinsic, work.Scope, QuerySite.Nested);
             this.ScopeReads.Origin = work.Part(work.Type.Components.Count, signature, this.ScopeReads.Origin, saved, closed);
             return signature;
         }
@@ -839,7 +835,7 @@ public sealed partial class Binding
                 {
                     var saved = this.ScopeReads.Origin;
                     this.ScopeReads.Origin = null;
-                    var proof = this.RequestCapability(element, work.Intrinsic, work.Scope);
+                    var proof = this.RequestCapability(element, work.Intrinsic, work.Scope, QuerySite.Nested);
                     owned = CombineProof(owned, proof, true);
                     this.ScopeReads.Origin = work.Part(elements.Member, proof, this.ScopeReads.Origin, saved, element);
                 }
@@ -874,8 +870,8 @@ public sealed partial class Binding
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
             var proof = part is null ? (work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.StaticOrigin(origin, work.Scope) : ConstraintProof.Proven)
-                : argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
-                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
+                : argument ? this.RequestCapability(part, work.Intrinsic, work.Scope, QuerySite.Nested)
+                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope, QuerySite.Nested);
             result = CombineProof(result, proof, true);
             this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved, part);
         }
@@ -888,7 +884,7 @@ public sealed partial class Binding
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
             var closed = closure.Signature is { } signature ? this.ClosedSignature(signature, closure.Binder) : null;
-            var proof = closed is not null ? this.RequestCapability(closed, work.Intrinsic, work.Scope)
+            var proof = closed is not null ? this.RequestCapability(closed, work.Intrinsic, work.Scope, QuerySite.Nested)
                 : this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = closure.Binder }, null);
             result = CombineProof(result, proof, true);
             this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved, closed);
@@ -899,7 +895,7 @@ public sealed partial class Binding
 
     // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
     // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed. The closed signature is the
-    // part Owned judges.
+    // part Owned judges, and a held Function Type's part of a borrow layer's well-formedness (RetainInnerOutlives, SPEC 15.6.1).
     private BoundType ClosedSignature(BoundType signature, Koto binder)
     {
         var count = InputOriginCount(binder);
@@ -986,7 +982,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Types.Count; i++)
         {
             var type = this.StoredType(shape.Types[i], work.Type);
-            var proof = shape.Types[i].BindingState == BindingState.Invalid ? ConstraintProof.Error : type is null ? ConstraintProof.Unknown : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: work.Intrinsic)), work.Scope);
+            var proof = shape.Types[i].BindingState == BindingState.Invalid ? ConstraintProof.Error : type is null ? ConstraintProof.Unknown : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: work.Intrinsic)), work.Scope, QuerySite.Nested);
             if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy && type is not null && this.HoldsHolder(type))
             {
                 proof = ConstraintProof.Refuted; // SPEC 5.7: a `during self` layer makes its Type non-Copy.
@@ -1023,7 +1019,7 @@ public sealed partial class Binding
                 var type = this.CaseType(work.Type, new ReadOnlySpan<PairCase>(in single));
                 var saved = this.ScopeReads.Origin;
                 this.ScopeReads.Origin = null;
-                var proof = this.RequestCapability(type, work.Intrinsic, work.Scope);
+                var proof = this.RequestCapability(type, work.Intrinsic, work.Scope, QuerySite.Nested);
                 this.ScopeReads.Origin = work.Part(i, proof, this.ScopeReads.Origin, saved, type);
                 if (proof == ConstraintProof.Error)
                 {

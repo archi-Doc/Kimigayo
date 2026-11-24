@@ -53,7 +53,6 @@ public sealed partial class Binding
         }
 
         this.compilation = compilation;
-        this.indexer = new(this);
         this.Library = library;
         this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
@@ -64,6 +63,7 @@ public sealed partial class Binding
         this.associatedOrigins = new(this);
         this.shapeContractHeads = new(this);
         this.objectErasures = new(this);
+        this.deferredDefaults = new(this);
         this.enumConstructions = new(this);
         this.copyDeclarations = new(this);
         this.copyByType = new(this);
@@ -102,25 +102,25 @@ public sealed partial class Binding
         this.reachedThroughBorrow = new(this);
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
-        this.callInferenceFailures = new(this);
-        this.callableSelectionFailures = new(this);
-        this.baseCallFailures = new(this);
-        this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
-        this.arithmeticConformanceFailures = new(this);
         this.callableConstraints = new(this);
-        this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
+        this.memberSelections = new(this);
+        this.inferredConstructionTargets = new(this);
+        this.qualificationStops = new(this);
         this.formationCauses = new(this);
         this.knownBases = new(this);
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
         this.matchPlans = new(this);
+        this.indexedPatterns = new(this);
         this.prerequisites = new(this);
         this.partPrerequisites = new(this);
         this.prerequisiteVisits = new(this);
         this.duplicateDeclarations = new(this);
+        this.resolvingTypes = new(this);
+        this.synthesizedCalls = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);
@@ -263,7 +263,6 @@ public sealed partial class Binding
         // Source guards are all indexed now; a removed guard may have become an arm body.
         // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
         this.PruneCandidateScopes();
-        this.ValidateDefaultAliases();
         this.PrepareOriginDeclarations();
         this.BindSchemas();
         this.PrepareAssociatedOrigins();
@@ -274,6 +273,7 @@ public sealed partial class Binding
         this.PublishInheritedOptOuts();
         this.VerifyEarlyObjectForms();
         this.RegisterInheritedConformances();
+        this.PrepareInheritedScopes(); // SPEC 8.8.2, PLAN G651 a2 (form M): the heir scopes at the end of the registrations.
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
         this.PrepareCases();
@@ -297,7 +297,6 @@ public sealed partial class Binding
         this.PrepareStorage();
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
-        this.PrepareInheritedScopes(); // SPEC 8.8.2: the heir scopes before their readers (inline layouts, verification).
         this.ValidateInlineLayouts();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();

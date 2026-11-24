@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     private readonly BindingSymbol?[] builtinArithmetic = new BindingSymbol[6];
 
-    // The slot of a Contract ArithmeticContracts.Supports admits in builtinArithmetic: the right-hand Contracts, then Negatable.
+    // The slot of a Contract TyCtxt.HasBuiltinArithmetic admits in builtinArithmetic: the right-hand Contracts, then Negatable.
     private static int ArithmeticSlot(KimiDeclarationId id) => id == KimiDeclarationId.Negatable ? 5 : id - KimiDeclarationId.Addable;
 
     private BindingSymbol ArithmeticReference(KimiDeclarationId id, BoundType counterpart)
@@ -20,17 +20,17 @@ public sealed partial class Binding
 
     // SPEC 13.3.3: an arithmetic built-in row's (Target or Entailed, BuiltinConformance) Output is Self. W5 (ContractSolver's
     // Completion): Complete at the static gate, Provisional past it (the conformance proves).
-    private BoundType? BuiltinArithmeticOutput(BoundType projection, BindingScope scope, out Completion completion)
+    private BoundType? BuiltinArithmeticOutput(BoundType projection, BindingScope scope, QuerySite site, out Completion completion)
     {
         completion = Completion.Complete;
         if (projection is not { Kind: BoundTypeKind.AssociatedProjection, Components: [var self, var reference], Symbol.Scope.Owner.BoundSymbol: { } declaration } ||
-            !ArithmeticContracts.IsArithmetic(declaration.LibraryDeclaration))
+            !KimiLibraryCatalog.IsArithmeticContract(declaration.LibraryDeclaration))
         {
             return null;
         }
 
         completion = Completion.Provisional;
-        return this.BuiltinConformance(self, this.BoundContractReference(reference), scope).Kind is ImplTable.BuiltinKind.Target or ImplTable.BuiltinKind.Entailed
+        return this.BuiltinConformance(self, this.BoundContractReference(reference), scope, site).Kind is ImplTable.BuiltinKind.Target or ImplTable.BuiltinKind.Entailed
             ? self : null;
     }
 }

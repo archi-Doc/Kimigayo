@@ -65,7 +65,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (clause.BoundType is null ? this.resolvingTypes.Count != 0 && this.resolvingTypes.Contains(clause) : ReferenceEquals(clause, this.verifiedClause))
+        if (clause.BoundType is null ? this.resolvingTypes.Contains(clause) : ReferenceEquals(clause, this.verifiedClause))
         {
             this.notReadyReads++;
             return null;

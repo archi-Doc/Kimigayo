@@ -111,21 +111,36 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // A sequence's first element's address: a fixed array's own, its record unread (null), else an Array's or Slice's word `data` (IMPL
-    // 21.1.3); an Index's and a Storage's one statement of it.
-    private Value Buffer(BoundType type, ValueLowering? record, Value start)
-        => type.Kind == BoundTypeKind.FixedArray ? start : this.LoadWord(type, record!, start, "data");
+    // A sequence's first element's address: a fixed array's own, its record unread (null), a raw pointer's value, which has no `data`
+    // word (SPEC 5.3: a Storage over it, PLAN G597's L2), else an Array's or Slice's word `data` (IMPL 21.1.3); an Index's and a Storage's
+    // one statement of it.
+    private Value Buffer(BoundType type, ValueLowering? record, Value start) => type switch
+    {
+        { Kind: BoundTypeKind.FixedArray } => start,
+        { IsPointer: true } => this.LoadAt(start, PointerLayout),
+        _ => this.LoadWord(type, record!, start, "data"),
+    };
+
+    // A sequence Place's handle record, which Buffer and Length read: none for a fixed array, whose length and first element are its
+    // Type's and its own address, and for a raw pointer, a Storage's only (MirValidator), whose first element is its value; false after a
+    // record. An Index's and a Len's or Storage's one statement of it.
+    private bool RecordOf(MirPlace place, BoundType type, out ValueLowering? record)
+    {
+        var unrecorded = type.Kind == BoundTypeKind.FixedArray || type.IsPointer;
+        record = unrecorded ? null : this.LoweringOf(place);
+        return record is not null || unrecorded;
+    }
 
     // An Index: the bounds check at the position local's location, then the element's address at its stride (its Element need, Needed); a
-    // handle's record gives its length word, a fixed array's length is its Type's, so its record is not read. False after a record.
+    // handle's record gives its length word, a fixed array's length is its Type's, so its record is not read (RecordOf). False after a
+    // record.
     private bool Element(MirPlace step, MirPlace prefix, Value start, out Value address)
     {
         address = start;
         var position = this.body.Projections[step.Projection].Arg;
         var type = this.InstanceType(prefix)!;
-        var sequence = type.Kind == BoundTypeKind.FixedArray ? null : this.LoweringOf(prefix);
-        if (!this.Location(this.body.Locals[position].Source, out var site) || this.Needed(step) is not { } element ||
-            (sequence is null && type.Kind != BoundTypeKind.FixedArray))
+        var recorded = this.RecordOf(prefix, type, out var sequence);
+        if (!this.Location(this.body.Locals[position].Source, out var site) || this.Needed(step) is not { } element || !recorded)
         {
             return false; // Recorded.
         }

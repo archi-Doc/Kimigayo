@@ -176,9 +176,10 @@ public partial class TypeDagScalingTest
         var c = CompilationTestHelper.ParseSuccess(source);
         var complete = c.Bind().IsComplete;
         string[] issues = [.. c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)];
-        // The records 45c9fab40 gives (the field, each Z<S<D>> and S<D> occurrence the storage formation proves, and B<S<D>> where read).
-        string[] own = ["UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd let next: Array<Z<S<D>>>"];
-        string[] expected = !clause ? [] : read ? ["UnprovenConstraint_Kd B<S<D>>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", .. own] : own;
+        // The records 45c9fab40 gives (the field, each Z<S<D>> and S<D> occurrence the storage formation proves, and B<S<D>> where read),
+        // one per written occurrence (R7-V1c).
+        string[] own = ["UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd let next: Array<Z<S<D>>>"];
+        string[] expected = !clause ? [] : read ? ["UnprovenConstraint_Kd B<S<D>>", "UnprovenConstraint_Kd S<D>", .. own] : own;
         Assert.Equal(!clause, complete);
         Assert.Equal(expected, issues);
     }
@@ -829,18 +830,13 @@ public partial class TypeDagScalingTest
         // deep inheritance chain allocates linearly in its depth: three depths, each double the one before, within factor 3, as
         // InferenceSlotScalingTest's rows define it.
         [Fact]
-        public void AColdBindOfAnInheritanceChainIsLinear()
-        {
-            int[] depths = [64, 128, 256];
-            var compilations = new Compilation[depths.Length];
-            var bytes = AllocationMeasurement.MeasureSeries(depths.Length, i =>
-            {
-                var c = compilations[i] = CompilationTestHelper.Parse(HeirChain(depths[i]));
-                return () => c.Bind();
-            });
-            Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
-            Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
-        }
+        public void AColdBindOfAnInheritanceChainIsLinear() => ColdBindIsLinear(HeirChain);
+
+        // Z6 Revision 8 (C-462's C1): a cold Bind of HolderChain, whose publication's fixed point takes one round per holder
+        // (TheFitMarkCrossesAChainOfHoldersOneRoundPerHolder), allocates linearly in its length: no round allocates (MayWrite's member
+        // scratch is reused).
+        [Fact]
+        public void AColdBindOfAHolderChainIsLinear() => ColdBindIsLinear(HolderChain);
 
         // SPEC 8.6.2, 8.8.2 (PLAN G665): a warm rebind of a conditional inheritance chain, every heir's scope and every level's
         // conditions included, allocates nothing.
@@ -850,6 +846,20 @@ public partial class TypeDagScalingTest
             var c = CompilationTestHelper.ParseSuccess(ConditionalHeirChain(64));
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        }
+
+        // A cold Bind of a chain at three lengths, each double the one before: each completes, and its allocation grows within factor 3.
+        private static void ColdBindIsLinear(Func<int, string> chain)
+        {
+            int[] lengths = [64, 128, 256];
+            var compilations = new Compilation[lengths.Length];
+            var bytes = AllocationMeasurement.MeasureSeries(lengths.Length, i =>
+            {
+                var c = compilations[i] = CompilationTestHelper.Parse(chain(lengths[i]));
+                return () => c.Bind();
+            });
+            Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
+            Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
         }
     }
 }

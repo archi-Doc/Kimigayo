@@ -31,6 +31,10 @@ internal enum OriginPremiseRule : byte
 
     /// <summary>R5: the stored Origins of a borrowed complete local Place outlive that Place, in the body that declares the local.</summary>
     LocalPlace,
+
+    /// <summary>SPEC 15.3.6, 15.6.5: a local region equals its value in a body's oracle that reads it so, its own or one carrying it
+    /// (Binding.UniversalRelations; R7-O2 A1).</summary>
+    Value,
 }
 
 /// <summary>
@@ -61,10 +65,12 @@ internal sealed class OriginPremiseClosure
     private bool[] places = new bool[32];
     private int[] edgeLonger = new int[64];
     private int[] edgeNext = new int[64];
+    private int[] edgeShorter = new int[64];
     private OriginPremiseRule[] edgeRule = new OriginPremiseRule[64];
     private ulong[] edgeCondition = new ulong[64];
     private int[] meetLink = new int[64];
     private int[] meetNext = new int[64];
+    private int[] meetOperand = new int[64];
     private int[] topNodes = new int[8];
     private int nodeCount;
     private int edgeCount;
@@ -122,6 +128,42 @@ internal sealed class OriginPremiseClosure
         this.topCount = 0;
     }
 
+    /// <summary>Gets the current graph's size: its nodes, edges, meet incidences, meet operands and top-like nodes (PLAN G1082).</summary>
+    internal (int Nodes, int Edges, int Links, int Operands, int Tops) Mark => (this.nodeCount, this.edgeCount, this.meetLinkCount, this.operandNodeCount, this.topCount);
+
+    /// <summary>Restores the graph to <paramref name="mark"/>: the nodes, edges and meet incidences added since are removed, newest
+    /// first, so each is its list's head when unlinked, and the local-place marks of <paramref name="places"/> are cleared (PLAN G1082).</summary>
+    /// <param name="mark">A mark of this graph.</param>
+    /// <param name="places">The local-place start set added since the mark.</param>
+    internal void Truncate((int Nodes, int Edges, int Links, int Operands, int Tops) mark, List<int> places)
+    {
+        for (var edge = this.edgeCount - 1; edge >= mark.Edges; edge--)
+        {
+            this.firstIncoming[this.edgeShorter[edge]] = this.edgeNext[edge];
+        }
+
+        for (var link = this.meetLinkCount - 1; link >= mark.Links; link--)
+        {
+            this.firstMeet[this.meetOperand[link]] = this.meetNext[link];
+        }
+
+        for (var i = 0; i < places.Count; i++)
+        {
+            this.places[places[i]] = false;
+        }
+
+        for (var node = mark.Nodes; node < this.nodeCount; node++)
+        {
+            if (this.nodes[node] is { } origin)
+            {
+                this.index.Remove(origin);
+                this.nodes[node] = null;
+            }
+        }
+
+        (this.nodeCount, this.edgeCount, this.meetLinkCount, this.operandNodeCount, this.topCount) = mark;
+    }
+
     /// <summary>Gets an expression's node, interning it with its meet operands; <paramref name="added"/> tells a new node.</summary>
     /// <param name="origin">The expression.</param>
     /// <param name="added">Whether the node is new.</param>
@@ -156,7 +198,9 @@ internal sealed class OriginPremiseClosure
                 this.operandNodes[start + i] = operand;
                 Grow(ref this.meetLink, this.meetLinkCount + 1);
                 Grow(ref this.meetNext, this.meetLinkCount + 1);
+                Grow(ref this.meetOperand, this.meetLinkCount + 1);
                 this.meetLink[this.meetLinkCount] = node;
+                this.meetOperand[this.meetLinkCount] = operand;
                 this.meetNext[this.meetLinkCount] = this.firstMeet[operand];
                 this.firstMeet[operand] = this.meetLinkCount++;
             }
@@ -240,7 +284,9 @@ internal sealed class OriginPremiseClosure
         Grow(ref this.edgeNext, this.edgeCount + 1);
         Grow(ref this.edgeRule, this.edgeCount + 1);
         Grow(ref this.edgeCondition, this.edgeCount + 1);
+        Grow(ref this.edgeShorter, this.edgeCount + 1);
         this.edgeLonger[this.edgeCount] = longer;
+        this.edgeShorter[this.edgeCount] = shorter;
         this.edgeRule[this.edgeCount] = rule;
         this.edgeCondition[this.edgeCount] = condition;
         this.edgeNext[this.edgeCount] = this.firstIncoming[shorter];

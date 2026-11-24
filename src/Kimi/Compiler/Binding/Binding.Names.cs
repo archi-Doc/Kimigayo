@@ -18,10 +18,12 @@ public sealed partial class Binding
         this.BindNodeCore(name, scope, null);
         if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
-            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
+            // SPEC 7.7, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call; at an
+            // unresolved name the reference rests on the name's own record (SPEC 23.1.2).
             this.BindUnknownChildren(reference, scope);
-            var resolved = name.BindingState == BindingState.Resolved;
-            return this.Fail(reference, resolved ? BindingFailure.NoApplicableCandidate : BindingFailure.Unsupported, !resolved);
+            return name.BindingState == BindingState.Resolved
+                ? this.Record(reference, BindingFailure.NoApplicableCandidate, [])
+                : this.Fail(reference, BindingFailure.Unsupported, true);
         }
 
         for (var i = 0; i < reference.TypeArguments.Count; i++)
@@ -102,13 +104,13 @@ public sealed partial class Binding
         if (Receiver(node) is { } receiver && ((symbol.Declaration is FunctionKoto { BaseInitializer: { } initializer } && IsWithin(node, initializer)) ||
             (!receiver.Whole && (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))))
         {
-            return this.Fail(node, BindingFailure.InvalidAssignment);
+            return this.Record(node, BindingFailure.InvalidAssignment, []);
         }
 
         if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
-            var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
+            var proof = this.ProveMemberConditions(symbol, conditionalType, scope, node);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(node, proof, this.capabilityMode);
@@ -140,10 +142,15 @@ public sealed partial class Binding
                     return null;
                 }
 
+                if (group.Single is { } single && this.LacksRequirementSubject(node, single))
+                {
+                    return this.FailUnselected(node, BindingFailure.MissingName); // A group of one is its selection (N1-13 B3).
+                }
+
                 if (group.Single is { Declaration: FunctionKoto { IsAnonymous: false } named } && DirectCallOnly(named))
                 {
                     // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.
-                    return this.Fail(node, BindingFailure.DirectCallFunctionValue);
+                    return this.Record(node, BindingFailure.DirectCallFunctionValue, []);
                 }
             }
 
@@ -185,7 +192,7 @@ public sealed partial class Binding
                     (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
                 {
                     // SPEC 6.3.4, 11.7: construction forbids inherited Field and computed access and custom accessor calls on self.
-                    return this.Fail(node, BindingFailure.InvalidAssignment);
+                    return this.Record(node, BindingFailure.InvalidAssignment, []);
                 }
 
                 return Complete(node, this.MemberRead(node, symbol, scope));
@@ -198,17 +205,16 @@ public sealed partial class Binding
                 return this.FailWrite(node, node);
             }
 
-            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
+            // SPEC 9.4, 11.3.2: an absent or inaccessible accessor at a use: the use located, the Property related (an accessor's access
+            // word is part of its Property's declaration).
+            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType) ||
+                (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType))))
             {
-                return this.Fail(node, BindingFailure.Access);
+                this.RecordAccess(node, symbol, null);
+                return null;
             }
 
-            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType)))
-            {
-                return this.Fail(node, BindingFailure.Access);
-            }
-
-            if (!operation.IsStandard || (update && !property.Setter.IsStandard))
+            if (!DirectAccess(node, property))
             {
                 if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
                     (pathSelection.Path is not null || this.ObjectCases(sourceType, scope, out _) != SemanticsMask.None) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
@@ -236,8 +242,8 @@ public sealed partial class Binding
                     input = this.PropertyUpdateInput(node, updateExpression);
                 }
 
-                if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
-                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
+                if ((!StorageAccess(node, operation) && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
+                    (update && !StorageAccess(node, property.Setter) && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))))
                 {
                     return null;
                 }

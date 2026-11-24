@@ -40,6 +40,8 @@ internal enum IntrinsicWriter : byte
     Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
     Address, // Storage.reserveDispatch: the code address of its target, its Writer's reserve witness (FunctionCodegen.Formatting).
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
+    VolatileRead, // Raw.readVolatile: a volatile load of the result's Type at the storage (FunctionCodegen.Intrinsics).
+    VolatileWrite, // Raw.writeVolatile: a volatile store of the value at the storage (FunctionCodegen.Intrinsics).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -119,6 +121,11 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Record, RuntimeAbi.TestValue),
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.TestTempDirectory),
         new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LayoutNeed.None, IntrinsicWriter.Ensure, null),
+        // T is the call's by-value result or operand, so neither reads another layout (Need None, as RawInitialize's).
+        new(IntrinsicId.VolatileRead, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.VolatileRead, null),
+        new(IntrinsicId.VolatileWrite, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.VolatileWrite, null),
+        // The platform layer's clock (the Tatara plan's decision 25): Time.monotonicNanoseconds, declared where `windows` does not hold.
+        new(IntrinsicId.MonotonicClock, IntrinsicTarget.None, LayoutNeed.None, IntrinsicWriter.Routine, RuntimeAbi.Clock),
     ]);
 
     /// <summary>Gets the row of an intrinsic.</summary>

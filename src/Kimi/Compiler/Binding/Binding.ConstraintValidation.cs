@@ -172,6 +172,15 @@ public sealed partial class Binding
         return node is SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto enumeration } ? enumeration : null;
     }
 
+    // SPEC 8.3, 8.3.1: the one table of a proof's outcome to its failure. A Proven outcome is no failure: its record is a broken contract.
+    private static BindingFailure ConstraintFailureOf(ConstraintProof proof) => proof switch
+    {
+        ConstraintProof.Refuted => BindingFailure.UnsatisfiedConstraint,
+        ConstraintProof.Unknown => BindingFailure.UnprovenConstraint,
+        ConstraintProof.Error => BindingFailure.InvalidConstraint,
+        _ => BindingFailure.Internal,
+    };
+
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
     private Koto? CallableArgument(Koto use, IsKoto clause)
     {
@@ -301,7 +310,7 @@ public sealed partial class Binding
             // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
             this.failedCause = null;
             var frame = this.BeginConsultation(scope.Owner);
-            var proof = this.ProveConstraint(fact, scope);
+            var proof = this.ProveConstraint(fact, scope, scope.Owner);
             if (proof != ConstraintProof.Error)
             {
                 this.DropConsultation(frame);
@@ -347,7 +356,7 @@ public sealed partial class Binding
             if (ProjectionDeclarationOwner(use.Use) is { } declaration)
             {
                 var frame = this.BeginConsultation(declaration); // The proof's reads of other nodes (RequireConstraintInFrame).
-                changed |= this.RecordDeclarationInput(use, declaration, this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode, frame);
+                changed |= this.RecordDeclarationInput(use, declaration, this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), declaration), mode, frame);
             }
         }
 
@@ -368,7 +377,7 @@ public sealed partial class Binding
             }
 
             var frame = this.BeginConsultation(declaration);
-            var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+            var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), declaration);
             if (proof != ConstraintProof.Error)
             {
                 this.DropConsultation(frame);
@@ -443,12 +452,12 @@ public sealed partial class Binding
                 // Explicit Type syntax can normalize away the constrained qualifier.
                 if (parent is InvocationKoto call && ReferenceEquals(node, call.Method))
                 {
-                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), use.Use);
                     this.RequireConstraint(call, proof.Value, mode);
                 }
                 else if (parent is IsKoto { IsRuntimeTest: true } test && ReferenceEquals(node, test.Right))
                 {
-                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
+                    proof ??= this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use), use.Use);
                     this.RequireConstraint(test, proof.Value, mode);
                     if (proof != ConstraintProof.Proven)
                     {
@@ -459,8 +468,8 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope)
-        => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope), true);
+    private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
+        => CombineProof(this.CheckTypeConstraints(type, scope, site), this.ProveConformance(type, contract, scope, site), true);
 
     private bool ValidateClosedTypeConstraints(BindingMode mode)
     {
@@ -472,7 +481,7 @@ public sealed partial class Binding
                 // In the declaration's scope: a conditional target is bound in its Type's, never under the conformance's premises.
                 var previous = owner.BindingState;
                 var pendingFrame = this.BeginConsultation(pending);
-                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(owner));
+                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(owner), pending);
                 if (pendingProof == ConstraintProof.Proven)
                 {
                     pendingProof = ConstraintProof.Unknown;
@@ -538,7 +547,7 @@ public sealed partial class Binding
             // Closed clauses are declaration obligations, never assumptions or new conformances.
             var scope = this.scopes[container];
             var frame = this.BeginConsultation(clause);
-            var proof = CombineProof(this.CheckTypeConstraints(subject, scope), this.ProveConstraint(constraint, scope), true);
+            var proof = CombineProof(this.CheckTypeConstraints(subject, scope, clause), this.ProveConstraint(constraint, scope, clause), true);
             var state = container.BindingState;
             this.RequireConstraintInFrame(clause, proof, mode, frame);
             var containerFrame = this.BeginConsultation(container); // The owner's outcome is its clause's.
@@ -557,17 +566,24 @@ public sealed partial class Binding
             if (node is IsKoto { BoundConstraint: { } constraint } clause && clause.Parent is not ContractKoto && clause.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !(this.copyDeclarations.TryGetValue(clause, out var copy) && copy.Active) && clause.Left.BoundSymbol is not { IsGenericInput: true })
             {
                 var frame = this.BeginConsultation(clause);
-                this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
+                this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause), clause), mode, frame);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
-                (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
+            // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names. A check that
+            // recorded at a node first keeps its record.
+            if (this.JudgedOccurrence(node) is { Symbol.Declaration: DeclarationContainerKoto container } type)
             {
+                var written = this.OccurrenceTypeNode(node);
                 var scope = this.ConstraintScope(node);
-                var use = this.VerdictUse(node); // A synthesized call's Type is its consumer's verdict (PLAN G214).
+                var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
                 var frame = this.BeginConsultation(use);
-                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
+                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, use);
                 this.RequireConstraintInFrame(use, result, mode, frame);
+                if (result != ConstraintProof.Proven)
+                {
+                    this.RestLayersOnType(node, written);
+                }
+
                 if (node.BindingState == BindingState.Invalid)
                 {
                     // Invalid type formation in a clause must not remain available as evidence.
@@ -605,6 +621,59 @@ public sealed partial class Binding
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
+    }
+
+    // R7-V1c (SPEC 8.3.1, 8.6.3, 23.1.2; F's V1c rulings 3-4): the Type ValidateConstraintUses judges at `node`, or null. A layer that
+    // forms its operand's Type (SameTypeOperand) is that operand's occurrence, so the walk judges a written occurrence once: at its
+    // outermost such layer with a constructed Type that has clauses. A layer forming another Type, or none (a wrapper whose
+    // annotation failed), is not the occurrence below it, which is judged at its own node.
+    private BoundType? JudgedOccurrence(Koto node)
+        => this.ConstrainedType(node) is { } type && !(node.Parent is { } layer && ReferenceEquals(this.SameTypeOperand(layer), node) && this.ConstrainedType(layer) is not null) ? type : null;
+
+    // R7-V1c (F's V1c ruling 4): the operand of a layer of Type syntax whose formed Type is its one Type component's, by the identity
+    // judge (SameCompleteType: a transparent wrapper, parentheses, an explicit `owner/`, any such layer alike), else null; a layer
+    // forming another Type (`ref/`, `uniq/`, a pair layer, `T?`) has none.
+    private Koto? SameTypeOperand(Koto node)
+        => node is TypeKoto { TypeComponentCount: 1, BoundType: { } formed } layer && layer.TypeComponent(0) is { BoundType: { } type } operand && this.SameCompleteType(formed, type) ? operand : null;
+
+    // The Type node of the occurrence judged at `node`: the operand below every layer that forms its operand's Type.
+    private Koto OccurrenceTypeNode(Koto node)
+    {
+        while (this.SameTypeOperand(node) is { } operand)
+        {
+            node = operand;
+        }
+
+        return node;
+    }
+
+    private BoundType? ConstrainedType(Koto node)
+        => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
+            !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) ? type : null;
+
+    // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
+    // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its
+    // unproven state, so a reader of the declaration's written Type reads a failed Type.
+    private void RestLayersOnType(Koto judged, Koto written)
+    {
+        var state = this.RecordedState(written);
+        for (var layer = written; state != BindingState.Resolved && !ReferenceEquals(layer, judged);)
+        {
+            layer = layer.Parent!;
+            if (this.RecordedState(layer) == BindingState.Invalid)
+            {
+                continue;
+            }
+
+            if (state == BindingState.Invalid)
+            {
+                this.RestOnPart(layer, written);
+            }
+            else
+            {
+                this.SetRecordedState(layer, state);
+            }
+        }
     }
 
     // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
@@ -712,8 +781,31 @@ public sealed partial class Binding
         return true;
     }
 
-    private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null)
+    // The constraint family's one recorder (SPEC 8.3, 23.1.2; R7-E3 E3b delta 2.3): a proof's outcome at a use, through the one mapping
+    // (ConstraintFailureOf), with the facts its caller built, recorded at a use without a failure; a use that already failed keeps its
+    // first failure and drops them (the slot's drop). Its callers: RequireConstraint's Refuted arm, FailUnprovenConstraint's fact-less
+    // branch, FailConstraint's record and a requirement's named cause (Constraints.Requirements), Enums', Specializations' and
+    // FailIterationSubject's outcomes, FunctionReferences' fact-less pending proof and its Error without a held cause, a Pattern Type's
+    // check and recheck (Patterns) and a construction's late Type formation (Enums; R7-E3 E3c-2). FailClauseRecord records always (E2-5b);
+    // FailUnprovenConstraint's Callable branch and FailCallableSelection keep `callableConstraints` until R7-E4.
+    [Transitional("R7", Reason = "Records only at a use without a failure, so the use keeps its first failure (E2-5a's drop: a Refuted constraint may rest on the use's own rejected registration, probe c2; FailIterationSubject's iterable that already failed, RangeDiagnosticTest's `missing..3`), until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
+    private BoundType? RecordConstraint(Koto use, ConstraintProof proof, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
+        => this.RecordedFailure(use) == BindingFailure.None
+            ? this.Record(use, ConstraintFailureOf(proof), facts, unresolved: unresolved)
+            : this.Fail(use, ConstraintFailureOf(proof), unresolved);
+
+    // The one table of a proof at a use: Error is FailConstraint's record (its guard and cause, R7-E5), unless it rests on a limit's
+    // record (ProofRestsOnLimit: the use is that record's dependent, SPEC 23.1.2; R7-C6 a, F's C8 ruling 9 C1), Refuted and the final
+    // Unknown the constraint family's (RecordConstraint), the provisional Unknown RequireUnproven's. `proposition`: the caller's
+    // proposition, kept as the record's Constraint fact (the erasure's `S is Owned`, SPEC 15.2.3); none for a use whose proposition is
+    // its own clauses.
+    private void RequireConstraint(Koto use, ConstraintProof proof, BindingMode mode, Koto? diagnosticCause = null, BoundConstraint? proposition = null)
     {
+        if (proof == ConstraintProof.Error && diagnosticCause is null && this.ProofRestsOnLimit(use, proof))
+        {
+            return;
+        }
+
         if (proof == ConstraintProof.Error)
         {
             var cause = diagnosticCause ?? this.TakeFailedCause().Use;
@@ -726,17 +818,21 @@ public sealed partial class Binding
         }
         else if (proof == ConstraintProof.Refuted)
         {
-            this.Fail(use, BindingFailure.UnsatisfiedConstraint); // May rest on the use's own rejected registration (probe c2): the slot's drop until R7-E5 (D-924).
+            this.RecordConstraint(use, proof, proposition is null ? [] : [this.PropositionFact(use, proposition)]);
         }
         else if (proof == ConstraintProof.Unknown && mode == BindingMode.Final)
         {
-            this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: false);
+            this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: false, proposition);
         }
         else if (proof == ConstraintProof.Unknown)
         {
             this.RequireUnproven(use, mode); // The provisional pass leaves the U fact to the next judgment.
         }
     }
+
+    // A caller's proposition as its record's Constraint fact, sited at the use.
+    private ProblemFact PropositionFact(Koto use, BoundConstraint proposition)
+        => new(ProblemFactKind.Constraint, this.FactSite(use), this.report.Keep(proposition));
 
     // SPEC 23.1.2: the outcome of a validation pass's proof at a use, inside the use's frame (opened before the proof). What the proof
     // read of other nodes becomes the prerequisite of its outcome when the outcome is the use's record; a record the use's own check
@@ -770,10 +866,10 @@ public sealed partial class Binding
     }
 
     // The one record of a Constraint proven Unknown (census #25): with the U fact its judgment left (TakeUnknownFact), the clause and its
-    // comparison's failing condition (design-r2 Amendments 4 and 5); without one, the Constraint alone; a foreign fact is a broken
-    // contract. RequireConstraint, RequireUnproven and the direct sites that settle a clause list themselves (Enums, Specializations)
-    // record through it.
-    private BoundType? FailUnprovenConstraint(Koto use, CallableUnknown? fact, bool unresolved)
+    // comparison's failing condition (design-r2 Amendments 4 and 5); without one, the constraint family's record (RecordConstraint) with
+    // the caller's proposition if any; a foreign fact is a broken contract. RequireConstraint, RequireUnproven and the direct sites that
+    // settle a clause list themselves (Enums, Specializations) record through it.
+    private BoundType? FailUnprovenConstraint(Koto use, CallableUnknown? fact, bool unresolved, BoundConstraint? proposition = null)
     {
         if (!this.OwnFrame(use, fact?.Epoch))
         {
@@ -782,7 +878,7 @@ public sealed partial class Binding
 
         if (fact is not { Clause: { } clause } || !fact.Failure.IsCondition)
         {
-            return this.Fail(use, BindingFailure.UnprovenConstraint, unresolved);
+            return this.RecordConstraint(use, ConstraintProof.Unknown, proposition is null ? [] : [this.PropositionFact(use, proposition)], unresolved);
         }
 
         var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
@@ -790,10 +886,10 @@ public sealed partial class Binding
         return this.FailExplained(CallableConstraintRows.Family, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
 
-    // A proof of a proposition, settled where it is no longer combined (EndProof).
-    private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope)
+    // A proof of a proposition from `site` (QuerySite; PLAN G651 a1), settled where it is no longer combined (EndProof).
+    private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope, QuerySite site)
     {
-        this.BeginProof();
+        this.BeginProof(site);
         return this.EndProof(this.ProveProposition(proposition, scope));
     }
 
@@ -825,7 +921,7 @@ public sealed partial class Binding
         var objectTarget = obligation.Use is TypeSemanticsKoto { Type: not null, SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
         if (obligation.Kind == BindingObligationKind.TypeRole)
         {
-            return this.HasValueRole(type, scope, objectTarget) ? TypeRoleCause.None : TypeRoleCause.Role;
+            return this.HasValueRole(type, scope, obligation.Use, objectTarget) ? TypeRoleCause.None : TypeRoleCause.Role;
         }
 
         if (obligation.Kind != BindingObligationKind.TypeFormation ||
@@ -855,8 +951,8 @@ public sealed partial class Binding
                 causes |= TypeRoleCause.StaticExclusive;
             }
 
-            if (!(applied.Kind == BoundTypeKind.Parameter || (admitted & ~objectFamily) == 0 || this.HasValueRole(type, scope, false)) ||
-                ((admitted & objectFamily) != 0 && !this.HasValueRole(type, scope, true)))
+            if (!(applied.Kind == BoundTypeKind.Parameter || (admitted & ~objectFamily) == 0 || this.HasValueRole(type, scope, obligation.Use, false)) ||
+                ((admitted & objectFamily) != 0 && !this.HasValueRole(type, scope, obligation.Use, true)))
             {
                 causes |= TypeRoleCause.Role;
             }
@@ -870,8 +966,8 @@ public sealed partial class Binding
             causes |= TypeRoleCause.MissingSlot;
         }
 
-        if (((admitted & SemanticsMask.Object) != 0 && !this.HasValueRole(type, scope, true)) ||
-            ((admitted & (SemanticsMask.Owner | SemanticsMask.Raw)) != 0 && !this.HasValueRole(type, scope, false)))
+        if (((admitted & SemanticsMask.Object) != 0 && !this.HasValueRole(type, scope, obligation.Use, true)) ||
+            ((admitted & (SemanticsMask.Owner | SemanticsMask.Raw)) != 0 && !this.HasValueRole(type, scope, obligation.Use, false)))
         {
             causes |= TypeRoleCause.Role;
         }
@@ -880,7 +976,7 @@ public sealed partial class Binding
     }
 
     /// <summary>Decides the value-Type role of a generic target, or its Object Target role (SPEC 8.7.3).</summary>
-    private bool HasValueRole(BoundType type, BindingScope scope, bool objectTarget)
+    private bool HasValueRole(BoundType type, BindingScope scope, QuerySite site, bool objectTarget)
     {
         if (objectTarget)
         {
@@ -890,7 +986,7 @@ public sealed partial class Binding
                 return this.ObjectPayloadOptOut(type.Symbol) is null;
             }
 
-            if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
+            if (this.RequestCapability(type, this.Library.ObjectPayload, scope, site) == ConstraintProof.Proven)
             {
                 return true;
             }
@@ -905,7 +1001,7 @@ public sealed partial class Binding
         {
             return true;
         }
-        else if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
+        else if (this.RequestCapability(type, this.Library.ObjectPayload, scope, site) == ConstraintProof.Proven)
         {
             // SPEC 8.7.3: ObjectPayload proves a complete owner value Type, including a pair's target.
             return true;
@@ -924,7 +1020,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && this.ObjectPayloadOptOut(required.Symbol) is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
+                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && this.ObjectPayloadOptOut(required.Symbol) is null)) && this.ProveConstraint(fact, scope, site) == ConstraintProof.Proven)
                 {
                     return true;
                 }
