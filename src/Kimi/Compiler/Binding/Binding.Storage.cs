@@ -170,7 +170,7 @@ public sealed partial class Binding
     // (its kept part, KeptType, without raw Origins), also where the instance does not store it, so an independent selection failure stays
     // judged, as LookupMember's base step reads a failed clause (R7-N3b, R7-N2c); none where the clause names no Type or the struct lies on
     // an inline cycle (AdtDef.Base's reading), which no selection reads past.
-    internal BoundType? SelectionBase(StructKoto declaration)
+    private BoundType? SelectionBase(StructKoto declaration)
         => declaration.BaseClause is { } clause && declaration.BoundSymbol!.Adt is not { InlineCycle: true }
             ? this.WithoutRawOrigins(this.KeptType(clause, this.SelfType(declaration.BoundSymbol!))) : null;
 
