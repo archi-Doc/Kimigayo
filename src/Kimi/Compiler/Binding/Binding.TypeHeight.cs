@@ -20,16 +20,18 @@ namespace Kimi.Compiler;
 //   while the pass produces its failures (RunSite).
 // - Outputs: the site's failure (BindingFailure.TypeHeightLimit, its first failure only); a refused node publishes no Type, so a node
 //   reading it rests on it (SPEC 23.1.2, 8.3.3 Limits) and a later failure of the same node is not recorded; inside a capability work's
-//   evaluation, the proof's limit, the site's declaration's refusal (RefuseProof: one record a declaration and limit), so a verdict
-//   cached with it gives every later reader that record (R7-C6 a: the capability proof's limit; a proof keeps no growth bound of its own).
+//   evaluation during the run, the proof's limit, the site's declaration's refusal (RefuseProof: one record a declaration and limit),
+//   so a verdict cached with it gives every later reader that record (R7-C6 a: the capability proof's limit; a proof keeps no growth
+//   bound of its own).
 // - Invariants: one compare per check, no table; Binding's walks recurse at most the limit plus a written layer's syntax depth
 //   (BU-112), inside the compile stack's margin (DECISIONS U-D2's entry). A refusal outside every consultation frame during the run
 //   is a broken contract: InternalInvariant_Kd at the project, never a silent null (a pass step no frame covers yet, until PLAN G651
 //   a2-a4 frame the step; a4 makes it a throw), but inside a capability work, whose refusal is RefuseProof's at the work scope's
 //   declaration (R7-M38's no-frame rule). After the run it is answered to the innermost after-run owner (PLAN G651 U2b R1): the
 //   instance collector's answer frame (R7-T1; TyCtxt.OpenAnswer, CloseAnswer: every substitution the collector, Layout or a witness
-//   causes is inside it) or an after-run site (a MIR driver's body site and the node sites inside it; Binding's after-Check walk and the
-//   editor boundary, whose marks are dropped; TyCtxt.OpenBodySite, OpenSite). There a refusal is answered to the innermost formation
+//   causes is inside it), an after-run site (a MIR driver's body site and the node sites inside it; Binding's after-Check walk and the
+//   editor boundary, whose marks are dropped; TyCtxt.OpenBodySite, OpenSite) or a capability work's evaluation (OpenCapabilityOwner,
+//   C8 ruling 30: its refusal answers Unknown with no record, R7-M38). There a refusal is answered to the innermost formation
 //   owning the Type (OpenFormation): a substitution at a requesting site (TyCtxt.Answered, giving TyCtxt.Formation.HeightLimit), an
 //   instance's stored Types (Instance, published as the instance's HeightLimit, which Binding's storage walk reads as a limit and Layout
 //   as its HeightLimit) or a requirement call's witness resolution (TyCtxt.Witness, its target's Cause HeightLimit); a formation
@@ -78,6 +80,11 @@ public sealed partial class Binding
 
         /// <summary>A node site inside a body site: a read marks it at its subject.</summary>
         Node,
+
+        /// <summary>A capability work's evaluation (R4 Rev 2's fourth owner; C8 ruling 30): a refusal in it that no nearer formation owns,
+        /// or a read of one, is the work's, which answers Unknown with no record (R7-M38: a lint's, MIR's or the editor's question is no
+        /// judgment).</summary>
+        Capability,
     }
 
     // The run's site: the open consultation frame's node while the pass produces its failures; none after the pass, where a query fails
@@ -174,8 +181,8 @@ public sealed partial class Binding
     }
 
     /// <summary>Answers a read of a published height refusal, or a refusal no formation owns, to the innermost after-run owner (PLAN G651
-    /// U2b R3, R13.1), in every pass state: a site gets a mark; the collector's frame nothing, its readers record; with no owner, the broken
-    /// contract, thrown.</summary>
+    /// U2b R3, R13.1), in every pass state: a site gets a mark; the collector's frame nothing, its readers record; a capability work
+    /// nothing, the work answers Unknown (R7-M38); with no owner, the broken contract, thrown.</summary>
     /// <param name="refused">The refused instance's Type, or null for a substitution's refusal.</param>
     internal void AnswerSite(BoundType? refused)
     {
@@ -207,6 +214,20 @@ public sealed partial class Binding
         {
             var written = slot < callee.Parameters.Count ? TyCtxt.SignatureSite(callee, slot) : callee;
             (this.answer, this.owner) = ((false, false), (AfterRunOwner.Node, SourceRef.Of(written)));
+        }
+
+        return parent;
+    }
+
+    // Opens a capability work's evaluation as the innermost after-run owner (R4 Rev 2, C-R4; C8 ruling 30): after the run it saves the
+    // state and clears the formation and the site, so a refusal in the work is the work's and one in a formation opened inside it the
+    // formation's; during the run it opens nothing (R13.1 P1: the work's refusal is RefuseProof's). Its drain restores the state.
+    private OwnerState OpenCapabilityOwner()
+    {
+        var parent = this.Saved();
+        if (!this.producing)
+        {
+            (this.answer, this.owner) = ((false, false), (AfterRunOwner.Capability, default));
         }
 
         return parent;
@@ -252,16 +273,17 @@ public sealed partial class Binding
 
     // A refusal of a Type higher than the limit, recorded at the current site, else answered to the open frame's innermost formation,
     // else during the run the site-less record (PLAN G651 a4's arm) and after it the innermost after-run owner's; null, the refused
-    // formation's image. Inside a capability work's evaluation, in every pass state, the refusal is the proof's limit (L, DECISIONS
-    // BU-22): the site's declaration's refusal (RefuseProof: one record a declaration and limit, at the declaration's first refused site;
-    // with no frame open the work scope's declaration, R7-M38), on which a later refusal of the declaration and every reader of a verdict
-    // cached with it rest (SPEC 8.3.3 Limits, 23.1.2; O-321 (b); RestsOnRecoveryOrLimit): the engine's works are keyed by a scope, not a
-    // declaration, so a nested block's or Closure's work forms the Type again (R7-C6 a, F's C8 rulings 6 and 13). After the pass
-    // RefuseProof fails no node, so the work answers Unknown with no record, as the round bound's (a lint's, MIR's or the editor's
-    // question is no judgment). Every other frame, a validation pass's included, keeps its own record (BU-161; F's C2 ruling 257 (2)).
+    // formation's image. Inside a capability work's evaluation during the run the refusal is the proof's limit (L, DECISIONS BU-22): the
+    // site's declaration's refusal (RefuseProof: one record a declaration and limit, at the declaration's first refused site; with no
+    // frame open the work scope's declaration, R7-M38), on which a later refusal of the declaration and every reader of a verdict cached
+    // with it rest (SPEC 8.3.3 Limits, 23.1.2; O-321 (b); RestsOnRecoveryOrLimit): the engine's works are keyed by a scope, not a
+    // declaration, so a nested block's or Closure's work forms the Type again (R7-C6 a, F's C8 rulings 6 and 13). Every other frame, a
+    // validation pass's included, keeps its own record (BU-161; F's C2 ruling 257 (2)). After the run the work is an after-run owner
+    // (OpenCapabilityOwner; C8 ruling 30): a formation opened inside it is nearer and takes the refusal (R4 Rev 2, C-R4), else the work's
+    // AnswerSite answers Unknown with no record, as the round bound's (R7-M38: a lint's, MIR's or the editor's question is no judgment).
     private BoundType? RefuseHeight()
     {
-        if (this.capabilityConsumer is { } work)
+        if (this.producing && this.capabilityConsumer is { } work)
         {
             this.RefuseProof(this.RunSite is { } judged ? this.ConstraintScope(judged) : work.Scope, BindingFailure.TypeHeightLimit);
             return null;
