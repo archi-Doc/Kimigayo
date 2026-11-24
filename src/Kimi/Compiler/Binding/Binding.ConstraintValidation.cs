@@ -698,9 +698,11 @@ public sealed partial class Binding
     // Property's written Type, its certificate's. The reader finds the failed occurrence under the layers that hold it, so no layer
     // takes a state the occurrence's judgment did not give it (RestLayersOnType) and a declaration's written Type, read by its other
     // readers (a stored Type's Owned proof), keeps them. A written Type node is no decision (its reader decides), nor is a declaration
-    // other than a Property. The decision asks it where it is made (BindNode's end; a Property's certificate, ValidateProperties),
-    // demanding each occurrence's judgment (FailedPart, JudgeOccurrence), so it rests before any reader of it is bound and each reader
-    // rests by its own binding (SPEC 23.1.2), with no late rest.
+    // other than a Property. The decision asks it where it is made (BindNode's end, for a use bound in an executable body; a Property's
+    // certificate, ValidateProperties), demanding each occurrence's judgment (FailedPart, JudgeOccurrence), so it rests before any reader
+    // of it is bound and each reader rests by its own binding (SPEC 23.1.2), with no late rest. A declaration's own syntax (a clause, an
+    // associated Type's binding, a declared Property Type) is bound with no body (R4-M101 E1) and asks nothing at its binding: its
+    // occurrences' judgments read declaration verdicts decided after the bodies, so ValidateConstraintUses demands them first.
     private Koto? FailedWrittenType(Koto node)
     {
         if (this.RecordedState(node) == BindingState.Invalid || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto)

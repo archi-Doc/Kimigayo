@@ -256,8 +256,10 @@ public sealed partial class Binding
 
         // SPEC 23.1.2 (E3e Revision 2): a decision that read a written Type whose occurrence's judgment fails rests on it where it
         // is made, so its readers, bound after it, rest by their own binding; a decision deferred without a Type too (ruling 18 P1: a
-        // reference awaiting its call is completed outside BindNode, PrepareArgument).
-        if (node.BindingFailure == BindingFailure.None && this.FailedWrittenType(node) is { } failedType)
+        // reference awaiting its call is completed outside BindNode, PrepareArgument). A decision is a use, bound in an executable body
+        // (formingBody); a declaration's own syntax, bound with no body (a clause, a declared Property Type), asks nothing here: its
+        // occurrences are judged after the declaration checks they read (ValidateConstraintUses), a Property's at its certificate.
+        if (this.formingBody.IsBody && node.BindingFailure == BindingFailure.None && this.FailedWrittenType(node) is { } failedType)
         {
             type = this.CompleteDependent(node, failedType);
         }
