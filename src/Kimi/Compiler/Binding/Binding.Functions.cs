@@ -249,7 +249,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // The first failed node inside a parameter Type whose outer layer resolved.
+    // The first failed node inside a written signature Type whose outer layer resolved: a parameter's, then the result's.
     private Koto? FailedSignaturePart(FunctionKoto function)
     {
         var visitor = this.failedSignaturePartVisitor ??= new();
@@ -261,6 +261,6 @@ public sealed partial class Binding
             }
         }
 
-        return null;
+        return function.ReturnType is { } result ? visitor.Find(result, invalidState: true) : null;
     }
 }

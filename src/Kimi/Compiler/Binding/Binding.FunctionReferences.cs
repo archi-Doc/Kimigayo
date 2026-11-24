@@ -781,6 +781,14 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
+        // SPEC 23.1.2 (rule W): a callee whose own declared signature failed (its SignatureVerdict refuted, recorded where the signature
+        // is written) is a failed input, as a call's candidate in a failed declaration context is (CallSelection's Error): the reference
+        // rests on that record (BindFunctionReference's error arm), never reads the verdict as a fresh, fact-less inapplicability.
+        if (this.CheckSignatureTypeConstraints(function, use) is ConstraintProof.Refuted or ConstraintProof.Error)
+        {
+            return CandidateApplicability.Error;
+        }
+
         var generic = function.GenericArguments.Count;
         var container = this.ReferenceContainer(use, symbol);
         SlotFrame? frame = generic == 0 ? null : boundFrame ?? this.infer.Rent(generic, use, scope);
