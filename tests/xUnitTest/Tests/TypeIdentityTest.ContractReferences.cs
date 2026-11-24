@@ -42,6 +42,8 @@ public partial class TypeIdentityTest
 
     private const string Merged = "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n";
 
+    private const string MergedWhen = "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n";
+
     private const string UseTag = "func f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true\n    return\n";
 
     private const string Two = "contract Q<U, V>: Iter<U>, Iter<V>\n";
@@ -183,6 +185,15 @@ public partial class TypeIdentityTest
     [InlineData("guard", "mg3", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Q<S.(HasItem).Item, R.(HasItem).Item>")]
     [InlineData("guard", "mg3x", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n    associate Iter<i32>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Q<S.(HasItem).Item, R.(HasItem).Item>")]
     [InlineData("guard", "mg3d", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item>")]
+
+    // SPEC 8.8.2, 8.6.1, 8.9.2 (PLAN G1300): a conditional block's specification selects under D and P, where its conformance is one with a
+    // member declared outside the block, which then represents it; it specifies the block conformance's associated Type all the same, through
+    // either member's name, and its obligation is the block's (mg4m); a disagreement with the member outside is r6's (mg4n).
+    [InlineData("guard", "mg4", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool\n", "")]
+    [InlineData("guard", "mg4c", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool and Copy\n", "")]
+    [InlineData("guard", "mg4o", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<S.(HasItem).Item>.Tag is bool\n", "")]
+    [InlineData("guard", "mg4n", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is i64\n", "IncompatibleContractImplementation_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | InvalidConstraint_Kd: Self is Iter<S.(HasItem).Item>")]
+    [InlineData("guard", "mg4m", HasItem + Tagged + Direct + "contract Marker\n" + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool and Marker\n", "UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
 
     // SPEC 8.9.1: conformances that can collide are an error at the later clause, an unresolved projection included (step 4); the use is ambiguous.
     [InlineData("guard", "x2", "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "DuplicateBinding_Kd: Self is Indexable<i32> | AmbiguousBinding_Kd: let b = m[k]")]

@@ -618,10 +618,17 @@ public sealed partial class Binding
             {
                 for (var j = 0; j < block.Items.Count; j++)
                 {
-                    if (block.Items[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint })
+                    if (block.Items[j] is not IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause)
                     {
-                        Collect(constraint, path);
+                        continue;
                     }
+
+                    if (this.AssociatedIdentity(clause.Left.BoundType) is { } identity && !this.IsPathAssociated(path, identity))
+                    {
+                        this.Fail(clause, BindingFailure.InvalidAssociatedType); // SPEC 8.8.1: a block specifies its conformance's associated Types.
+                    }
+
+                    Collect(constraint, path);
                 }
             }
 
@@ -856,6 +863,34 @@ public sealed partial class Binding
     // joins in the pass, else its own; null if none.
     private AssociatedBinding? AssociatedBindingOf(BoundConformancePath path, BoundRequirement associated)
         => this.KeyedBinding(path, associated) is { } own ? own.Set ?? own : null;
+
+    // SPEC 8.6.1, 8.9.2 (R7-C3 C3b-2): whether a specification's associated identity names an associated Type of `path`'s Contract: one
+    // of its shape's identities, or a member of one's conformance, keyed to that identity's binding on the root path (JoinMembers). The
+    // one test of the paths a specification belongs to: its projection names the selection's representative, which a path's shape need
+    // not declare (a conditional block's specification selects under D and P, SPEC 8.8.2, among the Type's other conformances).
+    private bool IsPathAssociated(BoundConformancePath path, BoundRequirement identity)
+    {
+        var shape = path.Contract.Contract!;
+        if (shape.SeenRequirements.Contains(identity))
+        {
+            return true;
+        }
+
+        if (this.AssociatedBindingOf(path.RootPath, identity) is not { } binding)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < shape.AssociatedTypes.Count; i++)
+        {
+            if (ReferenceEquals(this.AssociatedBindingOf(path.RootPath, shape.AssociatedTypes[i]), binding))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // The binding keyed by an associated identity on a root path, as it was made for that identity.
     private AssociatedBinding? KeyedBinding(BoundConformancePath path, BoundRequirement associated)

@@ -87,14 +87,15 @@ public sealed partial class Binding
     /// `contract` with its bound reference `reference` (SPEC 8.6.1's pair) or with none (a query by declaration, which the compiler asks,
     /// SPEC 8.4.3), folding SelectionMembers. Its candidates are the identities of `receiver`'s declaration that IsSelectionCandidate
     /// admits. Candidates naming one bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement;
-    /// 8.9.2: merging paths, PLAN G798's `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a disagreement is the declaration's error
-    /// (8.9.2). The selection returns the first member in declaration order (ConformancesOf's registration order), the set's
-    /// representative, not a preference among members.
+    /// 8.9.2: merging paths, PLAN G798's `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a
+    /// disagreement is the declaration's error (8.9.2). The selection returns the first member in declaration order (ConformancesOf's
+    /// registration order), the set's representative, not a preference among members.
     /// Two declared directly are distinct conformances that collide (SPEC 8.9.1; the clause has its DuplicateBinding_Kd), and without a
     /// reference several are distinct (SPEC 8.4.3): both are ambiguous, none is selected, and each reader says what an ambiguity is for
     /// it. `candidates` counts the candidates read: 0 for none; with a selection, the members of the one conformance it represents, whose
-    /// associated Types are one (PrepareAssociatedBindings keys the set's binding by each); without one, more than one, an ambiguity. A query by
-    /// declaration reads declarations only and not `scope` (ContractSolver's unthreaded list); a bound reference's selection is a judgment.
+    /// associated Types are one (PrepareAssociatedBindings keys the set's binding by each); without one, more than one, an ambiguity. A
+    /// query by declaration reads declarations only and not `scope` (ContractSolver's unthreaded list); a bound reference's selection is a
+    /// judgment.
     /// </summary>
     private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site, out int candidates)
     {
