@@ -98,6 +98,14 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         "func pairc2(b: uniq/(ref/i32 during o), a: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k)) -> i32\n    origin k outlives o\n    return 0\n" +
         "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: uniq/(ref/i32 during w)) -> i32\n";
 
+    // PLAN G1078 (SPEC 8.6.1, 8.6.4): pairk's and pairc's shapes as a requirement of a generic Contract, which a caller bound twice
+    // reaches as one declaration under two candidates; its `n: i32` selects Swap<i32>'s, the other is rejected after its evidence.
+    private const string SwapK = "contract Swap<X>\n    func sw(a: uniq/(ref/i32 during o), b: uniq/(ref/(ref/i32 during k) during o), v: X) -> ()\n\n" +
+        "func caller<T>(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/(ref/i32 during w) during y), n: i32) -> ()\n";
+
+    private const string SwapC = "contract Swap<X>\n    func sw(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k), v: X) -> ()\n        origin k outlives o\n\n" +
+        "func caller<T>(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: uniq/(ref/i32 during w), n: i32) -> ()\n";
+
     private const string PairW = "func pairw(a: uniq/(ref/i32 during o), b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
         "func pairw2(b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), a: uniq/(ref/i32 during o), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
         "func caller(x: ref/i32, y: ref/i32, z: ref/i32, p: uniq/(ref/i32 during x), q: (uniq/(ref/i32 during y) during v, ref/(ref/i32 during w) during u), s: uniq/(ref/i32 during u), t: ref/i32 during z) -> ()\n";
@@ -336,7 +344,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // again over the other variables and publishes the failure (OriginInference.Marked), so every clause and input premise of the call
     // that reads it, or a variable the solve formed from it, rests on that record in either argument order: o-inv's `y` and pairk's inner
     // `w outlives o` (whatever `o` is), pairc's clause `k outlives o` (rule W: it reads `o` directly). A failure independent of `o` stays
-    // (pairw's `z outlives u`). Valid controls: `origin b outlives a`, and a construction whose partners are equal.
+    // (pairw's `z outlives u`). Valid controls: `origin b outlives a`, and a construction whose partners are equal. The same holds at a
+    // requirement that a group offers as two candidates (SwapK, SwapC; PLAN G1078): each candidate's solve state is its own, so the
+    // rejected candidate's solve leaves the winner's published failure in place, whichever candidate is tried last (fail-before: the
+    // winner tried first gave 2 and 3 records).
     [Theory]
     [InlineData(InvO + "    invo(x, y)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(InvO + "    origin b outlives a\n    invo(x, y)\n", "clean")]
@@ -351,6 +362,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(PairW + "    pairw2(q@move, p, s, t)\n", "2*UnprovenOriginRelation_Kd")]
     [InlineData(PairW + "    origin z outlives u\n    pairw(p, q@move, s, t)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(EnumTwo + "    origin x == y\n    let e = E.Two(p, q, w)\n    return 0\n", "clean")]
+    [InlineData(SwapK + "    T is Swap<i32>\n    T is Swap<i64>\n    T.sw(p, q, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapK + "    T is Swap<i64>\n    T is Swap<i32>\n    T.sw(p, q, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapC + "    T is Swap<i32>\n    T is Swap<i64>\n    T.sw(p, q, r, n)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(SwapK + "    T is Swap<i32>\n    T is Swap<i64>\n    origin x == y\n    origin w outlives x\n    T.sw(p, q, n)\n", "clean")]
     public void AFailedEqualityIsTheRecordItsReadersRestOn(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
@@ -627,7 +642,7 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // required Origin, here one the required contract keeps apart from the shared one: a Function Item argument, a conversion and a
     // conformance witness.
     [Theory]
-    [InlineData("func apply(h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t, y: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return h(m@ref, y)\nfunc g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t => apply(f, q)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("func apply(h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t, y: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return h(m@ref, y)\nfunc g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t => apply(f, q)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData("func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t = f\n    let m: i32 = 5\n    return h(m@ref, q)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData("contract Picker\n    func pick(self: ref/Self, x: ref/i32 during p, y: ref/Box<ref/i32 during q> during r) -> ref/i32 during r\nstruct Chooser\n    Self is Picker\n    public init() => ()\n    public func pick(self: ref/Self, x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c => x\n", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
     public void AComparisonProvesTheImplementationsInputs(string body, string code)
@@ -924,8 +939,9 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // ja1 (the Middle's RP17 C2, ja2's invalid twin): `m = 5` while r, carrying the payload's Loan on m through the opened region, is
     // used: A5's conflict at the write (the base: BU-156's located Unsupported_Kd at the payload).
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    m = 5\n    return sink(r)\n", "ComparisonLoanConflict_Kd@m = 5")]
-    // j13 (R2's structure twin): a waiting source of another structure is its own Type mismatch, whatever the region.
-    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, y: ref/(ref/i32 during b), n: ref/(i64)) -> i32\n    let r = keep(if flag => .Some(n) else => .None, y)\n    return 0\n", "TypeMismatch_Kd@.Some(n) else => .No")]
+    // j13 (R2's structure twin): a waiting source of another structure fails its check at the one candidate's Type (SPEC 10.5.1; PLAN
+    // G924 AF-3b, design R1.7): the call's NoApplicableOverload_Kd, with the source's reason, whatever the region.
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, y: ref/(ref/i32 during b), n: ref/(i64)) -> i32\n    let r = keep(if flag => .Some(n) else => .None, y)\n    return 0\n", "NoApplicableOverload_Kd@keep(if flag => .Som")]
     // rv18
     [InlineData("func keepO<T>(x: Option<T>, y: T) -> i32\n    T is Owned\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    return keepO(.Some(p), one())\n", "UnprovenOriginRelation_Kd@p), one())")]
     public void AWaitedVariableKeepsItsOtherBounds(string body, string records)

@@ -2,8 +2,12 @@
 
 using System.Diagnostics;
 using System.Reflection.PortableExecutable;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Kimi;
 using Kimi.Build;
@@ -18,6 +22,9 @@ namespace XunitTest;
 public sealed class NativeToolchainTest : IDisposable
 {
     private const string Windows = "Native builds run on Windows.";
+
+    // HelloUnderALinkerVariable's expected executable hash, which its parent passes.
+    private const string ExpectedExecutable = "KIMI_TEST_EXPECTED_EXECUTABLE";
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-native-" + Guid.NewGuid().ToString("N"));
 
@@ -48,13 +55,15 @@ public sealed class NativeToolchainTest : IDisposable
         string Stage(out string stagedHash)
         {
             using var stream = File.OpenRead(input);
-            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output"), out stagedHash);
+            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output.native"), out stagedHash);
         }
     }
 
-    // IMPL 20.4 (Tatara B6a): the compiler carries its supplies' bytes. The rows are the two reserved names in Ordinal order, each row's
-    // SHA-256 the catalog's, and each embedded resource has that SHA-256 and is the file committed beside the catalog, so a build
-    // stages the adopted bytes.
+    // IMPL 20.4 (Tatara B6a, B7b4): the compiler carries every row's supplies' bytes. windows-x64's rows are the two reserved names in
+    // Ordinal order; linux-x64's c is musl's startup files and C library, keyed by (row, supply) in the Linux catalog's order. Each row's
+    // SHA-256 is its catalog's, and each embedded resource has that SHA-256 and is the file committed beside the catalog, so a build
+    // stages the adopted bytes. musl's notice, which the compiler carries as Kimi.Linux.COPYRIGHT, is the tarball's COPYRIGHT: the
+    // catalog's copyrightSha256, which build-musl.ps1 checks in the extracted tarball.
     [Fact]
     public void EachCompilerSupplyIsTheCatalogsCommittedFile()
     {
@@ -68,11 +77,37 @@ public sealed class NativeToolchainTest : IDisposable
             ToolchainIdentity.Supplies.Select(static x => x.Supply.Name + " " + x.Sha256));
         foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", "kimi_backend_windows_x64_v1.lib" }))
         {
-            using var stream = supply.Open();
+            AssertCommitted(supply.Open(), supply.Sha256, Path.Combine(directory, file));
+        }
+
+        var linux = Path.Combine(directory, "../linux-x64");
+        using var musl = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(linux, "profile.json")));
+        Assert.Equal(
+            ["crt1.o", "crti.o", "crtn.o", "libc.a"],
+            musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => x.GetProperty("name").GetString()));
+        Assert.Equal(
+            musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"{TargetProfile.Linux.Name} c {x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()}"),
+            ToolchainIdentity.Musl.Select(static x => $"{x.Row} {x.Supply} {x.Name} {x.Sha256}"));
+        foreach (var file in ToolchainIdentity.Musl)
+        {
+            AssertCommitted(file.Open(), file.Sha256, Path.Combine(linux, file.Name));
+        }
+
+        AssertCommitted(
+            typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.Linux.COPYRIGHT")!,
+            musl.RootElement.GetProperty("musl").GetProperty("copyrightSha256").GetString()!,
+            Path.Combine(linux, "COPYRIGHT"));
+
+        static void AssertCommitted(Stream stream, string sha256, string file)
+        {
             using var bytes = new MemoryStream();
-            stream.CopyTo(bytes);
-            Assert.Equal(supply.Sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
-            Assert.Equal(File.ReadAllBytes(Path.Combine(directory, file)), bytes.ToArray());
+            using (stream)
+            {
+                stream.CopyTo(bytes);
+            }
+
+            Assert.Equal(sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
+            Assert.Equal(File.ReadAllBytes(file), bytes.ToArray());
         }
     }
 
@@ -97,14 +132,16 @@ public sealed class NativeToolchainTest : IDisposable
 
     // R9-B1 part 2 (form J, PLAN G983's manifest share): a manifest field that is missing, of another JSON kind or, for an Int32 row,
     // another number fails at its read with InvalidDataException naming the field, before Tatara is loaded and with the record left
-    // incomplete; a fixed field with another value is not this compiler's, and a removed member (Tatara B6b5: the toolchain, whatever its
-    // content) asks to re-emit. Each row edits one field of an emitted Application's manifest (a JSON value, or null to remove it). The
-    // libraries are read after Tatara is loaded, so their rows need a toolchain.
+    // incomplete; a fixed field with another value is not this compiler's (an ABI 2 manifest, emitted before Tatara B7r5, among them),
+    // and a removed member (Tatara B6b5: the toolchain, whatever its content) asks to re-emit. Each row edits one field of an emitted
+    // Application's manifest (a JSON value, or null to remove it). The libraries are read after Tatara is loaded, so their rows need a
+    // toolchain.
     [Theory]
     [InlineData("toolchain", "{\"llvmBin\": \"../tools\"}", "The link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest.")]
     [InlineData("schemaVersion", "3.5", "'schemaVersion' is not this compiler's")]
     [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
     [InlineData("backendSupport.abiVersion", "2.5", "'backendSupport.abiVersion' is not this compiler's")]
+    [InlineData("backendSupport.abiVersion", "2", "'backendSupport.abiVersion' is not this compiler's")]
     [InlineData("codegen.cpu", "\"native\"", "'codegen.cpu' is not this compiler's")]
     [InlineData("codegen.features", "\"+sse2\"", "'codegen.features' is missing or not a JSON Array")]
     [InlineData("codegen", null, "'codegen' is missing or not a JSON Object")]
@@ -161,8 +198,9 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // toolchain verify (Tatara B6b3; decision 20 Q3 (a)): a self-check of what the compiler carries. It takes no toolchain directory: it
-    // reports the loaded Tatara and each supply's hash, the catalog's, as Information lines, and its report is the self-check's record
-    // (passed; Tatara's build, ABI and LLVM version; each supply's hash against its row's). That it reads no root and runs no tool is
+    // reports the loaded Tatara and each supply's hash, the catalog's, as Information lines (windows-x64's supplies, then each file of
+    // linux-x64's c, B7b4), and its report is the self-check's record (passed; Tatara's build, ABI and LLVM version; each supply's or
+    // file's hash against its row's). That it reads no root and runs no tool is
     // test-cli's row (a copy of the compiler outside any checkout, PATH clean).
     [Fact]
     public void VerificationIsASelfCheckOfWhatTheCompilerCarries()
@@ -173,7 +211,11 @@ public sealed class NativeToolchainTest : IDisposable
         NativeToolchain.Verify(report, (severity, line) => lines.Add($"{severity}: {line}"), TestContext.Current.CancellationToken);
         var build = Tatara.Instance.Build;
         string[] expected =
-            [$"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}", .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Supply.Name}: {x.Sha256} (the catalog's)")];
+            [
+                $"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}",
+                .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Supply.Name}: {x.Sha256} (the catalog's)"),
+                .. ToolchainIdentity.Musl.Select(static x => $"Information: {x.Row} {x.Supply} {x.Name}: {x.Sha256} (the catalog's)"),
+            ];
         Assert.Equal(expected, lines);
         using var record = JsonDocument.Parse(File.ReadAllText(report));
         var root = record.RootElement;
@@ -187,9 +229,11 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(Tatara.ExpectedAbi, tatara.GetProperty("abi").GetString());
         Assert.Equal(ToolchainIdentity.LlvmVersion, tatara.GetProperty("llvmVersion").GetString());
         Assert.Equal(
-            ToolchainIdentity.Supplies.Select(static x => $"{x.Supply.Name} {x.Sha256} {x.Sha256} True"),
-            root.GetProperty("supplies").EnumerateArray().Select(static x =>
-                $"{x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()} {x.GetProperty("expectedSha256").GetString()} {x.GetProperty("hashMatched").GetBoolean()}"));
+            [
+                .. ToolchainIdentity.Supplies.Select(static x => $"name={x.Supply.Name} sha256={x.Sha256} expectedSha256={x.Sha256} hashMatched=True"),
+                .. ToolchainIdentity.Musl.Select(static x => $"name={x.Supply} row={x.Row} file={x.Name} sha256={x.Sha256} expectedSha256={x.Sha256} hashMatched=True"),
+            ],
+            root.GetProperty("supplies").EnumerateArray().Select(static x => string.Join(' ', x.EnumerateObject().Select(static y => $"{y.Name}={y.Value}"))));
     }
 
     // A supply whose embedded bytes are not its row's SHA-256 (only a defective build of Kimi carries one) is the toolchain's failure,
@@ -204,6 +248,10 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(NativeToolchain.IsToolchainFailure(error));
         Assert.Equal(ToolchainIdentity.BackendSha256, supplies[0]!["sha256"]!.GetValue<string>());
         Assert.False(supplies[0]!["hashMatched"]!.GetValue<bool>());
+        var file = ToolchainIdentity.Musl[3] with { Sha256 = new string('0', 64) };
+        error = Assert.Throws<InvalidDataException>(() => NativeToolchain.VerifySupply(file, supplies));
+        Assert.Equal("The compiler's linux-x64-v1 c libc.a does not match its catalog SHA-256.", error.Message);
+        Assert.Equal($"c linux-x64-v1 libc.a {ToolchainIdentity.Musl[3].Sha256} false", $"{supplies[1]!["name"]} {supplies[1]!["row"]} {supplies[1]!["file"]} {supplies[1]!["sha256"]} {supplies[1]!["hashMatched"]}");
     }
 
     [Fact]
@@ -812,16 +860,43 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Executable));
     }
 
+    // IMPL 20.3.2 and 20.4 (a native build reads no toolchain root and uses no search path; T's ruling 1 on LC3 Revision 1, a defect
+    // fix): the executable is the one the record's inputs determine, whatever LINK or _LINK_ holds; LLD otherwise adds either to its
+    // arguments (LC3's P-D: _LINK_=/filealign:4096 linked 74bdf2c3... against e201e8ab...). The environment is the process's and other
+    // tests link in this one, so the child HelloUnderALinkerVariable builds Hello under the variable and expects this process's
+    // executable (O2: the folder enters no byte). On the installed toolchain.
+    [Theory]
+    [InlineData("_LINK_")]
+    [InlineData("LINK")]
+    public async Task TheLinkReadsNoLinkerVariable(string variable)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, _, v1) = await this.BuildHello();
+        await FreshProcess.RunExplicit(typeof(NativeToolchainTest), nameof(NativeToolchainTest.HelloUnderALinkerVariable), (variable, "/filealign:4096"), (ExpectedExecutable, v1));
+    }
+
+    // TheLinkReadsNoLinkerVariable's child: Hello built in its own folder links the executable its parent passes.
+    [Fact(Explicit = true)]
+    public async Task HelloUnderALinkerVariable()
+    {
+        var (_, _, executable) = await this.BuildHello();
+        Assert.Equal(Environment.GetEnvironmentVariable(ExpectedExecutable), executable);
+    }
+
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
-    // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
-    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. The success
-    // record's members are exactly these (PLAN G1227: no toolchain-verification constants). On the installed toolchain.
+    // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member.
+    // A second build reuses both copies by their catalog hashes and writes nothing in the folder (LC3 S1): denied creating files there,
+    // it builds with the first build's rows and executable (the base failed creating its temporary copy). A third, after the staged
+    // kernel32 file was overwritten, replaces it and links the first build's executable. The success record's members are exactly these
+    // (PLAN G1227: no toolchain-verification constants). On the installed toolchain.
     [Fact]
+    [SupportedOSPlatform("windows")]
     public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var (project, paths, v1) = await this.BuildHello();
-        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Native, x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        string libraries;
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
             Assert.Equal(
@@ -831,29 +906,77 @@ public sealed class NativeToolchainTest : IDisposable
                 staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
                 record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x =>
                     x.GetProperty("name").GetString() + " " + x.GetProperty("path").GetString() + " " + x.GetProperty("sha256").GetString()));
+            libraries = record.RootElement.GetProperty("libraries").GetRawText();
         }
 
         Assert.All(staged, static x => Assert.Equal(x.Sha256, ArtifactFiles.Hash(x.Path)));
+        var allow = DenyCreatingFiles(new DirectoryInfo(paths.Native));
+        try
+        {
+            Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+            using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+            Assert.Equal(libraries, record.RootElement.GetProperty("libraries").GetRawText());
+            Assert.Equal(v1, record.RootElement.GetProperty("executableSha256").GetString());
+            Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        }
+        finally
+        {
+            allow();
+        }
+
         File.WriteAllText(staged[0].Path, "overwritten");
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         Assert.Equal(staged[0].Sha256, ArtifactFiles.Hash(staged[0].Path));
         Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
     }
 
+    // IMPL 20.4 "Each input is hashed when read" (LC3 S1's boundary, its design §5; C-508 M1): a program's supply is copied into its
+    // snapshot before its hash is known, so a later build denied creating files in <stem>.native fails creating that copy, an output
+    // failure, where the compiler's supplies alone are reused without one (ABuildLinksTheCompilersSuppliesAsStagedSnapshots). On the
+    // installed toolchain.
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public async Task AProgramsSupplyIsCopiedBeforeItIsHashed()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = await this.Codec("codec", true);
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var folder = ArtifactPaths.Create(project).Native;
+        var allow = DenyCreatingFiles(new DirectoryInfo(folder));
+        try
+        {
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        }
+        finally
+        {
+            allow();
+        }
+
+        Assert.Matches($@"Access to the path '{Regex.Escape(folder)}\\[0-9a-f]{{32}}\.tmp' is denied\.", this.console.Text);
+    }
+
     // IMPL 20.4 "its hash assertions are checked" (Tatara B6a): a compiler's supply's manifest entry may assert a SHA-256 as a program's
-    // may, and the build checks it against the staged bytes: the catalog's hash builds, another fails before the link. On the installed
-    // toolchain.
+    // may, and the build checks it against the staged bytes: the catalog's hash builds, another fails before the link. Also on a build
+    // that reuses the copies an earlier build staged (LC3 S1: the hash is then the catalog's; C-508 M2). On the installed toolchain.
     [Theory]
-    [InlineData("kernel32", true)]
-    [InlineData("kernel32", false)]
-    [InlineData("kimi_backend", true)]
-    [InlineData("kimi_backend", false)]
-    public async Task ACompilerSupplysHashAssertionIsChecked(string name, bool adopted)
+    [InlineData("kernel32", true, false)]
+    [InlineData("kernel32", false, false)]
+    [InlineData("kimi_backend", true, false)]
+    [InlineData("kimi_backend", false, false)]
+    [InlineData("kimi_backend", true, true)]
+    [InlineData("kimi_backend", false, true)]
+    public async Task ACompilerSupplysHashAssertionIsChecked(string name, bool adopted, bool reused)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var project = this.Create();
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
+        if (reused)
+        {
+            await NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
+            File.Delete(paths.Executable);
+        }
+
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
         var entry = manifest["libraries"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == name)!;
         entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name)!.Sha256 : new string('0', 64);
@@ -885,24 +1008,7 @@ public sealed class NativeToolchainTest : IDisposable
     public async Task ASuppliedMemoryFunctionIsADuplicateOfTheModules(string name, bool weak)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var native = Path.Combine(this.directory, "native");
-        Directory.CreateDirectory(native);
-        const string Copy = "void *memcpy(void *d, const void *s, unsigned long long n) { char *x = d; const char *y = s; while (n--) *x++ = *y++; return d; }\n";
-        File.WriteAllText(Path.Combine(native, "needed.c"), "int codec_add(int a, int b) { return a + b; }\n" + (weak ? "__attribute__((weak)) " : string.Empty) + Copy);
-        File.WriteAllText(Path.Combine(native, "other.c"), "void *memset(void *d, int c, unsigned long long n) { char *x = d; while (n--) *x++ = (char)c; return d; }\n");
-        foreach (var member in new[] { "needed", "other" })
-        {
-            string[] compile = ["--target=" + TargetProfile.Windows.Target, "-O2", "-fno-builtin", "-fno-autolink", "-fno-stack-protector", "-c", member + ".c", "-o", member + ".obj"];
-            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", native, compile));
-        }
-
-        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, $"/out:{name}.lib", "needed.obj", "other.obj"));
-        var project = this.Hello("unused");
-        var source = $"group Codec\n    #LibraryImport(\"{name}\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\npublic func main()\n" +
-            "    var sum: i32 = 0\n    unsafe => sum = Codec.add(40, -2)\n    require sum == 38 else => $abort(\"add\")\n    var values: Array<i32> = []\n" +
-            "    for i in 0..100\n        values.append(i)\n    require values.length == 100 else => $abort(\"append\")\n    Console.writeLine(\"ffi ok\")\n";
-        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
-        project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = "static", Input = $"native/{name}.lib" } };
+        var project = await this.Codec(name, weak);
         var built = await project.Build(TestContext.Current.CancellationToken);
         if (weak)
         {
@@ -918,7 +1024,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(built, this.console.Text);
         var text = this.console.Text.Replace("\r\n", "\n", StringComparison.Ordinal);
         var module = Path.Combine(this.directory, "out", "Hello.O2.obj");
-        var staged = ArtifactFiles.Hash(Path.Combine(native, name + ".lib")) + ".lib"; // LLD names the staged copy by its file name.
+        var staged = ArtifactFiles.Hash(Path.Combine(this.directory, "native", name + ".lib")) + ".lib"; // LLD names the staged copy by its file name.
         Assert.Contains($"Tatara failed: link\nlld-link: error: duplicate symbol: memcpy\n>>> defined at {module}\n>>> defined at {staged}(needed.obj)\n", text, StringComparison.Ordinal);
         Assert.DoesNotContain("memset", text, StringComparison.Ordinal);
         Assert.False(File.Exists(ArtifactPaths.Create(project).Executable));
@@ -1008,6 +1114,23 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(Path.Combine(this.directory, "out", "Hello.O2.exe")));
     }
 
+    // Denies the current user creating files in the folder, by a rule its files do not inherit, and returns the action that removes the
+    // rule again (LC3 S1's row 3 and C-508 M1).
+    [SupportedOSPlatform("windows")]
+    private static Action DenyCreatingFiles(DirectoryInfo folder)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var rule = new FileSystemAccessRule(identity.User!, FileSystemRights.CreateFiles, AccessControlType.Deny);
+        var security = folder.GetAccessControl();
+        security.AddAccessRule(rule);
+        folder.SetAccessControl(security);
+        return () =>
+        {
+            security.RemoveAccessRule(rule);
+            folder.SetAccessControl(security);
+        };
+    }
+
     // The toolchain refuses the run before launch with this reason (IMPL 20.3, 20.3.2): exit 1, and the refusal, not another failure.
     private async Task AssertRunRefused(Project project, string reason)
     {
@@ -1037,6 +1160,31 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         var paths = ArtifactPaths.Create(project);
         return (project, paths, ArtifactFiles.Hash(paths.Executable));
+    }
+
+    // Hello.kimiproj whose main.kimi calls codec_add from native/<name>.lib, a program's static supply built here: a member defining
+    // codec_add and memcpy (weak or not), and one defining only memset. The program also grows an Array and writes "ffi ok".
+    private async Task<Project> Codec(string name, bool weak)
+    {
+        var native = Path.Combine(this.directory, "native");
+        Directory.CreateDirectory(native);
+        const string Copy = "void *memcpy(void *d, const void *s, unsigned long long n) { char *x = d; const char *y = s; while (n--) *x++ = *y++; return d; }\n";
+        File.WriteAllText(Path.Combine(native, "needed.c"), "int codec_add(int a, int b) { return a + b; }\n" + (weak ? "__attribute__((weak)) " : string.Empty) + Copy);
+        File.WriteAllText(Path.Combine(native, "other.c"), "void *memset(void *d, int c, unsigned long long n) { char *x = d; while (n--) *x++ = (char)c; return d; }\n");
+        foreach (var member in new[] { "needed", "other" })
+        {
+            string[] compile = ["--target=" + TargetProfile.Windows.Target, "-O2", "-fno-builtin", "-fno-autolink", "-fno-stack-protector", "-c", member + ".c", "-o", member + ".obj"];
+            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", native, compile));
+        }
+
+        Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, $"/out:{name}.lib", "needed.obj", "other.obj"));
+        var project = this.Hello("unused");
+        var source = $"group Codec\n    #LibraryImport(\"{name}\", \"codec_add\")\n    public unsafe func add(a: i32, b: i32) -> i32\npublic func main()\n" +
+            "    var sum: i32 = 0\n    unsafe => sum = Codec.add(40, -2)\n    require sum == 38 else => $abort(\"add\")\n    var values: Array<i32> = []\n" +
+            "    for i in 0..100\n        values.append(i)\n    require values.length == 100 else => $abort(\"append\")\n    Console.writeLine(\"ffi ok\")\n";
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), source);
+        project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = "static", Input = $"native/{name}.lib" } };
+        return project;
     }
 
     // Hello.kimiproj at O2 into out/Hello.ll, its main.kimi writing the text, on the test's console.
