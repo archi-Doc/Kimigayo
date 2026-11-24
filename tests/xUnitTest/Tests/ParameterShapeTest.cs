@@ -5,6 +5,7 @@ using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -210,6 +211,49 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
         var c = CompilationTestHelper.ParseSuccess(Types + Game + "func f(value: Node) -> i32 => 1\nfunc f<T>(value: T) -> i32 => 2\nvar game = Game.init()\nbump(game.score@uniq)\n_ = bumped(game.score)\n_ = f(Node.init())");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // SPEC 7.4, 9.5.1 (R7-N5 B7; the Front's C-518 C2): a pass judges each pair of corresponding parameters once, whatever reaches it again
+    // (its position and its name; each use of a gathered group), and keeps one shape contract per pair: n constructors of one Type
+    // ("candidates", one call) and a group gathered at the alias stage from n groups of `f<T>(value: T, tag: ref/TagK)` at each of `uses`
+    // uses run the n(n - 1) ordered pairs' judgments once per warm pass at every `uses`, linear in the pairs, and keep the n(n - 1) / 2
+    // contracts of the `value` pairs (the `tag` pairs never overlap). Without the pass's memo: 2n(n - 1) and `uses` times as many judgments,
+    // each scanning the later function's contracts for its own (C-518: cubic in n).
+    [Theory]
+    [InlineData("candidates", 8, 1)]
+    [InlineData("candidates", 16, 1)]
+    [InlineData("gathered", 4, 8)]
+    [InlineData("gathered", 4, 16)]
+    [InlineData("gathered", 8, 16)]
+    public void EachParameterPairIsJudgedOncePerPass(string shape, int n, int uses)
+    {
+        var c = CompilationTestHelper.ParseSuccess(shape == "candidates" ? ConstructorInferenceWorkloads.Create(shape, n) : Gathered());
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var cold = c.Binding.ShapeJudgmentWork;
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(n * (n - 1L), c.Binding.ShapeJudgmentWork - cold);
+        Assert.Equal(n * (n - 1) / 2, c.Binding.InferenceMetrics.Contracts);
+
+        string Gathered()
+        {
+            var text = new System.Text.StringBuilder();
+            for (var i = 0; i < n; i++)
+            {
+                text.Append($"alias G{i}\n");
+            }
+
+            for (var i = 0; i < n; i++)
+            {
+                text.Append($"struct Tag{i}\n    public var v: i32\ngroup G{i}\n    public func f<T>(value: T, tag: ref/Tag{i}) -> i32 => 1\n");
+            }
+
+            for (var u = 0; u < uses; u++)
+            {
+                text.Append($"func use{u}(n: i32, t: ref/Tag{u % n}) -> i32 => f(n, t)\n");
+            }
+
+            return text.ToString();
+        }
     }
 
     private static Compilation Analyze(string source)
