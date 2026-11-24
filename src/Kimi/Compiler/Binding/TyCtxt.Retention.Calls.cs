@@ -15,12 +15,12 @@ internal sealed partial class TyCtxt
     private const int HandedBound = 32;
 
     // Per callee, signature or erased destruction's receiver, Type instantiation (a direct call's case key, CaseSubst), the premise scope
-    // or binder the computation reads and a Closure's call receiver (Retains; null for any other contract); kept across passes with no
-    // edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate). A contract reads its local regions' bounds
+    // or owner the computation reads and a Closure's call receiver (RetentionKey); kept across passes with no edit, whose contracts are the
+    // same, and discarded with the source analysis at an edit (Binding.Invalidate). A contract reads its local regions' bounds
     // (Binding.AddRegionMeet) and the Origin-atom borrows (Binding.RawOrigins.Borrows), so its key holds Binding.RetentionState: the
     // region graph's and the borrows' versions until the pass's borrow writers have run, Complete afterwards, so a read while a body binds
     // (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS: G570, as the publication amends it).
-    private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver), CallRetention> retentions = new();
+    private readonly Dictionary<RetentionKey, CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
     private readonly List<Binding.ErasedSignature> retentionBounds = new();
@@ -43,7 +43,7 @@ internal sealed partial class TyCtxt
         // `I is Iterator`), so its key holds that premise scope; any other reads alike in every definition.
         var types = subst is null ? null : this.Intern(subst.Target, subst.Self, subst.Declaring, subst.Types, subst.Lengths, [], []);
         var scope = types is not null && HasAbstractPart(types) ? binding.EffectPremises(definition) : null;
-        (object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver) key = (callee, types is null ? null : this.CaseSubst(types, cases), scope, binding.RetentionState, null);
+        var key = new RetentionKey(callee, null, types is null ? null : this.CaseSubst(types, cases), scope, null, binding.RetentionState, null);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -83,19 +83,19 @@ internal sealed partial class TyCtxt
     // layers' admitted cases. A Closure's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, 7.7.3, DECISIONS
     // R4-M148 as Z4-M amends it): the receiver the callee's Type admits (ClosureReceiverIn: a view's case Type its case's, so a by-case
     // call's Shared side reads its environment and writes none of it, SPEC 15.8.2) over the callee (Binding.ClosureReceiver), whose
-    // environment the walk reads as the body sees it (ClosureEnvironment); its key holds the instance, its definition, closure context and
-    // that receiver. A Closure whose definition did not bind is keyed as an item is,
-    // `(signature, null, owner)`, the shape of a bound one without a context, which is complete: a definition's bound state is fixed for
-    // one Binding result, whose edit discards the memo.
+    // environment the walk reads as the body sees it (ClosureEnvironment); its key holds the instance, its definition (by its symbol),
+    // closure context and that receiver. A Closure whose definition did not bind is keyed as an item is, by the signature and its owner,
+    // the shape of a bound one without a context, which is complete: a definition's bound state is fixed for one Binding result, whose
+    // edit discards the memo.
     internal CallRetention Retains(BoundType callee, BoundType signature, BindingSymbol? definition)
     {
         var closure = Closure(callee);
         var owner = closure is null ? (FunctionKoto?)Binding.SignatureOwner(callee) : (FunctionKoto)closure.Symbol!.Declaration!;
         var receiver = closure is null ? default(SemanticsKind?) : this.ClosureReceiverIn(closure);
+        Debug.Assert(owner is null || ReferenceEquals(Binding.CallableCore(callee)?.Symbol?.Declaration, owner), "A Value callee's owner key is its owner's symbol: the callee's symbol declares the owner SignatureOwner or Closure reads.");
         var use = binding.DefinitionUse(definition);
-        (object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver) key = closure is null
-            ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RetentionState, null)
-            : (signature, closure.InstanceContext, owner, binding.RetentionState, receiver);
+        var key = owner is null ? new RetentionKey(null, signature, null, binding.ConstraintScope(use), null, binding.RetentionState, null)
+            : new RetentionKey(null, signature, closure?.InstanceContext, null, Binding.CallableCore(callee)!.Symbol, binding.RetentionState, receiver);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -126,7 +126,7 @@ internal sealed partial class TyCtxt
     {
         var use = binding.DefinitionUse(definition);
         var receiver = this.DestructionReceiver(part);
-        (object Callee, Subst? Types, object? Scope, int State, SemanticsKind? Receiver) key = (receiver, null, binding.ConstraintScope(use), binding.RetentionState, null);
+        var key = new RetentionKey(null, receiver, null, binding.ConstraintScope(use), null, binding.RetentionState, null);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -444,4 +444,16 @@ internal sealed partial class TyCtxt
 
         this.Handed(parent, depth + 1);
     }
+
+    // The retention memo's key (R7-N5 B8b; DECISIONS BU-220), each field compared by reference and null where its form has none: Retains
+    // over a callee symbol (Callee) keys its interned Subst's case key (Types, CaseSubst) and the definition's premises where that has an
+    // abstract part (Scope); over a Value callee's declared signature (Signature), an item, or a Closure whose definition did not bind,
+    // keys its owner, a bound Closure its owner, closure context (Types) and the call receiver its Type admits (Receiver, Z4-M; by value),
+    // and an erased callable the calling definition's constraint scope (Scope); an erased destruction keys its receiver (Signature) and
+    // that scope, as an erased call does. The owner is the callee's own symbol (Owner), whose declaration is the owner
+    // (Binding.SignatureOwner): the memo outlives a pass and holds library callees, so it keys a declaration by its symbol (MirDefKey's
+    // identity), never by its node. A callee symbol and a Type, a premise scope and an owner, each have their own field, and a symbol names
+    // one declaration, so two calls share a key exactly when they share the callee or signature, the instantiation, the scope or owner, the
+    // receiver and the state: the hits and misses a key by the owner's node would give.
+    private readonly record struct RetentionKey(BindingSymbol? Callee, BoundType? Signature, Subst? Types, BindingScope? Scope, BindingSymbol? Owner, int State, SemanticsKind? Receiver);
 }

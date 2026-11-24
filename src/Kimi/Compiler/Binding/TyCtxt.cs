@@ -408,6 +408,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 22.10.5 (R8-W2 c2t): the interpolation-hint term of an owning interpolation's write position with the later value Types (a
     // Tuple) and the later literal bytes, the bytes its adapter's later writes may still reserve: the constant HintBound
     // decides, else the term (Term), which a substitution folds again (Refold). R8-W2 c2b's builder forms it; until then nothing does.
+    // Both terms' dominance (PLAN G651 U2c): their Values Tuple is exactly as high as the ref/V each written value passes to its write
+    // (BU-71), and that ref/V is formed first, so no instance of a term passes IMPL A.4's height where its values' did not: a default's
+    // copy forms every non-Arg local, the write's borrow among them, before its Length constants (MirBuilder.Instantiates' loop order),
+    // and the instance collector forms an item's locals before code generation reads a length (InstanceCollector.LengthOf). Both read
+    // the term bare (TyCtxt.InstanceLength, no formation); were it broken the outcome is loud with no further code: after the run the
+    // copy's refusal marks the omitting call (TypeHeightLimit_Kd) and its null makes the copy Incomplete, InternalInvariant_Kd there in a
+    // complete compilation; code generation meets G651 U2b's no-owner throw (R13.1) or LengthConstant's InternalInvariant_Kd.
     internal BoundLength InterpolationHint(BoundType values, long literal) => this.Term(LengthOperation.InterpolationHint, values, literal);
 
     // An interpolation term over its value Types' image, as a substitution or an instance makes them (Binding.SubstituteLength,

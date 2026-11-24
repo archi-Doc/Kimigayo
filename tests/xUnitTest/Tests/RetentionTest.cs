@@ -2250,6 +2250,26 @@ public sealed partial class RetentionTest
         Assert.Same(retentions[0], c.Types.Retains(calls[0].Target, c.Types.SubstOf(calls[0]), null, []));
     }
 
+    // R7-N5 B8b (DECISIONS BU-220): a Value callee's retention is one per declared signature and owner, an item's declaration or a
+    // Closure's with its context, the owner keyed by its symbol: two calls of one item or of one Closure share it, the two owners of one
+    // signature do not, a later pass with no edit reuses each, and an edit revokes them (Binding.Invalidate).
+    [Fact]
+    public void ValueCalleeRetentionsAreMemoizedPerOwnerUntilAnEdit()
+    {
+        var c = Bind("func pass(value: ref/i32) -> ref/i32 => value\nvar a = 1\nlet item = pass\nlet r = item(a@ref)\nlet s = item(a@ref)\n" +
+            "let closure = func (z: ref/i32) -> ref/i32 => z\nlet t = closure(a@ref)\nlet u = closure(a@ref)\n");
+        var retentions = ValueRetentions(c);
+        Assert.Equal(4, retentions.Length);
+        Assert.Same(retentions[0], retentions[1]);
+        Assert.Same(retentions[2], retentions[3]);
+        Assert.NotSame(retentions[0], retentions[2]);
+        c.Binding.Bind(BindingMode.Final);
+        Assert.All(ValueRetentions(c).Zip(retentions), static x => Assert.Same(x.Second, x.First));
+        c.InvalidateSourceAnalysis();
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.All(ValueRetentions(c).Zip(retentions), static x => Assert.NotSame(x.Second, x.First));
+    }
+
     // An edit revokes the retentions with the whole source analysis (Binding.Invalidate), also after a pass that did not finish (review
     // 1a2 B1: a Bind that throws leaves no result): replacing a callee's clause between passes changes its call's row.
     [Theory]
@@ -2427,9 +2447,11 @@ public sealed partial class RetentionTest
             .Select(x => (x.Call!, c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(c.Binding, x.Node), [])));
 
     // Each Value call over its declared Callable signature, in its definition, in source order.
-    private static string[] ValueCalls(Compilation c)
+    private static string[] ValueCalls(Compilation c) => [.. ValueRetentions(c).Select(Show)];
+
+    private static CallRetention[] ValueRetentions(Compilation c)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
-            .Select(x => Show(c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(c.Binding, x.Node)))).ToArray();
+            .Select(x => c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(c.Binding, x.Node))).ToArray();
 
     // A retention as the records spell it (DECISIONS R4-M154): the result's kinds and whether it is untied, then per output it writes its
     // root's kinds (own) and those past it (reached, every Reached entry joined), each with its pairs (`if {i Value: longer > shorter}`),

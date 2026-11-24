@@ -88,8 +88,8 @@ public sealed partial class Binding
     }
 
     // The run's site: the open consultation frame's node while the pass produces its failures; none after the pass, where a query fails
-    // no node (R7-M38; PLAN G651 U2). The one test of "a site to record at" for RefuseHeight and RefusedConformance (G651 U2c's predicate;
-    // R7-C6 a carries it where it lands first).
+    // no node (R7-M38; PLAN G651 U2). The one test of "a site to record at" for RefuseHeight and RefusedConformance (G651 U2c's C2
+    // predicate, carried by R7-C6 a; R7-M94).
     private Koto? RunSite => this.producing ? this.consultationNode : null;
 
     /// <summary>Opens the answer frame of the instance collector's run (TyCtxt.OpenAnswer, its only opener; R7-T1): a refusal of a Type

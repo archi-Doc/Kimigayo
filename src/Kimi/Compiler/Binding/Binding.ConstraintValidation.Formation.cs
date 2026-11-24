@@ -4,13 +4,14 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// A Type's formation in a scope (SPEC 8.3, 15.6.1; DECISIONS BU-19, BU-55, R4-M163), a part of constraint validation.
+// A Type's formation in a scope (SPEC 8.3, 15.6.1; DECISIONS BU-19, BU-55, R4-M163, PLAN G464), a part of constraint validation.
 // - Responsibility: two walks over one per-part step. The step (BeginTypeFormation, EndTypeFormation) judges a part's declaration
 //   context, its Origin clauses and a constructed part's clauses with every enclosing container's under its arguments. The per-use
-//   walk (CheckTypeConstraints) judges an instantiated Type and enters every component; the declaration walk
-//   (CheckDeclaredTypeConstraints) judges a callee's declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints
-//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth. An instance's
-//   evidence (InstanceFormation, SPEC 8.6.3) reads the step alone: its declaration's Constraints at its arguments.
+//   walk (CheckTypeConstraints) judges an instantiated Type; the declaration walk (CheckDeclaredTypeConstraints) judges a callee's
+//   declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints keeps its Proven as the declaration query
+//   SignatureVerdict). Both enter every component but a Function Type's, at any depth (SPEC 15.6.1, 15.3.4: a nested signature); they
+//   differ only in the clause fact the per-use walk hands on and the declaration walk's SignatureVerdict. An instance's evidence
+//   (InstanceFormation, SPEC 8.6.3) reads the step alone: its declaration's Constraints at its arguments.
 // - Inputs: a Type and the scope whose premises apply; the declaration contexts, Origin declarations and constraint clauses bound so far.
 // - Outputs: the proof, combined as P < U < L < R < E, with the cause it rests on read into the enclosing proof scope; in the per-use
 //   walk, also the clause fact at the part's verdict, handed on as a clause list hands its own (LeaveClause; PLAN G354 (2)).
@@ -23,8 +24,8 @@ namespace Kimi.Compiler;
 //   instances nest, and an answer formed while an obligation or a capability request is pending is never read past it. A cached part
 //   and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
-//   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
-//   no clause fact on while PLAN G375's sigref1 stays open.
+//   (FormNestedResult, R4-M162) and its inputs at its calls (RequireInputPremises, R4-M137), never by either walk; the declaration walk
+//   hands no clause fact on while PLAN G375's sigref1 stays open.
 public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
@@ -82,8 +83,9 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        // A Function Type's components are its inputs and its result.
-        for (var i = 0; i < type.Components.Count; i++)
+        // SPEC 15.6.1, 15.3.4 (PLAN G464): a Function Type is a nested signature, whose inputs are its premises, proven at its calls
+        // (RequireInputPremises), and whose result is formed where it is written (FormNestedResult, R4-M162); no use forms either.
+        for (var i = 0; type.Kind != BoundTypeKind.Function && i < type.Components.Count; i++)
         {
             proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query), true);
         }

@@ -31,6 +31,7 @@ public partial class KimiLibraryShapeTest
         ["ViewIndex.Serial"] = "a Closure(view) entry's view serial at its forming, compared for equality with its scope's (n3's counter, settled by B1)",
         ["BinderSet.low"] = "a word of a binder bit set, selected by its width",
         ["BindingObligation.Condition"] = "an obligation's condition mask, selected by its width",
+        ["ObligationKey.Condition"] = "the obligation's condition mask in its dedup key (R7-N5 B8), selected by its width",
         ["SyntaxTable.Version"] = "n4: the module's syntax change counter, compared only with its numbering memo",
         ["SyntaxTable.numberedVersion"] = "n4: the numbering memo",
         ["BoundContract.State"] = "n5: a completion state, not a counter copy (complete in the layer's part: e3)",
@@ -73,6 +74,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.LintCompletions"] = "released at the freeze: the lint walk's query memo; the library is not linted (R7-N5 B6b)",
         ["NodeColumns.ReachedThroughBorrow"] = "released at the freeze: a selection's ReachesThroughBorrow answer, the library pass's working state, read only by that pass's queries (D-932)",
         ["NodeColumns.FormReads"] = "released at the freeze: the HIR publisher's kept-read working state, a row of another publication absent; the library pass records no failure (one refuses it: FreezeLibrary), so it writes none (D-986)",
+        ["NodeColumns.JudgedOccurrences"] = "released at the freeze: the library pass's judged written Type occurrences, its per-pass query's memo, read only by that pass's checks (R7-E3 E3e; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.DuplicateDeclarations"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary), so its pairwise checks join no group (R7-N5 E)",
         ["NodeColumns.PrerequisiteVisits"] = "released at the freeze: the library pass's publication walks' visited marks, a walk's scratch, a row of another walk absent (R7-N5 E)",
         ["NodeColumns.PartPrerequisites"] = "released at the freeze: the library pass's part prerequisites, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
@@ -500,6 +502,7 @@ public partial class KimiLibraryShapeTest
         Released(families.InferredConstructionTargets);
         Released(families.QualificationStops);
         Released(families.ReachedThroughBorrow);
+        Released(families.JudgedOccurrences);
         Released(families.ResolvedSlices);
         Released(families.Prerequisites);
         Released(families.PartPrerequisites);
@@ -770,8 +773,7 @@ public partial class KimiLibraryShapeTest
     public void EveryBaseConformancePathIsVerified(string target)
     {
         var library = KimiLibrary.Of(target.Length == 0 ? Kimi.Compiler.Target.TargetTriple.Invalid : Kimi.Compiler.Target.TargetTriple.Parse(target));
-        var paths = ((IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(library.Layer.Impls)!)
-            .Values.Cast<BoundConformancePath>().Where(static x => x.Current).ToArray();
+        var paths = StoredPaths(library.Layer.Impls).Where(static x => x.Current).ToArray();
         Assert.NotEmpty(paths);
         Assert.Empty(paths.Where(static x => !x.IsVerified || x.Unsupported).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
     }

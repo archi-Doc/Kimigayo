@@ -355,6 +355,16 @@ public class ClosureReceiverClassificationTest
         Assert.Null(error.Repairs);
     }
 
+    // SPEC 7.7.3, 10.1.1, 23.1.2 (PLAN G1130): a value call's argument match is judged whatever its callee's acquisition gave, its record
+    // beside the callee's (a located limit, a write).
+    [Theory]
+    [InlineData("v2", "func call<F>(v: objuniq/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload\n    return v(1)\n", "Unsupported_Kd: return v(1) | NoApplicableOverload_Kd: return v(1)")]
+    [InlineData("v2t", "func call<F>(v: F) -> i32\n    F is Callable<ref, () -> i32>\n    return v(1)\n", "NoApplicableOverload_Kd: return v(1)")]
+    [InlineData("v3", "func call<F>(f: ref/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f(1)\n", "InvalidAssignment_Kd: return f(1) | NoApplicableOverload_Kd: return f(1)")]
+    [InlineData("v3t", "func call<F>(f: ref/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\n", "InvalidAssignment_Kd: return f()")]
+    public void AValueCallsArgumentMatchIsJudgedWhateverItsCalleeGave(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "public func main() => ()\n", records);
+
     // A closure that calls its captured object's payload exclusively is itself Exclusive.
     [Fact]
     public void AnExclusivePayloadCallMakesTheCaptureExclusive()
