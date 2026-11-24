@@ -88,17 +88,10 @@ public sealed partial class Binding
         {
             var node = this.nodes[i];
             // API and constraint validation can invalidate a target or Type after call selection; a node whose own selection calls a
-            // declaration that failed (CallPlan.Called: a call's target, a Property use's accessors), or whose published decision read a
-            // written Type its judgment failed later (FailedWrittenType: the written Type syntax under its own syntax; a Property's,
-            // whose certificate Check then withdraws until the written occurrence's judgment is asked at decision time), rests on that
-            // failure (SPEC 23.1.2; PLAN G464).
-            if ((this.InvalidCalledDeclaration(node) ?? this.FailedWrittenType(node)) is { } failedInput && node.BindingFailure == BindingFailure.None)
+            // declaration that failed (CallPlan.Called: a call's target, a Property use's accessors) rests on that failure (SPEC 23.1.2).
+            if (this.InvalidCalledDeclaration(node) is { } invalidTarget && node.BindingFailure == BindingFailure.None)
             {
-                this.CompleteDependent(node, failedInput);
-                if (node is PropertyKoto { BoundSymbol.Property: { } property })
-                {
-                    property.IsVerified = false;
-                }
+                this.CompleteDependent(node, invalidTarget);
             }
             else if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call)
             {

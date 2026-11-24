@@ -247,6 +247,13 @@ public sealed partial class Binding
             this.OwnBorrows(node, this.borrows); // The node's own borrow facts (Binding.RawOrigins.Borrows).
         }
 
+        // PROTOTYPE (E3e Rev 2; SPEC 23.1.2): a decision that read a written Type whose occurrence's judgment fails rests on it where it
+        // is made, so its readers, bound after it, rest by their own binding.
+        if (type is not null && node.BindingFailure == BindingFailure.None && this.FailedWrittenType(node) is { } failedType)
+        {
+            type = this.CompleteDependent(node, failedType);
+        }
+
         this.EndConsultation(node, parent);
         if (!this.RestsBelowOpenPosition(node, type, expected))
         {
