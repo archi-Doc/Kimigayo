@@ -379,8 +379,7 @@ public sealed partial class Binding
     // control-flow argument (FitsPosition; SPEC 10.5.1, PLAN G729).
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
-        var temporary = this.Materialization(node, type, scope);
-        var valueType = temporary ?? type;
+        var valueType = this.ExpectedValueType(node, type, scope, out var temporary, out var borrow);
         var first = this.positionOperations.Count;
         var met = this.waitingParts.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
@@ -402,8 +401,22 @@ public sealed partial class Binding
             temporary is not null ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
             ExpectedTypeClass(temporary),
             Positions: first..this.positionOperations.Count,
-            AdaptedType: temporary is null ? null : this.TemporaryBorrow(node, temporary));
+            AdaptedType: borrow,
+            ValueAtParameter: true);
         return result;
+    }
+
+    // SPEC 10.2 row 2, 10.2.2, 3.6: a composite checked against its expected Type `type`: its value Type, the owner temporary's U at
+    // `ref/U` (Materialization, `temporary`) else `type` itself, and at `ref/U` that temporary's shared borrow (TemporaryBorrow, `borrow`:
+    // the operation's AdaptedType). FitComposite's Types at the trial's parameter Type, and the call's completion of them at the completed
+    // one (CompleteOperationTypes), so a callee Origin the solve opened only after the trial is the call's own region there, never the
+    // callee's atom (15.6.4 step 1, 15.3.6), and nothing is substituted twice.
+    private BoundType ExpectedValueType(Koto part, BoundType type, BindingScope scope, out BoundType? temporary, out BoundType? borrow)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        temporary = this.Materialization(node, type, scope);
+        borrow = temporary is null ? null : this.TemporaryBorrow(node, temporary);
+        return temporary ?? type;
     }
 
     private CandidateApplicability FitLiteral(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)

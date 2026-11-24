@@ -54,11 +54,11 @@ public partial class ResultPremiseTest
     // body-local Borrow's Origin (esc1) is the walk's body-chain side; a clause every per-call Origin satisfies (cl2q, `static outlives
     // a`; r10l on the Function Type side, newly accepted) or one the signature's inputs entail (cl2yr, over k's p) forms no row. No input
     // names the signature's own per-call Origin (PLAN G972, the owner's O-403 (b)), so a per-call clause the inputs entail has no such
-    // spelling: cl2y's input is invalid at `x`. F-a (the owner's O-2): cl2, cl2n, cl2o, cl2g, cl2m, cl2v and pc1 are A5's located
-    // Unsupported_Kd at the written result until U-O3 / R7-O3 restores the Language record at the same site.
-    [InlineData("cl2", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "Unsupported_Kd T during x")] // F-a
-    [InlineData("cl2n", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    return 0\n", "Unsupported_Kd T during x")] // F-a
-    [InlineData("cl2o", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> Option<T during x> => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "Unsupported_Kd Option<T during x>")] // F-a
+    // spelling: cl2y's input is invalid at `x`. cl2, cl2n, cl2o, cl2g, cl2m, cl2v and pc1 were A5's located Unsupported_Kd at the written
+    // result (F-a, the owner's O-2) until R7-O3's U-O3 formed the per-call relation as the nested signature's declaration row (below).
+    [InlineData("cl2", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "UnprovenOriginRelation_Kd T during x")]
+    [InlineData("cl2n", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    return 0\n", "UnprovenOriginRelation_Kd T during x")]
+    [InlineData("cl2o", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> Option<T during x> => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "UnprovenOriginRelation_Kd Option<T during x>")]
     [InlineData("cl2e", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] () -> T during p => $abort(\"no\")\n    let t = c()\n    return 0\n", "UnprovenOriginRelation_Kd T during p")]
     [InlineData("cl2e_c", StaticClause + "func k(p: ref/i32) -> i32\n    origin p outlives static\n    let c = func [] () -> T during p => $abort(\"no\")\n    let t = c()\n    return 0\n", "")]
     [InlineData("cl2s", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during static => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "")]
@@ -66,10 +66,10 @@ public partial class ResultPremiseTest
     [InlineData("cl2y", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32, y: ref/(ref/i32 during x) during static) -> T during x => $abort(\"no\")\n    return 0\n", "InvalidOriginBinding_Kd x")]
     [InlineData("cl2yr", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (y: ref/(ref/i32 during p) during static) -> T during p => $abort(\"no\")\n    return 0\n", "")]
     [InlineData("cl2r", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (y: ref/i32) -> i32\n        let d = func [] () -> T during y => $abort(\"no\")\n        return 0\n    let n = c(p)\n    return 0\n", "UnprovenOriginRelation_Kd T during y")]
-    [InlineData("cl2g", StaticClause + "func mk2<U>(u: ref/U) -> i32\n    let c = func [] (x: ref/U) -> T during x => $abort(\"no\")\n    return 0\n" + "func k(p: ref/i32) -> i32\n    let a = mk2(p)\n    let bv: bool = true\n    let b = mk2(bv@ref)\n    return 0\n", "Unsupported_Kd T during x")] // F-a
-    [InlineData("cl2m", StaticClause + "func k(p: ref/i32) -> i32\n    let g: (ref/i32) -> i32 = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    return 0\n", "TypeMismatch_Kd func [] (x: ref/i32) -> T during x => $abort(\"no\"); Unsupported_Kd T during x")] // F-a
-    [InlineData("cl2v", StaticClause + "func k() -> i32\n    let v: i32 = 5\n    let c = func [] (x: ref/i32, y: Option<ref/i32>) -> T during x => $abort(\"no\")\n    let t = c($abort(\"n\"), .Some(v@ref))\n    return 0\n", "Unsupported_Kd T during x")] // F-a
-    [InlineData("pc1", StaticClause + "func k(p: ref/i32) -> i32\n    origin p outlives static\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "Unsupported_Kd T during x")] // F-a
+    [InlineData("cl2g", StaticClause + "func mk2<U>(u: ref/U) -> i32\n    let c = func [] (x: ref/U) -> T during x => $abort(\"no\")\n    return 0\n" + "func k(p: ref/i32) -> i32\n    let a = mk2(p)\n    let bv: bool = true\n    let b = mk2(bv@ref)\n    return 0\n", "UnprovenOriginRelation_Kd T during x")]
+    [InlineData("cl2m", StaticClause + "func k(p: ref/i32) -> i32\n    let g: (ref/i32) -> i32 = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    return 0\n", "TypeMismatch_Kd func [] (x: ref/i32) -> T during x => $abort(\"no\"); UnprovenOriginRelation_Kd T during x")]
+    [InlineData("cl2v", StaticClause + "func k() -> i32\n    let v: i32 = 5\n    let c = func [] (x: ref/i32, y: Option<ref/i32>) -> T during x => $abort(\"no\")\n    let t = c($abort(\"n\"), .Some(v@ref))\n    return 0\n", "UnprovenOriginRelation_Kd T during x")]
+    [InlineData("pc1", StaticClause + "func k(p: ref/i32) -> i32\n    origin p outlives static\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "UnprovenOriginRelation_Kd T during x")]
     [InlineData("esc1", StaticClause + "func k(p: ref/i32) -> i32\n    let v: i32 = 1\n    let r = v@ref\n    let c = func [] () -> T during r => $abort(\"no\")\n    return 0\n", "UnsatisfiedOriginRelation_Kd T during r")]
     [InlineData("r10l", AllClause + "func k(p: ref/i32) -> i32\n    let g: Option<(ref/i32) -> Q> = .None\n    return 0\n", "")]
     // PLAN G962 C1 (SPEC 15.6.1, 15.3.3): a definition assumes its result Type well formed, its Types' own clauses included (each call
@@ -98,16 +98,37 @@ public partial class ResultPremiseTest
     [InlineData("o6ri", StaticClause + FunctionBothResult + "    let f = r(s)\n    let o = f(.None)\n    return 0\n", "UnprovenConstraint_Kd .None; UnprovenOriginRelation_Kd .None")]
     [InlineData("o6s", StaticClause + FunctionResult + "    origin s outlives static\n    let f = r(s)\n    return f(.None)\n", "")]
     [InlineData("kr1i", StaticClause + "func k(p: ref/i32) -> T during p\n    let c = func [] () -> T during p => $abort(\"no\")\n    return $abort(\"no\")\nfunc m(q: ref/i32) -> i32\n    let t = k(q)\n    return 0\n", "UnprovenConstraint_Kd k(q)")]
+    // PLAN G216 (b), R7-O3 U-O3 (SPEC 15.3.4: a nested signature's result is well formed under the declaration's premises and its own
+    // well-formed inputs for every choice of its per-call Origins; a per-call relation must follow from those inputs): a relation with a
+    // per-call end is the nested signature's declaration row, judged by Binding where it is written, not a row of the evaluating body (A5's
+    // located Unsupported_Kd before, valid or not). A Closure's and a local Function Type's result during the input's per-call Origin
+    // (u1, u2), over a body local's Origin (u1loc), by the enclosing clause's chain (u4), the result's meet of two inputs (umeet, SPEC
+    // 15.4.3 rule 1 and 15.3.6), a result over a body local's region (usl: no bound of the region), a Closure in a Closure body chaining
+    // both inputs (uin_chain), its own input (uin_okin) or neither (uin_bad), and a Function value input (ufn): each valid one accepted.
+    [InlineData("u1", "func k(q: ref/i32) -> i32\n    let h = func [q] (p: ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "")]
+    [InlineData("u1_n", "func k(q: ref/i32) -> i32\n    let n = 1\n    let h = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(n@ref)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q)")]
+    [InlineData("u2", "func k(q: ref/i32) -> i32\n    var f: (ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> = func (p) => Option.Some(p)\n    let o = f(q@ref)\n    return 0\n", "")]
+    [InlineData("u2_n", "func k(q: ref/i32) -> i32\n    let n = 1\n    var f: (ref/i32) -> Option<ref/(ref/i32 during q)> = func (p) => Option.None\n    let o = f(n@ref)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q)")]
+    [InlineData("u1loc", "func k() -> i32\n    let x = 5\n    let q = x@ref\n    let h = func [q] (p: ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    let o = h(q@ref)\n    return 0\n", "")]
+    [InlineData("u1loc_n", "func k() -> i32\n    let x = 5\n    let q = x@ref\n    let n = 1\n    let h = func [q] (p: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(n@ref)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q)")]
+    [InlineData("u4", "func k(q: ref/i32, r: ref/i32) -> i32\n    origin q outlives r\n    let h = func [] (p: ref/(ref/i32 during r)) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(r@ref)\n    return 0\n", "")]
+    [InlineData("u4_n", "func k(q: ref/i32, r: ref/i32) -> i32\n    origin r outlives q\n    let h = func [] (p: ref/(ref/i32 during r)) -> Option<ref/(ref/i32 during q)> => Option.None\n    let o = h(r@ref)\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q)")]
+    [InlineData("umeet", "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q), s: ref/(ref/i32 during q)) -> Option<ref/(ref/i32 during q)> => Option.None\n    return 0\n", "")]
+    [InlineData("umeet_n", "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/i32, s: ref/i32) -> Option<ref/(ref/i32 during q)> => Option.None\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q)")]
+    [InlineData("usl_n", "func k() -> i32\n    let x = 5\n    let q = x@ref\n    let h = func [] (p: ref/i32) -> Option<ref/(ref/i32 during p) during q> => Option.None\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during p) during q")]
+    [InlineData("uin_chain", "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q)) -> i32\n        let h2 = func [] (r: ref/(ref/i32 during p)) -> Option<ref/(ref/i32 during q)> => Option.None\n        return 0\n    return 0\n", "")]
+    [InlineData("uin_okin", "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q)) -> i32\n        let h2 = func [] (r: ref/(ref/i32 during p)) -> Option<ref/(ref/i32 during p)> => Option.Some(r)\n        return 0\n    return 0\n", "")]
+    [InlineData("uin_bad", "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q)) -> i32\n        let h2 = func [] (r: ref/i32) -> Option<ref/(ref/i32 during p)> => Option.None\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during p)")]
+    [InlineData("ufn", "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q), g: (ref/i32) -> ref/i32 during q) -> Option<ref/(ref/i32 during q)> => Option.Some(p)\n    return 0\n", "")]
     public void ANestedResultIsJudgedWhereItIsWritten(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     // An Item whose declared clause a conversion target would give (cl1): the target's result relates its per-call Origin to `static`
     // beyond its input, so it is recorded where it is written (DECISIONS R4-M162); the erased Item of ItemUses stays valid when called (rk4).
-    // F-a (H3b; the owner's O-2, 「一覧に加える」: H5's (e) list, PLAN G216 (b)): on cl1 Binding records nothing, so A5's located
-    // Unsupported_Kd at the target's written relation (its text occurs once) keeps it rejected where its UnprovenOriginRelation_Kd was;
-    // U-O3 (BU's R7-O3) moves the Language record to Binding at the same site and re-points the row back.
+    // cl1 was A5's located Unsupported_Kd at the target's written relation (F-a, H5's (e) list) until R7-O3's U-O3 moved the Language
+    // record back to Binding at the same site.
     [Theory]
-    [InlineData("cl1", "func pin1(q: ref/i32) -> Option<ref/(ref/i32 during q) during static>\n    origin q outlives static\n    return .None\nfunc mk() -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during static> = pin1\n    return 0\n", "Unsupported_Kd ref/(ref/i32) during static")] // F-a, the owner's O-2; U-O3 / R7-O3 restores the Language record
+    [InlineData("cl1", "func pin1(q: ref/i32) -> Option<ref/(ref/i32 during q) during static>\n    origin q outlives static\n    return .None\nfunc mk() -> i32\n    let g: (ref/i32) -> Option<ref/(ref/i32) during static> = pin1\n    return 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32) during static")]
     [InlineData("rk4", "func leak(p: ref/i32, q: ref/i32) -> (Option<ref/(ref/i32 during q) during p>, ref/i32 during p)\n    return (.None, q)\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 5\n    let g: (ref/i32, ref/i32) -> (Option<ref/(ref/i32)>, ref/i32) = leak\n    return g(x, local@ref).1@follow\n", "")]
     public void AnItemsClauseHoldsByItsTargetClausesTheTargetGives(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
