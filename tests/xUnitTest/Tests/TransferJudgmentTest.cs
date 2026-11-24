@@ -25,6 +25,7 @@ public sealed class TransferJudgmentTest
     [InlineData("func bad(x: string, y: string = (x)) => ()\npublic func main()\n    bad(Text.toString(1))\n", "DefaultArgumentMove_Kd (x)")]
     [InlineData("func f<s/T>(value: s/T)\n    s is owner or ref\n    let b = value\npublic func main()\n    let n = 1\n    f(n)\n", "TransferRequired_Kd value repair case=s = owner | Found under the Semantics case s = owner (SPEC 8.15)")]
     [InlineData("func f<t/U, s/T>(value: s/t/U)\n    s is owner or uniq\n    t is owner or ref\n    let b = value\npublic func main() => ()\n", "TransferRequired_Kd value repair case=t = owner, s = owner | Found under the Semantics case t = owner, s = owner (SPEC 8.15)")]
+    [InlineData("func f<s/T>(value: s/T)\n    s is owner\n    let b = value\npublic func main() => ()\n", "TransferRequired_Kd value repair")] // PLAN G181 (c): an owner-only pair; every case moves, so no case fact.
     [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    items[0]@follow = 7\n", "")]
     [InlineData("func run(b: uniq/i32)\n    var items = [b@move]\n    let r = items[0]@follow\n", "")]
     [InlineData("func peek<t/U>(value: t/U, seen: U = value@follow) -> U\n    t is owner or uniq\n    U is Copy\n    return seen\nfunc caller<s/T>(x: s/T) -> T\n    s is owner or uniq\n    T is Copy\n    return peek(x)\n", "")]
