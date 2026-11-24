@@ -31073,6 +31073,16 @@ R8-M* and R9-M* by the stage of the recording unit.
     fault), and any other exception is the command's fault, `CheckFaulted_Kd` without a location and its `errors` entry, exit 2. The
     startup's place and consequence stand (a startup failure ends the project loop). The Open line's `TestCommand`'s type lists (G1012)
     close; G1012 keeps the `finally`'s fault.
+  - Amended by PLAN G1010 (R9 part B, Q-724, 2026-11-24): `Project.TryCreate` and `DependencyResolver.Load` classify only their own
+    reads, `IsReadFailure` around each read call (the path's naming, the file's read, the listing, each source read) and the
+    configuration's two types around `ProjectFile.Load` (its deserializer's span a recorded limit, PLAN G1363); any other exception in
+    a load propagates. The check entry owns the load's unit result (`CheckService.Load`: Blocked `ProjectLoadFailed_Kd` per failure,
+    or one `CheckFaulted_Kd` at the project file), which `check --Format json` publishes and every language-server unit of the
+    project shares; `WorkspaceCheck.Reusable` is the one reuse rule (a loaded project or a unit's result kept while its inputs are
+    valid, unless Faulted). A load's every reason is written once through the service and logged. `ProjectFile`'s map checks own a
+    key's kind: one reader of a setting name, a key that is not a name the configuration's own note, so no reader exception leaves
+    `ProjectFile.Load` for a text `ConfigurationText` accepts (R9 part B's Revision 2). The Open line's `Project.TryCreate`'s
+    catch-all (G1010) closes; G1010 keeps N5's contracts.
 
 ## Tatara (adopted 2026-11-19)
 
