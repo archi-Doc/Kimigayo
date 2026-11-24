@@ -123,7 +123,7 @@ internal sealed partial class MirBorrows
         this.covering.Clear();
         if (resultWrites is not null)
         {
-            this.KeepResult(state, call, resultWrites, checks); // Before the return below: a discarded result was still written.
+            this.KeepResult(state, call, resultWrites, checks); // A diverging call (Target < 0, below) has a Never result: no ResultWrites.
         }
 
         for (var p = 0; p <= call.Count; p++)

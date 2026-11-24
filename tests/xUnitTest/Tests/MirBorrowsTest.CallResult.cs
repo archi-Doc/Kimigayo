@@ -204,6 +204,46 @@ public sealed partial class MirBorrowsTest
                 let r = mkR(w, z@raw)
                 y@follow = 5
             """,
+        ["prc2Bad"] = """
+            func usep(p: raw/u8) => ()
+            struct Packet
+                internal var data: raw/u8 during self
+                internal var pair: (raw/u8 during self, i32)
+                public init()
+                    self.data = null
+                    self.pair = (null, 0)
+            struct Outer
+                internal var inner: Packet
+                public init() => self.inner = Packet.init()
+            func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw
+            func prc2()
+                let o = Outer.init()
+                let p = gp(o@ref)
+                unsafe
+                    let x = (*p).0
+                    let m = o@move
+                    usep(x)
+            """,
+        ["prc2vBad"] = """
+            func usep(p: raw/u8) => ()
+            struct Packet
+                internal var data: raw/u8 during self
+                internal var pair: (raw/u8 during self, i32)
+                public init()
+                    self.data = null
+                    self.pair = (null, 0)
+            struct Outer
+                internal var inner: Packet
+                public init() => self.inner = Packet.init()
+            func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw
+            func prc2v()
+                let o = Outer.init()
+                let p = gp(o@ref)
+                unsafe
+                    let x = (*p).0
+                    usep(x)
+                    let m = o@move
+            """,
         ["ctorMinBad"] = """
             struct Quiet
                 public var p: raw/(raw/u8)
@@ -313,6 +353,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("h2RefPointeeOk", "refPointee: var k: i32 = 0")] // I by the owner's O-524 (a): E may hold x, a Copy of k@ref, used after every point (15.6.4), so the end of k's storage destroys a Place a live ref Loan covers (15.6.2, 15.6.6); no error at y@follow = 5
     [InlineData("h2RefPointeeParamOk", "")] // V, its twin: a parameter's borrow has no access path in the body (15.6 Loans); ref/i32 during x cannot hold w's address
     [InlineData("h2RefPointeeBad", "refPointeeW: y@follow = 5")] // I, x = w: E may hold a Copy of w
+    [InlineData("prc2Bad", "prc2: o; prc2: let o = Outer.init()")] // I by the owner's O-524 (a), G1276's filed prc2 (MirBorrowsTest.Raw; G1301's open class): gp's result layer states no Origin, so gp may store through its own pointer there a (raw/u8 during r, i32) value keeping r = o@ref's Loan, used after every point (15.6.4, 5.7 Calls), so o's move and the end of o's storage conflict (15.6.2, 15.6.6); the Raw row keeps its class with `during r` stated
+    [InlineData("prc2vBad", "prc2v: o; prc2v: let o = Outer.init()")] // I by the same reading (as h2RefPointeeOk), G1276's filed prc2v (labelled valid there): the stored value outlives the use before the move
     [InlineData("ctorMinBad", "ctorMin: y@follow = 5")] // I, a constructor's result Field (O-365 (a))
     [InlineData("a1MethodResultBad", "methodResult: y@follow = 5; methodResult: let m = Maker.init(n: 0)")] // I, a method's result: E may also hold the receiver's own value, m's shared Loan, used after every point, so the end of m's storage destroys a Place a live ref Loan covers (15.6.4, 15.6.2, 15.6.6; O-524 (a)'s reasoning)
     [InlineData("methodOneOk", "")] // V, its twin, `-> raw/u8`: the next layer is u8 and keeps nothing

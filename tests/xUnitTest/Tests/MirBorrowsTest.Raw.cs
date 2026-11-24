@@ -1766,10 +1766,13 @@ public sealed partial class MirBorrowsTest
     // two lender segments; pre: an enclosing Tuple; prw: a write; pru: a uniq lender) and a shared one (n2, n2v leave the limit). Where
     // no exact position exists and the own steps name no owner, in a view whose borrow the base marked, the read's located
     // Unsupported_Kd (tw3: a reference stored twice); elsewhere silent (G1301's open classes: prs, a pointer stored twice, and prc2, a
-    // call's result, invalid or undecided by the text and accepted; bn1, bn2, valid reads through a call's result, accepted; bn3
-    // conflicts by 15.6.4). The Warning of a non-direct entry is PLAN G1277's (N10; pr1: not given); a plain address is a direct entry
-    // and gives it (pra). Labels from SPEC (Z5-R1 design section 5; G1276 design section 6 and Revision 1c section 3, before any run;
-    // pra's Warning corrected after it, as the design's section 7 measured it).
+    // call's result whose raw layer states its Origin, `during r`, invalid or undecided by the text and accepted; bn1, bn2, valid reads
+    // through a call's result, accepted; bn3 conflicts by 15.6.4). Where that layer states no Origin, as G1276 filed prc2 and prc2v, the
+    // call may store through its own pointer there a value keeping o@ref's Loan, used after every point (15.6.4, 5.7 Calls; the owner's
+    // O-524 (a)): MirBorrowsTest.CallResult's prc2Bad and prc2vBad (G841c). The Warning of a non-direct entry is PLAN G1277's (N10; pr1:
+    // not given); a plain address is a direct entry and gives it (pra). Labels from SPEC (Z5-R1 design section 5; G1276 design section 6
+    // and Revision 1c section 3, before any run; pra's Warning corrected after it, as the design's section 7 measured it; prc2's and
+    // prc2v's stated layer: G841c's probe, labelled before it ran).
     [Theory]
     [InlineData("t5c", "let t = (b.pair@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
     [InlineData("mx", "let t = (b.data@ref, d.pair@ref)|let x = t.1@follow.0|let m = b@move|usep(x)", "", "b")]
@@ -1811,8 +1814,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("oha", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    let w = h@uniq|    usep(x)", "", "h@uniq OwnStepDeparture_Kd")]
     [InlineData("ohav", "var h = Packet.init()@obj|let rp = h@raw|unsafe|    let p = (*rp)@follow@raw|    let x = (*p).pair.0|    usep(x)|    let w = h@uniq", "", "")]
     [InlineData("prs", "let o = Outer.init()|let o2 = Outer.init()|let r = o@ref|let s = o2@ref|var p = s@follow.inner.pair@raw|p = r@follow.inner.pair@raw|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "", "")]
-    [InlineData("prc2", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw\n", "")]
-    [InlineData("prc2v", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) => r@follow.inner.pair@raw\n", "")]
+    [InlineData("prc2", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    let m = o@move|    usep(x)", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) during r => r@follow.inner.pair@raw\n", "")]
+    [InlineData("prc2v", "let o = Outer.init()|let p = gp(o@ref)|unsafe|    let x = (*p).0|    usep(x)|    let m = o@move", "func gp(r: ref/Outer) -> raw/(raw/u8 during r, i32) during r => r@follow.inner.pair@raw\n", "")]
     [InlineData("prp", "gq(fresh@raw/(raw/u8, i32))", "func gq(p: raw/(raw/u8, i32))\n    unsafe\n        let x = (*p).0\n        usep(x)\n", "")]
     [InlineData("bn1", "var a = (1, 2)|let q = pickN(a@ref)|let t = q@follow|a = (3, 4)|usen(t.0)", "func usen(n: i32) => ()\nfunc pickN(r: ref/(i32, i32)) -> ref/(i32, i32) during r => r\n", "")]
     [InlineData("bn2", "var a = (fresh, 1)|let q = pickR(a@ref)|let x = q@follow.0|a = (fresh, 2)|usep(x)", "func pickR(r: ref/(raw/u8, i32)) -> ref/(raw/u8, i32) during r => r\n", "")]
