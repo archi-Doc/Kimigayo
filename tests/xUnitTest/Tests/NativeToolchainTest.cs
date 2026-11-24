@@ -1394,7 +1394,7 @@ public sealed class NativeToolchainTest : IDisposable
         {
             foreach (var file in ToolchainIdentity.Of(TargetProfile.Linux.Supply("c"))!.Files)
             {
-                libraries.Add(new("c", "static", file.Sha256, File.Create(Path.Combine(this.directory, file.Name)), file.Place));
+                libraries.Add(new("c", "static", file.Sha256, File.Create(Path.Combine(this.directory, file.Name)), file));
             }
 
             libraries.Add(new("codec", "static", "0", File.Create(Path.Combine(this.directory, "codec.a")), null));

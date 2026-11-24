@@ -144,7 +144,7 @@ internal static partial class NativeToolchain
     internal static string[] ElfLine(string entry, string obj, List<StagedLibrary> libraries, string executable)
     {
         List<string> link = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", executable];
-        if (!libraries.Exists(static x => x.Place == SupplyPlace.Start))
+        if (!libraries.Exists(static x => x.File?.Place == SupplyPlace.Start))
         {
             link.AddRange(["-e", entry]);
         }
@@ -160,7 +160,7 @@ internal static partial class NativeToolchain
         {
             foreach (var library in libraries)
             {
-                if (library.Place == place)
+                if (library.File?.Place == place)
                 {
                     link.Add(library.Held.Name);
                 }
@@ -424,13 +424,13 @@ internal static partial class NativeToolchain
         }
 
         // The manifest's libraries in its order, each file staged (the file the linker receives) and added, held, with its library's name
-        // and Kind, its staged hash and its place (a program's input: none), to Run's list as soon as it is staged, so Run releases it on
-        // every outcome; then each staged input is checked: not a thin archive (change W2), against its assertions, and identified in the
-        // record by its staged path and hash, one row per input (IMPL 20.4; T's ruling 49). A name of the row's reserved supply is the
-        // compiler's supply: its entry the one this compiler writes (LinkManifest) and its files the compiler's (ToolchainIdentity.Supplies,
-        // keyed by the row's supply), each found by its catalog hash or staged from its resource (StageSupply); any other is a program's,
-        // staged from its input with the row's InputExtension and checked against the project's supply under the row's key. Every
-        // compiler's supply of the row but its C runtime is listed.
+        // and Kind, its staged hash and the compiler's supply file it stages (a program's input: none), to Run's list as soon as it is
+        // staged, so Run releases it on every outcome; then each staged input is checked: not a thin archive (change W2), against its
+        // assertions, and identified in the record by its staged path and hash, one row per input (IMPL 20.4; T's ruling 49). A name of
+        // the row's reserved supply is the compiler's supply: its entry the one this compiler writes (LinkManifest) and its files the
+        // compiler's (ToolchainIdentity.Supplies, keyed by the row's supply), each found by its catalog hash or staged from its resource
+        // (StageSupply); any other is a program's, staged from its input with the row's InputExtension and checked against the project's
+        // supply under the row's key. Every compiler's supply of the row but its C runtime is listed.
         private void ResolveLibraries(List<StagedLibrary> libraries)
         {
             var libraryIdentities = new JsonArray();
@@ -452,7 +452,7 @@ internal static partial class NativeToolchain
                     foreach (var file in supply.Files)
                     {
                         var held = StageSupply(file, this.paths.Native, out var hash);
-                        libraries.Add(new(name, kind, hash, held, file.Place));
+                        libraries.Add(new(name, kind, hash, held, file));
                     }
                 }
                 else
@@ -642,14 +642,14 @@ internal static partial class NativeToolchain
     }
 
     /// <summary>One staged input of a build's link, in the manifest's order (a compiler's supply adds one per file): its library's
-    /// manifest name and Kind, its staged hash, its staged copy, held to the build's end, and its place on an ELF line (a program
-    /// library's: null).</summary>
+    /// manifest name and Kind, its staged hash, its staged copy, held to the build's end, and the compiler's supply file it stages (a
+    /// program library's: null), whose place the ELF line reads.</summary>
     /// <param name="Name">The library's manifest name.</param>
     /// <param name="Kind">The library's Kind.</param>
     /// <param name="Sha256">The staged copy's SHA-256.</param>
     /// <param name="Held">The staged copy, held.</param>
-    /// <param name="Place">The file's place on an ELF line, or null for a program library.</param>
-    internal readonly record struct StagedLibrary(string Name, string Kind, string Sha256, FileStream Held, SupplyPlace? Place);
+    /// <param name="File">The compiler's supply file staged, or null for a program library.</param>
+    internal readonly record struct StagedLibrary(string Name, string Kind, string Sha256, FileStream Held, SupplyFile? File);
 
     /// <summary>A staged input's facts as the dependency step reads them (LinkAmbiguity, design §2): Tatara's inspection
     /// (<c>Facts</c>); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, and whether that

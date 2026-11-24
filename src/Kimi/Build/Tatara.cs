@@ -18,8 +18,8 @@ namespace Kimi.Build;
 /// by one lock. A load failure and a mismatch are each an InvalidDataException naming the values and the remedy; a call's return of 1
 /// or 2 is an IOException naming the operation with Tatara's message; both are the toolchain's failure (IsToolchainFailure).
 /// NativeBuild is its caller (and toolchain verify reports it). A call checks its token before the lock and again inside it, so a call
-/// that waited for the lock does not start after cancellation; inside the lock it pins its inputs, copies the result's texts and
-/// releases the result.</summary>
+/// that waited for the lock does not start after cancellation; inside the lock it pins its inputs, copies the result's texts and flags
+/// (an inspection's, <see cref="Inspection"/>) and releases the result; parsing an inspection (<see cref="Facts"/>) runs outside it.</summary>
 internal sealed unsafe partial class Tatara
 {
     // Neither remedy leads to setup into a shared or linked toolchain (a worktree's toolchain is a junction to the shared root, which
@@ -111,6 +111,23 @@ internal sealed unsafe partial class Tatara
         }
     }
 
+    // An inspection's facts, the one parser of inspect's texts (tatara.h): per member in archive order its form (text kind 4) and its
+    // blocks of kinds 1, 2, 5 and 6; the archive's index (kind 7); flags 1 and 2. It loads no Tatara.
+    internal static ObjectFacts Facts(Inspection inspection)
+    {
+        var forms = inspection.Forms;
+        var (undefined, defined) = (Blocks(inspection.Undefined), Blocks(inspection.Defined));
+        var (comdats, directives) = (Blocks(inspection.Comdats), Blocks(inspection.Directives));
+        var members = new ObjectMember[forms.Length / 2];
+        for (var i = 0; i < members.Length; i++)
+        {
+            members[i] = new ObjectMember(forms[2 * i], [.. undefined[i].Select(Symbol)], [.. defined[i].Select(Symbol)], comdats[i], [.. directives[i].Select(Directive)]);
+        }
+
+        var index = inspection.Index.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        return new ObjectFacts(members, [.. index.Select(Entry)], inspection.Archive, inspection.DefaultLibrary);
+    }
+
     // Verifies ir and optimizes it at default<O2>: the text opt -S writes, which the caller writes (tatara.h).
     internal string Optimize(TataraContext context, string ir)
         => Encoding.UTF8.GetString(this.Call("optimize", context, [.. Target(context), ir], (texts, result) => NativeOptimize(texts, texts[5], result)).Output);
@@ -120,9 +137,12 @@ internal sealed unsafe partial class Tatara
     internal byte[] Emit(TataraContext context, string ir, string obj, int optimizationLevel)
         => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => NativeEmit(texts, texts[5], texts[6], optimizationLevel, result)).Output;
 
-    // An object's or an archive's facts (tatara.h's inspect: one member per archive member, an object one).
-    internal ObjectFacts Inspect(TataraContext context, string obj)
-        => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result)).Facts;
+    // An object's or an archive's facts (tatara.h's inspect: one member per archive member, an object one): its inspection, parsed.
+    internal ObjectFacts Inspect(TataraContext context, string obj) => Facts(this.InspectTexts(context, obj));
+
+    // An object's or an archive's inspection: inspect's texts and flags as Tatara returned them (tatara.h).
+    internal Inspection InspectTexts(TataraContext context, string obj)
+        => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result)).Inspection;
 
     // Links with LLD's arguments, as NativeBuild builds them: arguments[0] names the flavor, lld-link or ld.lld (tatara.h).
     internal void Link(TataraContext context, IReadOnlyList<string> arguments)
@@ -138,22 +158,9 @@ internal sealed unsafe partial class Tatara
     private static string[] Target(TataraContext context)
         => [context.Triple, context.Cpu, context.Features, context.RelocationModel, context.CodeModel];
 
-    // Inspect's facts in a result (tatara.h): per member in archive order its form (text kind 4) and its blocks of kinds 1, 2, 5 and 6;
-    // the archive's index (kind 7); flags 1 and 2. Another operation sets none of them: no member.
-    private static ObjectFacts Facts(nint result)
-    {
-        var forms = NativeText(result, 4).Read();
-        var (undefined, defined) = (Blocks(NativeText(result, 1).Read()), Blocks(NativeText(result, 2).Read()));
-        var (comdats, directives) = (Blocks(NativeText(result, 5).Read()), Blocks(NativeText(result, 6).Read()));
-        var members = new ObjectMember[forms.Length / 2];
-        for (var i = 0; i < members.Length; i++)
-        {
-            members[i] = new ObjectMember(forms[2 * i], [.. undefined[i].Select(Symbol)], [.. defined[i].Select(Symbol)], comdats[i], [.. directives[i].Select(Directive)]);
-        }
-
-        var index = NativeText(result, 7).Read().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        return new ObjectFacts(members, [.. index.Select(Entry)], NativeFlag(result, 2) == 1, NativeFlag(result, 1) == 1);
-    }
+    // Inspect's texts and flags in a result (tatara.h), copied. Another operation sets none of them: empty texts, no member.
+    private static Inspection Copy(nint result) => new(
+        NativeText(result, 1).Read(), NativeText(result, 2).Read(), NativeText(result, 4).Read(), NativeText(result, 5).Read(), NativeText(result, 6).Read(), NativeText(result, 7).Read(), NativeFlag(result, 1) == 1, NativeFlag(result, 2) == 1);
 
     // A per-member text (kinds 1, 2, 5 and 6): each member's lines, ended by an empty line.
     private static List<string[]> Blocks(string text)
@@ -227,10 +234,11 @@ internal sealed unsafe partial class Tatara
     [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
     private static partial void NativeRelease(nint result);
 
-    // One call: its inputs encoded into one buffer and pinned, the result's texts copied and the result released, all inside the lock.
-    // A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is. Returns the
-    // inspection's facts (no member for another operation) and the output (text kind 3; empty for inspect and link).
-    private (ObjectFacts Facts, byte[] Output) Call(string operation, TataraContext context, string[] values, Invocation invocation)
+    // One call: its inputs encoded into one buffer and pinned, the result's texts and flags copied and the result released, all inside
+    // the lock. A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is.
+    // Returns the inspection (empty texts for another operation), which the caller parses outside the lock, and the output (text kind 3;
+    // empty for inspect and link).
+    private (Inspection Inspection, byte[] Output) Call(string operation, TataraContext context, string[] values, Invocation invocation)
     {
         context.CancellationToken.ThrowIfCancellationRequested();
         var lengths = new int[values.Length];
@@ -242,7 +250,7 @@ internal sealed unsafe partial class Tatara
 
         int code;
         string message;
-        ObjectFacts facts;
+        Inspection inspection;
         byte[] output;
         lock (Gate)
         {
@@ -262,7 +270,7 @@ internal sealed unsafe partial class Tatara
                 }
 
                 message = NativeText(result, 0).Read();
-                facts = code == 0 ? Facts(result) : default;
+                inspection = code == 0 ? Copy(result) : default;
                 output = NativeText(result, 3).Bytes();
                 if (code == 2)
                 {
@@ -288,8 +296,20 @@ internal sealed unsafe partial class Tatara
             context.Report(DiagnosticSeverity.Warning, message.Trim());
         }
 
-        return (facts, output);
+        return (inspection, output);
     }
+
+    /// <summary>An inspection as tatara.h's inspect returns it, before <see cref="Facts"/> parses it: the texts of kinds 1, 2, 4, 5, 6
+    /// and 7, in kind order, and flags 1 and 2.</summary>
+    /// <param name="Undefined">Text kind 1: each member's undefined symbols, a block per member.</param>
+    /// <param name="Defined">Text kind 2: each member's defined external symbols, a block per member.</param>
+    /// <param name="Forms">Text kind 4: each member's form, a line per member.</param>
+    /// <param name="Comdats">Text kind 5: each member's definitions that admit copies, a block per member.</param>
+    /// <param name="Directives">Text kind 6: each member's .drectve references, a block per member.</param>
+    /// <param name="Index">Text kind 7: the archive's symbol index, a line per entry.</param>
+    /// <param name="DefaultLibrary">Flag kind 1: a member names a default library.</param>
+    /// <param name="Archive">Flag kind 2: the input is an archive.</param>
+    internal readonly record struct Inspection(string Undefined, string Defined, string Forms, string Comdats, string Directives, string Index, bool DefaultLibrary, bool Archive);
 
     // TataraText: bytes and their length, not NUL-terminated; UTF-8 text but emit's output (an object's bytes).
     [StructLayout(LayoutKind.Sequential)]
