@@ -1,8 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -29,6 +31,27 @@ public class AccessorReceiverBindingTest
         Assert.NotNull(accessor.ReceiverType!.TypeOf());
         Assert.False(((PropertyKoto)accessor.Parent!).SymbolOf()!.Property!.IsVerified);
         Assert.False(c.Generate(TextWriter.Null));
+    }
+
+    // SPEC 11.3, 15.4.3, 15.6.5 (R7-O3 O3-A): an accessor's expression-body result is fitted at its value, inside the accessor's body, as
+    // a function's is: a borrow through `self` fits the elided result (acc_ok); a result `during static` does not (acc_bad, the relation's
+    // record at the value). Both as on dev: the fit's use moved from the accessor syntax to its value, where no enclosing body reads.
+    [Theory]
+    [InlineData("struct Box\n    let item: i32 = 1\n    public computed first: ref/i32\n        get() -> ref/i32 => self.item@ref\n", null)]
+    [InlineData("struct Box\n    let item: i32 = 1\n    public computed first: ref/i32 during static\n        get() -> ref/i32 during static => self.item@ref\n", "self.item@ref")]
+    public void AnAccessorsExpressionResultIsFittedAtItsValue(string source, string? at)
+    {
+        source += "public func main() => ()\n";
+        var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        if (at is null)
+        {
+            Assert.Empty(errors);
+            return;
+        }
+
+        var error = Assert.Single(errors);
+        Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Code);
+        Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 11.3: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a

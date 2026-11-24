@@ -10927,7 +10927,7 @@ resumed by R4-M86 (2026-10-20).
   member) `ClosedClause` became an instance member too. U1's entry states the states, the writer, B1's rule and the readers.
 
 - **BU-56 A declaration's written Origin that names a body local's written Type and selects a body local's atom is a located
-  `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (superseded in part by BU-89: its removal condition's E2 item;
+  `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (superseded in part by BU-89: its removal condition's E2 item, and by BU-258: narrowed to the located limit for a selection no body reads;
   the declaring body and the name link remain) (2026-10-30; PLAN G230, BU's unit bu70: option (B) of its stopped design, R4 agreeing)
   SPEC 15.3.4, 23.1.1, 23.1.2.
   - SPEC reading: a named nested function's signature may name visible Origins of enclosing functions, each a fixed Origin of it, and a
@@ -18521,6 +18521,29 @@ resumed by R4-M86 (2026-10-20).
     (2)); the intersection with the instantiated rows for every binding (accepts keepS1RawBad and G841c's W2); SPEC 15.6's callable
     clause read literally for a concrete Closure (the owner's Q2 (a)); A5 testing the case Type at the kept entry.
   - Open: PLAN G1366 (one publisher of SPEC 15.6's Type-level Loan predicate).
+- **BU-258 A named nested function's declaring body is recorded by the index walk; its signature's name of an enclosing body local names
+  that local's region (PLAN G230 (A); R7-O3 O3-A)** (Front, 2026-11-24; Binding; Q-751, D-1248; Major, an acceptance and A5-verdict mover;
+  F's rulings O3-1, O3-11..O3-26) SPEC 15.3.4, 15.6.5, 7.2.3. Supersedes in part BU-56, BU-89's "until G230 (A)" and D-990's result rule.
+  - Representation: `BindingSymbol.DeclaringBody` is the one recorded fact for the body that declares a function: a Closure's evaluating
+    body (written at its header scope; `BoundClosure.EvaluatingBody` is deleted) and a named nested function's declaring body (written by
+    the index walk's current-body state `indexBody`: a function's own body, a default template's (f, i), none in a Type's declaration or
+    for a module-level function). `EvaluatingBody` returns it for every body, so the view's row 6 (`EnclosingAtom`), `ParameterVisible`
+    (7.2.3) and `RegionBounded` read one chain: in a named nested function's body the atoms of the bodies that declare it are fixed with no
+    premise (A1's `CarriedRegion` gives a named function no value). `RegionBounded` reads that chain alone; its syntactic
+    `IsWithin(forming, owner)` tail is removed (it differed only for a member of a Type declared in a body, which is misplaced syntax).
+  - The result fit is at the value: a function's and an accessor's expression-body result fit takes the value as its use, as a `return`
+    does, so every reading at the use resolves in that body (nf_lift, an invalid program, was accepted through the function node's use
+    reading an enclosing `let` region as its value).
+  - The name link: BindFunction's re-bind, with the body's locals bound, binds a result the header could not bind like each parameter
+    (D-990's located `Unsupported_Kd` is removed); a declaration's plain name of an annotated body local is that local's region slot.
+    BU-56 is narrowed to `UnlinkedLocalType`'s located limit for a declaration's selection of a body local's annotation or set atom that
+    no body reads.
+  - A call in the declaring body (C-537, F's O3-26, R8-M56): a nested signature's `during r` read at a call in r's own body reads a `let`
+    r's region as its value, so `pass(inner@ref)` must outlive that value (t7d_fn, t7e_blk invalid, `UnsatisfiedOriginRelation_Kd`; a
+    `var r` is an inferred region, t7v_fn valid).
+  - Rejected: a FunctionKoto member (a semantic fact on syntax); a second chain beside `EvaluatingBody`; a body derived from syntax parents
+    at use; `BindingScope.Function` at DeclareFunction (gives f, not (f, i), in a default value).
+  - Open: PLAN G230's N1, N2, acc_lift and the module-level form; G1369 (t4_clause).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
