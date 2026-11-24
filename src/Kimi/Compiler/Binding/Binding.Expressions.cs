@@ -6,17 +6,22 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a write to it names that mode and the
-    // spellings that bind or update a value instead. The one decision of its code, from the binding alone (R7-E4 rulings 8, 9): the mode,
-    // and whether the binding is reassignable (`var`: on a borrowed path a reassignable reference, which `=` with a value fitting its own
-    // Type rebinds, SPEC 10.2); every other write names the mode, whatever the value's form. A binding whose stored Type is itself a
-    // reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that grants Read only (SPEC 14.8.3).
-    private static (BindingFailure Mode, bool Reassignable)? ReferenceBindingAssignment(Koto target)
-        => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.PatternCandidate } candidate }
-            ? (BindingFailure.SharedPathAccess, Reassignable(candidate))
-            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } symbol } &&
-                (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
-            ? (type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment, Reassignable(symbol)) : null;
+    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference. The one decision of a write's code there, from the
+    // binding and the operation (R7-E4 rulings 8, 9, 15): an update through it, and an `=` to it unless it is reassignable, names that mode
+    // and the spellings that bind or update a value instead, whatever the value's form; an `=` to a reassignable one (`var`: on a borrowed
+    // path a reassignable reference) is a rebind, judged as any `=`: its value fits the binding's Type (a borrow, or an owner temporary at
+    // `ref/U`, SPEC 10.2) or is the value's mismatch. A binding whose stored Type is itself a reference, on an owned path, gets the ordinary
+    // mismatch. A guard candidate is a shared layer that grants Read only (SPEC 14.8.3).
+    private static BindingFailure? ReferenceBindingAssignment(Koto target, Koto operation)
+    {
+        var (mode, symbol) = KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.PatternCandidate } candidate }
+            ? (BindingFailure.SharedPathAccess, candidate)
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } local } &&
+                (local.BindsReference || local.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
+            ? (type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment, local)
+            : (BindingFailure.None, (BindingSymbol?)null);
+        return symbol is null || (operation is BinaryKoto { Akind: KotoKind.Equals } && Reassignable(symbol)) ? null : mode;
+    }
 
     // SPEC 7.6, 22.6: the functions that support direct calls only: an unsafe function and a #LibraryImport function, the latter by
     // its Attribute whatever the Attribute's verdict. A requirement is never an import, so a requirement's Item is a value whatever
