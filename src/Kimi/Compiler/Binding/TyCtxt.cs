@@ -3,7 +3,7 @@
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), an Integer
 // constant's one encoding (Normalize, DECISIONS BU-133), a safe reference's stored representation (IsStoredReference) and two Types'
 // storage agreement with their Origins erased (StorageMatches), and the lifetime of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
+// TyCtxt.Substitutions.cs's (a call's in a Semantics case, CaseSubst, beside CaseType), the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
 // and R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
 // TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
@@ -171,12 +171,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
-    // SPEC 8.15 (DECISIONS R4-M<n>, Z4-M): the case key of a call's substitution in one Semantics case, its Self, declaring Type and Types
+    // SPEC 8.15 (DECISIONS R4-M246, Z4-M): the case key of a call's substitution in one Semantics case, its Self, declaring Type and Types
     // each read by CaseType (a null slot kept), its lengths, Origins and inputs the call's: the call itself without a case or a pair layer,
     // and Intern's own where no Type changes, so nothing is allocated then. Retains keys a direct call's contract by it, one entry per
-    // distinct case reading. Must not be substituted through: a pair slot holds its binder's whole Type, and a case form placed there is
-    // judged by Binding's substitution under the caller's premises, not the case (DECISIONS BU-240); a contract instantiates with the
-    // call's own substitution and reads its Types in the case after it (Retains).
+    // distinct case reading, which is complete since an instance reads every view binder through its Self, declaring Type and Types: two
+    // readings with the same cased Subst read the same instance Types. Must not be substituted through: a pair slot holds its binder's
+    // whole Type, and a case form placed there is judged by Binding's substitution under the caller's premises, not the case (DECISIONS
+    // BU-240); a contract instantiates with the call's own substitution and reads its Types in the case after it (Retains).
     internal Subst CaseSubst(Subst call, ReadOnlySpan<PairCase> cases)
     {
         var paired = call.Self?.ContainsPairLayer == true || call.Declaring?.ContainsPairLayer == true;

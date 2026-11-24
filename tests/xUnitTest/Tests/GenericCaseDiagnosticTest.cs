@@ -113,7 +113,7 @@ public sealed class GenericCaseDiagnosticTest
         Assert.Equal(("declaration", "s/T"), (related.Role, Text(source, related.Span)));
     }
 
-    // SPEC 8.14, 8.15.2, 15.6.4, 23.1.2 (DECISIONS R4-M<n>, Z4-M; the direct-path twins D1, D1c, D2): a direct generic call's contract
+    // SPEC 8.14, 8.15.2, 15.6.4, 23.1.2 (DECISIONS R4-M246, Z4-M; the direct-path twins D1, D1c, D2): a direct generic call's contract
     // reads its instance's Types in the view's case after the call's substitution (TyCtxt.Retains, keyed by TyCtxt.CaseSubst). `put`'s
     // `q: t/U` fed `y: s/T` is `uniq/T` under s = uniq, writable storage the body does not own, which carries the Loans of what `e`
     // reaches (`k`'s), so `k`'s storage ends under its Loan; under s = owner `q` is a `T` by value and the call writes nothing the body
@@ -132,7 +132,7 @@ public sealed class GenericCaseDiagnosticTest
         Assert.Equal(("case", "s = uniq"), (Assert.Single(error.Reason!).Name, error.Reason![0].Value));
     }
 
-    // SPEC 8.14, 8.15.2, 16.3.1 (DECISIONS R4-M<n>, Z4-M; the twins 2e-A, H1, H2): a call's substitution is never read in a case, so a
+    // SPEC 8.14, 8.15.2, 16.3.1 (DECISIONS R4-M246, Z4-M; the twins 2e-A, H1, H2): a call's substitution is never read in a case, so a
     // pair slot keeps its binder's whole Type and its instance forms as Binding formed it; only the instance's Types are read in the case.
     // Valid: `peek(y)` with `y: T` where s admits only owner (`U = T`), and a `Holder<s/T>` read and destroyed in one case and in two.
     [Theory]

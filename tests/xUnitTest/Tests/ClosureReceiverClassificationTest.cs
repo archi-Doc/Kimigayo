@@ -467,8 +467,10 @@ public class ClosureReceiverClassificationTest
     {
         var source = Outer(admitted, "    let g = func (z: s/T) -> () => ()\n    let f = func [x, g@ref] (q: s/T) -> i32\n" + use + "        return 0\n    let v = f(y)\n");
         AssertCallReceiver(source, exclusive, varRecords, letBefore);
-        var twin = DiagnosticCorpus.Check(source.Replace("    let f = func", "    var f = func", StringComparison.Ordinal)).Diagnostics;
-        Assert.All(twin.Where(static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd)), static x => Assert.Contains(UniqCase, x.Note, StringComparison.Ordinal));
+        var conflicts = DiagnosticCorpus.Check(source.Replace("    let f = func", "    var f = func", StringComparison.Ordinal)).Diagnostics
+            .Where(static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd)).ToArray();
+        Assert.Equal(exclusive ? 1 : 0, conflicts.Length);
+        Assert.All(conflicts, static x => Assert.Contains(UniqCase, x.Note, StringComparison.Ordinal));
     }
 
     // SPEC 7.7.2, 15.8.2, 15.6.2, 7.7.3: the invalid neighbour of the PendingGxs rows. `f`'s entry `g@ref` keeps its shared Loan on `g`

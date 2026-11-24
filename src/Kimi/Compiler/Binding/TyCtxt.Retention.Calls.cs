@@ -33,7 +33,7 @@ internal sealed partial class TyCtxt
     // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets, or an
     // Intrinsic one's library declaration; its default templates are A5's), called in `definition`, in the Semantics case `cases` (SPEC
     // 8.15; none for a case-free reading): every Type the instance hands its contract is read in the case after the call's substitution,
-    // never through a cased substitution (InstanceRetention; DECISIONS R4-M<n>), so its key holds the substitution's case key (CaseSubst).
+    // never through a cased substitution (InstanceRetention; DECISIONS R4-M246), so its key holds the substitution's case key (CaseSubst).
     internal CallRetention Retains(BindingSymbol callee, Subst? subst, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
     {
         Debug.Assert(subst is null || ReferenceEquals(subst.Target, callee));
