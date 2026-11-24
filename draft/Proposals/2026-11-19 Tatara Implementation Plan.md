@@ -300,6 +300,15 @@ Measured first; each one adopted is a unit of its own.
    link, bytes equal). Stopped: W-c (a held CryptoAPI context: probe P-W shows no saving), write and close otherwise (no lever
    without a patched LLD; P-W's split recorded in LC3 `r1\p-w.md`), W2 (`/threads:1`) until a measured `kimi.exe` row (D-1171).
 4. **Schema 5:** each external declaration names its supplier, with PLAN T1's schema 5.
+5. **The native check's time by part (NV2):** measured 2026-11-24 (NV2 design Revisions 0-1, M-N T-340,
+   `artifacts\benchmarks\nv2-mn-20261124-0536`): a full rerun (6,349 fixtures, six sessions) 200 s on a quiet machine, about 400 s in
+   K's windows; builds 53% (a line 31.6 ms at O0, 60.8 ms at O2; the link 17%, optimize 11%, emit 11%, four record writes 6%,
+   staging 3% of the step), runs 40% (6.3 ms per execution; the runner's PowerShell around each launch halves the bare launch rate),
+   the fixture keys 4% (77% of an all-reused step's 5.4 s). Adopted: U1 (a rebuilt fixture whose executables did not change is not
+   run again while its last real run is within 12 h; O-519 (a), O-522 (a2)). Open, each a unit of its own: R3 (batched run workers),
+   K1 (the reuse path's keys), R1 (runs overlapping builds, after R3), B1 (more sessions; first the hang at 24 sessions), B3 (fewer
+   intermediate record writes), B4 (one staging folder per output directory), K3 (hard-linked pair IR, if its copies reach the gate).
+   Stopped: launching from several processes (no faster), the line read, the template emit, no console per execution (named only).
 
 ## 9. Working rules
 

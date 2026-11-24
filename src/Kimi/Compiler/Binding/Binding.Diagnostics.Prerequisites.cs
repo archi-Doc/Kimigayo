@@ -489,7 +489,7 @@ public sealed partial class Binding
     private void Consulted(Koto dependency)
     {
         if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !this.ChecksOwnSite(dependency) &&
-            !this.IsWaitingPart(dependency))
+            !this.IsCheckedCall(dependency))
         {
             this.consulted.Add(dependency);
         }
@@ -606,9 +606,9 @@ public sealed partial class Binding
         => this.RecordedFailure(node) is var failure && failure != BindingFailure.None && IsResource(this.CodeOf(node, failure));
 
     // SPEC 8.3.3 (Limits), 23.1.1: an input holds a reached implementation limit when its slot's failure is Resource (ResourceFailed: a
-    // Binding limit is recorded through Fail alone, CaseLimit, TypeHeightLimit and PremiseClosureLimit) or one of its problems is,
-    // whatever its first record (F's ruling 339, the review's B1). The limit half's one input test (RestsOnRecoveryOrLimit), read only
-    // at publication; a valid program has no problem and pays the slot's test alone.
+    // Binding limit is recorded through Fail alone, CaseLimit, TypeHeightLimit, PremiseClosureLimit and ResolutionWorkLimit) or one of its
+    // problems is, whatever its first record (F's ruling 339, the review's B1). The limit half's one input test (RestsOnRecoveryOrLimit),
+    // read only at publication; a valid program has no problem and pays the slot's test alone.
     private bool HoldsLimit(Koto node)
     {
         if (this.ResourceFailed(node))
