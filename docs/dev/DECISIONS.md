@@ -9793,6 +9793,9 @@ resumed by R4-M86 (2026-10-20).
     polarities (ProveProposition would skip its structural judgment where facts alone give both, changing EndProof's cause); the raw
     proposition at C2 (two normalizations per proof).
   - Superseded in part by BU-199 (R7-C2a a1, 2026-11-13): the staging "C2a without `Enumerate`" and the routing list it held.
+  - Superseded in part by R7-M105 (R7-C4, 2026-11-25): the staging of `Inadmissible (G172)` (G172's flow-back is the per-binding request) and
+    ruling 2's "`FrozenDefinition` joins `ViewOf` at C3" (the request holds no frozen definition in `ViewOf`); OQ1's one shared limit
+    record is `AnalysisLimit_Kd`, and OQ2's items limit (65,536) is the held states of one component.
 
 - **BU-30** (2026-10-23, redone 2026-10-24; superseded in part by BU-34, BU-35, BU-36, BU-40, BU-52, BU-66 and R4-M131; PLAN G160's
   G160-2c, unit bu32, under G160-4's owner-approved design B′ §3.2 as its re-review amended it, R-B2 to R-B5 (DECISIONS R4-M116); the
@@ -13555,6 +13558,15 @@ resumed by R4-M86 (2026-10-20).
     that names its failed node; a refusal with no frame open stays `InternalInvariant_Kd`.
   - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24): the dependents rule for a reader of a finished proof has one place,
     `ProofRestsOnLimit`: a reader failing on an Error verdict whose cause a Resource record failed adds no record of its own.
+  - Amended by R7-M106 (PLAN G172, R7-C4, 2026-11-25): the Dependents bullet's `RequireConstraintInFrame` copy ("a record the use's
+    own check owns ... drops the frame") is the recorder's range rule, decided when the frame begins: a failure the use held then
+    keeps its own inputs; one the proof first writes inside the frame (a verdict, a refusal settled at the site) takes the frame's
+    reads. G473's `conformance-recovered-*` rows keep their independent record by the passes' order: `VerifyConformance` first writes
+    a conformance's verdict in `ValidateConformances`' non-final run, whose frame is dropped, so the verdict is held when the final
+    run's frame begins. "`RequireConstraint` consults the proof's named cause" is the rule's in-frame one-read form
+    (`ConsultedFor`), decided when the outcome's check (`FailConstraint`) begins, after the proof: the cause joins the frame's reads
+    only for a use that holds no failure then, so a failure the proof writes at the use inside the frame takes the frame's reads,
+    never the cause.
 - **BU-135 The compile stack S is 128 MB** (2026-11-08; R7-C8 U-D2; the owner's O-82, verbatim 「O-82 b」; supersedes R4-M178's S in part).
   R4-M178 sized S = 64 MB for the syntax walks at L = 1,024 (BU-112's margin). That reason no longer holds: the Type-height walks at H = 8,192 need 3.5 x (H + L) x 3,632 B = 117 MB with dev's frames, and U-D1's smaller frames are dropped by O-82 (b). `CompilerThread.StackSize` is 128 MB; R4-M178's owner, scope rule and sites are unchanged.
 - **BU-153 A Type's display does not recurse on the Type (PLAN G348, unit G348-d)** (2026-11-11; Front; Major; design
@@ -27809,6 +27821,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     without commit 3 and was removed in the unit (ruling 349 (1)), with `CloseConsultation` (ruling 351 C3).
   - **Moves (Q13).** None: diagnostic snapshot 0 and semantic HIR+MIR 0 against shared-base/f227e33ce on the head f72940d32 (merged
     with dev f227e33ce).
+  - Amended by R7-M105 and R7-M106 (R7-C4, 2026-11-25): the limit record is written by `VerifyConformance` at its single exit
+    (`HoldsInferenceLimit`), so the problem arm and the per-code own test have observing rows (std9-z1/z2, lim-dup, lim-dup-r1, lim-layout);
+    the "layout frame" the sentence "C4 phase 12 merges ba6928d3c, adds its one limit write site and the layout frame" names is not
+    added: the recorder's range rule (R7-M106) keeps lim-layout's `InvalidInlineLayout_Kd` beside the limit.
 - **R7-M88 A Field step of no Type is a Place its write defines** (Middle, 2026-11-23; PLAN G1184, Z28's MIR half, Q-713, D-1188, a
   joint unit with the Front's F; Major; design `middle\notes\z28-design.md` Revisions 0-2 and its reviews; the order: M, then the
   Front's F on M, then M3 on F, Q-739) SPEC 23.1.2, 6.3.3, 6.3.4, 13.7.1.
@@ -28331,6 +28347,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Open (PLAN G651 a2-2c, a3, a4).** The remaining frames of BindDeclarations' steps: Signature's, BindConstraint,
     ResolveAssociated, CompleteProjections, SummarizeInlineStorage, PrepareVirtualOverrides, CompleteImplementationOrigins,
     FillVTable, RecordIdentityPremiseError, PrepareSpecializations and SelectOmittedBaseConstructor's frame.
+  - Amended by R7-M106 (PLAN G172, R7-C4, 2026-11-25): the call's Types frame applies the recorder's range rule (a use the obligation
+    failed before the frame keeps that record; `RequireCallVerdicts`' own copy is gone). `RecordRead` and `FailBaseRule`'s held
+    guard (d66230cec) are unchanged; the rule's frame-less half waits for PLAN G1391.
 - **R7-M98 A Callable comparison's requests share one premise environment** (Middle, 2026-11-24; R7-O1 e, R7-M39's comparison rest;
   PLAN G1082, closed by Q-730; Major, records unchanged; design review and implementation review C-519 (the Front) ACCEPT WITH
   CONDITIONS; commits 11943af5a, 9fa0b0297, 0e22c988c). Every proof request is set up and ended by one path
@@ -28622,6 +28641,120 @@ R8-M* and R9-M* by the stage of the recording unit.
     conformance takes (a fourth record for G1252's one failure); the literal key's members by declaration (parties the literal never
     fits); `RetainedImplementation` reading `SelectionMembers` at the failure (a re-judgment that explains the proof's failure:
     PLAN G1386).
+- **R7-M105 R7-C4: an inferred associated Type is determined per binding, by one request per component of the inferring definitions; past
+  65,536 held states a component is one Resource record `AnalysisLimit_Kd` (PLAN G172, G955)** (Middle, carrying the Front's design,
+  2026-11-25; Major; an acceptance mover both ways; design `artifacts\handoff\2026-11-13-weekly-pause\front\notes\C4\design-g172.md`
+  Revisions 0-3 with F's rulings 1-20; the owner's O-484, verbatim 「1 a, 2 x, 3 ii」; F's ACCEPT 11-25 05:38; the Middle's RP17
+  CONSENT WITH CONDITIONS 05:54) SPEC 8.5.5, 8.3.3 (Finality, Limits), 8.6.3, 10.7, 23.1.1, 23.1.2. Supersedes BU-29's staged
+  `FrozenDefinition` and `Inadmissible (G172)` and BU-29 ruling 2's "`FrozenDefinition` joins `ViewOf` at C3"; departs from the R7 plan's
+  C4 row ("evaluation on demand through C2's view") and §5.0's census row ("C4, through `ViewOf`"): the plan-revision request is K's
+  INTEGRATED line.
+  - **Rule.** `Value(v | P)`: v in P is pending; otherwise each source of v, its key and premise proof included, supplies its Type when
+    every read it makes gives one Type both with `P + {v}` and with `P + values(def v)` held; none supplied is missing, differing is a
+    conflict. A binding's value is `Value(v | {})`.
+  - **Representation** (`Binding.AssociatedInference.Discovery.cs`, `.Demand.cs`). Per binding its sources (a requirement whose
+    required Type names the binding's identity through the definition's published equalities), Heads and Reach within its component;
+    the components in Tarjan's order. Per component one request: a table of held states keyed `(binding, hold ∩ Reach(binding))`, a
+    hold being its canonical parent plus its newest member (interned, O(states) memory); a state's runs go back to their batch's pool
+    when it is answered (at most 2m + 3 live, 3 kept across requests). A held answer is Provisional and never kept outside its request.
+    A read outside Reach is `InternalInvariant_Kd` at the one validator site (`ValidateInferenceRead`). Every Type-expression node's
+    Type value is published by one member (`PublishType`), held back while it holds a pending projection.
+  - **Bound and limit.** At `InferenceStateLimit` = 65,536 held states (OQ2's items; the owner's O-484 (2 x)) `DecideAtLimit` decides the
+    component: a binding reading nothing in it stands, two such sources that differ are a conflict, every other binding a Resource
+    failure. The one record is `AnalysisLimit_Kd` at the least definition by full name (module-qualified), written by `VerifyConformance`
+    at one site before the conformance's own records (`HoldsInferenceLimit`; ruling 19 D1, every path, its early exit included), every
+    Resource binding's use resting on it, a standing binding's own Error kept (SPEC 23.1.2). Past the bound a standing binding's
+    identification problem is not recorded as its own problem (named limit, ruling 17 C3; STATUS).
+  - **Rename** (the owner's O-484 (3 ii), OQ1's one shared analysis-limit record): `PremiseClosureLimit_Kd` -> `AnalysisLimit_Kd`
+    (`limit:Number,bound:Text`, text "A judgment here is not decided within the implementation limit of {0} {1}", requirement
+    `Binding.AnalysisLimit`; `BindingFailure.AnalysisLimit`, `AnalysisBound.PremiseClosure | InferenceStates` name the bound); every
+    record of the old code renamed, site and count unchanged.
+  - **Deleted:** the batches' availability state (`State`/`Active`), `collectingAssociated` and its readers, the nested batch,
+    `ResolveAssociated`'s batch gate, `BatchedContractType`/`Batched`, the batch memo, VerifyConformance's collecting gate, the batch
+    meaning of `InferenceProblem.Dependency`, the separate premise drop.
+  - **Reason.** The batch withheld values that do not depend on the reading definition: SPEC 8.5.5's Completion conflict was never seen in
+    one declaration order (n1-e, n1-e-vw, n4-efd accepted: Q17 class 1) and valid forms were rejected as Type-value cycles (PA/PB x4,
+    alt-d, n2-d, k1-s, dr-fea/efa, ring6, prem-e/p, generic, param-pending, contract-argument, G955 `mutual`).
+  - **Moves** (labelled from SPEC before any run). Newly rejected: n1-e, n1-e-vw, n4-efd. Newly accepted: the 16 rows above. Records
+    only: `mutual` loses six records, `mutual-mismatch` keeps four `NoApplicableOverload_Kd`, eleven invalid guards lose dependent records
+    (n4-fde, c3-abc, c3-cab, chain-a, k2-s, k3-s, b2-012, b2-210, eq-b-dp, eq2-b-dp, eq-a-dp), the limit rows' records (std9-ok, std9-z1/z2,
+    conf9-ef, lim-dup, lim-layout, lim-dup-r1). A5 oracle: 0 of 1,764 corpus rows move.
+  - **Rejected:** the G172 plan's A and B; one frozen definition (c3); a whole-held-set key (exponential on a two-value chain); Reach from
+    the named reads only (B1: dr order dependent); Reach from every binding of an associated declaration (ov12 Resource); a dynamic read
+    set (its bound order dependent); per-binding requests (m x the bound); a third limit kind; a work counter over a shared memo; a static
+    size limit; the held set in `ViewOf`; counting runs among the bound's items (O-484 (2 x)'s unit is held states); one run pool for every
+    batch; the limit record written by `DecideAtLimit` (a conformance's use is its declaration: the record would fail it before its
+    verification and lose its own Error).
+  - **Open (PLAN G1392):** Reach is dense (O(m^2) memory per component); the 10,000-definition ring is an Explicit row.
+    **Amends** R7-M87 (the problem arm and the per-code own test of `HoldsLimit` now have observing rows; no layout frame, R7-M106).
+- **R7-M106 The recorder's range rule: a failure a node held when a frame's check began never takes that check's reads (PLAN G172,
+  R7-C4 hunk (d))** (Middle, 2026-11-25; R7-C4 12c-13e; Major; C-545 (d), F's consent 11-25 02:18 with conditions 1-5, the Middle's
+  criterion alpha, F's independent review ACCEPT WITH CONDITIONS (`artifacts\units\r7-c4\review-hunk-f.md`), F's rulings of
+  11-25 03:27 (the review's B1), 04:09 (`ConsultedFor`) and 04:51 (the frame-less half: option (c)), F's repeated read ACCEPT 05:38)
+  SPEC 23.1.2, 8.3.3 (Limits). Amends BU-134 and R7-M97.
+  - **Rule** (`Binding.Diagnostics.Prerequisites.cs`, stated once in its contract). A node's prerequisite range has three writers:
+    `EndConsultation` (a frame's reads), `ConsultedFor` (a check's one read inside a frame) and `RecordRead` (a check's one read
+    outside any frame). The rule holds for a frame's reads: a check's reads explain only a failure first written by that check. A
+    failure first written inside a frame, its own proof's write at the use included, takes the frame's reads, never a later check's
+    one read in it; a failure the node held when the check began keeps its own inputs and gains no read. Held is a snapshot when
+    the check begins: `BeginConsultation` keeps it with the frame (`(Start, Node, Held)`) and `EndConsultation` then writes no range
+    (the frame is dropped); `ConsultedFor`, which its check calls before it writes, adds no read for a node that holds a failure. No
+    check clears its frame's node inside the frame (`ClearFailure` resets a node before it is bound, or re-fails one outside any
+    frame), so the snapshot is never stale. `RecordRead` writes its read whatever the node holds, as before; `FailBaseRule` keeps its
+    caller guard (G651 a2-1, d66230cec) until PLAN G1391 lets `RecordRead` take the rule.
+  - **Every writer of a frame's reads applies it**: the frames `EndConsultation` closes, the walk's (`BindNode`, `BindType`, a
+    variable's, a closure's, a member's in `Binding.Calls`, an associated application's target in `Binding.AssociatedOrigins`, a
+    conformance's associated binding in `Binding.AssociatedTypes`), the judgment frames (`RequireConstraintInFrame`) and a call's
+    Types frame (`RequireCallVerdicts`); and `ConsultedFor`'s caller, `RequireConstraint` (the proof's named cause, the read of the
+    outcome's own check, `FailConstraint`, which begins after the proof).
+  - **Removes two copies and moves one**: `RequireConstraintInFrame`'s `owned` (BU-134) and `RequireCallVerdicts`' `owned` (R7-M97)
+    are deleted; `RequireConstraint`'s named-cause guard (`RecordedFailure(use) == None` before `Consulted(cause)`, BU-134's
+    "consults the proof's named cause") moves into the recorder as `ConsultedFor`, the same predicate at the same point.
+    `BindNode`'s frame had none: lim-layout's R0 holds `InvalidInlineLayout_Kd` from `ValidateInlineLayouts` before the walk, and the
+    frame wrote R0's Constraint reads (`Self is RC`, holding the component's `AnalysisLimit_Kd`) as R0's range, so the layout record
+    derived from the limit and was lost.
+  - **Reading changed from BU-134's copy**, which took `owned` after the proof: a record a judgment's proof first writes at its use
+    inside the frame (`VerifyConformance`'s verdict or limit record, a refusal settled at the frame's node) now takes the frame's
+    reads, never the proof's named cause, and a Resource record so taken derives from a recovery those reads reach
+    (`RestsOnRecoveryOrLimit`), never from a limit.
+    BU-134's reason holds by the passes' order: `VerifyConformance` first writes a conformance's verdict in `ValidateConformances`'
+    non-final run, whose frame is dropped, so the verdict is held when the final run's frame begins (G473's
+    `conformance-recovered-*` rows keep their record), and the same order keeps `VerifyConformance`'s contract that the
+    component's one Resource record depends on nothing the check found (`Binding.ContractMatching.cs`).
+  - **In-frame case** (reached without a move; counted over the whole suite, the A5 corpus and the twins on the head merged onto
+    52505fff8): 285 judgment frames not held at their begin end holding a failure and read something, all in the suite and all
+    `IncompatibleContractImplementation_Kd` at a conformance clause (`Self is Origin` 178, `Self is C` 70, 37 at nine other
+    clause texts), one read each (one frame two): the "Reading changed" case, a verdict `VerifyConformance` first writes inside the
+    frame taking the frame's reads. F's third branch (a use not held at its frame's begin that holds a failure after the proof, its
+    named cause outside the frame's reads) is reached 8 times, all in the suite: `InvalidAssociatedType_Kd` at a `Self is C` or
+    `Self is D` clause whose named cause holds `InvalidAssociatedType` or `UnprovenConstraint`; `ConsultedFor` keeps that cause
+    out, as `RequireConstraint`'s guard did. No record moves at either (SPEC 23.1.2: each verdict stays its own check's record):
+    the whole suite is at its labels, the diagnostic snapshot has 0 differences and the A5 oracle 0 of 1,764. The A5 corpus and
+    the twins reach neither. A one-read range `RecordRead` writes inside such a frame (`ProofRestsOnLimit` -> `CompleteDependent`)
+    is rewritten by `EndConsultation` 475 times (suite 331, twins 144), each time to the same one read (the limit node is the
+    frame's only read): no dependent loses its limit cause.
+  - **Moves** (invalid programs only; no valid program moves; SPEC 23.1.2: each record's own check reads neither the recovery nor the
+    failed part, so each is independent; PLAN G1141 names the first four as lost): VirtualDeclarationTest tw and d4 regain
+    `Unsupported_Kd` at the `objuniq` virtual func (SPEC 6.4.1, the dispatch limit); LayoutAttributeBindingTest q1a and
+    InlineLayoutTest's q1e row regain `SplitCLayoutStorage_Kd` at the split Field beside its initializer's `MissingSyntax_Kd` (SPEC
+    6.7.1); lim-layout keeps R0's `InvalidInlineLayout_Kd` beside the component's `AnalysisLimit_Kd`; TypeDagScalingTest lim-box and
+    lim-box-s (std9-ok's ring with `g(self: ref/Self, x: ref/Box)`) gain the component's `AnalysisLimit_Kd` at R0's `Self is RC` and
+    lose the `AssociatedTypeInferenceFailed_Kd` and the definitions' records past the limit (SPEC 8.3.3, Limits); InlineLayoutTest's
+    `Self is K<i32` row gains `InvalidInlineLayout_Kd` at `struct R` beside the clause's `MissingSyntax_Kd` (SPEC 6.2). Reverted
+    with B1's frame-less half (no move against dev): CallableOriginForwardingTest ar2 and ar2m, where B1's `RecordRead` rule had
+    added `UnresolvedBinding_Kd` at the Closure's omitted parameter `x`, are back at their labels (`NoApplicableOverload_Kd` at the
+    call; ar2m also `UnresolvedBinding_Kd` at the body's `missing`): `x` has a Type only from the failed selection, so its record
+    rests on the reported `NoApplicableOverload_Kd` (SPEC 7.7.1, 13.3.4, 23.1.2). No twin moved with that half.
+  - **Rejected:** moving one record's node (it moves a labelled site); a `BindNode` clause (a fourth copy); per-problem input rows
+    (O-509 (a)'s narrowing); deciding held after the proof (`EndConsultation` cannot tell a proof's write from the outcome's without
+    a marker, a mode); deleting `RequireConstraint`'s guard for the Begin snapshot (the named cause would join the range of a failure
+    the proof writes at its use inside the frame, and an independent Resource record could derive from a recovery: lim-box's limit,
+    SPEC 8.3.3, `Binding.ContractMatching.cs`'s contract); keeping the guard in `RequireConstraint` (a second copy of the rule);
+    B1's frame-less half in C4 (`RecordRead` writing no range for a node that holds a failure): case (ii), CallableOriginForwardingTest
+    ar2/ar2m, where an omitted Closure header bound with no expectation (an independent operand, SPEC 13.3.4) holds `MissingType`
+    before its selection names the call as its cause (`MarkOmittedHeaders`), so the earlier check's empty range stood and a record
+    resting on the failed selection (SPEC 7.7.1) was reported; the cause is the header binder's provisional failure (PLAN G1391); a
+    published "waiting header" fact the dependent writer consults (a who-wrote predicate under another name).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
