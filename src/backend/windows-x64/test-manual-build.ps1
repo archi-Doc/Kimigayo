@@ -63,7 +63,7 @@ try {
     Expect-Failure $data "'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."
     $data = $original | ConvertFrom-Json
     $data.optimization = 'O3'
-    Expect-Failure $data 'supported Windows Application profile'
+    Expect-Failure $data 'supported x86_64-pc-windows-msvc Application profile'
     Write-Output 'Manual-build integrity and toolchain rejection tests passed.'
 }
 finally {

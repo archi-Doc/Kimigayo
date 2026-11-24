@@ -29,6 +29,10 @@ public sealed class TataraExecutorTest : IDisposable
     internal static readonly TataraContext Context = new(
         (_, _) => { }, CancellationToken.None, TargetProfile.Windows.Target, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
 
+    // The Linux row's target (Tatara B7b2a): a static x86-64 ELF; LinuxPair's shared-object links use it too.
+    internal static readonly TataraContext LinuxContext = new(
+        (_, _) => { }, CancellationToken.None, TargetProfile.Linux.Target, TargetProfile.Linux.Cpu, TargetProfile.Linux.Features, TargetProfile.Linux.RelocationModel, TargetProfile.Linux.CodeModel);
+
     private const string Windows = "Tatara and the LLVM tools run on Windows.";
 
     // The probe's metadata naming a dependent library, so its ELF object has a .deplibs section.
@@ -39,10 +43,6 @@ public sealed class TataraExecutorTest : IDisposable
     private static readonly string[] Levels = ["O0", "O2"];
 
     private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
-
-    // The Linux row's target (Tatara B7b2a): a static x86-64 ELF.
-    private static readonly TataraContext LinuxContext = new(
-        (_, _) => { }, CancellationToken.None, TargetProfile.Linux.Target, TargetProfile.Linux.Cpu, TargetProfile.Linux.Features, TargetProfile.Linux.RelocationModel, TargetProfile.Linux.CodeModel);
 
     // The tool control's two formats. The archive's ld.lld.exe and llvm-readelf.exe are the toolchain's lld-link.exe and llvm-readobj.exe
     // (equal SHA-256); -flavor gnu and --elf-output-style=GNU select what those names select.
@@ -181,12 +181,14 @@ public sealed class TataraExecutorTest : IDisposable
     // copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32: a nodeduplicate comdat's names are
     // ordinary definitions, and a DEFAULTLIB among its linker options is the default-library flag; C-533 N-2); a directive's option takes each of
     // LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32). llvm-lib writes its members in reverse command-line order (as lib.exe does; its /list reverses them back), so its index, naming
-    // the command line's last definer (P5), names the first in member order. A malformed archive fails with LLVM's text and Tatara runs
+    // the command line's last definer (P5), names the first in member order; an ELF archive from the llvm-ar copy keeps command-line order and
+    // its index names definers in member order (B7b7, rulings 6 and 7a). A malformed archive fails with LLVM's text and Tatara runs
     // again; a thin archive fails. Libraries: the compiler's committed ones, or the pinned clang's objects archived by llvm-lib.
     [Theory]
     [InlineData("kernel32")]
     [InlineData("backend")]
     [InlineData("codec2")]
+    [InlineData("elf")]
     [InlineData("object")]
     [InlineData("dll")]
     [InlineData("comdat")]
@@ -227,6 +229,7 @@ public sealed class TataraExecutorTest : IDisposable
             "kernel32" => Expect(Kernel32Facts(), Task.FromResult(Kernel32)),
             "backend" => Expect("archive\no T:__chkstk\nindex 0:__chkstk", Task.FromResult(Backend)),
             "codec2" => Expect("archive\no T:helper\no U:helper T:codec_add\nindex 1:codec_add 0:helper", this.Library("codec.lib", NoAutolink, M1, M2)),
+            "elf" => Expect("archive\no U:helper T:codec_add\no T:helper\nindex 0:codec_add 1:helper", LinuxPair.Archive(this.directory, "codec", "rcs", ("m1", M1.Source), ("m2", M2.Source))),
             "object" => this.InspectsAnObject(),
             "dll" => this.InspectsADll(),
             "comdat" => Expect(
@@ -1064,49 +1067,5 @@ public sealed class TataraExecutorTest : IDisposable
     private sealed record Row(string Ir, string Level, string[] Libraries)
     {
         public override string ToString() => this.Ir + "|" + this.Level;
-    }
-
-    // §6.1's managed reading of a static ELF executable (Tatara B7b1): ELF64 little-endian; the header's type, machine and entry, each
-    // program header's type and flags, and .symtab's symbols with their values.
-    private sealed record ElfFile(int Type, int Machine, ulong Entry, (uint Type, uint Flags)[] Segments, Dictionary<string, ulong> Symbols)
-    {
-        internal static ElfFile Read(string path)
-        {
-            var bytes = File.ReadAllBytes(path);
-            Assert.True(bytes.AsSpan(0, 6).SequenceEqual("\u007fELF\u0002\u0001"u8), path + " is not an ELF64 little-endian file.");
-            int U16(int at) => BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(at));
-            uint U32(int at) => BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(at));
-            ulong U64(int at) => BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(at));
-            var (programs, programSize, sections, sectionSize) = ((int)U64(32), U16(54), (int)U64(40), U16(58));
-            var segments = Enumerable.Range(0, U16(56)).Select(i => (U32(programs + (i * programSize)), U32(programs + (i * programSize) + 4))).ToArray();
-            var symbols = new Dictionary<string, ulong>();
-            for (var header = sections; header < sections + (U16(60) * sectionSize); header += sectionSize)
-            {
-                // SHT_SYMTAB: its entries after the null symbol; sh_link names its string table's header.
-                if (U32(header + 4) == 2)
-                {
-                    var (start, end, size) = ((int)U64(header + 24), (int)(U64(header + 24) + U64(header + 32)), (int)U64(header + 56));
-                    var names = (int)U64(sections + ((int)U32(header + 40) * sectionSize) + 24);
-                    for (var symbol = start + size; symbol < end; symbol += size)
-                    {
-                        var name = names + (int)U32(symbol);
-                        symbols.TryAdd(Encoding.UTF8.GetString(bytes, name, Array.IndexOf(bytes, (byte)0, name) - name), U64(symbol + 8));
-                    }
-                }
-            }
-
-            return new ElfFile(U16(16), U16(18), U64(24), segments, symbols);
-        }
-
-        // ET_EXEC for EM_X86_64; no PT_INTERP and no PT_DYNAMIC; one executable PT_LOAD; one PT_GNU_STACK, not executable; the entry at
-        // the entry symbol.
-        internal void AssertStatic(string entry)
-        {
-            Assert.Equal((2, 62), (this.Type, this.Machine));
-            Assert.DoesNotContain(this.Segments, s => s.Type is 2 or 3);
-            Assert.Single(this.Segments, s => s.Type == 1 && (s.Flags & 1) != 0);
-            Assert.Equal(0u, Assert.Single(this.Segments, s => s.Type == 0x6474e551).Flags & 1);
-            Assert.Equal(this.Symbols[entry], this.Entry);
-        }
     }
 }

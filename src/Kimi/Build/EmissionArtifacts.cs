@@ -213,7 +213,7 @@ public static class EmissionArtifacts
         CheckPath(input);
         if (!Path.GetExtension(input).Equals(row.InputExtension, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException($"NativeLibraries inputs must be {row.InputExtension} files.");
+            throw new InvalidDataException($"NativeLibraries inputs for {row.Target} must be {row.InputExtension} files.");
         }
     }
 
@@ -266,7 +266,7 @@ public static class EmissionArtifacts
         var next = 0;
         foreach (var supply in ToolchainIdentity.Supplies)
         {
-            if (row.Supply(supply.Supply.Name) != supply.Supply || (supply.Supply.Name == row.CRuntime && !Requires(supply.Supply.Name)))
+            if (supply.Row != row || (supply.Supply.Name == row.CRuntime && !Requires(supply.Supply.Name)))
             {
                 continue;
             }

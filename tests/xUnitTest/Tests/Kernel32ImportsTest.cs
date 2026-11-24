@@ -241,6 +241,10 @@ public sealed class Kernel32ImportsTest
     [InlineData("kimi_backend", "resolution", "7")]
     [InlineData("kimi_backend", "kind", "\"import\"")]
     [InlineData("kimi_backend", "input", "\"override.lib\"")]
+    [InlineData("c", "resolution", "\"other\"")]
+    [InlineData("c", "resolution", null)]
+    [InlineData("c", "kind", "\"import\"")]
+    [InlineData("c", "input", "\"libc.a\"")]
     public void ACompilerSupplysEntryIsAcceptedOnlyAsWritten(string name, string field, string? value)
     {
         var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name)!;

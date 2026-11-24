@@ -60,7 +60,7 @@ internal static partial class NativeToolchain
         if (LinkManifest.Text(root, "optimization") is not ("O0" or "O2") || LinkManifest.Text(root, "outputKind") != "Application" ||
             LinkManifest.Text(root, "entry") != (main ? TargetProfile.MainSymbol : row.EntrySymbol) || LinkManifest.NullableText(root, "subsystem") != row.Subsystem)
         {
-            throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
+            throw new InvalidDataException($"Manifest does not describe the supported {row.Target} Application profile.");
         }
 
         var symbols = new HashSet<string>(StringComparer.Ordinal);
@@ -84,11 +84,12 @@ internal static partial class NativeToolchain
 
     // IMPL 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable original; a staged copy is reused
     // only when its bytes still have that hash (HoldStaged). A program's input is copied first and named by the copy's hash; a compiler's
-    // supply is found by its catalog hash (StageSupply). The input is a stream (a program's file or the compiler's resource), which the
-    // caller disposes; the folder is the build's staged inputs (ArtifactPaths.Native). The result is the staged copy held (HoldStaged),
-    // which the caller releases after the link; a copy this call moved into place and then finds changed or gone at its hold is an
-    // output failure (StagedHold).
-    internal static FileStream StageInput(Stream input, string folder, out string hash)
+    // supply's file is found by its catalog hash (StageSupply). The input is a stream (a program's file or the compiler's resource), which
+    // the caller disposes; the folder is the build's staged inputs (ArtifactPaths.Native); the extension is the staged copy's (a program's
+    // input: its row's InputExtension; a supply's file: its catalog name's). The result is the staged copy held (HoldStaged), which the
+    // caller releases after the link; a copy this call moved into place and then finds changed or gone at its hold is an output failure
+    // (StagedHold).
+    internal static FileStream StageInput(Stream input, string folder, string extension, out string hash)
     {
         Directory.CreateDirectory(folder);
         var temporary = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".tmp");
@@ -100,13 +101,13 @@ internal static partial class NativeToolchain
             }
 
             hash = Hash(temporary);
-            if (HoldStaged(folder, hash, out var staged) is { } held)
+            if (HoldStaged(folder, hash, extension, out var staged) is { } held)
             {
                 return held;
             }
 
             Replace(temporary, staged);
-            return HoldStaged(folder, hash, out _) ?? throw new IOException($"The staged library changed before the build held it: {staged}.");
+            return HoldStaged(folder, hash, extension, out _) ?? throw new IOException($"The staged library changed before the build held it: {staged}.");
         }
         finally
         {
@@ -114,30 +115,31 @@ internal static partial class NativeToolchain
         }
     }
 
-    // A compiler's supply staged (IMPL 20.4; LC3 S1): the copy its catalog hash names is reused, held, when its bytes, the whole file
-    // hashed, still have that hash, and the resource is not opened; otherwise the resource is staged as an input is, named by the copy's
-    // hash. The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8). The result is the
-    // held copy, as StageInput's.
-    internal static FileStream StageSupply(CompilerSupply supply, string folder, out string hash)
+    // A compiler's supply's file staged (IMPL 20.4; LC3 S1): the copy its catalog hash names is reused, held, when its bytes, the whole
+    // file hashed, still have that hash, and the resource is not opened; otherwise the resource is staged as an input is, named by the
+    // copy's hash. The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8). The result
+    // is the held copy, as StageInput's.
+    internal static FileStream StageSupply(SupplyFile file, string folder, out string hash)
     {
-        if (HoldStaged(folder, supply.Sha256, out _) is { } held)
+        var extension = Path.GetExtension(file.Name);
+        if (HoldStaged(folder, file.Sha256, extension, out _) is { } held)
         {
-            hash = supply.Sha256;
+            hash = file.Sha256;
             return held;
         }
 
-        using var input = supply.Open();
-        return StageInput(input, folder, out hash);
+        using var input = file.Open();
+        return StageInput(input, folder, extension, out hash);
     }
 
     // IMPL 20.4's reuse rule and the hold's start in one step (StagedHold; DECISIONS T-M17's structural start): the staged copy the hash
-    // names, <stem>.native/<hash>.lib, is opened for reading with read sharing only and hashed from that handle; when its bytes still have
+    // names, <stem>.native/<hash><extension>, is opened for reading with read sharing only and hashed from that handle; when its bytes still have
     // that hash it is returned open, held, so until the caller releases it no write, replacement or deletion of it, no rename of its
     // folder and no open without read sharing succeeds. LLD opens its inputs for reading and shares read, write and delete, so the hold
     // admits it (StagedHold's design §3). A missing copy or other bytes give null; a failed open or read propagates, the handle closed.
-    private static FileStream? HoldStaged(string folder, string hash, out string staged)
+    private static FileStream? HoldStaged(string folder, string hash, string extension, out string staged)
     {
-        staged = Path.Combine(folder, hash + ".lib");
+        staged = Path.Combine(folder, hash + extension);
         if (!File.Exists(staged))
         {
             return null;
@@ -177,6 +179,14 @@ internal static partial class NativeToolchain
     // none, its functions probe the stack inline). The runtime's kernel32 imports are no second list here: the manifest's declarations
     // name them (publication writes them from the generation result; LinkAmbiguity, T's rulings 21 (ii) and 28).
     private static string[] RuntimeReferences(TargetProfile row) => row.Supply(ToolchainIdentity.Backend.Name)?.Symbols ?? [];
+
+    // Change W2 (R3, Reading 6): whether a staged copy is a thin archive, whose members are files outside it, so the linker would not
+    // receive the bytes the record names (IMPL 20.4); read from the held handle, which keeps its position.
+    private static bool IsThin(FileStream held)
+    {
+        Span<byte> head = stackalloc byte[8];
+        return RandomAccess.Read(held.SafeFileHandle, head, 0) == head.Length && head.SequenceEqual("!<thin>\n"u8);
+    }
 
     [GeneratedRegex(@"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$")]
     private static partial Regex ModulePathPattern();
@@ -266,7 +276,7 @@ internal static partial class NativeToolchain
             // build's end, so the dependency step reads and LLD links the bytes the record names; the finally releases them with the
             // private file on every outcome (StagedHold). The object is held from its creation (Compile) to the build's end, so the
             // inspection and LLD read the object emit produced (Intermediates).
-            var libraries = new List<(string Name, string Kind, string Sha256, FileStream Held)>();
+            var libraries = new List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)>();
             var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + this.paths.ExecutableExtension; // Private until the commit.
             try
             {
@@ -365,14 +375,15 @@ internal static partial class NativeToolchain
             }
         }
 
-        // The manifest's libraries in its order, each staged (the file the linker receives) and added, held, with its name, Kind and
-        // staged hash, to Run's list as soon as it is staged, so Run releases it on every outcome; then checked against its assertions and
-        // identified in the record by its staged path and hash (IMPL 20.4). A name of the row's reserved supply is the compiler's supply:
-        // its entry the one this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies, keyed by the
-        // row's supply), found by their catalog hash or staged from its resource (StageSupply); any other is a program's, staged from its
-        // input and checked against the project's supply under the row's key. Every compiler's supply of the row but its C runtime is
-        // listed.
-        private void ResolveLibraries(List<(string Name, string Kind, string Sha256, FileStream Held)> libraries)
+        // The manifest's libraries in its order, each file staged (the file the linker receives) and added, held, with its library's name
+        // and Kind, its staged hash and its place (a program's input: none), to Run's list as soon as it is staged, so Run releases it on
+        // every outcome; then each staged input is checked: not a thin archive (change W2), against its assertions, and identified in the
+        // record by its staged path and hash, one row per input (IMPL 20.4; T's ruling 49). A name of the row's reserved supply is the
+        // compiler's supply: its entry the one this compiler writes (LinkManifest) and its files the compiler's (ToolchainIdentity.Supplies,
+        // keyed by the row's supply), each found by its catalog hash or staged from its resource (StageSupply); any other is a program's,
+        // staged from its input with the row's InputExtension and checked against the project's supply under the row's key. Every
+        // compiler's supply of the row but its C runtime is listed.
+        private void ResolveLibraries(List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries)
         {
             var libraryIdentities = new JsonArray();
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -385,37 +396,48 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException("Invalid or duplicate native library.");
                 }
 
-                var reserved = this.row.Supply(name);
-                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply == reserved);
-                FileStream library;
-                string hash;
+                var supply = ToolchainIdentity.Of(this.row.Supply(name));
+                var first = libraries.Count;
                 if (supply is not null)
                 {
                     LinkManifest.CheckCompilerSupply(item, supply);
-                    library = StageSupply(supply, this.paths.Native, out hash);
+                    foreach (var file in supply.Files)
+                    {
+                        var held = StageSupply(file, this.paths.Native, out var hash);
+                        libraries.Add((name, kind, hash, held, file.Place));
+                    }
                 }
                 else
                 {
                     using var input = File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory));
-                    library = StageInput(input, this.paths.Native, out hash);
+                    var held = StageInput(input, this.paths.Native, this.row.InputExtension, out var hash);
+                    libraries.Add((name, kind, hash, held, null));
                 }
 
-                libraries.Add((name, kind, hash, library));
-                if (supply is null && this.project is not null)
+                for (var i = first; i < libraries.Count; i++)
                 {
-                    CheckSupply(this.project, this.row.Target, name, kind, hash);
-                }
+                    var (_, _, hash, held, _) = libraries[i];
+                    if (IsThin(held))
+                    {
+                        throw new InvalidDataException($"Native library '{name}' is a thin archive; its members are files outside the staged copy. Supply an archive that contains its members.");
+                    }
 
-                if (LinkManifest.OptionalText(item, "libraries.sha256") is { } assertion &&
-                    (assertion.Length != 64 || !assertion.Equals(hash, StringComparison.OrdinalIgnoreCase)))
-                {
-                    throw new InvalidDataException($"Native library '{name}' does not match its manifest Sha256 assertion.");
-                }
+                    if (supply is null && this.project is not null)
+                    {
+                        CheckSupply(this.project, this.row.Target, name, kind, hash);
+                    }
 
-                libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(library.Name, this.directory), ["sha256"] = hash });
+                    if (LinkManifest.OptionalText(item, "libraries.sha256") is { } assertion &&
+                        (assertion.Length != 64 || !assertion.Equals(hash, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        throw new InvalidDataException($"Native library '{name}' does not match its manifest Sha256 assertion.");
+                    }
+
+                    libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(held.Name, this.directory), ["sha256"] = hash });
+                }
             }
 
-            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => this.row.Supply(x.Supply.Name) != x.Supply || x.Supply.Name == this.row.CRuntime || seen.Contains(x.Supply.Name)))
+            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => x.Row != this.row || x.Supply.Name == this.row.CRuntime || seen.Contains(x.Supply.Name)))
             {
                 throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
             }
@@ -489,12 +511,12 @@ internal static partial class NativeToolchain
         // and no object: a linked image or a bare import member, an unsupported native dependency whatever its Kind; T's rulings 24 and
         // 54), a unit it loads that its library's Kind does not admit and a declared import bound to code fail the build before the
         // link, every line in one failure: the native build's input failure, the record left incomplete.
-        private void CheckDependencies(Tatara tatara, ObjectMember module, List<(string Name, string Kind, string Sha256, FileStream Held)> libraries)
+        private void CheckDependencies(Tatara tatara, ObjectMember module, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries)
         {
             var inputs = new (string Name, LinkClass Admits, LinkInput Input)[libraries.Count];
             for (var i = 0; i < inputs.Length; i++)
             {
-                var (name, kind, sha256, held) = libraries[i];
+                var (name, kind, sha256, held, _) = libraries[i];
                 var facts = LinkInputs.GetOrAdd(
                     sha256, static (_, read) => LinkInput.Read(read.Tatara.Inspect(read.Context, read.Path)), (Tatara: tatara, Context: this.context, Path: held.Name));
                 inputs[i] = (name, kind == "static" ? LinkClass.Code : LinkClass.Import, facts);
@@ -521,11 +543,12 @@ internal static partial class NativeToolchain
         // Run's private file, so neither a failed link nor any failure before the commit publishes it, then the record's linked state,
         // naming the private file's hash, which Run's commit publishes before the file. LLD opens the held object and each held library by
         // its path, for reading, which the holds admit (StagedHold, Intermediates).
-        private void Link(Tatara tatara, string obj, List<(string Name, string Kind, string Sha256, FileStream Held)> libraries, string undefined, string executable)
+        private void Link(Tatara tatara, string obj, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries, string undefined, string executable)
         {
             var line = this.row.Format switch
             {
                 "COFF" => this.CoffLine(obj, libraries, executable),
+                "ELF" => this.ElfLine(obj, libraries, executable),
                 _ => throw new InvalidOperationException($"No link writer for the executable format '{this.row.Format}'."),
             };
             tatara.Link(this.context, line);
@@ -539,7 +562,7 @@ internal static partial class NativeToolchain
         // COFF's line (lld-link): the object, the libraries in the manifest's order, the row's entry and subsystem. LLD reads no
         // environment (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds
         // no VC or Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1).
-        private string[] CoffLine(string obj, List<(string Name, string Kind, string Sha256, FileStream Held)> libraries, string executable)
+        private string[] CoffLine(string obj, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries, string executable)
         {
             var link = new string[libraries.Count + 9];
             link[0] = "lld-link";
@@ -558,15 +581,52 @@ internal static partial class NativeToolchain
             link[^1] = "/out:" + executable;
             return link;
         }
+
+        // ELF's line (ld.lld, the flavor the row's Format selects; T-M22): a static executable that loads no library a member names, its
+        // unreferenced sections removed and no build id, reproducible as COFF's /Brepro is; the inputs by place around the object (design
+        // §3.11): the files placed start, the object, the program's libraries in the manifest's order, the files placed library, then the
+        // files placed end (the C path: crt1.o crti.o <obj> <program libraries> libc.a crtn.o). With no start file the process starts at
+        // the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). The line is order-free for the
+        // dependency check, which runs before it (LinkAmbiguity). ld.lld reads no LINK variable and detects no toolchain; it still reads
+        // LLD_REPRODUCE (LC3 §10).
+        private string[] ElfLine(string obj, List<(string Name, string Kind, string Sha256, FileStream Held, string? Place)> libraries, string executable)
+        {
+            List<string> link = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", executable];
+            if (!libraries.Exists(static x => x.Place == "start"))
+            {
+                link.AddRange(["-e", LinkManifest.Text(this.manifest, "entry")]);
+            }
+
+            Place("start");
+            link.Add(obj);
+            Place(null);
+            Place("library");
+            Place("end");
+            return [.. link];
+
+            void Place(string? place)
+            {
+                foreach (var library in libraries)
+                {
+                    if (library.Place == place)
+                    {
+                        link.Add(library.Held.Name);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>A staged input's facts as the dependency step reads them (LinkAmbiguity, design §2): Tatara's inspection
-    /// (<c>Facts</c>); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, which lld-link loads
-    /// for it, and whether that member's definition of it is a copy (text kind 5; on COFF the index is the pick, ELF's comes with B7b7);
-    /// <c>Whole</c>, an input that is no archive and of form o, the only form lld-link loads whole (it refuses a short import file and a
-    /// linked image given as inputs, which the step reports as no library; T's rulings 53 and 54); <c>Classes</c>, each member's class
-    /// (Kind, kind-design.md §2).</summary>
-    internal sealed record LinkInput(ObjectFacts Facts, Dictionary<string, (int Member, bool Copy)> Picks, bool Whole, LinkClass[] Classes)
+    /// (<c>Facts</c>); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, and whether that
+    /// member's definition of it is a copy (text kind 5): one rule on every format, since lld-link loads the member the index names and an
+    /// llvm-ar or GNU index lists definers in member order, the member ld.lld loads (T's ruling 48); <c>Whole</c>, an input that is no
+    /// archive and of form o, the only form either linker loads whole (lld-link refuses a short import file and a linked image given as
+    /// inputs, ld.lld's static link a shared object; the step reports each as no library before the link; T's rulings 53, 54 and 56);
+    /// <c>Classes</c>, each member's class (Kind, kind-design.md §2);
+    /// <c>Unindexed</c>, an archive whose index is empty while a member defines an external symbol, of which the step has no pick while a
+    /// linker may still load members (T's rulings 48 and 51).</summary>
+    internal sealed record LinkInput(ObjectFacts Facts, Dictionary<string, (int Member, bool Copy)> Picks, bool Whole, LinkClass[] Classes, bool Unindexed)
     {
         /// <summary>Reads an input's facts once.</summary>
         /// <param name="facts">Tatara's inspection of the staged input.</param>
@@ -588,7 +648,8 @@ internal static partial class NativeToolchain
                 's' => LinkClass.Image,
                 _ => x.DefinedExternal.Any(static s => s.Kind == 'I') ? LinkClass.Import : LinkClass.Code,
             });
-            return new(facts, picks, !facts.IsArchive && facts.Members[0].Form == 'o', [.. classes]);
+            var unindexed = facts.IsArchive && facts.Index.Count == 0 && facts.Members.Any(static x => x.DefinedExternal.Count > 0);
+            return new(facts, picks, !facts.IsArchive && facts.Members[0].Form == 'o', [.. classes], unindexed);
         }
     }
 
@@ -616,7 +677,8 @@ internal static partial class NativeToolchain
     // A is referenced and neither a whole file nor any library defines A (then the references resume). Each whole library input and
     // each pick is judged against its library's Kind, which admits one class (Admits); an inconsistent pick still joins, so every other
     // failure is found (Kind, kind-design.md §2 with its corrections 1-3). A library input that is no archive and not of form o is no
-    // library, whatever its Kind, and is reported before the link (T's rulings 24, 53 and 54).
+    // library, whatever its Kind, and is reported before the link (T's rulings 24, 53 and 54). An archive without a symbol index that
+    // defines a symbol has a line of its own and no pick (T's ruling 48).
     private sealed class DependencyClosure
     {
         private readonly (string Name, LinkClass Admits, LinkInput Input)[] inputs;
@@ -626,14 +688,15 @@ internal static partial class NativeToolchain
         private readonly HashSet<(int Input, int Member)> joined = [];
         private readonly List<(string From, string To)> alternates = []; // The joined units' unused /alternatename: pairs.
         private readonly HashSet<string> imports = new(StringComparer.Ordinal); // The module's references through __imp_ (K2).
-        private readonly List<(string Library, string Head, string? Symbol)> inconsistent = []; // K: each line's head and its symbols.
+        private readonly List<(string Library, string Head, string? Symbol)> libraryLines = []; // K's and the index's: head, symbols.
         private readonly List<(string Symbol, string Line)> symbols = []; // The ambiguous symbols' and K2's lines.
 
         // The whole files: their definitions first, then their references; each whole library input judged (K). A library input that
         // is no archive and not of form o is no library, IMPL 20.4's unsupported native dependency, whatever its Kind: one line before
-        // the link. For a linked image (s) that is T's ruling 24 (lld-link refuses a DLL with an ordinary error, "unknown file type");
-        // a bare import member (i) must never reach LLD, which refuses it with a fatal() that ends Tatara for the process (T's rulings
-        // 53 and 54).
+        // the link, on both formats. For a linked image (s) that is T's ruling 24 (LLD refuses it with an ordinary error and Tatara runs
+        // again: lld-link a DLL, "unknown file type"; ld.lld's static link a shared object, "attempted static link of dynamic object",
+        // T's ruling 56); a bare import member (i, COFF's only) must never reach LLD, which refuses it with a fatal() that ends Tatara
+        // for the process (T's rulings 53 and 54). Each archive without an index that defines a symbol is recorded (ruling 48).
         internal DependencyClosure((string Name, LinkClass Admits, LinkInput Input)[] inputs, ObjectMember module)
         {
             this.inputs = inputs;
@@ -657,7 +720,11 @@ internal static partial class NativeToolchain
                 else if (!input.Facts.IsArchive)
                 {
                     var form = input.Facts.Members[0].Form == 'i' ? "a bare import member" : "a linked image (a DLL or shared object)";
-                    this.inconsistent.Add((name, Declared(name, admits) + $"its input is {form}, not a library", null));
+                    this.libraryLines.Add((name, Declared(name, admits) + $"its input is {form}, not a library", null));
+                }
+                else if (input.Unindexed)
+                {
+                    this.libraryLines.Add((name, $"Native library '{name}' is an archive that has no symbol index, which is not supported", null));
                 }
             }
         }
@@ -685,7 +752,7 @@ internal static partial class NativeToolchain
             }
             while (this.UseAlternates());
 
-            var kind = this.inconsistent.OrderBy(static x => x.Library, StringComparer.Ordinal).ThenBy(static x => x.Head, StringComparer.Ordinal).GroupBy(static x => x.Head).Select(
+            var kind = this.libraryLines.OrderBy(static x => x.Library, StringComparer.Ordinal).ThenBy(static x => x.Head, StringComparer.Ordinal).GroupBy(static x => x.Head).Select(
                 static x => x.Key + (x.First().Symbol is null ? "." : $" for {Names(x.Select(static s => s.Symbol!).Order(StringComparer.Ordinal).Select(static s => $"'{s}'"))}."));
             return [.. kind, .. this.symbols.OrderBy(static x => x.Symbol, StringComparer.Ordinal).ThenBy(static x => x.Line, StringComparer.Ordinal).Select(static x => x.Line)];
         }
@@ -751,7 +818,7 @@ internal static partial class NativeToolchain
                 (_, LinkClass.Image) => $"Native library '{name}' holds a linked image (a DLL or shared object) as an archive member",
                 _ => declared + $"the link would load {(unit == LinkClass.Import ? "import members" : "code")} from it",
             };
-            this.inconsistent.Add((name, head, unit == LinkClass.Image ? null : symbol));
+            this.libraryLines.Add((name, head, unit == LinkClass.Image ? null : symbol));
         }
 
         // K2 (Kind §2, correction 3; NamedProvider's rule P replaces it, PLAN G1333): the module's import of X through __imp_X, which no
