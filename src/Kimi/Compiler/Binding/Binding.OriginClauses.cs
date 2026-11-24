@@ -186,6 +186,9 @@ public sealed partial class Binding
     // Consumes the pass's declaration rows. One whose relation the published premises at its use entail (a signature's well-formed input,
     // BU-26 E3) is Binding's direct proof and forms no edge, as a relation Binding proves forms no row for A5 (2a0-D D1); region inference
     // and the rejected clauses never decide a row. A fixed-fixed row waits to be judged at once, one with an Unbound end for JudgeChains.
+    // A fixed-fixed HeldResult row its premises do not entail is the located limit at its use, the written borrow layer (F's ruling
+    // O3-24), so no program is accepted on a result premise no call carries; one with an Unbound end is the limit there too, resting on
+    // its atom's cause (JudgeDeclarationRows).
     private void CollectDeclarationRows()
     {
         var remaining = 0;
@@ -204,12 +207,6 @@ public sealed partial class Binding
                 }
 
                 this.obligationSet.Remove(obligation);
-                if (obligation.Discharge == OriginDischarge.HeldResult)
-                {
-                    this.JudgeHeldResultRow(obligation, longer, shorter);
-                    continue;
-                }
-
                 if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
                 {
                     continue;
@@ -218,6 +215,10 @@ public sealed partial class Binding
                 if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: not null } unbound)
                 {
                     this.unboundRows.Add((obligation, longer, shorter, unbound));
+                }
+                else if (obligation.Discharge == OriginDischarge.HeldResult)
+                {
+                    this.Fail(obligation.Use, BindingFailure.Unsupported);
                 }
                 else
                 {
@@ -233,26 +234,22 @@ public sealed partial class Binding
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
     }
 
-    // Whether the published premises at the row's use entail its relation, both ways for an equality.
+    // Whether the published premises at the row's use entail its relation, both ways for an equality. A HeldResult row's are its
+    // definition's premises other than its result premise (SPEC 15.6.1, 15.6.4 step 3; DECISIONS BU-73's amendment, F's ruling O3-24; as
+    // WellFormedPremises.DefinitionProves asks), since no call carries that premise's held Function Type part (WellFormedPremises.EnterStored):
+    // a relation they prove is the calls' too, from the substituted clauses and inputs.
     private bool PublishedPremise(BindingObligation row, BoundOrigin longer, BoundOrigin shorter)
-        => this.ProvesOriginOutlives(longer, shorter, row.Use, row.Condition) &&
-            (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, row.Condition));
-
-    // SPEC 15.6.1, 15.6.4 step 3 (DECISIONS BU-73's amendment, F's ruling O3-24): a HeldResult row holds where the definition's premises
-    // other than its result premise prove it (as WellFormedPremises.DefinitionProves asks), since no call carries the result premise's
-    // held Function Type part (WellFormedPremises.EnterStored); otherwise the definition is the located limit at the row's use, the written
-    // borrow layer, and no program is accepted on that premise. A relation that holds without the premise is the calls' too, from the
-    // substituted clauses and inputs.
-    private void JudgeHeldResultRow(BindingObligation row, BoundOrigin longer, BoundOrigin shorter)
     {
         var excluded = this.resultPremiseExcluded;
-        this.resultPremiseExcluded = NearestSignature(row.Use);
+        if (row.Discharge == OriginDischarge.HeldResult)
+        {
+            this.resultPremiseExcluded = NearestSignature(row.Use);
+        }
+
         try
         {
-            if (!this.PublishedPremise(row, longer, shorter))
-            {
-                this.Fail(row.Use, BindingFailure.Unsupported);
-            }
+            return this.ProvesOriginOutlives(longer, shorter, row.Use, row.Condition) &&
+                (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, row.Condition));
         }
         finally
         {
