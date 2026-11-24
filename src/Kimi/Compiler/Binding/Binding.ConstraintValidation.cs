@@ -582,7 +582,7 @@ public sealed partial class Binding
     }
 
     // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names; a check that recorded at
-    // a node first keeps its record. PROTOTYPE (E3e Rev 2): a per-pass query, made once (judgedOccurrences), demanded by the first
+    // a node first keeps its record. It is a per-pass query (E3e Revision 2), made once (judgedOccurrences), demanded by the first
     // decision that reads the occurrence (FailedPart, at that decision's binding) or by ValidateConstraintUses, whichever comes first.
     // SPEC 8.3.3 (held pending; E3e ruling 20): before the pass's final conformance decision (conformancesDecided) an answer that depends
     // on a judgment held pending (EndAnswer; a program path's Unknown, BodyBinding's second source) is no verdict: it is not kept, its
@@ -689,18 +689,18 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11, 13 to 15): a failed written Type that a use's published decision read
-    // before the written occurrences were judged (ValidateConstraintUses), as the part that Type rests on. One rule: the written Types a
-    // decision reads are the written Type syntax under its own syntax (FailedWrittenChild: its children that are written Types, and
-    // their written Type components at any depth, FailedPart), an invocation's through its callee (the callee itself when it is a
-    // written Type): a call's, a member call's or a reference's explicit Type arguments (SPEC F.5), a constructor's, a Case's or a static
-    // member's Type-application qualifier, a runtime test's target (Appendix F's NamedCoreType), a conversion's target (failed for any
-    // cause, E3e ruling 15 (b)), and a Property's written Type, its certificate's. The reader finds the failed occurrence under the
-    // layers that hold it, so no layer takes a state the occurrence's judgment did not give it (RestLayersOnType) and a declaration's
-    // written Type, read by its other readers (a stored Type's Owned proof), keeps them. A written Type node is no decision (its reader
-    // decides), nor is a declaration other than a Property. PROTOTYPE (E3e Rev 2): the decision asks it where it is made (BindNode's end;
-    // a Property's certificate, ValidateProperties), demanding each occurrence's judgment (FailedPart, JudgeOccurrence), so it rests before
-    // any reader of it is bound and each reader rests by its own binding (SPEC 23.1.2), with no late rest.
+    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11, 13 to 15, Revision 2): a failed written Type that a use's published
+    // decision reads, as the part that decision rests on. One rule: the written Types a decision reads are the written Type syntax
+    // under its own syntax (FailedWrittenChild: its children that are written Types, and their written Type components at any depth,
+    // FailedPart), an invocation's through its callee (the callee itself when it is a written Type): a call's, a member call's or a
+    // reference's explicit Type arguments (SPEC F.5), a constructor's, a Case's or a static member's Type-application qualifier, a
+    // runtime test's target (Appendix F's NamedCoreType), a conversion's target (failed for any cause, E3e ruling 15 (b)), and a
+    // Property's written Type, its certificate's. The reader finds the failed occurrence under the layers that hold it, so no layer
+    // takes a state the occurrence's judgment did not give it (RestLayersOnType) and a declaration's written Type, read by its other
+    // readers (a stored Type's Owned proof), keeps them. A written Type node is no decision (its reader decides), nor is a declaration
+    // other than a Property. The decision asks it where it is made (BindNode's end; a Property's certificate, ValidateProperties),
+    // demanding each occurrence's judgment (FailedPart, JudgeOccurrence), so it rests before any reader of it is bound and each reader
+    // rests by its own binding (SPEC 23.1.2), with no late rest.
     private Koto? FailedWrittenType(Koto node)
     {
         if (this.RecordedState(node) == BindingState.Invalid || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto)
@@ -724,7 +724,7 @@ public sealed partial class Binding
     // reader rests on: the part it rests on itself, or the node.
     private Koto? FailedPart(Koto type)
     {
-        this.JudgeOccurrence(type, this.capabilityMode); // PROTOTYPE: the occurrence's one judgment, demanded by its first reader.
+        this.JudgeOccurrence(type, this.capabilityMode); // The occurrence's one judgment, demanded by its first reader.
         if (this.RecordedState(type) == BindingState.Invalid)
         {
             return this.UnresolvedPart(type) ?? type;

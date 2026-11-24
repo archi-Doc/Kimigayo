@@ -325,7 +325,7 @@ public sealed partial class Binding
                 this.RecordAccess(syntax, inaccessible, syntax.TypeKoto); // An inferred Type is checked as a written one, at the Property.
             }
 
-            // PROTOTYPE (E3e Rev 2): a Property whose written Type holds a failed occurrence rests on it at its certificate (SPEC 23.1.2).
+            // SPEC 23.1.2 (E3e Revision 2): a Property whose written Type holds a failed occurrence rests on it at its certificate.
             var failedType = syntax.BindingFailure == BindingFailure.None ? this.FailedWrittenType(syntax) : null;
             if (failedType is not null)
             {

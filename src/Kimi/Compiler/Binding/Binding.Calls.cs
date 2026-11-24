@@ -180,7 +180,7 @@ public sealed partial class Binding
 
             if (callee is InvocationKoto)
             {
-                // PROTOTYPE (E3e ruling 18 P1; SPEC 12.5.2, 23.1.2): an invocation is called by its value; its symbol is its own call's
+                // SPEC 12.5.2, 23.1.2 (E3e ruling 18 Q3, P1): an invocation is called by its value; its symbol is its own call's
                 // target, no group of this call. Without a Type it rests the call (its failure is the call's prerequisite); with one that
                 // takes no call it is not callable.
                 return callableType is null ? Complete(call, null) : this.Record(call, BindingFailure.NotCallable, []);
