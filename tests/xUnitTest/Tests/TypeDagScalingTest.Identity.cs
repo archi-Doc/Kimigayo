@@ -216,10 +216,10 @@ public partial class TypeDagScalingTest
         {
             var c = MinimalEmissionTest.Analyze(source);
             var record = Assert.Single(CompilationTestHelper.PublishedErrors(c));
-            Assert.Equal(nameof(Kimi.DiagnosticCode.PremiseClosureLimit_Kd), record.Code);
+            Assert.Equal(nameof(Kimi.DiagnosticCode.AnalysisLimit_Kd), record.Code);
             Assert.Contains(Limit.ToString(System.Globalization.CultureInfo.InvariantCulture), record.Message, StringComparison.Ordinal);
             Assert.Equal(source.IndexOf("need(x)", StringComparison.Ordinal), record.Span.Start);
-            Assert.True(Kimi.DiagnosticEntries.TryGet(Kimi.DiagnosticCode.PremiseClosureLimit_Kd, out var entry) && entry.Category == Kimi.Diagnostics.DiagnosticCategory.Resource);
+            Assert.True(Kimi.DiagnosticEntries.TryGet(Kimi.DiagnosticCode.AnalysisLimit_Kd, out var entry) && entry.Category == Kimi.Diagnostics.DiagnosticCategory.Resource);
             Assert.Equal(Limit, c.Binding.IdentityRounds);
         }
 

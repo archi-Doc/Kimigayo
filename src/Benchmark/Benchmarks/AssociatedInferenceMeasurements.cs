@@ -79,6 +79,31 @@ internal static class AssociatedInferenceMeasurements
             }
         }
 
+        // R7-C4 (design §6, D2-C3): the cost per held state on one component (rings) and on a chain of one-definition components; a cold
+        // Bind, then three warm ones, each with its states (InferenceStates' growth) and the time per state.
+        var components = new List<object>();
+        foreach (var (shape, size) in new[] { ("ring", 4), ("ring", 6), ("ring", 8), ("chain", 30), ("chain", 1000) })
+        {
+            var source = shape == "ring" ? AssociatedInferenceWorkloads.TwoValueRing(size) : AssociatedInferenceWorkloads.OneValueChain(size);
+            var compilation = Create(source);
+            var warm = new double[4];
+            var states = new int[4];
+            for (var sample = 0; sample < warm.Length; sample++)
+            {
+                var counted = compilation.Binding.InferenceStates;
+                var start = Stopwatch.GetTimestamp();
+                if (!compilation.Bind().IsComplete)
+                {
+                    throw new InvalidOperationException($"Associated component workload failed: {shape}/{size}: {string.Join(';', compilation.Binding.Issues)}");
+                }
+
+                warm[sample] = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                states[sample] = compilation.Binding.InferenceStates - counted;
+            }
+
+            components.Add(new { shape, size, millisecondsPerBind = warm, statesPerBind = states, microsecondsPerState = warm.Select((ms, i) => states[i] == 0 ? 0 : ms * 1000 / states[i]).ToArray() });
+        }
+
         Console.WriteLine(JsonSerializer.Serialize(
             new
             {
@@ -92,6 +117,7 @@ internal static class AssociatedInferenceMeasurements
                 iterationsPerSample = Iterations,
                 samples = Samples,
                 results,
+                components,
             },
             new JsonSerializerOptions { WriteIndented = true }));
     }
