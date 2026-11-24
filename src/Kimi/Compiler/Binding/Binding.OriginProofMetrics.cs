@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Parsing;
-
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
@@ -16,7 +14,6 @@ public sealed partial class Binding
 /// </summary>
 internal sealed class OriginProofMetrics
 {
-    private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter, Koto Use)> queries = new();
     private readonly long[] edges = new long[(int)OriginPremiseRule.Value + 1];
 
     /// <summary>Gets the top-level proof requests: requests made while no premise environment was active.</summary>
@@ -92,9 +89,6 @@ internal sealed class OriginProofMetrics
     /// meet incidences (proposal §3.7); always zero.</summary>
     internal long BoundViolations { get; private set; }
 
-    /// <summary>Gets the distinct normalized relations proven at a use.</summary>
-    internal int DistinctQueries => this.queries.Count;
-
     /// <summary>Gets the premise edges a catalog rule introduced in all environments.</summary>
     /// <param name="rule">The rule.</param>
     /// <returns>The edge count.</returns>
@@ -124,7 +118,6 @@ internal sealed class OriginProofMetrics
         this.CarriedAdmissions = 0;
         this.ValueInReads = 0;
         Array.Clear(this.edges);
-        this.queries.Clear();
     }
 
     internal void RegionRead() => this.RegionReads++;
@@ -139,15 +132,13 @@ internal sealed class OriginProofMetrics
 
     internal void WellFormedPart() => this.WellFormedParts++;
 
-    internal void Enter(BoundOrigin longer, BoundOrigin shorter, Koto use, int depth)
+    internal void Enter(int depth)
     {
         this.Entries++;
         if (depth == 0)
         {
             this.Requests++;
         }
-
-        this.queries.Add((longer, shorter, use));
     }
 
     internal void Construction(int edges, bool built)
