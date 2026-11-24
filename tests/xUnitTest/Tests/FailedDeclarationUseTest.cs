@@ -103,6 +103,30 @@ public sealed class FailedDeclarationUseTest
     public void AnHeirOfABaseWithARecoveredClauseRestsOnItsSyntaxRecord(string clause, string code)
         => Assert.Equal([code], Codes("contract U\nopen struct L0<X>\n    Self is U\nopen struct A<X> : " + clause + "\nopen struct B<X> : A<X>\n"));
 
+    // SPEC 23.1.2, 6.2.2, 6.3.3 (PLAN G651 a2-2b; F's C8 rulings 21, 26 and 31): an heir whose base clause failed (a sealed base, an
+    // inheritance cycle) gives its instances no stored base part (AdtDef.BaseNotStored); a Field read, write or by-value read through it
+    // rests on the clause's record (MIR's Field derives), a base call selects through the clause's kept Type and keeps an independent
+    // record (an arity mismatch; dev's `InvalidConstraint_Kd` dependent of a valid `: base()` stays as dev gives it), a base call with no
+    // base to select through (a cycle) rests, and a refuted step-5 clause of an inherited call is its own record beside the receiver's
+    // failed declaration (dev's `InvalidConstraint_Kd` absorbed it). Named moves (DECISIONS Q13): the cycles' base calls (cycc-I, gcyc-c-I)
+    // and `v.n` (cycf-I, dev's located `Unsupported_Kd` for a valid form) rest; bnopen-gn-I's refutation replaces dev's InvalidConstraint_Kd.
+    // A Field whose own slot failed, read through the heir (bnopen-ff-I; F's C8 ruling 33): the walk names no stored slot (FieldOwner's
+    // Index none), so the use is no Field Place of no Type and rests, as on dev; open-ff-I, its base stored, is the Field Place (PLAN G1184).
+    [Theory]
+    [InlineData("struct L0<X>\n    public var n: i32 = 0\nopen struct A<X> : L0<X>\nfunc t(v: ref/A<i32>) -> i32 => v.n\n", "InvalidTypeFormation_Kd InvalidTypeFormation_Kd")]
+    [InlineData("struct L0<X>\n    public var n: Missing\nopen struct A<X> : L0<X>\nfunc t(v: ref/A<i32>) -> i32 => v.n\n", "InvalidTypeFormation_Kd InvalidTypeFormation_Kd UnresolvedBinding_Kd")]
+    [InlineData("open struct L0<X>\n    public var n: Missing\nopen struct A<X> : L0<X>\nfunc t(v: ref/A<i32>) -> i32 => v.n\n", "UnresolvedBinding_Kd")]
+    [InlineData("struct L0<X>\n    public var n: i32 = 0\nopen struct A<X> : L0<X>\nfunc t(v: uniq/A<i32>)\n    v.n = 1\n", "InvalidTypeFormation_Kd InvalidTypeFormation_Kd")]
+    [InlineData("struct L0<X>\n    public var n: i32 = 0\nopen struct A<X> : L0<X>\nfunc t(a: A<i32>) -> i32 => a.n\n", "InvalidTypeFormation_Kd InvalidTypeFormation_Kd")]
+    [InlineData("struct L0<X>\n    public var n: i32 = 0\n    public init() => ()\nopen struct A<X> : L0<X>\n    public init() : base() => ()\nfunc t() -> i32 => A<i32>.init().n\n", "InvalidConstraint_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd")]
+    [InlineData("struct L0<X>\n    public init() => ()\nopen struct A<X> : L0<X>\n    public init() : base(1) => ()\n", "InvalidTypeFormation_Kd InvalidTypeFormation_Kd NoApplicableOverload_Kd")]
+    [InlineData("contract Flag\nstruct L0<X>\n    public func need<T>(self: ref/Self, x: T) -> i32\n        T is Flag\n        return 0\nopen struct A<X> : L0<X>\nfunc t(v: ref/A<i32>) -> i32 => v.need(1)\n", "InvalidTypeFormation_Kd InvalidTypeFormation_Kd UnsatisfiedConstraint_Kd")]
+    [InlineData("open struct A : B\n    public init() : base() => ()\nopen struct B : A\n    public init() => ()\n", "InvalidInlineLayout_Kd InvalidInlineLayout_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd")]
+    [InlineData("open struct A : B\nopen struct B : A\n    public var n: i32 = 0\nfunc t(v: ref/A) -> i32 => v.n\n", "InvalidInlineLayout_Kd InvalidInlineLayout_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd")]
+    [InlineData("open struct G<T> : G<Option<T>>\n    public init() : base() => ()\n", "InvalidInlineLayout_Kd InvalidTypeFormation_Kd InvalidTypeFormation_Kd")]
+    public void AReaderOfAnHeirsFailedBaseRestsAndKeepsItsIndependentRecords(string declarations, string codes)
+        => Assert.Equal(codes, string.Join(' ', Codes(declarations)));
+
     // SPEC 15.3.3, 23.1.2 (H11b-0 B1): a failed Origin clause fails itself, not its owner or the declaration's other clauses, so a
     // program's records are its twin's (the clause repaired or removed) beside the clause's own: each check of the owner, its members and
     // its uses that rested on the owner's failure is reported (PLAN G611, G612, G613), and a slot only the clause names rests on it.

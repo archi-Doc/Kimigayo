@@ -191,7 +191,8 @@ public sealed partial class Binding
     /// <summary>Gets whether a node is a Field Place of no Type (PLAN G1184; BU-234's failed slot, for a Field; SPEC 23.1.2, 6.3.4, 11.7,
     /// 13.7.1): a use Binding resolved to a Field whose own slot failed, with the slot's cause recorded at its TypeSource, which it
     /// accesses directly (DirectAccess: a constructor's own Field or a standard accessor), over a receiver whose Type, as Binding resolved
-    /// the selection, stores that Field below every layer (AdtDef.FieldOwner, the one walk by Field), the stored Field's slot failed
+    /// the selection, stores that Field below every layer in a stored slot (AdtDef.FieldOwner's Index, the one walk by Field; a walk ending at
+    /// a base part its instance does not store names none, so the node stays an Error, PLAN G651 a2), the stored Field's slot failed
     /// (<see cref="AdtDef.FieldSlotFailed"/>, the one test of it, MIR's projection rule's too). The receiver is a member access's, or an
     /// accessor's <c>self</c> for its <c>storage</c>; one of no Type (a failed <c>self</c>) gives none. A receiver Place the builder cannot
     /// index (a Type parameter an identity premise makes the struct) is the builder's located limit, as for a typed Field. The Field Op's
@@ -206,7 +207,7 @@ public sealed partial class Binding
     internal bool FailedField(Koto node) => HirTables.Symbol(node) is { } symbol &&
         (symbol.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!) : symbol) is { Property: { } property } field &&
         !(IsWriteTarget(node, out var write) && !write) && FieldReceiver(node, symbol) is { } receiver &&
-        AdtDef.FieldOwner(this.Types, receiver, field) is { } owner && AdtDef.FieldSlotFailed(owner.Layer, owner.Index) && this.Stated(field) &&
+        AdtDef.FieldOwner(this.Types, receiver, field) is { Index: { } index } owner && AdtDef.FieldSlotFailed(owner.Layer, index) && this.Stated(field) &&
         (symbol.Kind == BindingSymbolKind.Storage || DirectAccess(node, property));
 
     // The Type a Field Place's step projects from (FailedField): the Type Binding resolved the selection on, below every layer, as the

@@ -392,6 +392,13 @@ public sealed partial class Binding
             {
                 return this.FailConstructorAbsence(node, parent);
             }
+
+            // SPEC 23.1.2 (PLAN G651 a2, B5): a clause that gives the selection no base (no Type, an inline cycle) has its record; the base
+            // call rests on the struct's. With no clause, `: base(..)` without a base is the call's own error (SPEC 6.3.3).
+            if (constructor.BoundSymbol!.Scope.Owner is StructKoto { BaseClause: not null } declared)
+            {
+                return this.CompleteDependent(node, declared);
+            }
         }
 
         return this.Fail(node, BindingFailure.InvalidTypeFormation);

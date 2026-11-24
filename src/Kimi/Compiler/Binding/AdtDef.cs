@@ -88,12 +88,16 @@ internal sealed class AdtDef
         => Count(type) + (Base(types, type) is { } parent ? StorageCount(types, parent) : 0);
 
     // SPEC 6.2.2, 11.2.2: the Field owner of a struct instance's stored Field: the layer that stores it (the instance itself or the base
-    // instance Depth Base steps up) and the Field's own index among that layer's stored Fields; null when no layer stores it. The one walk
-    // over a struct's layers by Field: FindField's storage position and the MIR builder's Base steps derive from it.
-    internal static (BoundType Layer, int Depth, int Index)? FieldOwner(TyCtxt types, BoundType type, BindingSymbol? symbol)
+    // instance Depth Base steps up) and its stored slot, the Field's own index among that layer's stored Fields (Index); null when no layer
+    // stores it. The one walk over a struct's layers by Field: FindField's storage position and the MIR builder's Base steps derive from it.
+    // A walk that ends at a layer whose base part its instance does not store (BaseNotStored) answers that layer with no stored slot (Index
+    // none): the Field can lie in that part, a value derived from its error (SPEC 23.1.2), never "no such Field". Index is the one member
+    // naming the slot: every reader (FindField, MirBuilder.Field, FunctionCodegen.Storage, Binding.FailedField) indexes a layer's Fields
+    // only through it.
+    internal static (BoundType Layer, int Depth, int? Index)? FieldOwner(TyCtxt types, BoundType type, BindingSymbol? symbol)
     {
         var depth = 0;
-        for (var layer = type; layer is not null; layer = Base(types, layer), depth++)
+        for (var layer = type; ; depth++)
         {
             var fields = Struct(layer)?.Fields;
             for (var i = 0; fields is not null && i < fields.Length; i++)
@@ -103,23 +107,28 @@ internal sealed class AdtDef
                     return (layer, depth, i);
                 }
             }
-        }
 
-        return null;
+            if (Base(types, layer) is not { } parent)
+            {
+                return BaseNotStored(types, layer) ? (layer, depth, null) : null;
+            }
+
+            layer = parent;
+        }
     }
 
     // A Field's storage position, its owning layer's own index after its bases' Fields (base first), and its stored Type in the instance:
-    // false where no layer stores it (position -1) or Binding formed no stored Type for it.
+    // false where no layer stores it in a stored slot (position -1) or Binding formed no stored Type for it.
     internal static bool FindField(TyCtxt types, BoundType type, BindingSymbol? symbol, out BoundType? fieldType, out int position)
     {
-        if (FieldOwner(types, type, symbol) is not { } owner)
+        if (FieldOwner(types, type, symbol) is not { Index: { } index } owner)
         {
             (fieldType, position) = (null, -1);
             return false;
         }
 
-        position = owner.Index + (Base(types, owner.Layer) is { } parent ? StorageCount(types, parent) : 0);
-        fieldType = FieldType(types, owner.Layer, owner.Index);
+        position = index + (Base(types, owner.Layer) is { } parent ? StorageCount(types, parent) : 0);
+        fieldType = FieldType(types, owner.Layer, index);
         return fieldType is not null;
     }
 
