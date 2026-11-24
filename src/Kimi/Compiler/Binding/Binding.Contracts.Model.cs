@@ -339,6 +339,10 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal bool Current => this.Stamp == this.store.Pass;
 
+    // Whether the path is the program part's (ImplTable's overlay, by its store rule), the part ValidateConformances' final pass judges
+    // again (Binding.ResolveConformance reads it, R7-E3 E3e ruling 20).
+    internal bool InProgram => !this.store.IsBase;
+
     // The facts a component keeps by this path and a second key (DECISIONS BU-220), each a small list on the path, kept with it across
     // passes as ImplTable keeps the path, null until its first entry; the owning component's accessor is the list's one reader and writer.
     // Binding.FunctionWitnesses: a function requirement's callable correspondence (FunctionWitness).

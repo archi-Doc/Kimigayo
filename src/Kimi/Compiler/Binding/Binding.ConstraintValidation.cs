@@ -584,6 +584,10 @@ public sealed partial class Binding
     // R7-V1c: one judgment per written Type occurrence (JudgedOccurrence), recorded at the Type node it names; a check that recorded at
     // a node first keeps its record. PROTOTYPE (E3e Rev 2): a per-pass query, made once (judgedOccurrences), demanded by the first
     // decision that reads the occurrence (FailedPart, at that decision's binding) or by ValidateConstraintUses, whichever comes first.
+    // SPEC 8.3.3 (held pending; E3e ruling 20): before the pass's final conformance decision (conformancesDecided) an answer that depends
+    // on a judgment held pending (EndAnswer; a program path's Unknown, BodyBinding's second source) is no verdict: it is not kept, its
+    // frame is dropped with what it read, so it records nothing and nothing rests on it (FailedPart reads the occurrence as not failed),
+    // and ValidateConstraintUses judges the occurrence after that decision. From the decision every answer is the verdict.
     private void JudgeOccurrence(Koto node, BindingMode mode)
     {
         if (this.JudgedOccurrence(node) is not { Symbol.Declaration: DeclarationContainerKoto container } type || this.judgedOccurrences.Contains(node))
@@ -591,12 +595,20 @@ public sealed partial class Binding
             return;
         }
 
-        this.judgedOccurrences.Add(node);
+        this.judgedOccurrences.Set(node, true);
         var written = this.OccurrenceTypeNode(node);
         var scope = this.ConstraintScope(node);
         var use = this.VerdictUse(written); // A synthesized call's Type is its consumer's verdict (PLAN G214).
         var frame = this.BeginConsultation(use);
+        var mark = this.BeginAnswer();
         var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope, use);
+        if (this.EndAnswer(mark, result) && !this.conformancesDecided)
+        {
+            this.judgedOccurrences.Set(node, false);
+            this.DropConsultation(frame);
+            return;
+        }
+
         this.RequireConstraintInFrame(use, result, mode, frame);
         if (result != ConstraintProof.Proven)
         {
@@ -1125,7 +1137,7 @@ public sealed partial class Binding
     /// its SyntaxId. A row of an earlier pass reads none, and the library's rows are released at its freeze (NodeColumns.Freeze).</summary>
     private readonly struct JudgedOccurrenceRows(Binding binding)
     {
-        internal void Add(Koto node) => HirTables.Of(node).Families.JudgedOccurrences.Ref(node.SyntaxId, binding) = true;
+        internal void Set(Koto node, bool judged) => HirTables.Of(node).Families.JudgedOccurrences.Ref(node.SyntaxId, binding) = judged;
 
         internal bool Contains(Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.JudgedOccurrences.Get(node.SyntaxId, binding);
     }
