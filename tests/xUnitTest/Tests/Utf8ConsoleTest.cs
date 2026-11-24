@@ -80,7 +80,7 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleWidest" + kind, source, 0, 0, 0, text + "\n");
         var c = MinimalEmissionTest.Analyze(source);
         var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c));
-        var instructions = ir.Functions.SelectMany(static x => x.Instructions).ToArray();
+        var instructions = ir.Program.SelectMany(static x => x.Instructions).ToArray(); // The generated code's (the runtime text's own aside).
         var fixedBodies = FunctionCodegenTest.FunctionsOf(ir, c, "fixed");
         var call = Assert.Single(instructions, x => x.Opcode == "call" && fixedBodies.Contains(x.Callee!)); // Not by shape: CharFormat's array shares it.
         var borrow = Assert.Single(call.Operands, static x => x.Opcode == "load").Operands[0]; // Text.fixed's argument.

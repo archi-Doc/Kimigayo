@@ -111,7 +111,6 @@ internal static class OriginProofMeasurements
             boundViolations = metrics.BoundViolations,
             closureMilliseconds = Stopwatch.GetElapsedTime(0, metrics.ClosureTicks).TotalMilliseconds,
             edgesByRule = Enum.GetValues<OriginPremiseRule>().Where(static x => x >= OriginPremiseRule.Declaration).ToDictionary(static x => x.ToString(), metrics.EdgesOf),
-            distinctQueries = metrics.DistinctQueries,
         };
 
         // Warm repetitions only while one check stays below a second, under the fixed counts above.
