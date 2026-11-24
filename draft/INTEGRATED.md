@@ -1485,6 +1485,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 118 (2026-11-23, plan §14; the Back's D-1186, the owner's O-513 (c) and O-514 (a), R8's exit): X1's row records
   that R8 exited 2026-11-23 (DECISIONS R8-M60; the owner's O-513 (c), O-514 (a)). No other decision changes. No SPEC or IMPL
   text. Nothing frozen.
+- Revision 119 (2026-11-24, plan §14; the owner's adoption of the Coordinator's three process proposals in K's dialog, verbatim
+  「3案とも採用します。作業を開始してください。各セッションに意見を聞き、問題なければ適用してください。」; DECISIONS Q23): §3.3's RP17 bullet: an A5 or acceptance mover runs
+  the combined A5 oracle on its head merged with the newest dev before its Ready line; the Middle's consent labels the differing
+  programs from SPEC, builds at least three adversarial invalid twins and runs MIR codegen, without reading the change's code; the
+  window's G-O stays. §9: board cells and log lines of about three or four lines, linking files for detail. The rest of Q23 is
+  WORKFLOW's. For new units. No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1

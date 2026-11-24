@@ -488,6 +488,45 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     its "Exceptions, carried past the exit as PLAN G396" clause as a carry with no removal stage (R7's exit is now their stage);
     and X-2's "the 25 without a removal stage stay under DEC O4". R4's exit, X-1 to X-5 and the landed list stand as history.
 
+- **Q23 Short fixed-form texts, prototype-first designs, and the oracle before Ready** (2026-11-24, the owner in K's dialog,
+  verbatim 「3案とも採用します。作業を開始してください。各セッションに意見を聞き、問題なければ適用してください。」, to the Coordinator's three
+  proposals; [WORKFLOW](WORKFLOW.md) "Change classes", "Design" steps 3 and 4, "Review"; the
+  [R7, R8 and R9 plan](../../draft/Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md) §3.3's RP17 bullet, §9 and
+  revision 119). For units whose design starts after this entry lands; a unit in progress may follow the rules but need not
+  rewrite its documents.
+  - Rule 1 (short, fixed-form texts): a Major design keeps its required parts (the chain, the sites sharing the cause, the options
+    with the reasons for rejecting the others, the deletions, expected size and speed, Owner, Exposure, Readings) in about 1,000
+    to 1,500 words of prose; it names the coverage table's test rows by section instead of copying them, and holds only its
+    current text (a revision replaces text in place; the history is git and the reviews' identified versions; the planning
+    session's rulings that change no design go in its notes). A board cell or log line states its facts in about three or four
+    lines and links files for detail.
+  - Rule 2 (the oracle before Ready, a lighter consent, no duplicate reads): a unit that moves A5's verdicts or acceptance runs the
+    combined A5 oracle (the Middle's shared runner) on its head merged with the newest dev before its Ready line, which states the
+    result; a clean refresh merge with no near hunk keeps it. The Middle's RP17 consent then labels each differing program from
+    SPEC, builds at least three adversarial invalid twins of its own and runs MIR codegen of the moved programs; it no longer reads
+    the change's code outside the Middle's area (its own area's hunks it still reads under R7-M2). A fix after ACCEPT, as after
+    REVISE, is only that reviewer's repeated review; another session reads a delta only on files its area owns (R7-M2) or where
+    the delta adds a return, a rest point or a skipped binding on a path MIR reads, where the Middle runs the delta's rows and
+    twins on a CLI of the head.
+  - Rule 3 (prototype first, the design from its diff): the design cites the prototype's commit, on a pushed `proto/` branch until
+    the unit lands, and its measured facts (size, the sites it touched, the test rows' results); reviews read the diff with the
+    design as its explanation. The options comparison stays required, a required design review judges the design before the
+    prototype is completed, and a prototype settles no owner question. A measurement-first unit measures before any prototype.
+  - Kept: one independent reviewer per unit, the twins, the window's G-O (one oracle over a window's units, plan revision 75) and
+    the MIR-side runs on a delta.
+  - Reason (measured 2026-11-24): the last seven designs ran 2,900 to 6,900 words against WORKFLOW's "short design"; board rows had
+    a median of 1,800 characters and a p90 of 8,400, and the board reached 11,162 lines; W-338 lost a window to an oracle
+    difference found after the consent; and weekly usage, not test time, limits throughput (about 0.24 units landed per weekly
+    percent). The oracle and the twins find different failures: the oracle found W-338's Q-727 rejecting valid programs, and
+    twins found C-60's unsound acceptance (11-06), a form the corpus did not hold.
+  - Compared after adoption against those figures: words per design, review rounds per unit, the window failure rate and units
+    landed per weekly percent.
+  - Rejected: proposal 2A as written, the oracle replacing the consent (the corpus holds known forms only, so a new rule's unsound
+    acceptance needs twins); 2B as a new rule (one review by one reviewer was already WORKFLOW's; only the ACCEPT case and a
+    delta's readers are added); proposal 4, fewer waits (held by the owner).
+  - Views: F, M, B and T agreed (11-24 14:47-14:59), with the points above folded in.
+  - Amends R7-M3's RP13 and the plan's RP17 consent (§3.3).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -7193,7 +7232,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     which `Scalared` now reads too), and `Reach.Unowned` states the reach once, for the first step and past a holder (rule 3's two
     sites). The first step's rows are read at the reading key past the input's own layer at the call's parameter key (`InputKey`),
     as `Keyed` reads on, so a row in a binding of the called function's own Type parameter adds no reach of its own (SPEC 15.6.4);
-    an input whose key has no single layer (a shared borrow, a key at Binding's Limit) keeps its referent's root key.
+    an input whose key has no single layer (a shared borrow, a key at Binding's Limit) keeps its referent's root key. The body's
+    read: R4-M242.
   - The pun rule's call walk (R4-M198) stays its own (U3d leaves the chain): it judges where a call may write a Scalar (every input
     its contract may store through, past every layer a Scalar may be written through, on the state after the call's stores), W where
     it may store a Loan (per written output, past a layer whose storage may hold one, before them); they share the key table
@@ -8102,6 +8142,35 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Loan-free pointee (Binding's entry already bounds what that storage keeps).
   - The departures of clauses (1)-(3) (U3b's first-step source, G785's "no single layer" bullet, rule 4's site at the result key)
     are G841b's and G841c's entries.
+- **R4-M242 The pun rule's read site: a raw pointer a body reads punned reaches storage the body does not own (PLAN G785)**
+  (2026-11-24; the Middle; G785, Q-745, D-1235; Major, an acceptance mover both ways; the owner's O-521 Q1 (a) and Q2 (V); design
+  `middle\notes\g785-design.md` Revision 3b) SPEC 5.2, 5.5, 15.6 Holders (example punnedRef).
+  - **Rule.** At each Deref of the one step walk (`MirBorrows.Values.Prefix`) that reads a raw Place (a raw Deref at its pointee; a
+    `ref` or `uniq` Deref at its referent where punnable), each direct entry of any mode naming a Place, a non-holder local's
+    included, answers None where the read Type designates the Place or `PunTypes.NoProvenance` is None, else `NoProvenance` (may: the
+    Place holds both kinds of byte or states none of its bytes; surely: it lacks provenance); the step answers surely only where
+    every entry does, None where every entry does, else may. Where that adds a marker, it asks `MirBorrows.Lent` whether the
+    referent is formed exactly (`LentExactly`: its exact lent position, or each referring store's for a whole non-argument local);
+    if so nothing is added. Lent resolves in its own step buffer. A stated Origin exempts no read (SPEC 15.6 Holders).
+  - **Defect fixed (PLAN G785, Q17 class 1).** On dev such a read reached nothing past the viewed holder, so a store through it was
+    accepted though SPEC 5.2 gives it no provenance and 5.5 makes it reach only storage the body does not own: 30 labelled invalid
+    programs are now rejected, 19 with `ComparisonLoanConflict_Kd` and 11 with the located `Unsupported_Kd`.
+  - **The reduction, approved by its rule** (the owner's O-521 Q1 (a), the owner question's §4 (a) with its aggregation point):
+    through a referent Lent does not resolve (a call's result; `p + n`, and so `p[n]`, a Deref of `p + n`; a reference read from a
+    part, an aggregate or a payload; an exposed or part-stored local; an argument; a Cast), a raw pointer read from a raw-pointer part
+    of a holder that also holds other bytes, in one holder or across the holders a value names where any keeps provenance
+    (designated, or raw-pointer bytes only); read from a Place whose structure states none of its bytes (a Slice, an abstract part, a
+    Closure, an enum's own bytes); or read at a raw pointer Type over a holder whose layout decides whether the bytes read are a raw
+    pointer's (IMPL 21.1, uPtrTupleBodyOk), gives the located `Unsupported_Kd` where a check only a store through it meets fails,
+    never a Language error (PLAN G785b).
+  - **Removal:** a representation of the pointed-to part (PLAN G785b, the owner question's option (d)). No staged unit removes it:
+    U5's markers (R4-M219's staged line) mark a Position On or Off, not the part, so O-517 (a)'s "removal by U5" reads (d).
+  - **Rejected:** R1's one-level key (unsound); a per-borrow lend-end class; the one-store rule alone; taking the most of the entries
+    (Revision 2: skipping designated entries, a decided E on r3MixRefCastOk; Revision 3's prototype: a holder of both kinds beside a
+    no-provenance one, a decided E on r3bOpenRefCastOk); Revision 3a's None where the named holders disagree (it reopens
+    rvBorrowTwiceMixedBad and r3MixRefCastBad, which the answered option counted closed, and its may row still limits
+    r4MixOpenCastOk across holders: no single-holder reading is met on today's values); a slot-keyed read entry (it misses a
+    non-holder's bytes); a `+ 0` clause for `p[n]`.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -16332,10 +16401,10 @@ resumed by R4-M86 (2026-10-20).
   - **R7-N5 B2a-1** (the Back's batch, Q-563; design `b2a-design.md` §4, B's rulings 1-6; the Front's C-403): six tables become pass
     families of `NodeColumns` (`StampedColumn<T, Binding.PassCounter>`), one accessor each, their Clears deleted:
     `inferredArrayLengths` and `arrayInferenceShapes` (written through `HirTables.Of`), `callInferenceFailures`,
-    `callableSelectionFailures`, `baseCallFailures` and `objectErasureFailures` (deleted by R7-E3 E3b-2) (failure facts stored through
-    the recorder, `SetRecordedFact`). The library writes none of them (six `NotStamps` rows). `receiverOperations` and `resultContexts`
-    are B2a-2's (released at the freeze, B's ruling 1); `noInitFailures` and `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet
-    67 -> 61.
+    `callableSelectionFailures`, `objectErasureFailures` (deleted by R7-E3 E3b-2) and `baseCallFailures` (deleted by R7-E3 E3c-2)
+    (failure facts stored through the recorder, `SetRecordedFact`). The library writes none of them (six `NotStamps` rows).
+    `receiverOperations` and `resultContexts` are B2a-2's (released at the freeze, B's ruling 1); `noInitFailures` and
+    `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet 67 -> 61.
   - **R7-N5 B2a-2** (the Back's batch, Q-577, D-936; design `b2a2-design.md` §1-§4, B's rulings 1-5 and B's ruling 6 on
     `b2a-design.md`; the Front's R1-R4 and C1-C7 on C-403, 2026-11-20): a family no reader after the freeze reads a library row of
     (its rows are its pass's working state: the binding steps, reports and HIR publication of the pass that wrote them) has no
@@ -24103,6 +24172,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - Amended by R7-M36 (the owner, 2026-11-15): a timed unit is measured in its window's one slot on the window's merge, alone only
       beyond a bound.
   - RP13: prototype first for every unit; a Minor or deletion unit's prototype is its reproducer.
+    - Amended by Q23 (the owner, 2026-11-24): the design is written from the prototype's diff and cites its commit and measured
+      facts; the options comparison stays required.
   - RP14: a unit that changes an A5 verdict, or adds or changes a library body, runs the full mir ledger before its review and adds no
     blocking row (until H10); after H10 the generated gate, the A5 class set and `MirCensusTest`.
   - RP15: every agent keeps a state file with its Q12 working-time log; every session writes a handoff at every pause with the board's
@@ -26726,6 +26797,35 @@ R8-M* and R9-M* by the stage of the recording unit.
     subject and the Contract as evidence**. The pending judgment is the selection's deferral (`RecordSelection`): UnprovenConstraint_Kd
     with role 6 "argument" and role 7 shown as a related `declaration` (the slot's Type parameter), which the adapter reads by role
     (ruling 13, n1). Moves: M3 the erasure Note's text (from the fact) and the pending Note (gone); M4 the pending slot related.
+  - **E3c-2 (Q-742, D-1230).** The rest of E3c records through `Record`, with no new kind.
+    - **Records.** InvalidBaseCall_Kd records its cause as a `Reason` (one recorder, FailBaseCall), its Note rendered from it (B's
+      ruling 12; no M3). BoundMethodValue_Kd records its method as `Related` role 0 at the failure (FailBoundMethodValue;
+      RequirementItems' group takes the use's bound declaration, fact-less when none); its publication read goes.
+      NonExhaustiveMatch_Kd records its coverage reason as a `Reason` (the Case's declaration index plus one, packed above its
+      byte), its Note rendered from it. InvalidNumericLiteral_Kd's eight sites (Expressions, NumericConversions, Operators) and the
+      fact-less own sites (Names, FunctionReferences, ContractCalls, Patterns with 461, Expressions) record `Record(node, X, [])`;
+      ContractCalls' Property requirement through a Type records MissingName unresolved and its several identities the located
+      limit (`RecordLocated`). Names' unresolved explicit reference keeps dev's `Fail(reference, Unsupported, true)`, resting on the
+      name's own record. The guard, the floating-point literal (Expressions and Operators' signed twin) and the Case construction
+      mismatches record their sides; Enums 883 records them at the construction (`RecordTypeMismatch(use, use, ..)`, rulings 13-14:
+      the location stays). Patterns' Pattern Type check and recheck, FunctionReferences' Error without a held cause and Enums' late
+      Type formation (943) record through `RecordConstraint` (E3b-2's one recorder of the constraint family).
+    - **Deleted:** `baseCallFailures` (its NodeColumns column, accessor and arm; stated once in R7-N5 B2a-1's line), the
+      BoundMethodValue, coverage and literal publication arms (`LiteralConversionTarget` with the last), and
+      `ReferenceSlotFailure`'s four unread reasons and its `Slot` (the staged removal of the E3a-2 line).
+    - **Kept until R7-E5:** Signatures 224/225 and 289/292 (a member group's and a Contract requirement group's receiver shape
+      mismatch) keep plain `Fail`s (ruling 11: recording there adds a ReceiverShapeMismatch_Kd beside the declaration's
+      InvalidTypeFormation_Kd or ParameterShapeMismatch_Kd, a dependent record by SPEC 23.1.2; the delta's "B1 none" for Signatures is
+      corrected: the mismatch rests on the declaration's or requirement's own earlier failure); ResultPropagation.Parts' spelled read
+      of a held part's failure (a Transitional); the pairless mismatches (the construction's arguments check, the expected Type's
+      slots, two inference sites, the payload misfit; ResultPropagation's join conflict); InvalidTry's two sites with TryFailure's
+      read; Expressions 463's owner over its failed part. Their R7-E5 rows: PLAN G1141.
+    - **Handed over:** `ownedConversions` (its six writers and its arm) to R7-E4 (O-1 (a); E4's census sends any
+      non-Origin/acquisition/lint fact back to its family's unit, E3b's O-9 condition).
+    - **Moves (invalid programs only; no acceptance move).** M3 the literal Note (x2b-x2d); content (sides added, location kept) at
+      the TypeMismatch_Kd sites: guard (g1), construction (e1, e2a-e2c at 883), floating-point literal plain and signed (x1, x1b). No
+      move at Enums 883 beside TransferRequired_Kd: a kept acquisition beside a misfit takes FitsValueAt's condition arm, never 883,
+      so that pair is unreached.
   - Superseded in part by R7-M95 (R7-E4 E4a-1, 2026-11-24), for E4's sites: the Rule's "a site converts only where its record is the
     node's first failure ...; a dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5". E4's B1
     statement is by input: a check that reads none of the node's failed inputs records beside the node's earlier failure (SPEC

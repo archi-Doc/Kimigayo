@@ -103,6 +103,14 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    let v: i32 = 1\n    let r = v@ref/i64", "v@ref/i64", "expected i64, found i32")]
     [InlineData("unsafe func f(p: raw/i32) -> f64 => p@f64\npublic func main() => ()", "p@f64", "expected f64, found raw/i32")]
     [InlineData("struct S\n    public computed item: i32\n        get(self: ref/Self) -> bool => true\npublic func main() => ()", "get(self: ref/Self) -> bool => true", "expected i32, found bool")]
+
+    // R7-E3 E3c-2: a guard's Type, a construction at its expected Type and a floating-point literal at a generic integer position, plain
+    // and signed, name the two sides they compared.
+    [InlineData("func f(x: i32) -> i32 => match x\n    _ if x => 0\n    _ => 1\npublic func main() => ()", "x", "expected bool, found i32")]
+    [InlineData("enum E<T>\n    A(T)\npublic func main()\n    let x: E<i32> = E<bool>.A(true)", "E<bool>.A(true)", "expected E<i32>, found E<bool>")]
+    [InlineData("func f<T>(v: T) -> T\n    T is PrimitiveInteger\n    return 1.5\npublic func main() => ()", "1.5", "expected T, found floating-point literal")]
+    [InlineData("func f<T>(v: T) -> T\n    T is PrimitiveInteger\n    return -1.5\npublic func main() => ()", "-1.5", "expected T, found floating-point literal")]
+    [InlineData("struct B\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nenum E\n    A(B)\nfunc f(b: ref/B) -> i32\n    let x = E.A(b)\n    return 0\npublic func main() => ()", "E.A(b)", "expected B, found ref/B")]
     public void TargetChecksShowTheirLocationAndFacts(string source, string text, string label)
     {
         var error = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)));
