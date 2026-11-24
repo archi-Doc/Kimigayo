@@ -24,6 +24,7 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, RetentionKind[]> retentionHidden = new(ReferenceEqualityComparer.Instance); // HiddenKinds' per Type, per Storages.
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
     private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // CanCarryLoan's walk, per query: the Types met.
+    private RetentionKind[] retentionGate = []; // HiddenKinds' row in the callee's terms, which its fill's R gate reads (FilledKinds), reused.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
     private readonly HashSet<(HoldAt At, HeldIn In, int Storage)> retentionMet = new();
@@ -156,9 +157,9 @@ public sealed partial class Binding
         return listed;
     }
 
-    // Whether an entry passes a holding walk on to a part holding its own Type (Hold.PassesOn, the row MirTypes.HoldsLoans reads; Holds
-    // Its): every other entry is a layer, an erased or abstract part or a part no Type states, which may carry a Loan or an address itself.
-    // The hold walk's Loans fact (Held) and CanCarryLoan read it.
+    // Whether an entry passes a holding walk on to a part holding its own Type (Hold.PassesOn, which MirTypes.HoldsLoans reads alone, with
+    // Binding's narrowing Holds Its): every other entry is a layer, an erased or abstract part or a part no Type states, which may carry a
+    // Loan or an address itself. The hold walk's Loans fact (Held) and CanCarryLoan read it.
     private static bool Passes(in Hold entry) => entry.PassesOn && entry.Holds == HoldContent.Its;
 
     // SPEC 15.6.4 (DECISIONS R4-M154): the records of the contract being computed. The result is one storage, every position of its Type
@@ -369,7 +370,7 @@ public sealed partial class Binding
             var excluded = output >= 0 && !this.storageBorrowed.Contains(storage) ? output : -1;
             if (type is not null && storage != AbstractStorage && Abstract(type) && !this.Parametric(signature))
             {
-                this.FilledKinds(kinds[storage], type, null, excluded); // An abstract part outside the kept Type's binding, whatever its node.
+                this.FilledKinds(kinds[storage], kinds[storage], type, null, excluded); // An abstract part outside the kept Type's binding, whatever its node.
             }
 
             if (node < 0)
@@ -465,15 +466,17 @@ public sealed partial class Binding
     {
         var known = this.Hidden(hidden, kinds.Length);
         var reads = this.CanCarryLoan(bound) ? RetentionKind.Value | RetentionKind.Content | RetentionKind.Chain : RetentionKind.Value;
+        var gate = Reused(ref this.retentionGate, kinds.Length);
         for (var i = 0; i < kinds.Length; i++)
         {
             // An input with sources takes its own value's row from the instantiated tests that Admits lets through (their Origin fits and
             // pairs stand); a raw input, or one holding a raw part by value, the hold walk's source, takes it here.
-            var kind = (this.RawInput(i) ? known[i] : known[i] & ~RetentionKind.Value) & reads;
-            kinds[i] |= i == excluded ? RetentionKind.None : kind;
+            var kind = i == excluded ? RetentionKind.None : this.RawInput(i) ? known[i] : known[i] & ~RetentionKind.Value;
+            gate[i] = kinds[i] | kind;
+            kinds[i] |= kind & reads;
         }
 
-        this.FilledKinds(kinds, null, hidden, excluded);
+        this.FilledKinds(kinds, gate, null, hidden, excluded); // The fill's R gate reads the callee's-terms row: the fill stays (F's C-527 ruling 2, B1).
     }
 
     // The one fills arm (Revision 1's R1.3; SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... may
@@ -482,12 +485,14 @@ public sealed partial class Binding
     // test lets the storage keep its input, MayRetain; a raw source by its kind) where a handed callable may retain that input there
     // (Filled), and through a write also where a value of the Type reaches past its hidden references (the Abstract storage, whose entry
     // Written then forms). Outside the kept Type's binding a raw source's fill is the hold walk's (Held), which walks no hidden binding.
-    private void FilledKinds(RetentionKind[] kinds, BoundType? type, BoundType? signature, int excluded)
+    // R's Origin test reads `gate`: the storage's row so far (`kinds`), and at the root of a kept Type's binding HiddenKinds' row in the
+    // callee's terms before the bound Type bounds its reads, so a fill stays for every binding (G935 ruling 16 (2); F's C-527 ruling 2).
+    private void FilledKinds(RetentionKind[] kinds, RetentionKind[] gate, BoundType? type, BoundType? signature, int excluded)
     {
         var (reached, own) = (this.retentionKinds[AbstractStorage], this.Parametric(signature));
         for (var i = 0; i < kinds.Length; i++)
         {
-            var free = this.MayRetain(kinds, i) ? this.retentionUndecided[i].Free : RetentionKind.None;
+            var free = this.MayRetain(gate, i) ? this.retentionUndecided[i].Free : RetentionKind.None;
             var kind = own ? this.retentionUndecided[i].Raw | free : free;
             var fill = kind == RetentionKind.None || i == excluded ? Fill.None : this.Filled(type, signature, i);
             if (fill != Fill.None)
@@ -520,11 +525,14 @@ public sealed partial class Binding
     // that is, whether some part of it, through its own storage, its Type arguments and the storage its owning handles own (Holdings'
     // entries that pass a walk on, Passes), is a borrow, a raw pointer, a callable value other than a Function Item or a value of an
     // abstract Type: an entry that does not pass on (a borrow or raw layer, an erased environment, an abstract part), a part Binding did
-    // not bind (it may be any Type), or a concrete Closure, whatever its environment holds (SPEC 15.6 names the callable value; what its
-    // environment holds is the hold walk's question). A Function Item and a Scalar hold no entry. It is a predicate of the Type, not a
-    // Loan fact: it decides no Loan, holder or write (MirTypes.HoldsLoans answers what a call may write past a value, another contract).
-    // Fails closed: true past StorageBound and at Binding's Limit. Each Type is walked once per query (retentionCarried), so a recursive
-    // Type ends; its repeat adds nothing its first meeting lacks.
+    // not bind (it may be any Type), or a concrete Closure, whatever its environment holds (SPEC 15.6's callable value read literally, F's
+    // C-527 ruling 1 (2), until the owner's Q2 answers it). A Function Item and a Scalar hold no entry. It folds the same SPEC 15.6
+    // predicate as MirTypes.HoldsLoans' Loan fact, which Binding does not read (MIR); HoldsLoans keeps its own walk for its modes and its
+    // write fact. They disagree at a part Binding did not bind (HoldsLoans: no Loan; here: carries, failing closed) and, until Q2, at a
+    // concrete Closure (HoldsLoans reads its environment); PLAN's open issue (F's C-527 ruling 2, C1): one publisher, TyCtxt, after Q2.
+    // It decides no Loan, holder or write. At Binding's Limit it answers true and makes the contract the Limit (retentionLimit, as
+    // HiddenKind); past StorageBound true (the storage walk's depth bound names that limit). Each Type is walked once per query
+    // (retentionCarried), so a recursive Type ends; its repeat adds nothing its first meeting lacks.
     private bool CanCarryLoan(BoundType type)
     {
         this.retentionCarried.Clear();
@@ -545,6 +553,7 @@ public sealed partial class Binding
         }
 
         var run = this.HeldRun(type, null, null, out var complete);
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit: the contract's Limit (F's C-527 ruling 2, C2).
         var carries = !complete;
         for (var i = run.Start; !carries && i < run.End; i++)
         {
