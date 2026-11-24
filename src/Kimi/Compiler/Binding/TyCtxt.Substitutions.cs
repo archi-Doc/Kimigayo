@@ -206,9 +206,9 @@ internal sealed partial class TyCtxt
 
     internal ReadOnlySpan<SiteMark> CloseBodySite(OwnerState site) => binding.CloseBodySite(site);
 
-    internal OwnerState OpenSite(SourceRef subject) => binding.OpenSite(subject);
+    internal (Binding.AfterRunOwner Kind, SourceRef Subject) OpenSite(SourceRef subject) => binding.OpenSite(subject);
 
-    internal void CloseSite(OwnerState site) => binding.CloseSite(site);
+    internal void CloseSite((Binding.AfterRunOwner Kind, SourceRef Subject) site) => binding.CloseSite(site);
 
     // R7-T1: Apply as a formation owning its refusals in the collector's answer frame, the collector's query, whose one reader of a cause
     // (InstanceCollector.Formed) records it at its requesting site: a refusal of a Type above the height limit is answered as HeightLimit,

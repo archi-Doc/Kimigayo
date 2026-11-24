@@ -254,7 +254,7 @@ public sealed partial class Binding
         this.ResultLeaves(result, 0);
         var site = this.OpenRetentionSite(callee, -1); // PLAN G651 U2b R11 OP1: the result's walk.
         this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true) with { Signature = this.SignatureResult });
-        this.CloseSite(site);
+        this.Restore(site);
         var kept = this.Kept(inputs.Length);
         var whole = (new HoldAt(result, null, null, this.SignatureResult), ResultStorage);
         var untied = this.Hold(environment, CallRetention.ResultOutput, new(in whole), inputs, (key, callee, premises), ref transfer);
@@ -316,7 +316,7 @@ public sealed partial class Binding
         this.BeginStorages();
         var site = this.OpenRetentionSite(call.Callee, -1); // PLAN G651 U2b R11 OP1: the result's walk.
         this.StorageWalk(environment, result, StorageAt.Output(OwnStorage, writable: true) with { Signature = this.SignatureResult });
-        this.CloseSite(site);
+        this.Restore(site);
         var kept = this.Kept(inputs.Length);
         var untied = this.Hold(environment, CallRetention.ResultOutput, CollectionsMarshal.AsSpan(this.storageHolds), inputs, call, ref transfer);
         this.Storages(environment, links, kept, CallRetention.ResultOutput);

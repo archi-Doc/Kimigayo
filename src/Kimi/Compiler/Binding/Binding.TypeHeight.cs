@@ -140,23 +140,25 @@ public sealed partial class Binding
 
     /// <summary>Opens a node site inside a body site (PLAN G651 U2b R5): the innermost node a driver visits (IMPL 21.3.2), opened at the
     /// dispatching call; its marks wait for the enclosing body site. A location with no syntax (one the builder synthesized: no subject)
-    /// is no node, so the enclosing site stays innermost.</summary>
+    /// is no node, so the enclosing site stays innermost. Only a MIR driver opens one, inside a body or node site and never inside a
+    /// formation (no formation calls a driver), so the answer state is closed and the mark range is the body site's: it saves and sets
+    /// the owner alone (PLAN G651 U2b ruling 30 (1); slot T-348). Binding's retention site (OpenRetentionSite) saves the whole state.</summary>
     /// <param name="subject">The node.</param>
-    /// <returns>The state it opens in, which <see cref="CloseSite"/> restores.</returns>
-    internal OwnerState OpenSite(SourceRef subject)
+    /// <returns>The owner it opens in, which <see cref="CloseSite"/> restores.</returns>
+    internal (AfterRunOwner Kind, SourceRef Subject) OpenSite(SourceRef subject)
     {
-        var parent = this.Saved();
+        var parent = this.owner;
         if (subject.Id != 0)
         {
-            (this.answer, this.owner) = ((false, false), (AfterRunOwner.Node, subject));
+            this.owner = (AfterRunOwner.Node, subject);
         }
 
         return parent;
     }
 
     /// <summary>Closes a node site.</summary>
-    /// <param name="parent">The state it opened in.</param>
-    internal void CloseSite(OwnerState parent) => this.Restore(parent);
+    /// <param name="parent">The owner it opened in.</param>
+    internal void CloseSite((AfterRunOwner Kind, SourceRef Subject) parent) => this.owner = parent;
 
     /// <summary>Begins a formation that owns its refusals (TyCtxt.Answered, TyCtxt.Witness, Instance): inside the collector's frame, and
     /// after Binding's run (producing over) in every owner, since it publishes what is answered to it as its cause (Formation.HeightLimit,
@@ -206,7 +208,7 @@ public sealed partial class Binding
     /// whose innermost owner is the caller's site.</summary>
     /// <param name="callee">The callee, or null for an erased signature, which names no callee syntax.</param>
     /// <param name="slot">The input's parameter slot, or -1 for the result.</param>
-    /// <returns>The state it opens in, which <see cref="CloseSite"/> restores.</returns>
+    /// <returns>The state it opens in, which <see cref="Restore"/> restores.</returns>
     private OwnerState OpenRetentionSite(FunctionKoto? callee, int slot)
     {
         var parent = this.Saved();

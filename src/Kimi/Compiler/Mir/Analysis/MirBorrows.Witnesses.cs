@@ -43,7 +43,7 @@ internal sealed partial class MirBorrows
             : this.body.Blocks[location - this.body.Statements.Length].Terminator.Source;
 
     // PLAN G651 U2b R5 (D-C4): a location's node site, opened by each of A5's location loops, the innermost site of a refused read there.
-    private OwnerState OpenAt(int location) => types.OpenSite(this.Source(location).Syntax);
+    private (Binding.AfterRunOwner Kind, SourceRef Subject) OpenAt(int location) => types.OpenSite(this.Source(location).Syntax);
 
     // The witness holder's first use at or after a location in its chain (A3 6.4), or null where it is used only in a later chain.
     private SourceRef? NextUse(int slot, MirLocation from)

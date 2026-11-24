@@ -19,6 +19,7 @@
 // A body's expansions, a default's template copy and a defer body's copy, consult one body budget where a copy would begin (Refuses).
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -335,6 +336,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // A body (BuildBody) as the body site every build path passes through (PLAN G651 U2b R5): a lookup's body, a default template's and a
     // body a collector round builds alike, so eager and lazy builds give equal marks, each a use of the body's declaration at its close
     // (MirReport.Uses); a nested body's site takes its own marks.
+    // Not inlined, a measured compiler-speed need (PLAN G651 U2b ruling 32 (2); slot T-348, cost\attr.md §6): inlined, its try/finally
+    // sat in Library's walk loop, which builds no body on the pipeline's inputs, and cost that walk about 10 us a compilation.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType? result, Koto value)
     {
         var site = compilation.Types.OpenBodySite(SourceRef.Of(key.Kind == MirBodyKind.DefaultTemplate ? value : declaration));

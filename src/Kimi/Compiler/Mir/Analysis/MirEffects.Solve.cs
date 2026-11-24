@@ -93,20 +93,28 @@ internal sealed partial class MirEffects
 
         // A ring of the queued nodes, seeded in program order: a node is queued at most once at a time.
         var (head, length) = (0, count);
-        while (length > 0)
+        var run = (Owner: -1, Parent: default(OwnerState));
+        try
         {
-            var node = this.queue[head];
-            (head, length) = (head + 1 == count ? 0 : head + 1, length - 1);
-            this.queued[node >> 6] &= ~(1UL << node);
-            for (var d = this.Sited(node) ? this.dependentHeads[node] : -1; d >= 0; d = this.dependents[d].Next)
+            while (length > 0)
             {
-                var dependent = this.dependents[d].Node;
-                if ((this.queued[dependent >> 6] & (1UL << dependent)) == 0)
+                var node = this.queue[head];
+                (head, length) = (head + 1 == count ? 0 : head + 1, length - 1);
+                this.queued[node >> 6] &= ~(1UL << node);
+                for (var d = this.Sited(node, ref run) ? this.dependentHeads[node] : -1; d >= 0; d = this.dependents[d].Next)
                 {
-                    this.queued[dependent >> 6] |= 1UL << dependent;
-                    this.queue[(head + length++) % count] = dependent;
+                    var dependent = this.dependents[d].Node;
+                    if ((this.queued[dependent >> 6] & (1UL << dependent)) == 0)
+                    {
+                        this.queued[dependent >> 6] |= 1UL << dependent;
+                        this.queue[(head + length++) % count] = dependent;
+                    }
                 }
             }
+        }
+        finally
+        {
+            this.CloseRun(ref run);
         }
 
         (this.keyWords, this.slotWords, this.classWords, this.rowWords) = (words, slots, classWords, row);
@@ -148,25 +156,36 @@ internal sealed partial class MirEffects
     }
 
     // Evaluate in the node's owner body's site (PLAN G651 U2b R5, OP2 (a)): a refused read in the round marks the body's declaration.
-    private bool Sited(int node)
+    // One body site covers a run of one body's consecutive nodes (ruling 30 (1); slot T-348): it opens at the run's first node and closes
+    // when the owner body changes and when the round ends (CloseRun, in Run's finally), so every node is still evaluated in its body's site.
+    private bool Sited(int node, ref (int Owner, OwnerState Parent) run)
     {
-        var body = this.program.Body(this.Of(node)[node].Owner);
-        var site = this.Open(body.Source, default);
-        try
+        var owner = this.Of(node)[node].Owner;
+        if (owner != run.Owner)
         {
-            return this.Evaluate(node);
+            this.CloseRun(ref run);
+            run = (owner, types.OpenBodySite(this.program.Body(owner).Source));
         }
-        finally
+
+        return this.Evaluate(node);
+    }
+
+    // Closes the open run's body site, its marks uses of the body's declaration (MirReport.Uses).
+    private void CloseRun(ref (int Owner, OwnerState Parent) run)
+    {
+        if (run.Owner >= 0)
         {
-            this.Close(site, body.Key);
+            this.report.Uses(types, types.CloseBodySite(run.Parent), this.program.Body(run.Owner).Key);
+            run.Owner = -1;
         }
     }
 
-    // PLAN G651 U2b R5 (ruling 18): A4's site, a body site at its subject with a node site inside it where the node has syntax (TyCtxt.OpenSite),
-    // closed in a finally, its marks uses of the body's declaration (MirReport.Uses).
-    private (OwnerState Body, OwnerState Node) Open(SourceRef body, SourceRef node) => (types.OpenBodySite(body), types.OpenSite(node));
+    // PLAN G651 U2b R5 (ruling 18): an obligation row's site, a body site at its subject with a node site inside it where the node has
+    // syntax (TyCtxt.OpenSite), closed in a finally, its marks uses of the body's declaration (MirReport.Uses).
+    private (OwnerState Body, (Binding.AfterRunOwner Kind, SourceRef Subject) Node) Open(SourceRef body, SourceRef node)
+        => (types.OpenBodySite(body), types.OpenSite(node));
 
-    private void Close((OwnerState Body, OwnerState Node) site, MirDefKey key)
+    private void Close((OwnerState Body, (Binding.AfterRunOwner Kind, SourceRef Subject) Node) site, MirDefKey key)
     {
         types.CloseSite(site.Node);
         this.report.Uses(types, types.CloseBodySite(site.Body), key);

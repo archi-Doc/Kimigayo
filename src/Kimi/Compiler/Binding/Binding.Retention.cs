@@ -452,7 +452,7 @@ public sealed partial class Binding
         {
             var site = this.OpenRetentionSite(callee, i); // PLAN G651 U2b R11 OP1: the input's whole read at its parameter.
             this.AddTypePremises(environment, inputs[i], OriginPremiseRule.Input);
-            this.CloseSite(site);
+            this.Restore(site);
         }
 
         if (declaring is not null)
@@ -462,7 +462,7 @@ public sealed partial class Binding
 
         var output = this.OpenRetentionSite(callee, -1);
         this.AddDefinitionResultPremises(environment, result);
-        this.CloseSite(output);
+        this.Restore(output);
         if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)
@@ -477,12 +477,12 @@ public sealed partial class Binding
         {
             var site = this.OpenRetentionSite(callee, i);
             this.Handed(inputs[i], null, this.retentionCallables);
-            this.CloseSite(site);
+            this.Restore(site);
         }
 
         var end = this.OpenRetentionSite(callee, -1);
         this.Handed(result, null, this.retentionCallables);
-        this.CloseSite(end);
+        this.Restore(end);
         if (declaring is not null)
         {
             this.Handed(declaring, null, this.retentionCallables);
