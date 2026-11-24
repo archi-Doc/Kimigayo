@@ -397,8 +397,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6 (R7-O2 A1): whether a local region's recorded bounds are complete, so that its candidate has an answer: its body is not
-    // being bound, that is the forming body is neither its body nor evaluated in it (a Closure's body, bound at its literal: the
-    // EvaluatingBody chain) nor declared in it (a nested function's), or its body is a Closure whose binding has ended
+    // being bound, that is the forming body is neither its body nor evaluated or declared in it (a Closure's body, bound at its literal, or
+    // a named nested function's: the EvaluatingBody chain, R7-O3 O3-A), or its body is a Closure whose binding has ended
     // (BoundClosure.Classified; its publication's fit re-enters it), or it is a call's region that its call completed (R1-a:
     // CallRegionComplete, Binding.OpenOrigins). The one gate of a candidate's Binding-time reading: RegionValue, ValueIn's deferral fact,
     // SolvedStatic and the erasure's Final class (RegionLeaf) read it.
@@ -418,7 +418,7 @@ public sealed partial class Binding
             }
         }
 
-        return !(this.formingBody.Definition?.Declaration is { } forming && owner is not null && IsWithin(forming, owner));
+        return true;
     }
 
     // SPEC 15.3.6's table for a local region's candidate (R7-O2 A1; RegionValue): a `var` region's candidate by its row over its recorded
