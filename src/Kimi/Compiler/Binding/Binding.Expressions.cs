@@ -255,8 +255,9 @@ public sealed partial class Binding
         }
 
         // PROTOTYPE (E3e Rev 2; SPEC 23.1.2): a decision that read a written Type whose occurrence's judgment fails rests on it where it
-        // is made, so its readers, bound after it, rest by their own binding.
-        if (type is not null && node.BindingFailure == BindingFailure.None && this.FailedWrittenType(node) is { } failedType)
+        // is made, so its readers, bound after it, rest by their own binding; a decision deferred without a Type too (ruling 18 P1: a
+        // reference awaiting its call is completed outside BindNode, PrepareArgument).
+        if (node.BindingFailure == BindingFailure.None && this.FailedWrittenType(node) is { } failedType)
         {
             type = this.CompleteDependent(node, failedType);
         }
