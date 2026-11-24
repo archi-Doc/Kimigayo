@@ -17,6 +17,11 @@ public class ReferenceBindingAssignmentTest
     [InlineData("var values: Array<i32> = [1]\nfor var v in values@uniq\n    v += 1", DiagnosticCode.ExclusiveBindingAssignment_Kd)]
     [InlineData("struct Num\n    Self is Addable<Num>\n    associate Addable<Num>.Output is Num\n    public init() => ()\n    public func added(self: ref/Self, right: ref/Num) -> Num => Num.init()\nvar items: Array<Num> = [Num.init()]\nfor v in items\n    v += Num.init()", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("var count: i32 = 1\nmatch count@uniq\n    var n => n = 5", DiagnosticCode.ExclusiveBindingAssignment_Kd)]
+
+    // R7-E4 ruling 8: a typed value of the referent Type names the mode of a non-reassignable binding too, though an owner value fits
+    // `ref/i32` by the temporary borrow (SPEC 10.2, 12.3.1), which only a reassignable binding could be rebound to.
+    [InlineData("func f(items: ref/Array<i32>, n: i32) -> ()\n    for item in items\n        item = n\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
+    [InlineData("func f(o: ref/Option<i32>, n: i32) -> ()\n    match o\n        .Some(let v) => v = n\n        .None => ()\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     public void ValueAssignmentsNameTheBindingMode(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

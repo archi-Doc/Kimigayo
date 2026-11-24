@@ -32,6 +32,10 @@ public sealed class TransferJudgmentTest
     [InlineData("func p<s/T>(q: uniq/(s/T during h) during k)\n    s is ref or uniq\n    let through = q@follow\n", "")]
     [InlineData("func k<s/T>(a: s/T, b: s/T = a) -> ()\n    s is owner or ref\npublic func main() => ()\n", "DefaultArgumentMove_Kd a | Found under the Semantics case s = owner (SPEC 8.15)")]
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x")]
+
+    // R7-E4 E4a-2 (the design review's C3, PLAN G421 (i)): a value call's arguments are acquired each at its own parameter, so each bare
+    // Non-Copy argument is its own record (SPEC 15.1.5, 23.1.2).
+    [InlineData("struct R\n    public init() => ()\nfunc k(f: (R, R) -> ()) -> ()\n    var a = R.init()\n    var b = R.init()\n    f(a, b)\npublic func main() => ()\n", "TransferRequired_Kd a repair; TransferRequired_Kd b repair")]
     public void ABareMoveIsBindingsRecord(string source, string expected) => Assert.Equal(expected, Records(source));
 
     // SPEC 4.7.2, 13.5.5 (PLAN G384, resolved by the H5 merge): an index expression denotes an element Place without copying it, and
