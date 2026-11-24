@@ -548,7 +548,8 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   (a local's none: its clauses assume nothing, SPEC 15.3.3),
 //   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
 //   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
-//   before completion (RestPendingOn).
+//   before completion (RestPendingOn). A named nested function's failed clause is bound once more in its declaring body
+//   (BindFailedClausesInBody): one that binds there joins `Relations` from then on, substituting nothing, and leaves `Failure`.
 // - Before completion ends: begun, `Set` answers and `Relations` is empty; during completion `Relations` holds the clauses bound so far.
 // - Invariants: a state member is private; every read outside the formation's files is one of the read members, so the readers of a
 //   declaration are their callers; Reset returns every answer to the unbegun declaration's (not `Resolves`, not `Completed`, empty).
@@ -569,6 +570,9 @@ public sealed partial class Binding
         // 0: not begun. 1: begun, its pending slots collected. 2: its pending slots completing. 3: completed.
         private int state;
         private Koto? failure;
+
+        // Whether its failed clauses were bound once more in a body (BindFailedClausesInBody), which happens at most once a pass.
+        private bool boundInBody;
 
         // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
         // failed before completion. Written for every owner and read only for a declaration's rows (UnboundCause): a local's pending
@@ -629,6 +633,7 @@ public sealed partial class Binding
         {
             this.state = 0;
             this.failure = null;
+            this.boundInBody = false;
             this.pendingFailure = null;
             this.failedClauses?.Clear();
             this.scope = null;
@@ -649,6 +654,8 @@ public sealed partial class Binding
             internal ref int State => ref declaration.state;
 
             internal ref Koto? Failure => ref declaration.failure;
+
+            internal ref bool BoundInBody => ref declaration.boundInBody;
 
             internal ref Koto? PendingFailure => ref declaration.pendingFailure;
 

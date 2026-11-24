@@ -410,7 +410,8 @@ public sealed partial class Binding
     // selects an atom of a body local's set or annotation which no body reads: a projection of an annotated local or of a set, or a
     // plain name bound before the local's declaration formed its region (a declaration bound ahead of the local). The name is a located
     // Unsupported_Kd and resolves to nothing a judge could read; a name that selects no Origin keeps its own failure. A Closure's header is
-    // bound in its evaluating body and keeps EnclosingAtom's rule.
+    // bound in its evaluating body and keeps EnclosingAtom's rule; a named nested function's clause binds once more in its declaring body
+    // (BindFailedClausesInBody), where a local that has formed its region is no longer this limit.
     private bool UnlinkedLocalType(Koto use, BoundType? type)
     {
         if (this.formingBody.IsBody || use is not (IdentifierNameKoto or MemberAccessKoto) || OriginOwner(use) is FieldKoto)

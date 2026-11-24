@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 // - Responsibility: BindHeader, the owner of Binding.DeclQuery's Signature kind, binds a function's, property's or annotated variable's
 //   header when first demanded (BindDeclarations' header loop forces the rest), once per pass, except while a pending associated Type
 //   keeps a function's header open: BindFunctionHeader then leaves it unbound (AbandonQuery), and a later BindHeader binds it again. A
-//   demand while the header is being bound returns, and an anonymous function's header belongs to its expression context.
+//   demand while the header is being bound returns, and an anonymous function's header belongs to its expression context. A bound
+//   named nested function's first demand in a body binds the clauses its header could not bind once more (BindFailedClausesInBody).
 //   FnSig is the one read of a callable's declared signature (SPEC 9.1: generic count and ordered parameter Types, the receiver
 //   included; with its result, Origin count and binder): a view over what the header published, read by every signature comparison,
 //   the 7.3 receiver shape and the 7.4 checker's correspondence (Binding.ParameterShapes) included; the generic slots' kinds are the
@@ -148,6 +149,9 @@ public sealed partial class Binding
         {
             case DeclState.Running:
                 this.ReenterHeader(symbol);
+                return;
+            case DeclState.Done:
+                this.BindFailedClausesInBody(symbol); // A named nested function's first demand in a body (PLAN G230 (A), G1369).
                 return;
             case not DeclState.NotStarted:
                 return;

@@ -89,14 +89,14 @@ public sealed partial class Binding
     private BoundType? BindFunction(FunctionKoto function, BindingScope scope)
     {
         var symbol = this.symbols.GetValueOrDefault(function);
+        if (symbol is not null)
+        {
+            this.BindHeader(symbol); // Demanded in the declaring body: its failed clauses bind once more (BindFailedClausesInBody).
+        }
+
         var saved = this.EnterBody(default);
         try
         {
-            if (symbol is not null)
-            {
-                this.BindHeader(symbol);
-            }
-
             // The indexing pass only had the nominal shell. A constructor/destructor body sees the complete Self,
             // including its Type parameters and Origins, just as an explicit receiver does.
             if (this.SpecialReceiver(function) is { } receiver && symbol?.Scope.Owner.BoundSymbol is { Schema: not null } owner)

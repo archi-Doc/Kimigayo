@@ -63,6 +63,25 @@ public sealed partial class Binding
         return null;
     }
 
+    // The variance of an Origin a local's Type omits and its initializer supplies, itself or a meet's operand, or null for any other end.
+    private static OriginVariance? InferredEnd(OriginDeclaration local, BoundOrigin end)
+    {
+        if (local.InferredVariance(end) is { } position)
+        {
+            return position;
+        }
+
+        for (var i = 0; i < end.Operands.Count; i++)
+        {
+            if (local.InferredVariance(end.Operands[i]) is { } operand)
+            {
+                return operand;
+            }
+        }
+
+        return null;
+    }
+
     // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
     // their owner's part: a local's (a FieldKoto, the parser's local declaration) by the local part, JudgeLocalClause, and any other
     // owner's, a Field's, Case's, alias's or associated formation's, by the declaration part, JudgeDeclaredRelation: a declaration's
@@ -305,28 +324,9 @@ public sealed partial class Binding
     private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
     {
         var use = relation.Syntax;
-        var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
+        var supplied = InferredEnd(local, relation.Longer) is not null || InferredEnd(local, relation.Shorter) is not null;
         var site = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
         var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Site: site);
         this.AddObligation(row with { Equality = relation.Equality, Clause = use });
-
-        // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
-        OriginVariance? InferredEnd(BoundOrigin end)
-        {
-            if (local.InferredVariance(end) is { } position)
-            {
-                return position;
-            }
-
-            for (var i = 0; i < end.Operands.Count; i++)
-            {
-                if (local.InferredVariance(end.Operands[i]) is { } operand)
-                {
-                    return operand;
-                }
-            }
-
-            return null;
-        }
     }
 }

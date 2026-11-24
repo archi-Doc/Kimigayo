@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 //   one writer (RestPendingOn: path a here, path c at the Type, alias target and Case payload sites) and its reader (UnboundCause); an
 //   end that rests on a failed part (Rests; a `let` region through its published value) and rule W's one per-conjunct split
 //   (HoldsResting; DECISIONS Q13, PLAN G739). A fixed-fixed relation only a failed clause's repair could prove is a body row A5 judges
-//   (R7-O1 H; BU-159's counted dependent until H11b-0 U3).
+//   (R7-O1 H; BU-159's counted dependent until H11b-0 U3). A named nested function's clause that failed because its header bound before
+//   the declaring body formed a local it names is bound once more in that body (BindFailedClausesInBody; PLAN G230 (A), G1369).
 // - Inputs: the declaration CompleteOriginDeclaration completes and its clauses' bound operands; the part that failed before completion
 //   (path c); a pending slot's atom; an Unbound atom.
 // - Outputs: the clause's InvalidOrigin failure or its dependence on the unavailable operand; the named slots left Unbound; the part an
@@ -19,7 +20,8 @@ namespace Kimi.Compiler;
 //   the declaration completes as one without the failed clause.
 // - Invariants: `Failure` and `PendingFailure` hold the first failed clause or part, and these and `FailedClauses` are reset each pass;
 //   RestPendingOn changes no State, so a later bind in State 1 keeps the same pending atom; a failed clause supplies no equality,
-//   outlives edge, elision evidence, obligation or premise.
+//   outlives edge, elision evidence, obligation or premise; a clause bound in the declaring body is bound there once a pass, before any
+//   reader in that body reads the declaration, and never where a slot rests on a failed clause.
 // - Prohibitions: no proof or judgment of its own; no write to the owner's state or slot; no failure lookup per binder (R4-M118,
 //   BU-36: a part's failure is written at its failure site); no message text.
 public sealed partial class Binding
@@ -121,6 +123,69 @@ public sealed partial class Binding
 
         declaration.Forming.Failure ??= clause;
         RestPendingOn(declaration, clause);
+    }
+
+    // SPEC 15.3.3, 15.3.4 (PLAN G230 (A), G1369; DECISIONS R4-M101 E3): a named nested function's header binds before its declaring body
+    // forms the locals its clauses may name, so such a clause fails there (BU-56's located limit at a local's set slot, InvalidOrigin at a
+    // local the body has not typed). The first demand of the header in a body (BindHeader: BindFunction's, a call's or a function item's)
+    // binds each failed clause once more, as the header's (outside any body, so a name of a local that has not formed its region keeps
+    // the limit): one that binds is one of the declaration's relations from then on, a premise of its body and an obligation of each
+    // call, and its operands rest no more, as a parameter's do when BindFunction binds it again; one that does not keeps its failure.
+    // Once a pass, so no reader in the body reads the declaration without a relation a later binding would add. A declaration with a slot
+    // resting on a failed clause keeps its failed clauses: that slot completed without them.
+    private void BindFailedClausesInBody(BindingSymbol symbol)
+    {
+        if (!this.formingBody.IsBody || !symbol.DeclaringBody.IsBody || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration))
+        {
+            return;
+        }
+
+        var forming = declaration.Forming;
+        if (forming.Failure is null || forming.BoundInBody)
+        {
+            return;
+        }
+
+        forming.BoundInBody = true;
+        foreach (var pending in forming.Pending)
+        {
+            if (this.ResolveOrigin(pending.Origin, declaration).Kind == OriginKind.Unbound)
+            {
+                return;
+            }
+        }
+
+        var saved = this.EnterBody(default);
+        try
+        {
+            forming.Failure = null;
+            var clauses = OriginClauses.Get(declaration.Owner);
+            for (var i = 0; i < clauses.Count; i++)
+            {
+                var clause = clauses[i];
+                if (this.RecordedState(clause) == BindingState.Resolved)
+                {
+                    continue;
+                }
+
+                var a = IsRecovery(clause, out _) ? null : this.BindOrigin(clause.Left, forming.Scope!);
+                var b = a is null ? null : this.BindOrigin(clause.Right, forming.Scope!);
+                if (a is null || b is null)
+                {
+                    forming.Failure ??= clause;
+                    continue;
+                }
+
+                forming.Relations.Add(new(this.ResolveOrigin(a, declaration), this.ResolveOrigin(b, declaration), clause.IsEquality, clause));
+                clause.BindingState = BindingState.Resolved;
+            }
+        }
+        finally
+        {
+            this.formingBody = saved;
+        }
+
+        this.originStateVersion++;
     }
 
     // Whether a pending slot's atom rests on a failed clause: a bound Origin of the clause names it, through the declaration's

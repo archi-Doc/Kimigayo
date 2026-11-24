@@ -21,6 +21,12 @@ public partial class LocalOriginClauseTest
 {
     private const string Main = "public func main() => ()\n";
 
+    // PLAN G1369's rows: a Type with one slot its Field reads, and a Container alias whose clause equates its set's slot with `static`.
+    private const string CursorType = "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n";
+
+    private const string AliasOuter = "struct Outer<T> {source}\n    public group Helpers\n        public func keep(value: ref/i32 during source) -> ref/i32 during source => value\n" +
+        "alias H => (Outer<i32>.Helpers{h})\n    origin h.source == static\n";
+
     private const string Holder = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\n";
 
     // Exclusive storage of a borrow makes `s` invariant; `t` is the outer, covariant slot.
@@ -199,6 +205,26 @@ public partial class LocalOriginClauseTest
             (error.Code, error.Category, Text(source, error.Span), error.Label));
         Assert.Equal(["relation=outlives", "longer=local@ref", "shorter=a", "source=declared"], error.Reason!.Select(static x => $"{x.Name}={x.Value}"));
         Assert.Equal([("borrow", "local@ref"), ("origin", "local@ref"), ("relation", "origin x.s outlives a")], error.Related!.Select(x => (x.Role, Text(source, x.Span))));
+    }
+
+    // SPEC 15.3.6 ("Unless fixed by equality"), DECISIONS R8-M56 (PLAN G1369): a `let` local's clause equating its slot with another
+    // Origin fixes the value the slot's region publishes; the initializer's candidate fits it there, one record at the initializer, and
+    // the body reads the fixed value (t4_body_bad: the returned c.item reads p, no second record). A Container alias's clause equating
+    // its set's slot fixes that slot of the alias's Type (SPEC 15.3.3's alias row), read so at each use (alias_eq, alias_eq_ok).
+    [Theory]
+    [InlineData(CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n    return c.item\n" + Main, null)] // t4_body
+    [InlineData(CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(q)\n        origin k.at == p\n    return c.item\n" + Main, "Cursor.init(q)")] // t4_body_bad
+    [InlineData(AliasOuter + "func f(p: ref/i32 during static) -> ref/i32 during static => H.keep(p)\n" + Main, null)] // alias_eq_ok
+    [InlineData(AliasOuter + "func f(p: ref/i32) -> ref/i32 during static => H.keep(p)\n" + Main, "p)")] // alias_eq
+    public void AnEqualityFixesTheSlotItsDeclarationPublishes(string source, string? at)
+    {
+        var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.Equal(at is null ? 0 : 1, errors.Length);
+        if (at is not null)
+        {
+            Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), errors[0].Code);
+            Assert.StartsWith(at, source[errors[0].Span.Start..], StringComparison.Ordinal);
+        }
     }
 
     // SPEC 7.7.1, 15.3.3: a local clause in an anonymous function, over its own inputs' Origins or over an enclosing function's captured
