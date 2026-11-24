@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -350,17 +351,31 @@ public sealed partial class Binding
     // nothing, so one scratch map serves every check (a warm bind allocates none).
     private bool MayUnify(BoundType left, BoundType right, FunctionKoto? leftBinder = null, FunctionKoto? rightBinder = null, bool shared = false)
     {
+        Debug.Assert(leftBinder is null || !ReferenceEquals(leftBinder, rightBinder), "MayUnify's two binders differ when both are set: a side names one function.");
         this.collisionSubstitutions.Clear();
         this.collisionLeft = leftBinder;
         this.collisionRight = rightBinder;
         this.collisionShared = shared;
         this.shapeSharedSlots.Clear();
-        return this.UnifyTypes(new(left, leftBinder), new(right, rightBinder));
+        return this.UnifyTypes(new(left, leftBinder is null ? CollisionSide.None : CollisionSide.Left), new(right, rightBinder is null ? CollisionSide.None : CollisionSide.Right));
     }
 
     // A candidate identity qualifies only its inferred variables; fixed enclosing variables keep
     // one identity. No synthetic Type tree or declaration is needed for candidate independence.
-    private readonly record struct CollisionTerm(BoundType Type, FunctionKoto? Binder);
+    private readonly record struct CollisionTerm(BoundType Type, CollisionSide Side);
+
+    // A term's candidate by its side of the unification (R7-N5 B8; DECISIONS BU-220): the two functions are MayUnify's (CollisionBinder),
+    // distinct whenever both are set (an overload pair's), so a side names exactly the function whose inferred variables the term's are;
+    // None: no candidate (no binder, or a variable not the binder's own).
+    private enum CollisionSide : byte
+    {
+        None,
+        Left,
+        Right,
+    }
+
+    private FunctionKoto? CollisionBinder(CollisionSide side)
+        => side == CollisionSide.Left ? this.collisionLeft : side == CollisionSide.Right ? this.collisionRight : null;
 
     private CollisionTerm NormalizeCollisionTerm(CollisionTerm term)
     {
@@ -369,10 +384,10 @@ public sealed partial class Binding
             return term;
         }
 
-        if (term.Binder is not { } binder || term.Type.Symbol is not { } symbol ||
+        if (this.CollisionBinder(term.Side) is not { } binder || term.Type.Symbol is not { } symbol ||
             !ReferenceEquals(symbol.Scope.Owner, CallSlotOwner(binder)) || symbol.Slot >= CallOwnSlots(binder).Count)
         {
-            return new(term.Type, null);
+            return new(term.Type, CollisionSide.None);
         }
 
         if (this.collisionShared && this.collisionLeft is { } left && this.collisionRight is { } right && PermittedSlotSharing(left, right))
@@ -382,7 +397,7 @@ public sealed partial class Binding
                 this.shapeSharedSlots.Add(symbol.Slot);
             }
 
-            return new(CallOwnSlots(left)[symbol.Slot].BoundSymbol!.WholeType!, left);
+            return new(CallOwnSlots(left)[symbol.Slot].BoundSymbol!.WholeType!, CollisionSide.Left);
         }
 
         return term;
@@ -409,7 +424,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < value.Type.Components.Count; i++)
         {
-            if (this.ContainsVariable(new(value.Type.Components[i], value.Binder), variable))
+            if (this.ContainsVariable(new(value.Type.Components[i], value.Side), variable))
             {
                 return true;
             }
@@ -428,7 +443,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < value.Type.Components.Count; i++)
         {
-            if (!this.IsFreeTerm(new(value.Type.Components[i], value.Binder)))
+            if (!this.IsFreeTerm(new(value.Type.Components[i], value.Side)))
             {
                 return false;
             }
@@ -484,7 +499,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < a.Components.Count; i++)
         {
-            if (!this.UnifyTypes(new(a.Components[i], left.Binder), new(b.Components[i], right.Binder)))
+            if (!this.UnifyTypes(new(a.Components[i], left.Side), new(b.Components[i], right.Side)))
             {
                 return false;
             }

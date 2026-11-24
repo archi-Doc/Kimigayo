@@ -21,10 +21,13 @@ internal sealed partial class MirBuilder
     // any of it is written: each Type Inline folds (a local's other than the result's and the parameters', a constant's, an rvalue's), each
     // Length constant's term (TyCtxt.InstanceLength) and each callee's substitution, in the call's instance as the written call forms it
     // (the collector's formation, R7-M54: TyCtxt.Apply's Type, TyCtxt.Compose's Subst, whatever the instance's storage verdict, Rejected or
-    // past Binding's storage bound), each kept for Inline, which folds by them. A formation is TyCtxt.Answered's (PLAN G651 U2b R1, K1):
-    // after Binding's run a Type past IMPL A.4's height is the formation's HeightLimit, which the innermost site records (AnswerSite) and
-    // Defaults rests on; Incomplete is BU-36's contract substitution that does not complete (no reproducer; the collector reads it as a
-    // broken contract, R5-M151): Defaults' located Unsupported_Kd until G651 U2c (the Back's), which removes that arm with the row.
+    // past Binding's storage bound), each kept for Inline, which folds by them. A Type's and a callee substitution's formation is
+    // TyCtxt.Answered's (PLAN G651 U2b R1, K1): after Binding's run a Type past IMPL A.4's height is the formation's HeightLimit, which the
+    // innermost site records (AnswerSite) and Defaults rests on; a Length constant's term is a bare TyCtxt.InstanceLength read, whose null
+    // is the copy's Incomplete. The first failing read gives the cause, in this order: locals, each constant's Type then its term,
+    // rvalues, callee substitutions; locals come before constants since the terms' dominance (TyCtxt.InterpolationHint) needs the write's
+    // borrow formed before its term (PLAN G651 U2c). Incomplete is BU-36's contract substitution or a length that does not complete (no
+    // reproducer), which Defaults reads as the collector does (R5-M151).
     private TyCtxt.Formation Instantiates(MirBody template, Subst subst)
     {
         this.instances.Clear();
