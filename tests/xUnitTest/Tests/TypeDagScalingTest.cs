@@ -226,6 +226,43 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 6.2.2, 9.6 (DECISIONS BU-220, R7-N5 B7c): member paths are interned by their content, so the lookups of N instantiations of a
+    // generic derived struct (one clause reached with N Types) and of M sealed leaves of one middle layer (Mid's clause reached under M
+    // parents) intern one path per distinct key, walk linear layers, and a warm Bind allocates none (a scanned row per clause was quadratic
+    // in both: C-518, 131,328 steps at N = 512 and 1,055,744 at M = 1,024).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MemberPathsAreLinearInTheirUses(bool fanIn)
+    {
+        var sizes = new[] { 128, 256, 512 };
+        var work = sizes.Select(Work).ToArray();
+        var text = string.Join(' ', work);
+        Assert.Equal(sizes.Select(x => fanIn ? (2 * x) + 1 : x), work.Select(static x => x.Paths));
+        Assert.True(work[2].Walks - work[1].Walks <= (2 * (work[1].Walks - work[0].Walks)) + 400, text);
+        Assert.All(work, static x => Assert.Equal(0, x.Allocated));
+
+        (int Paths, int Walks, long Allocated) Work(int n)
+        {
+            var source = new System.Text.StringBuilder(fanIn
+                ? "open struct Base\n    public var item: i32\n    public func get(self: ref/Self) -> i32 => self.item\nopen struct Mid: Base\n    public var other: i32\n"
+                : "open struct Base<T>\n    public var item: i32\n    public func get(self: ref/Self) -> i32 => self.item\nstruct Leaf<T>: Base<T>\n    public var other: i32\n");
+            for (var i = 0; i < n; i++)
+            {
+                source.Append(fanIn
+                    ? $"struct D{i}: Mid\n    public func read(self: ref/Self) -> i32 => self.item + self.get()\n"
+                    : $"struct Tag{i}\n    public var v: i32\nfunc use{i}(x: ref/Leaf<Tag{i}>) -> i32 => x.get()\n");
+            }
+
+            var c = CompilationTestHelper.ParseSuccess(source.ToString());
+            Assert.True(c.Bind().IsComplete);
+            var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
+            Assert.True(c.Binding.Result.IsComplete);
+            return (c.Binding.MemberPathCount, c.Binding.MemberWalkWork, allocated);
+        }
+    }
+
     // SPEC 9.6 (R7-N1 c-b, Q20 B1): a member access's left reading evaluates the left's Type walk once per access (a failed walk beside
     // the value reading is published, so inner accesses read it) and its value walk only where the Type reading may succeed, so binding
     // a qualified chain is linear in its length: N nested groups to a function (`G1...GN.f()`), and N groups, a static value and N Field
