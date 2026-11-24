@@ -533,40 +533,42 @@ public class ClosureEnvironmentOriginTest
         Assert.Empty(ContextualCaptureTest.PublishedRecords(function + "public func main() => ()\n"));
     }
 
-    // SPEC 15.3.4 (PLAN G230; DECISIONS BU-56, an interim until G230's (A)): a named nested or root function's signature or clause that
-    // names an enclosing body local's set or annotated value and selects a body local's atom is, valid or not, a located Unsupported_Kd
-    // at each such written Origin, and nothing rests on it. dev bound the name to an atom of the local's annotation that
-    // no body links to the local's region and accepted the store (d6 ran `leak 41`, d6c failed LLVM generation; the root form, a
-    // document-local named by a top-level function, ran `leak 41` under MIR code generation); d6v and d6r are the valid twins.
+    // SPEC 15.3.4, 15.6.5 (PLAN G230 (A), R7-O3 O3-A; BU-56's interim removed, Q13): a named nested function's signature that names an
+    // enclosing body local's set or annotated value names that local's region, a fixed Origin of the nested function with no premise. d6
+    // (put stores its own input into `x.s`), the `w.s` and `r` forms: the relation's record at `v` in put; d6c (`v` during `x.s`): the
+    // call's store of the block's `inner` is the leak's Loan record; d6v and the reading `first` are valid. The root form (a top-level
+    // function naming a top-level statement's local, no nested function: F's O3-16 (1)) keeps the located limit at `v`, beside the leak's
+    // own Loan record (SPEC 23.1.2). dev accepted d6 and the root form (`leak 41`).
     [Theory]
-    [InlineData(NestedHead + PutStore + NestedStore, "x.s>")]
-    [InlineData(NestedHead + PutBoth + NestedStore, "x.s>", "x.s)")]
-    [InlineData(NestedHead + PutBoth + NestedValid, "x.s>", "x.s)")]
+    [InlineData(NestedHead + PutStore + NestedStore, "UnprovenOriginRelation_Kd v)")]
+    [InlineData(NestedHead + PutBoth + NestedStore, "ComparisonLoanConflict_Kd let inner")]
+    [InlineData(NestedHead + PutBoth + NestedValid)]
     [InlineData(
         WStruct + Leak + "    var w: W = W.init(items: arr@move)\n    func put(slot: uniq/Array<ref/i32 during w.s>, v: ref/i32) => slot@follow.append(v)\n" +
             NestedStore,
-        "w.s>")]
+        "UnprovenOriginRelation_Kd v)")]
     [InlineData(
         Leak + "    let r: ref/i32 = arr[0]\n    func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\n" + OtherStore,
-        "r>")]
+        "UnprovenOriginRelation_Kd v)")]
     [InlineData(
         NestedHead + "    func first(slot: ref/Array<ref/i32 during x.s>) -> i32 => slot[0]@follow\n    let got = first(w.items@ref)\n" +
-            "    let items = w.items@move\n    return got + items[0]@follow\npublic func main() => ()\n",
-        "x.s>")]
+            "    let items = w.items@move\n    return got + items[0]@follow\npublic func main() => ()\n")]
     [InlineData(
         "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r: ref/i32 = arr[0]\n" +
             "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\nif true\n    let inner: i32 = 41\n" +
             "    put(arr@uniq, inner@ref)\nlet old: i32 = arr[1]@follow\nConsole.writeLine(\"leak \\(old)\")\n",
-        "r>")]
-    public void ANestedSignatureNamingABodyLocalIsUnsupported(string source, params string[] at)
+        "Unsupported_Kd v)",
+        "ComparisonLoanConflict_Kd let inner")]
+    public void ANestedSignatureNamingABodyLocalNamesItsRegion(string source, params string[] records)
     {
         var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
             .OrderBy(static x => x.Span.Start).ToArray();
-        Assert.Equal(at.Length, errors.Length);
-        for (var i = 0; i < at.Length; i++)
+        Assert.Equal(records.Length, errors.Length);
+        for (var i = 0; i < records.Length; i++)
         {
-            Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), errors[i].Code);
-            Assert.StartsWith(at[i], source[errors[i].Span.Start..], StringComparison.Ordinal);
+            var (code, at) = (records[i][..records[i].IndexOf(' ')], records[i][(records[i].IndexOf(' ') + 1)..]);
+            Assert.Equal(code, errors[i].Code);
+            Assert.StartsWith(at, source[errors[i].Span.Start..], StringComparison.Ordinal);
         }
     }
 
@@ -626,8 +628,8 @@ public class ClosureEnvironmentOriginTest
     [InlineData(
         WStruct + "func leak(a: ref/W) -> i32\n    let r: ref/W during a = a\n" +
             "    func keep(slot: uniq/Array<ref/i32 during r.s>, v: ref/i32) => slot@follow.append(v)\n    return 0\npublic func main() => ()\n",
-        nameof(DiagnosticCode.Unsupported_Kd),
-        "r.s>")]
+        Unproven,
+        "v)")] // R7-O3 O3-A (Q13: BU-56's located limit at r.s): r.s is r's region slot, fixed in keep with no premise for v (SPEC 15.3.4).
     [InlineData(NestedHead + "    func get(v: ref/i32 during w) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "w)")]
     [InlineData(NestedHead + "    func get(v: ref/i32 during w.zz) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "zz)")]
     [InlineData(NestedHead + "    func get(v: ref/i32 during x.zz) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "zz)")]

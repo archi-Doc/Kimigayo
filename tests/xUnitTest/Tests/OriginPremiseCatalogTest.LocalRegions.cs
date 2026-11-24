@@ -11,15 +11,16 @@ public partial class OriginPremiseCatalogTest
 {
     // The class 1 family (invalid rows accepted before (ii)), their annotated and `var` twins, and the forms beside them; pl1, a chain of
     // `let` locals named in a Closure's signature with no comparison, has its `var` twin's record (review-ii-r4 N2). a1p and a1s3
-    // take their `var` twin's records: the omitted slot's located limit at the nested signature (a1pv, a1s3v; design-ii §6 Exposure).
+    // take their `var` twin's records (a1pv, a1s3v): a named nested function's signature names the local's region, fixed there with no
+    // premise through its declaring body (SPEC 15.3.4; R7-O3 O3-A removed BU-56's located limit at the nested signature).
     public static TheoryData<string, string, string> NestedSignatureRows => new()
     {
         { "a1", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r = p\n    func inner(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", "UnprovenOriginRelation_Kd@4:16" },
         { "a1b", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r: ref/i64 during p = p\n    func inner(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", string.Empty },
         { "a1n", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r = p\n    func inner(w: ref/(ref/i64 during q) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", "UnprovenOriginRelation_Kd@4:16" },
         { "a1q", "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    let r = p\n    func inner(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", string.Empty },
-        { "a1p", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r: ref/i64 = p\n    func inner(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", "Unsupported_Kd@3:39|UnprovenOriginRelation_Kd@4:16" },
-        { "a1pv", "func outer(p: ref/i64, q: ref/i64) -> i32\n    var r: ref/i64 = p\n    func inner(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", "Unsupported_Kd@3:39|UnprovenOriginRelation_Kd@4:16" },
+        { "a1p", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r: ref/i64 = p\n    func inner(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", "UnprovenOriginRelation_Kd@4:16" }, // R7-O3 O3-A (Q13): BU-56's located limit at the nested signature is gone; the relation's own record stays.
+        { "a1pv", "func outer(p: ref/i64, q: ref/i64) -> i32\n    var r: ref/i64 = p\n    func inner(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", "UnprovenOriginRelation_Kd@4:16" }, // R7-O3 O3-A (Q13): BU-56's located limit at the nested signature is gone; the relation's own record stays.
         { "a3", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r = p\n    let f = func(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q => v\n    return 0\n", "UnprovenOriginRelation_Kd@3:98" },
         { "a3b", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r: ref/i64 during p = p\n    let f = func(w: ref/(ref/i64 during r) during q, v: ref/i64 during p) -> ref/i64 during q => v\n    return 0\n", string.Empty },
         { "a5a", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let r = p\n    let f = func(v: ref/i64 during p) -> ref/i64 during r => v\n    return 0\n", "UnprovenOriginRelation_Kd@3:62" },
