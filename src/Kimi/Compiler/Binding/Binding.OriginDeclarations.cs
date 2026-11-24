@@ -551,10 +551,18 @@ public sealed partial class Binding
         this.originStateVersion++;
     }
 
-    // Equalities are substitutions before result defaulting. Revisit equations after
-    // each substitution so chains are independent of clause order.
+    // A contract's equalities are substitutions before result defaulting. Revisit equations after
+    // each substitution so chains are independent of clause order. A local's clause is a check that assumes nothing (SPEC 15.3.3): it
+    // substitutes nothing, so its set's slots complete as without it (the local's regions, InferLocalOrigins), a nested signature or body
+    // naming one reads the region, fixed there with no premise (SPEC 15.3.4, 15.6.1, 15.6.5), and the clause is judged against the
+    // initializer (ValidateOriginRelations).
     private void SubstituteOriginEqualities(OriginDeclaration declaration)
     {
+        if (declaration.IsLocal)
+        {
+            return;
+        }
+
         for (var pass = 0; pass <= declaration.Forming.Relations.Count; pass++)
         {
             var changed = false;
