@@ -6,7 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<ShapePair, ShapeJudgment> shapeJudgments = new();
+    // SPEC 7.4 (R7-N5 B7; DECISIONS BU-220): the pass's judged pairs, keyed by the pair's SourceRefs (a library function's too: a program
+    // pass judges library pairs at a gathered use), emptied at each pass's start (ResetParameterShapes). A pair is judged once per pass
+    // whatever reaches it again (another correspondence ground, a refining Contract, each use of a gathered group), which also keeps one
+    // shape contract per pair in the later function's list.
+    private readonly Dictionary<(SourceRef Left, int LeftIndex, SourceRef Right, int RightIndex), ShapeJudgment> shapeJudgments = new();
     private readonly ShapeContractHeadRows shapeContractHeads;
     private readonly List<ShapeContract> shapeContracts = [];
     private readonly List<int> shapeDependencies = [];
@@ -14,6 +18,10 @@ public sealed partial class Binding
     private FunctionKoto? collisionLeft;
     private FunctionKoto? collisionRight;
     private bool collisionShared;
+    private long shapeJudgmentRuns;
+
+    /// <summary>Gets the parameter-shape judgments run so far, one per pair and pass, read by the scaling tests.</summary>
+    internal long ShapeJudgmentWork => this.shapeJudgmentRuns;
 
     private readonly record struct ShapePair(FunctionKoto Left, int LeftIndex, FunctionKoto Right, int RightIndex);
 
@@ -28,11 +36,13 @@ public sealed partial class Binding
 
     private ShapeJudgment JudgeParameterShapes(ShapePair pair, BoundType left, BoundType right)
     {
-        if (this.shapeJudgments.TryGetValue(pair, out var known))
+        var key = (SourceRef.Of(pair.Left), pair.LeftIndex, SourceRef.Of(pair.Right), pair.RightIndex);
+        if (this.shapeJudgments.TryGetValue(key, out var known))
         {
             return known;
         }
 
+        this.shapeJudgmentRuns++;
         var sameGenerics = SameExplicitArgumentShape(pair.Left, pair.Right);
         var a = this.ShapeOf(left, pair.Left, sameGenerics);
         var b = this.ShapeOf(right, pair.Right, sameGenerics);
@@ -76,7 +86,7 @@ public sealed partial class Binding
             result = new(true, mode, other, shape, conservative);
         }
 
-        this.shapeJudgments.Add(pair, result);
+        this.shapeJudgments.Add(key, result);
         return result;
     }
 
