@@ -558,6 +558,27 @@ public sealed partial class MirBuildTest
         Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
     }
 
+    // PLAN G1184 (DECISIONS R7-M88; IMPL A.4, R7-T1): the one projection rule (MirBody.SelectsPart) gives a Field step of no Type only for
+    // a stored Field whose own slot failed; a part past IMPL A.4's height whose slot is typed is no part, so neither the builder's Stored
+    // nor a constructor's Move Paths (MirMoveData) take it as one: D<T>'s `v: W^250<T>` is no part of D<W^8000<i32>> (8,251) and a typed
+    // part of D<W^7800<i32>> (8,051) (fail-before: a struct arm admitting every part in range answers true past the height).
+    [Theory]
+    [InlineData(40, false)]
+    [InlineData(39, true)]
+    public void APartPastTheHeightIsNoPart(int lifts, bool stored)
+    {
+        var c = Compile($"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {W(250)}\nfunc lift<T>(p: raw/T) -> raw/{W(200)} => null\n" +
+            "func mk<T>(p: raw/T) -> raw/D<T> => null\npublic func main() -> ()\n    let p0: raw/i32 = null\n" +
+            string.Concat(Enumerable.Range(1, lifts).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    let d = mk(p{lifts})\n    return\n");
+        var main = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var type = main.Locals.ToArray().Single(static x => x.Name == "d").Type!.Components[0];
+        Assert.True(AdtDef.IsStruct(type));
+        Assert.Equal((stored, stored), (MirBody.SelectsPart(c.Types, type, MirProjectionKind.Field, 0, out var part), part is not null));
+        Assert.False(AdtDef.FieldSlotFailed(type, 0));
+
+        static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
     // PLAN G396 (3) Z1 (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR vocabulary, or of a fact a published Op
     // guarantees, that no published form takes is a broken contract, InternalInvariant_Kd at the node with an Opaque value in its place,
     // which the validator accepts. Each row publishes one node so by hand after the publish (fail-before: Unsupported_Kd at the same node):
