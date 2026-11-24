@@ -527,6 +527,21 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Views: F, M, B and T agreed (11-24 14:47-14:59), with the points above folded in.
   - Amends R7-M3's RP13 and the plan's RP17 consent (§3.3).
 
+- **Q24 The O2 kernel A/B before Ready, patch-ready docs requests and test-cli by changed paths** (2026-11-24, the owner in K's
+  dialog: rules (B) and (F) adopted at 20:4x from the Coordinator's efficiency proposals A-G, 「ABCDFGを採用します。」; test-cli at
+  22:3x, 「変更ファイルで自動判定」; [WORKFLOW](WORKFLOW.md) "Documents" and "Windows").
+  - Rule 1 (B): a unit that changes runtime code (the runtime `.ll` templates, the embedded library's runtime) or code generation
+    runs the O2 kernel A/B (`rp8_window_o2.ps1`, a timing slot) against the newest dev before its Ready line, and the line states
+    the result. A unit that changes neither needs none.
+  - Rule 2 (F): a docs request is patch-ready: per document the anchor (entry or row ID, and the sentence or position) and the
+    complete new text, quoting the old text where a sentence changes, so the Coordinator applies it without interpreting it.
+  - Rule 3: a window runs `test-cli` only when its diff against the base changes `src/Kimi/Unit`, `src/Kimi/SolutionAndProject`,
+    `src/Kimi/Testing`, `src/Kimi/Build`, `src/Kimi/Kimi.csproj`, `src/backend`, `src/Tatara` or `scripts`; otherwise the window
+    summary says SKIPPED, and a diff that fails runs it. The other CLI harnesses run in every window.
+  - Reason: W-353 failed because G1311's O2 placement effect was first seen in the window; docs drafts needed interpretation; and
+    `test-cli` (165 of the harnesses' 296 seconds) passed in all 41 window runs kept (W-316 to W-355), while 9 of the last 20
+    windows changed those paths.
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -7919,7 +7934,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Staged: audit finding 7 (A4's readers recorded once per Run, the design's stamp) waits for its RP8 measurement under PLAN G349.
   - Moves: none at publication (42 test expectations of internal NoBody view values).
 - **R4-M234 Z5-F: A5 publishes each read's and each borrow's exact lent position** (Middle, 2026-11-22; the owner's O-482 (a); Z5's A5
-  half after its second stop; R7 plan Z5, PLAN G212, G396 (3); Q-668, D-1104; read by R4-M235)
+  half after its second stop; R7 plan Z5, PLAN G212, G396 (3); Q-668, D-1104; read by R4-M235; amended by R4-M244: each step's Place, LentPlace)
   - Representation: a position, a root key and a run of A5's steps passing no borrow or raw Deref, is the storage a Place denotes where
     the body forms it exactly: a Place passing no such Deref is its own; past one, the lent position of the borrow whose reference the
     last one goes through (the lender: the reference root's one whole store, followed through whole Copies and Moves and a Tuple's or
@@ -7938,7 +7953,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M235 Z5-R1: a read through a dereference of a `during self` layer or an enclosing Place carries the owner's own-step entry at its
   exact lent position, with its parents whole** (Middle, 2026-11-22; the owner's O-482 (a); R7 plan Z5, PLAN G212, G396 (3); Q-668,
   D-1104; design `middle\notes\z5r1-design.md` Revision 2 with 2a, review 3 ACCEPT WITH CONDITIONS; narrows R4-M120's PQ-10 bullet;
-  reads R4-M234)
+  reads R4-M234; its outcomes over a position replaced by R4-M244)
   - A non-raw borrow of a layer's or enclosing Place issues its ordinary Loan and no mark. A5's own-step table keeps one row per Place
     a read uses, decided by one owner walk over one step run: the Place's exact lent position, else its own steps. An owner whose Place
     the position names gives its direct own-step entry; the read carries it with every Loan and address its parents carry (SPEC 15.6
@@ -8210,6 +8225,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Known limit kept:** a by-value Tuple's value does not say which element holds which address (one set per value), so an
     element's Place may also be read punned at another element's raw layer (as past a holder, `ReadPart`); no valid row moved by it
     (PLAN G1361: p3CrossU8Ok, a valid by-value Tuple form, rejected on dev before this unit as after it).
+- **R4-M244 G1276: a lent position keeps the body Place each step applies to; an owner step past a Deref is that Place's entry**
+  (2026-11-24; the Middle; G1276, Q-753, D-1250; Major, an acceptance mover, class 1; design `middle\notes\g1276-design.md` Revision
+  1a (E-a with N-0) and 1b, review g1276r ACCEPT WITH CONDITIONS; Revision 1c `middle\notes\g1276-rev1c.md` after the implementation
+  review g1276ir's B1, N1 and N2; amends R4-M234's representation and R4-M235's outcomes) SPEC 5.2.1 (3), 5.7 Reading a Field
+  through a dereference, 15.6 Addresses, 15.6 Holders, 15.6.3.
+  - **Representation.** `MirBorrows.Lent` keeps beside each position step the body Place it applies to, decided once when the
+    position is made (`Exact`: a lender's head keeps its Places, each given step takes the rule's) and published as
+    `LentPlace(position, step)`. R4-M234's "`Lent(place)` only" reads `Lent(place)`, `LentRun` and `LentPlace`. Cost: two ints per
+    step copied, as `lentSteps`; one row read per step made; no allocation per read.
+  - **Rule.** Over an exact position the owner step's `LentPlace` is the own-step entry's Place: the position's root for the first
+    step; for a later step its Prefix row from that root where the previous step's Place is the root's and that row is (that Place's
+    projection, the previous step's Kind and Arg), rows being independent of their roots; else the step's Prefix row from the root of
+    the walk that gave it (the position's root in the first segment, else past that walk's Deref). The entry is direct where that
+    Place passes no borrow or raw Deref (R4-M234): in the first two cases, and in the first segment also after a failed test (a
+    ConstIndex step). This one rule replaces R4-M235's three outcomes over a position (`Named`, the tail walk, and an owner in a lender's steps,
+    Unplaced): a layer read whose owner step lies in a lender's steps carries its parents whole through a raw lender or a shared one.
+    Unplaced stays only where no exact position exists and the own steps name no owner (PLAN G1301's classes); PQ-10 at the read in
+    a `tabling` view is unchanged (N-0). The first step's Place is the root itself, the rule's base case (a whole-local lender
+    `d@ref` leaves the first segment empty: ex1, q12, q12w); a later step continues it where its Prefix row does (oh1, oh2: a
+    reference to an owning handle's payload).
+  - **Records (Q13).** `ComparisonLoanConflict_Kd` at the owner's access on invalid programs accepted before: pr1, pr2, pr3, pre,
+    prw, pru; n2's located `Unsupported_Kd` at the read becomes that conflict at `o@move`, and the valid n2v loses its
+    `Unsupported_Kd`. d23 and e1 (a reborrow of a parameter: no exact position) keep theirs. oh1 and oh2 keep dev's
+    `OwnStepDeparture_Kd`. Named moves, the rule's reach past dev's `Named` (which needed the first step's Prefix to be the root's):
+    oh3 (invalid: the payload's Deref past a whole-handle lender) and oha (valid: its lender an address, which carries no Loan) gain
+    the `OwnStepDeparture_Kd` SPEC 5.2.1 (3) requires, q12w's class. A non-direct entry gives no own-step Warning (pr1; PLAN G1277).
+  - **Rejected.** E-b, the parents whole for an Unplaced row with a position through a new row value (one more case of an open family
+    while the owner is knowable); E-c, a projection row naming the owner from the position's root (rows the body never forms); N-b in
+    this unit, the undecided marker (R4-M198's Φ_U) on an Unplaced read's parents: `Layer` makes rows by Type kind, so a read that
+    cannot be a layer keeps its reference's Loan undecided and a later write of the lent root gets `Unsupported_Kd` on valid programs
+    (the review's B1; N2 measured); an open option under PLAN G1301. Each step's walk root (Revision 1b's head): it named an owning
+    handle's payload past the reference's Deref and lost the Warning of oh1 and oh2 (g1276ir's B1). Dev's reach exactly, a second
+    clause chaining only from a first step whose Prefix is the root's: a form-specific split beside the base case, and oh3's and
+    oha's required Warning stays missing.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -27653,6 +27702,72 @@ R8-M* and R9-M* by the stage of the recording unit.
     reference binding's update (O-A2: Operators 181, 192, 280); E4a-3 G453/G486; E4b captures; E4c Origin formation; E4e Owned and
     Callable; E4d the Origin records, O-R), each listing the stores it deletes. E4's parts total about +296/-474 against the plan's
     +100/-500: E4a-3 (G453/G486, given to E4 by plan revision 69 (B)) and the per-part regression rows are the difference.
+  - **E4a-2 (Q-<n>, D-<n>; F's R7-E4 rulings 5-10 and 15-18). Acquisition, the Take, the written Borrow and the reference
+    binding's write record their facts; one form per requirement.**
+    - **The write row** (`RecordWrite`, ReportWrite at role 0) takes every sender of a denied write or written Borrow and of a
+      reference binding's write: the denied write (E4a-1), the object authority, the written Borrow's denial
+      (`BorrowFailure`/`AccessFailure` over the borrowed Place: Conversions.Raw, Conversions, ExplicitAdaptations, ObjectViews; the
+      design review's C1) and the reference binding's update or assignment (BindBinary's two arms and CheckDestination; O-A2, C2).
+      Role 0 "target" is the Place or binding that denies the access. Its codes: InvalidAssignment, SharedPathAccess,
+      Shared/ExclusiveBindingAssignment. An Unsupported row of the mappings (the written Borrow of a static root, a temporary's whole
+      Place) is the located limit through `RecordLocated` at the node: the written Borrow's conversion forms no value, so its node
+      fails (the slot is set). **A selected input's static root is G254c's** (`BorrowsStaticRoot` read by `JudgeSelectedInput`,
+      which replaced `FailStaticBorrow` in W-348): it fails the input with its own record, and G254c's `RecordLocatedLimit` (the bare
+      Reborrow rule's limit beside a Resolved source, setting no slot, so every other case's verdict stands, SPEC 8.15.2) is a
+      different limit: one leaves the node failed, the other Resolved.
+    - **The Take** (`FailTake`, C5 (b)): AccessFailure's take row (ExclusivePathTake, SharedPathAccess, InvalidAssignment),
+      numbered, the cases of the layers its path passes as its Reason, no role-0 target; its own Reason-keyed ReportProblem row
+      renders ReportTake at the node.
+    - **The acquisition** (`FailAcquisition`, numbered; its facts built once, `AcquisitionFacts`): the Place as `Related` role 0
+      "place"; a Reason, bit 0 the object handle of an exclusive borrow and above it a transfer's Take judgment (O-A1); for a
+      transfer of a Place whose Type has a pair layer, **a second Reason**, the mask of the cases its bare acquisition moves in (D1;
+      ruling 7). The judgments the adapter once made at publication (TakeJudgment's path walk, AcquisitionCases' BareAcquire per
+      case) are made at the failure; the adapter decodes the mask over the Place's resolved binders read from its scope
+      (`CaseFact`). **Representation change (ruling 7):** a problem may carry two Reason facts, in the order ProblemFact's invariant
+      states (the acquisition's packed Reason first, the moving cases second), read by that order. A call whose selection leaves
+      only an acquisition records through `RecordSelection`'s one guard (D2); a value call's arguments are acquired and recorded
+      each at its own parameter (C3: `f(a, b)` keeps the second TransferRequired_Kd). CodeOf's DefaultArgumentMove row reads
+      `PreparedRoot(node)` (only CheckTransfers records a transfer at a node that is its own Place).
+    - **The reference binding's code (rulings 8, 9, 15 and 16; the Front's triage row 7).** `ReferenceBindingAssignment(target,
+      operation)`, the rule's owner, decides it once from the binding and the operation: an update through a pattern or for binding
+      on a shared or exclusive path, and an `=` to one that is not reassignable, names the binding's mode
+      (Shared/ExclusiveBindingAssignment; a guard candidate's SharedPathAccess) whatever the value; an `=` to a reassignable one (on
+      a borrowed path a `var` binding is a reassignable reference, SPEC 15.1.6's last bullet) is a rebind, judged as any `=`: a
+      value that fits the binding's Type (a borrow, or an owner temporary at `ref/U`, SPEC 10.2) rebinds it, one that fits neither
+      is the value's TypeMismatch_Kd at the binding's Type. BindBinary's two arms and CheckDestination read that one decision.
+      Before, BindBinary named the mode by the value's form (a typed value only when it did not fit the binding's own Type; a
+      literal always). Ruling 15 supersedes ruling 9's reassignable clause ("names it only when the value does not fit its own
+      Type").
+    - **Store (PLAN G1083, ruling 4, C7):** the lints publish into `Compilation.StoreOf`'s store and locate their repair edits
+      there; the acquisition's repairs too (`TransferRepair`, the exclusive borrow's). No lint becomes a problem (O-L).
+    - **Deleted:** `takeLayers`, `acquisitionPlaces`, `PreparedMove`. Ratchet "Node-keyed table members in Binding" 9 -> 7.
+    - **Moves (Q13).** M1 vc2 (a value call's second bare argument; PLAN G421 (i)'s value-call half). **en2 does not move**
+      (CompletePayloads returns at the first payload's acquisition: G262 F2's acquisition half stays out of E4a-2). M2 (class 4,
+      record selection) rb4s, rb5m (`match ... let v`) and a4 (`item = items[0]`): InvalidAssignment_Kd ->
+      SharedBindingAssignment_Kd; v3 (`item = true` to an immutable slot): InvalidAssignment_Kd -> SharedBindingAssignment_Kd. M4
+      rb1-rb4 and their shared twins (the reference binding's record at the binding, not the operation), bw1 (the written Borrow's
+      record at the Place, with ReportWrite's evidence and Note). **Acceptance moves (rulings 10 and 15; SPEC 15.1.6's last bullet
+      "on a borrowed path a `var` binding is a reassignable reference" with 10.2's Temporaries, an owner value at `ref/U` one owner
+      temporary borrowed once, its lifetime never extended):** a `var` binding on a Shared path assigned a literal is a rebind: a3
+      (`for var item in items` / `item = 5`) and snv (`.Some(var n)` / `n = 2` / `yield 0`) move from SharedBindingAssignment_Kd to
+      accepted; a3u and snu (the same with a later use of the binding) move from SharedBindingAssignment_Kd at Binding to A5's
+      ComparisonLoanConflict_Kd at the assignment, the use related (the temporary dies with the assignment). **The rebind (rulings
+      16-18):** u19 (`match count@uniq` / `var n => n = 5`, a rebind whose literal fits `uniq/i32` by no temporary: at `uniq/U`
+      no temporary is borrowed, SPEC 10.2) moves from ExclusiveBindingAssignment_Kd to the value's TypeMismatch_Kd ("expected
+      uniq/i32"); its typed form, a value of the referent Type that fits not the binding's Type (dev's typed-value arm named the
+      mode), moves the same way: dr-a5 (`items: uniq/Array<i32>` / `for var item in items` / `item = n`: a bare owned Place never
+      fits `uniq/i32`) from ExclusiveBindingAssignment_Kd at `item = n` to the value's TypeMismatch_Kd at `n` ("expected uniq/i32,
+      found i32"); v2 (`for var item in items` / `item = true`) keeps dev's TypeMismatch_Kd ("expected ref/i32, found bool").
+      **A location move (ruling 18's N5):** the mode records' primary span narrows from the whole write to its destination, the
+      binding (`item++` -> `item`, `let n => n = 5` -> `n`), their code and message unchanged. The diagnostic snapshot and semantic
+      HIR+MIR: 0 differences against shared-base/965080f34 (the corpus holds none of these rows).
+    - **Not taken:** PLAN G502's false records at `item += 1` (`items: uniq/Array<raw/i32>`; row g502a: ExclusiveBindingAssignment_Kd
+      beside OperatorNotDefined_Kd and TypeMismatch_Kd, where the label expects the binding's record alone): E4a-2 keeps
+      BindBinary's binding of the right operand at the referent and its route; **G502 stays open in PLAN with the Front as owner**
+      (ruling 9's C4). BorrowFailure's shared InvalidAssignment arm: reached only where `LendsPlace` refuses a shared Borrow (a pair
+      layer's owner case `LendsOwner` refuses, or an rc/arc payload whose handle neither lends nor is a borrowable temporary); no
+      program reaching it was found (the implementer's reading, the review's c2 accepted on both CLIs); it records through
+      RecordWrite like the others.
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
