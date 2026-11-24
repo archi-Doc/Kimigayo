@@ -31208,6 +31208,25 @@ R8-M* and R9-M* by the stage of the recording unit.
     `ProjectFile.Load` for a text `ConfigurationText` accepts (R9 part B's Revision 2). The Open line's `Project.TryCreate`'s
     catch-all (G1010) closes; G1010 keeps N5's contracts.
 
+- **R9-M13 The command line's one option table** (Middle, 2026-11-24; PLAN G1236, G1237; Q-750, D-1246; Major; the owner's O-525, O-526,
+  O-527 (a); design review REVISE then ACCEPT WITH CONDITIONS, implementation review ACCEPT WITH CONDITIONS)
+  - `KimiOptions` owns the options of every command but lsp's (PLAN G1251): one table, a row per option (name as IMPL spells it, kind
+    `Value`/`Boolean`/`BareBoolean`/`Flag`/`Removed`, the commands that take it, the values IMPL lists for it), and one reader,
+    `KimiOptions.Read(command, args)`: the values by row name, the inputs, the invalid options' texts in order. `KimiOptions.From` gives
+    the compiler options (`Manifest`, `NoBuild`, `Report` added).
+  - Rule (O-525, O-526): an option word (`SimpleParserHelper.IsOptionName`) names the row whose name equals it after its leading dashes,
+    ignoring case; a word of dashes alone is an input; a value is never an option word; a Boolean value reads as `bool.TryParse` reads it
+    and a listed value exactly but ignoring case; `--no-build` and `--locked` stand alone. An unknown option, a removed one (its removal
+    text), a missing value, a value outside the listed set and a repeated option in any spelling are invalid. `CommandExecution.Execute`
+    prints each on standard error before the action (exit 1); `TestOptions.Read` binds first, so `kimi test` reads `--Format`, and
+    `TestOptions.Validate` raises the first (exit 2). `restore` takes `--Target` (O-527 (a)); a quoted option word is an option on every
+    command; a help request runs no command and lists no options (PLAN G1367).
+  - Deleted: `ExpandFlags`, `RemovedOption`, the `[SimpleOption]` attributes and the three `Options` classes, `TestOptions`' name list,
+    value rule, `--Format` check and Boolean conversion, `CheckCommand`'s `OrdinalIgnoreCase` comparison and its "Unknown --Format" text,
+    `TestCommand`'s raw `--format` scan. Command names keep the parser's case-insensitive reading (IMPL is silent).
+  - Rejected: the parser's binding kept for every command, test on a `[SimpleOption]` class (value sets, bare Booleans, flags and removed
+    rows would still need a reader beside it: two owners); a pre-check before the parser binds (a second copy of the rule).
+
 ## Tatara (adopted 2026-11-19)
 
 Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
@@ -31778,6 +31797,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     IMPL change); an ordinal `--Name` match (C4: narrower than the parser's rule); the first hit only in the command layer (N4-2); the
     command's console writer (standard output, where `check --Format json` puts its document); copying `-Dll` beside the test
     output's `Kimi.dll` (an output the next `PreserveNewest` build does not restore).
+  - Superseded in part by R9-M13 (2026-11-24): (i) the Reading is now `KimiOptions.Read`'s own rule (names after their leading dashes, ignoring case), pinned by `CommandOptionsTest.ARemovedOptionIsNamedAsTheReaderBindsAnOption`; (ii) `Removed` is `Kind.Removed` rows of the one table (texts kept), `RemovedOption` is deleted, its two readers are the reader's errors; (iii) consequence (4): `check T --Target --LlvmBin` reports "Missing value: --Target" and the removal; (iv) the `--` sentence stands; (v) consequence (2): a help request runs no command and lists no options; (vi) consequence (3) holds for every option word on every command. Consequences (1) and (5) stand.
 - **T-M16 The toolchain root's `windows_x64` removed** (Tatara, 2026-11-22; the plan's unit B6b6, PLAN G1210 and G1228-G1230,
   Q-649, D-1066; Major; design `artifacts\handoff\tatara\units\B6\design-b6b.md` §7; design review C-437 with T's rulings N6-1 and
   N6-2, and T's rulings on C-444's N4-N6 (`units\B6\brief-b6b6-impl.md`); the Middle's implementation review C-452, ACCEPT, C1 met
