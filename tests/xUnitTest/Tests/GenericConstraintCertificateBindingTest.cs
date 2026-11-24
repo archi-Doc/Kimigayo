@@ -12,11 +12,12 @@ public class GenericConstraintCertificateBindingTest
     // PLAN G464, O-8 (a) (SPEC 23.1.2, 15.3.4, 8.3): a Property whose written Type holds a failed occurrence inside a Function Type rests
     // on it (no certificate, InvalidGenericPropertyTypeCannotCertify) and records nothing of its own (DECISIONS Q13, rule W: dev's
     // UnsatisfiedConstraint_Kd at the Field goes), inside an Option too (o8p2); a requirement and its witness keep one record per written
-    // occurrence (o8k; the conformance is verified before the witness rests, PLAN's open issue).
+    // occurrence (o8k: dev's restating records at the Field and the requirement go, rule W). o8k's IncompatibleContractImplementation_Kd
+    // is pre-existing on dev, a dependent of the failed requirement (SPEC 23.1.2; PLAN's class-4 note), as g464c pins O-4's record.
     [Theory]
     [InlineData("struct Box<T>\n    T is i32\nstruct S\n    var value: () -> Box<string>\n", "1*UnsatisfiedConstraint_Kd")] // o8p
     [InlineData("struct Box<T>\n    T is i32\nstruct S\n    var value: Option<() -> Box<string>>\n", "1*UnsatisfiedConstraint_Kd")] // o8p2
-    [InlineData("struct Box<T>\n    T is i32\ncontract C\n    property value: () -> Box<string> has get, set\nstruct S\n    Self is C\n    public var value: () -> Box<string>\n", "2*UnsatisfiedConstraint_Kd")] // o8k
+    [InlineData("struct Box<T>\n    T is i32\ncontract C\n    property value: () -> Box<string> has get, set\nstruct S\n    Self is C\n    public var value: () -> Box<string>\n", "1*IncompatibleContractImplementation_Kd 2*UnsatisfiedConstraint_Kd")] // o8k
     public void AFailedOccurrenceInAPropertyTypeRestsTheProperty(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     [Theory]
