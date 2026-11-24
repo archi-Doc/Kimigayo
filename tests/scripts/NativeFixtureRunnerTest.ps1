@@ -67,18 +67,21 @@ $null = Invoke-Case 'broad-pattern' (Join-Path $valid '*') 4 -expected $true -co
 if (@($serial | Where-Object { $_.status -cne 'passed' }).Count -or @($parallel | Where-Object { $_.status -cne 'passed' }).Count) {
     throw 'Valid fixtures failed.'
 }
-# A passed result is reused only while its environment key, fixture key and -ReuseHours freshness all hold.
+# A passed result is reused whole only while its environment key, fixture key and -ReuseHours freshness all hold.
 $reuseFixtures = Join-Path $work 'reuse'
 New-Fixture $reuseFixtures 'one'
 New-Fixture $reuseFixtures 'two'
 function Read-NativeResults([string] $name) { Get-Content (Join-Path $evidence "$name/native-results.json") -Raw | ConvertFrom-Json -DateKind String }
-function Assert-Reuse([string] $name, [object[]] $records, [string[]] $reused) {
+# A reused fixture has no execution, and two linked builds when it was built ($built), else none; any other fixture was built.
+function Assert-Reuse([string] $name, [object[]] $records, [string[]] $reused, [string[]] $built = @()) {
     foreach ($record in $records) {
         $isReused = $record.fixture -cin $reused
-        if ([bool]$record.reused -ne $isReused -or ($isReused -and $record.builds.Count + $record.executions.Count -ne 0) -or
+        $builds = if ($record.fixture -cin $built) { 2 } else { 0 }
+        if ([bool]$record.reused -ne $isReused -or ($isReused -and ($record.executions.Count -ne 0 -or $record.builds.Count -ne $builds -or
+            @($record.builds | Where-Object recordStatus -CNE 'linked').Count -ne 0)) -or
             (-not $isReused -and $record.builds.Count -eq 0)) { throw "Unexpected reuse of $($record.fixture): $name" }
     }
-    $split = "$($records.Count - $reused.Count) fixtures run, $($reused.Count) reused"
+    $split = "$($records.Count - $reused.Count) fixtures run, $($reused.Count) reused ($($built.Count) of them built;"
     if (@($records | Where-Object status -CNE 'passed').Count -eq 0 -and
         -not (Select-String -LiteralPath (Join-Path $evidence "$name.log") -SimpleMatch "Passed $(2 * $records.Count) native scalar executions (O0/O2); $split")) {
         throw "Missing reuse split: $name"
@@ -87,18 +90,24 @@ function Assert-Reuse([string] $name, [object[]] $records, [string[]] $reused) {
 $first = Invoke-Case 'reuse-first' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000
 $stored = Read-NativeResults 'reuse-first'
 if ($stored.environmentKey -cnotmatch '^[0-9a-f]{64}$' -or $stored.fixtures.Count -ne 2 -or
-    @($stored.fixtures | Where-Object { $_.key -cnotmatch '^[0-9a-f]{64}$' -or $_.status -cne 'passed' -or -not (Test-Path -LiteralPath $_.log) -or
-        ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($_.verifiedAt)).TotalMinutes -gt 10 }).Count) {
+    @($stored.fixtures | Where-Object { $_.key -cnotmatch '^[0-9a-f]{64}$' -or $_.runKey -cnotmatch '^[0-9a-f]{64}$' -or $_.status -cne 'passed' -or
+        -not (Test-Path -LiteralPath $_.log) -or ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($_.verifiedAt)).TotalMinutes -gt 10 }).Count) {
     throw 'The first run did not record keyed, verified results.'
 }
 Assert-Reuse 'reuse-first' $first @()
+# Each entry of a case that reused both fixtures keeps reuse-first's execution time, log, fixture key and run key.
+function Assert-Kept([string] $name) {
+    foreach ($entry in (Read-NativeResults $name).fixtures) {
+        $origin = $stored.fixtures | Where-Object fixture -CEQ $entry.fixture
+        if ($entry.verifiedAt -cne $origin.verifiedAt -or $entry.log -cne $origin.log -or $entry.key -cne $origin.key -or $entry.runKey -cne $origin.runKey) {
+            throw "A reused entry lost its verification: $name"
+        }
+    }
+}
 $firstResults = Join-Path $evidence 'reuse-first/native-results.json'
 $records = Invoke-Case 'reuse-all' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse @{ ReuseResults = $firstResults }
 Assert-Reuse 'reuse-all' $records @('one.ll', 'two.ll')
-foreach ($entry in (Read-NativeResults 'reuse-all').fixtures) {
-    $origin = $stored.fixtures | Where-Object fixture -CEQ $entry.fixture
-    if ($entry.verifiedAt -cne $origin.verifiedAt -or $entry.log -cne $origin.log -or $entry.key -cne $origin.key) { throw 'A reused entry lost its verification.' }
-}
+Assert-Kept 'reuse-all'
 # A changed sidecar re-runs only its fixture; the failure is recorded and never reused afterwards.
 [IO.File]::WriteAllText((Join-Path $reuseFixtures 'two.stdout'), 'wrong', $utf8)
 $records = Invoke-Case 'reuse-changed' (Join-Path $reuseFixtures '*.ll') 2 -expected $false -count 2 -deadline 30000 -reuse @{ ReuseResults = $firstResults }
@@ -122,6 +131,58 @@ Assert-Reuse 'reuse-hours' $records @('one.ll', 'two.ll')
 # Another environment (here the deadline) re-runs everything.
 $records = Invoke-Case 'reuse-environment' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 29999 -reuse @{ ReuseResults = $firstResults }
 Assert-Reuse 'reuse-environment' $records @()
+# Run reuse: reuse-first's results as the base of another environment (64 zeros) whose executables are unchanged, each entry edited
+# by $edit; returns the case's -reuse arguments.
+function New-MovedBase([string] $name, [scriptblock] $edit = { }) {
+    $base = Read-NativeResults 'reuse-first'
+    $base.environmentKey = '0' * 64
+    foreach ($entry in $base.fixtures) { & $edit $entry }
+    $path = Join-Path $work "$name-results.json"
+    $base | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $path
+    @{ ReuseResults = $path }
+}
+# Rebuilt byte-identical executables are not run again: both fixtures are built and reused, keeping their entries' verification.
+$records = Invoke-Case 'reuse-runs' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs')
+Assert-Reuse 'reuse-runs' $records @('one.ll', 'two.ll') @('one.ll', 'two.ll')
+Assert-Kept 'reuse-runs'
+# A changed executable (one: a volatile store to a new global, the same output) and a changed sidecar (two) run.
+$padded = $ir.Replace('@_fltused = global i32 0', "@_fltused = global i32 0`n@pad = global i32 0")
+New-Fixture $reuseFixtures 'one' -source ($padded.Replace('  %written = alloca i32', "  store volatile i32 1, ptr @pad`n  %written = alloca i32"))
+[IO.File]::WriteAllText((Join-Path $reuseFixtures 'two.stdout'), 'wrong', $utf8)
+$records = Invoke-Case 'reuse-runs-changed' (Join-Path $reuseFixtures '*.ll') 2 -expected $false -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-changed')
+Assert-Reuse 'reuse-runs-changed' $records @()
+if (($records | Where-Object fixture -CEQ 'one.ll').status -cne 'passed' -or ($records | Where-Object fixture -CEQ 'one.ll').executions.Count -ne 2 -or
+    ($records | Where-Object fixture -CEQ 'two.ll').status -cne 'failed') { throw 'A changed executable or sidecar was not run.' }
+foreach ($pair in @('one', 'O0/one')) {
+    $before = Get-Content (Join-Path $work "reuse-first/$pair.link.build.json") -Raw | ConvertFrom-Json
+    if ((Get-Content (Join-Path $work "reuse-runs-changed/$pair.link.build.json") -Raw | ConvertFrom-Json).executableSha256 -ceq $before.executableSha256) {
+        throw 'The changed fixture linked the same executable.'
+    }
+}
+New-Fixture $reuseFixtures 'one'
+New-Fixture $reuseFixtures 'two'
+# An entry executed more than -ReuseHours ago (one) or failed (two) is no candidate: both run.
+$records = Invoke-Case 'reuse-runs-stale' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-stale' {
+    param($entry)
+    if ($entry.fixture -ceq 'one.ll') { $entry.verifiedAt = [DateTimeOffset]::UtcNow.AddHours(-25).ToString('o') } else { $entry.status = 'failed' }
+})
+Assert-Reuse 'reuse-runs-stale' $records @()
+# A run is reused only from an entry executed within half of -ReuseHours (O-522 (a2)): one, executed 13 h ago, runs although its
+# run key is equal; two, executed 11 h ago, is reused.
+$records = Invoke-Case 'reuse-runs-half' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-half' {
+    param($entry)
+    $entry.verifiedAt = [DateTimeOffset]::UtcNow.AddHours($(if ($entry.fixture -ceq 'one.ll') { -13 } else { -11 })).ToString('o')
+})
+Assert-Reuse 'reuse-runs-half' $records @('two.ll') @('two.ll')
+if (((Read-NativeResults 'reuse-runs-half').fixtures | Where-Object fixture -CEQ 'one.ll').runKey -cne ($stored.fixtures | Where-Object fixture -CEQ 'one.ll').runKey) {
+    throw 'An executed entry lost its run key.'
+}
+# An entry written before run keys (one) is not reusable for runs.
+$records = Invoke-Case 'reuse-runs-unkeyed' (Join-Path $reuseFixtures '*.ll') 2 -expected $true -count 2 -deadline 30000 -reuse (New-MovedBase 'reuse-runs-unkeyed' {
+    param($entry)
+    if ($entry.fixture -ceq 'one.ll') { $entry.PSObject.Properties.Remove('runKey') }
+})
+Assert-Reuse 'reuse-runs-unkeyed' $records @('two.ll') @('two.ll')
 $mixed = Join-Path $work 'mixed'
 New-Fixture $mixed 'valid'
 New-Fixture $mixed 'bad-output' -stdout 'wrong'
@@ -359,4 +420,4 @@ catch { $caught = $true; $_ | Out-String | Add-Content (Join-Path $evidence 'emp
 if (-not $caught) { throw 'An empty selection must fail.' }
 $results | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Output ("PASS native runner: serial/parallel UTF-8, exits, mixed failures, forbidden dependency, unattempted and lost builds, rounds, " +
-    "non-ASCII paths, result reuse, CPU observation, delayed/insufficient execution, broad patterns and sidecar-only rejection; $evidence")
+    "non-ASCII paths, result and run reuse, CPU observation, delayed/insufficient execution, broad patterns and sidecar-only rejection; $evidence")
