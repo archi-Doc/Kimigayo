@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Checking;
@@ -513,6 +514,11 @@ internal sealed class WorkspaceCheck
         return false;
     }
 
+    // SPEC 23.4 (PLAN G1010): the one reuse rule of a loaded project and a unit's result: kept while every input it read is valid, unless
+    // its output is Faulted, which is produced again at the next check.
+    private static bool Reusable(CheckInputs inputs, [NotNullWhen(true)] DerivedItem? previous, CheckOutput? output)
+        => previous is not null && inputs.Snapshot.Valid.Contains(previous.Id) && output?.Outcome != CheckOutcome.Faulted;
+
     // SPEC 23.4: compare marked inputs, disk inputs whose stamp changed, and unestablished inputs.
     private List<(InputKey Key, InputState State)> Revalidate()
     {
@@ -792,7 +798,7 @@ internal sealed class WorkspaceCheck
             return;
         }
 
-        if (previous is not null && inputs.Snapshot.Valid.Contains(previous.Id))
+        if (Reusable(inputs, previous, previous?.Failed))
         {
             loaded.Add(path, previous);
             return;
@@ -802,9 +808,8 @@ internal sealed class WorkspaceCheck
         LoadedProject item;
         try
         {
-            item = Project.TryCreate(this.start.Kimigayo, null, path.Value, source, out var project, out var failures)
-                ? CreateLoaded(path, project, source)
-                : new LoadedProject { Path = path, Failures = failures, Inputs = source.GetRecorded() };
+            var failed = CheckService.Load(this.start.Kimigayo, path, source, out var project);
+            item = project is not null ? CreateLoaded(path, project, source) : new LoadedProject { Path = path, Failed = failed, Inputs = source.GetRecorded() };
         }
         catch (PendingInputException)
         {
@@ -877,7 +882,7 @@ internal sealed class WorkspaceCheck
             return null;
         }
 
-        if (previous is not null && inputs.Snapshot.Valid.Contains(previous.Id) && previous.Output.Outcome != CheckOutcome.Faulted)
+        if (Reusable(inputs, previous, previous?.Output))
         {
             return previous.Output.Presence;
         }
@@ -909,10 +914,9 @@ internal sealed class WorkspaceCheck
 
     private CheckOutput Check(CheckInputs inputs, UnitPlan plan, SnapshotInputSource source)
     {
-        if (plan.Key.Kind == UnitKind.FailedRoot || plan.Project is { Project: null })
+        if (plan.Project?.Failed is { } failed)
         {
-            var failures = plan.Project is { Failures.Count: > 0 } failed ? failed.Failures : ["The project could not be loaded."];
-            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, failures);
+            return failed; // A failed root's unit and each earlier unit of a project that no longer loads (SPEC 23.2.3).
         }
 
         if (plan.Key.Target.Length == 0)

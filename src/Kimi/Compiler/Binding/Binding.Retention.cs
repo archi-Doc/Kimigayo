@@ -365,6 +365,7 @@ public sealed partial class Binding
         this.binderReadings.Clear();
         this.binderReadingMembers.Clear();
         this.retentionDeclared.Clear();
+        this.retentionCarried.Clear(); // CanCarryLoan's walk holds no Type past its computation (KimiLibraryShapeTest).
     }
 
     // The walked signature as its declaration writes it (retentionDeclared): its function's parameter Types and result without any
