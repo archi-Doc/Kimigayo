@@ -22,7 +22,7 @@ internal sealed partial class MirBuilder
     // as a Place is held in a temp. A reserved input's path (input) is its preparation path down to a value or a call result (SPEC
     // 15.6.7): a written exclusive borrow it continues through is not formed, the path going on from the Place it lends, so the input has
     // one reservation, at its lending point, as the path without it has (DECISIONS R4-M54).
-    private MirPlace Place(Koto node, bool input = false)
+    private MirPlace PlaceAt(Koto node, bool input)
     {
         if (this.Located(node) is { } located)
         {
@@ -313,7 +313,7 @@ internal sealed partial class MirBuilder
     // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1). An Error node's value is
     // held there also where Binding gave the node a Type, and it is never taken from where an expansion located the node: each consumer
     // receives its own derived value, whose site takes the located part (SiteUses; DECISIONS R4-M109, Z17).
-    private MirPlace Value(Koto node, MirPlace? into = null, bool input = false, BoundType? expected = null)
+    private MirPlace ValueAt(Koto node, MirPlace? into, bool input, BoundType? expected)
     {
         if (HirTables.Op(node) != HirOp.Error && this.Located(node) is { } located)
         {

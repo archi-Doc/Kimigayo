@@ -12,7 +12,7 @@ internal sealed partial class MirBuilder
 {
     // A block item for its effect, its temporaries ending with it (SPEC 3.6): a local's declaration (also one Binding rejected, Let), a
     // form that leaves no value, or a value into a temp; a declaration builds nothing here.
-    private void Statement(Koto item)
+    private void StatementAt(Koto item)
     {
         this.statementStart = true;
         var temporaries = this.OpenScope(block: false);
@@ -49,7 +49,7 @@ internal sealed partial class MirBuilder
     }
 
     // A statement's value, built into a temp of its own among the statement's temporaries (SPEC 3.6), complete where it is made.
-    private void Evaluated(Koto item)
+    private void EvaluatedAt(Koto item)
     {
         var value = this.Hold(Held(item), item);
         this.Into(value, item);
@@ -241,7 +241,7 @@ internal sealed partial class MirBuilder
     // declaration Binding rejected, whose symbol it typed, declares its local too, so every use of the name is that one storage (SPEC
     // 3.6), and its initializer, which the HIR replaced, gives the declaration's derived value (SPEC 23.1.2; DECISIONS R4-M125), whose
     // site names no earlier build's local of the name (a defer body is built at each exit).
-    private void Let(VariableKoto variable)
+    private void LetAt(VariableKoto variable)
     {
         var symbol = HirTables.Symbol(variable)!;
         var local = this.Live(

@@ -3,6 +3,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Kimi;
 using Kimi.Build;
 using Kimi.Compiler;
@@ -14,6 +15,9 @@ namespace XunitTest;
 
 public sealed class EmissionArtifactsTest : IDisposable
 {
+    // The product runtime's kernel32 imports, in the Windows row's order (WindowsPlatform.ll.in's declarations).
+    private static readonly string[] ProductRuntime = ["GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "VirtualAlloc", "VirtualFree"];
+
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-emission-" + Guid.NewGuid().ToString("N"));
 
     public EmissionArtifactsTest() => Directory.CreateDirectory(this.directory);
@@ -43,7 +47,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
-        Assert.Equal(4, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(5, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("llvm-dlltool", libraries[0].GetProperty("generator").GetString());
         Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, libraries[0].GetProperty("definitionSha256").GetString());
         Assert.False(libraries[0].TryGetProperty("input", out _));
@@ -127,7 +131,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         using var manifest = JsonDocument.Parse(json);
         Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
         NativeToolchain.ValidateManifest(manifest.RootElement);
-        using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 4", "\"schemaVersion\": 3", StringComparison.Ordinal));
+        using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 5", "\"schemaVersion\": 4", StringComparison.Ordinal));
         Assert.Contains("'schemaVersion' is not this compiler's", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
     }
 
@@ -468,8 +472,9 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     // R9-B1: the manifest states the generation result's external declarations, which the native build's object inspection reads in
-    // place of the IR (SPEC 22.6: an import is referenced through __imp_ when dllimport), in declaration order; an uncalled import's
-    // library is still required and listed (SPEC 22.6, IMPL 20.4; RequiredNameWithoutSupplyCannotPublish: it needs its supply).
+    // place of the IR (SPEC 22.6: an import is referenced through __imp_ when dllimport), in declaration order, then the runtime's imports
+    // no external names (LinkAmbiguity, T's rulings 21 (ii) and 28: kernel32's GetLastError once); an uncalled import's library is still
+    // required and listed (SPEC 22.6, IMPL 20.4; RequiredNameWithoutSupplyCannotPublish: it needs its supply).
     [Fact]
     public void TheManifestStatesTheModulesExternalDeclarations()
     {
@@ -488,10 +493,35 @@ public sealed class EmissionArtifactsTest : IDisposable
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
         Assert.Equal(
-            [("encode", false), ("GetLastError", true)],
-            root.GetProperty("externalDeclarations").EnumerateArray().Select(static x => (x.GetProperty("symbol").GetString(), x.GetProperty("dllimport").GetBoolean())));
+            [("encode", false), ("GetLastError", true), .. ProductRuntime.Where(static x => x != "GetLastError").Select(static x => (x, true))],
+            Declarations(root));
         Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], root.GetProperty("libraries").EnumerateArray().Select(static x => x.GetProperty("name").GetString()));
         NativeToolchain.ValidateManifest(root);
+    }
+
+    // LinkAmbiguity (T's rulings 21 (ii) and 28, the Back's conditions on C-514): the manifest's external declarations name the imports
+    // of the runtime the build links, the product runtime's for an Application and the test runtime's for kimi test's build (published
+    // as TestCommand publishes it), each once: the program's own import of a runtime symbol, kernel32's GetLastError, is one entry with
+    // one dllimport form. Fail-before: the manifest named the program's import alone.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TheManifestNamesTheLinkedRuntimesImportsOnce(bool test)
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\" TestSources={{\"t.kimi\"}}");
+        const string Call = "    var e: u32 = 0\n    unsafe => e = Native.lastError()\n";
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\npublic func main()\n" + Call);
+        File.WriteAllText(Path.Combine(this.directory, "t.kimi"), "#Test\nfunc lastErrorIsRead()\n" + Call + "    $expect(true)\n");
+        Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, file, out var project));
+        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "tests.ll"), project.ProjectFile.Optimization);
+        Assert.True(test
+            ? project.PublishArtifacts(Assert.IsType<Compilation>(project.PrepareTests(TestContext.Current.CancellationToken)), paths, null)
+            : await project.Generate(TestContext.Current.CancellationToken));
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(test ? paths.Manifest : ArtifactPaths.Create(project).Manifest));
+        string[] runtime = test ? [.. ProductRuntime[..4], "GetEnvironmentVariableA", "SetHandleInformation", .. ProductRuntime[4..]] : ProductRuntime;
+        Assert.Equal([("GetLastError", true), .. runtime.Where(static x => x != "GetLastError").Select(static x => (x, true))], Declarations(manifest.RootElement));
+        NativeToolchain.ValidateManifest(manifest.RootElement);
     }
 
     // R9-B1: a dependency module's called import (Kimi.Time's Windows counter functions, SPEC 22.8.3) is one of the generation result's
@@ -503,9 +533,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
         var paths = ArtifactPaths.Create(c.Project);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
-        var declared = manifest.RootElement.GetProperty("externalDeclarations").EnumerateArray()
-            .Select(static x => (x.GetProperty("symbol").GetString()!, x.GetProperty("dllimport").GetBoolean())).ToArray();
-        Assert.Equal(c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)), declared);
+        var declared = Declarations(manifest.RootElement);
+        string[] externals = [.. c.Generated.Externals.Select(static x => x.Symbol)];
+        Assert.Equal([.. c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)), .. ProductRuntime.Where(x => !externals.Contains(x)).Select(static x => (x, true))], declared);
         Assert.Contains(("QueryPerformanceCounter", true), declared);
         Assert.Contains(("QueryPerformanceFrequency", true), declared);
     }
@@ -521,9 +551,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
         var paths = ArtifactPaths.Create(c.Project);
-        var json = File.ReadAllText(paths.Manifest);
-        Assert.Contains("\"externalDeclarations\": []", json, StringComparison.Ordinal);
-        using var malformed = JsonDocument.Parse(json.Replace("\"externalDeclarations\": []", "\"externalDeclarations\": " + declarations, StringComparison.Ordinal));
+        var manifest = JsonNode.Parse(File.ReadAllBytes(paths.Manifest))!;
+        manifest["externalDeclarations"] = JsonNode.Parse(declarations);
+        using var malformed = JsonDocument.Parse(manifest.ToJsonString());
         Assert.Contains(failure, Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(malformed.RootElement)).Message);
     }
 
@@ -541,6 +571,10 @@ public sealed class EmissionArtifactsTest : IDisposable
     // DECISIONS R5-M165: a publication failure is one ArtifactPublicationFailed_Kd record at the project; its cause is the note.
     private static string PublicationFailure(Compilation c)
         => Assert.Single(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.ArtifactPublicationFailed_Kd)).Note!;
+
+    // A manifest's external declarations, each its symbol and dllimport form, in its order.
+    private static (string Symbol, bool DllImport)[] Declarations(JsonElement root)
+        => [.. root.GetProperty("externalDeclarations").EnumerateArray().Select(static x => (x.GetProperty("symbol").GetString()!, x.GetProperty("dllimport").GetBoolean()))];
 
     private Compilation CreateForeign(string source, Action<ProjectFile> configure)
     {
