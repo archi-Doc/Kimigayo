@@ -43,8 +43,11 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 | **Minor** | A local change: it stays in one owning component, keeps its contract and invariants, adds no branch, parameter, state or code table, and a search finds no other site with the same cause. Its commit states the rule and the search. | Implementation → review |
 | **Major** | Every other change. | Design → design review where [Design](#design) step 5 requires one → implementation → review |
 
-- Work prototype first (DECISIONS R7-M3 RP13): iterate an implementation against the tests, then write the design from it. A
-  required design review judges that design before the implementation is completed.
+- Work prototype first (DECISIONS R7-M3 RP13, Q23): iterate an implementation against the tests, then write the design from its
+  diff. The design cites the prototype's commit and states its measured facts (its size, the sites it touched, the test rows'
+  results); reviews read the diff with the design as its explanation. Being first decides no structure: the design still compares
+  the options ([Design](#design) step 3), a required design review (step 5) judges the design before the prototype is completed,
+  and a prototype settles no owner question.
 - Two candidates or any other special flow run only on the owner's instruction for that unit.
 
 ## Design
@@ -54,7 +57,7 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 3. A Major change gets a short design as one chain: the required meaning (the SPEC rule and the forms it governs) → what the
    representation lacks or wrongly allows → the owning component that decides it → what becomes unnecessary. It lists the sites
    sharing the cause ([CODEMAP](CODEMAP.md)), the options (at least a fix inside the owning component and a change of shared
-   structure), the deletions and the expected size and speed.
+   structure) with the reasons for rejecting the others, the deletions and the expected size and speed.
    It also states three things:
    - **Owner.** For each decision the change makes, the component that owns it, and whether the design reads that owner, moves the
      decision into it or creates it; a new owner names what it replaces.
@@ -63,6 +66,9 @@ This document owns who plans, designs, reviews, implements and lands a change. P
      each is a row of the coverage table (step 4), and the design decides what the change gives it.
    - **Readings.** Each SPEC reading the design relies on that the text does not state word for word, with the sentence it reads, or
      the DECISIONS entry or owner answer that settled it.
+   The design is about 1,000 to 1,500 words of prose (DECISIONS Q23) and holds only its current text: a revision replaces text in
+   place, the history stays in git and in the reviews' identified versions ([Repeated reviews](#repeated-reviews)), and a ruling
+   that decides something goes into the design's text or a DECISIONS draft, never into a revision, rulings or response log.
 4. A change, Minor or Major, that moves acceptance ([Windows](#windows), Moves) or changes the code that decides a SPEC clause's
    condition, the forms it governs or its record gets a **coverage table**, on the base, before its first prototype:
    - a row per SPEC clause or table row the change decides, per form or position the rule governs, and per boundary where the rule
@@ -73,8 +79,8 @@ This document owns who plans, designs, reviews, implements and lands a change. P
    - a Minor change's table includes its exposure programs (step 3);
    - the rows become test rows in their owning test classes, at the lowest public layer that observes them; rows that earlier units
      wrote for the same SPEC text are reused by name, not written again.
-   The change passes every row before its first implementation review. A Minor change keeps its table in its tests; its commit names
-   the rows by section.
+   The change passes every row before its first implementation review. The table lives in its test rows, each with its section and
+   label; a Major design and a Minor commit name the rows by section and copy no table into prose (DECISIONS Q23).
 5. A design review is required for a change to a shared representation or across phases. Another Major change gets one only when a
    design issue must be settled before the implementation is completed, for example: the cause is still a hypothesis; the options
    differ in owning component or representation; the design departs from a DECISIONS or SETTLED entry; the sites sharing the cause
@@ -148,8 +154,11 @@ blocking findings above stand:
   - Where the program is rejected anyway, its record is reported.
   - Where the program may be valid, a located `Unsupported_Kd` marks the analysis limit. On a program the base accepts, that is
     regression 1. Replacing an independent Language record with `Unsupported_Kd` is regression 3.
-- A unit has one review, by one reviewer; a fix after REVISE is that reviewer's repeated review. A unit across areas adds each other
-  area session's reviewer on its own hunks (DECISIONS R7-M2).
+- A unit has one review, by one reviewer; a fix after REVISE or after ACCEPT is that reviewer's repeated review. A unit across areas
+  adds each other area session's reviewer on its own hunks (DECISIONS R7-M2). Another session reads a unit's delta (a fix after a
+  review) only where it touches files that session's area owns, as that reviewer on its own hunks, or where it adds a return, a rest
+  point or a skipped binding on a path MIR reads: then the Middle runs the delta's rows and adversarial twins on a CLI of the head
+  (DECISIONS Q23).
 
 | Verdict | Design review | Implementation review | Next |
 | --- | --- | --- | --- |
