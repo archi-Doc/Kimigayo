@@ -124,15 +124,16 @@ internal sealed partial class MirBorrows
     // R-C (SPEC 5.7 Reading a Field through a dereference, 15.6 Addresses, 15.6 Holders): after the walk, where Exposed is final
     // (MirBorrows.Lent's precondition), each own-step row past a borrow or raw Deref is decided by one Owner walk over one step run: the
     // Place's exact lent position where it has one, else its own steps. Over a position, an owner step gives the own-step entry of the
-    // body Place it applies to (MirBorrows.Lent's LentPlace, G1276): direct where LentPlace names it from the position's root (the Place
-    // the steps before it name, where the body has its row), else past the Deref of the walk that gave the step (a lender's own Place, or
-    // the Place's own: the base's row); none, -1. Over the own steps (no exact position), an owner past the last Deref gives its entry
-    // past one (the base's row); none, Unplaced. So no row is less than the base's: Unplaced only where no position exists and the own
-    // steps name no owner (G1301's classes). A read carries its row's entry with its parents whole (Values' Layered); an Unplaced one
-    // carries its layer and is the location's limit where tabling is set, which makes the view a producer (PQ-10 narrowed: the base
-    // marked a borrow of the view, so no program the base accepts is put at the limit). Every position is made before any entry, and no
-    // own-step entry, here or in the walk, refuses a lender: it exposes its owner's storage only (OwnerExposed), and no position is
-    // followed through an owner (Lender refuses a struct's and a Case's stores).
+    // body Place it applies to (MirBorrows.Lent's LentPlace, G1276): direct where that Place passes no borrow or raw Deref (the
+    // position's root for the first step; a later step's Prefix row from that root where it continues the previous step's Place by that
+    // step, or any step's in the first segment), else past its last Deref (the step's Prefix row from the root of the walk past whose
+    // Deref it follows: a lender's own Place, or the Place's own: the base's row); none, -1. Over the own steps (no exact position), an
+    // owner past the last Deref gives its entry past one (the base's row); none, Unplaced. So no row is less than the base's: Unplaced
+    // only where no position exists and the own steps name no owner (G1301's classes). A read carries its row's entry with its parents
+    // whole (Values' Layered); an Unplaced one carries its layer and is the location's limit where tabling is set, which makes the view
+    // a producer (PQ-10 narrowed: the base marked a borrow of the view, so no program the base accepts is put at the limit). Every
+    // position is made before any entry, and no own-step entry, here or in the walk, refuses a lender: it exposes its owner's storage
+    // only (OwnerExposed), and no position is followed through an owner (Lender refuses a struct's and a Case's stores).
     private void Place()
     {
         for (var i = 0; i < this.placing.Count; i++)

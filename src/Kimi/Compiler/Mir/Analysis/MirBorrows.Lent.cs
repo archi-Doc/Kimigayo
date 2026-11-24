@@ -15,7 +15,8 @@ namespace Kimi.Compiler.Mir;
 // A position's steps keep their kinds, classes, arguments and prefixes; a resolved step's Prefix is its own Place's, whose Type it reads.
 // Each step keeps the body Place it applies to (LentPlace; G1276, E-a): the Place the position's steps before it name from the position's
 // root (the root for the first step; for a later step, its Prefix row where that row continues the previous step's Place, so named, by
-// the previous step); else its Prefix row from the root of the walk that gave it (a lender's or the Place's own), past that walk's Deref.
+// the previous step); else its Prefix row from the root of the walk that gave it: the position's root in the first segment, else the
+// root of the walk past whose Deref the step follows (a lender's or the Place's own).
 // Inputs: the view's body, the Loans' store record and Exposed, final once the Addresses pre-pass has run (it completes Exposed with the
 // holders a direct address names), and MirSteps' walk. Precondition: no Lent before the view's Addresses pre-pass has walked its uses
 // (its Place asks every position after the walk and before any own-step entry it makes).
@@ -69,9 +70,9 @@ internal sealed partial class MirBorrows
         return this.lentSteps.AsSpan(start, count);
     }
 
-    /// <summary>Gets the body Place a position's step applies to: the Place the steps before it name from the position's root, which
-    /// passes no borrow or raw Deref, where the body has its row; else the step's Prefix row from the root of the walk that gave it, past
-    /// that walk's Deref (decided once, when the position is made).</summary>
+    /// <summary>Gets the body Place a position's step applies to (Applied, decided once, when the position is made): the position's
+    /// root for its first step; for a later step, its Prefix row from that root where the previous step's Place is the root's and that row
+    /// is (that Place's projection, the previous step's Kind and Arg); else its Prefix row from the root of the walk that gave it.</summary>
     /// <param name="position">A position of the view (<see cref="Lent"/>).</param>
     /// <param name="step">The index of one of its steps.</param>
     /// <returns>The Place.</returns>
@@ -306,7 +307,8 @@ internal sealed partial class MirBorrows
     // name from the position's root `named`, which passes no borrow or raw Deref (R4-M234), where the body has its row: the root itself for
     // the first step; for a later one its Prefix row where that row continues the previous step's Place, so named, by the previous step
     // (rows are independent of their roots, so a lender's row may name it: `*r` where r lends a handle's payload `*h`). Else the Prefix
-    // row from `from`, the root of the walk that gave the step, past that walk's Deref.
+    // row from `from`, the root of the walk that gave the step: the position's root in the first segment (after a ConstIndex step), else
+    // past that walk's Deref.
     private MirPlace Applied(int named, int from, int start, int i)
     {
         if (i == start)
