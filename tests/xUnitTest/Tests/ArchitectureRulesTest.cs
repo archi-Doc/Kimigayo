@@ -310,7 +310,6 @@ public class ArchitectureRulesTest
         "Binding.ObjectViews.cs:FindObjectErasure=2 key",
         "Binding.ObjectViews.cs:ObjectUpcastFits=1 formed",
         "Binding.ObjectViews.cs:RequireObjectErasure=1 sufficient",
-        "Binding.OpenOrigins.cs:CallRegionComplete=1 key", // R1-a's memo: the binder's bound Type the variance answer was read from, a memo key
         "Binding.OpenOrigins.cs:FillOpenOrigins=1 sufficient",
         "Binding.OpenOrigins.cs:FillOpenOrigins=1 unchanged",
         "Binding.OpenOrigins.cs:OpenKnownOrigins=1 unchanged",
