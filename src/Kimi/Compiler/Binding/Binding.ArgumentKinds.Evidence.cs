@@ -383,8 +383,7 @@ public sealed partial class Binding
                 binding.MatchInputOrigins(matched, actual, binder, this.Origins, this.Inputs, quantifier);
                 if (matched.CarriesOrigin && actual.CarriesOrigin)
                 {
-                    this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
-                    binding.CollectOriginInference(matched, actual, this.OriginInference, this.Frame.Node, known: quantifier);
+                    binding.CollectOriginInference(matched, actual, this.BeginInference(), this.Frame.Node, known: quantifier);
                 }
             }
 
@@ -500,8 +499,7 @@ public sealed partial class Binding
             var binding = this.Binding;
             var place = binding.PlaceOrigin(part);
             binding.MatchInputOrigin(origin, place, this.Binder, this.Origins, this.Inputs);
-            this.OriginInference ??= binding.BeginOriginInference(this.Call, this.Binder);
-            AddInputBound(this.OriginInference, origin, place);
+            AddInputBound(this.BeginInference(), origin, place);
         }
 
         // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
@@ -803,8 +801,8 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 10.5: a Function Item or a concrete Closure meets a common Function Type pattern through its call signature, as
-    // evidence; the conversion itself is judged by applicability and once the call is selected (ErasureSignatureFits). Any other Type,
-    // or any Type at another pattern, as it is.
+    // evidence; the conversion itself is judged by applicability (ErasureSignatureFits) and once the call is selected
+    // (ErasesToFunction). Any other Type, or any Type at another pattern, as it is.
     private BoundType SignatureAtFunction(BoundType pattern, BoundType actual)
         => pattern.Kind != BoundTypeKind.Function ? actual
             : this.FunctionItemSignature(actual) ?? (BoundClosure.Of(actual) is { } closure ? closure.Signature ?? throw new InvalidOperationException(

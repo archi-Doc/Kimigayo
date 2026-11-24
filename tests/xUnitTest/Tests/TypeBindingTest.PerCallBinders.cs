@@ -352,7 +352,7 @@ public partial class TypeBindingTest
 
             func f() -> i32 => take(h)
             """,
-            "NoApplicableOverload_Kd take(h)"
+            "UnprovenOriginContract_Kd h"
         },
         // a1i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): return.
         {
@@ -398,7 +398,7 @@ public partial class TypeBindingTest
 
             func f() -> i32 => g<(ref/i32) -> i32>(h)
             """,
-            "NoApplicableOverload_Kd g<(ref/i32) -> i32>(h)"
+            "UnprovenOriginContract_Kd h"
         },
         // m0i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): a nested Type with its own per-call input and a fixed `during b` input, required uniq/PC2, b at the outer slot 1 (the fixed input at its own index 1).
         {
@@ -590,7 +590,7 @@ public partial class TypeBindingTest
 
             func f() -> i32 => g<(ref/i32) -> i32>(h)
             """,
-            "NoApplicableOverload_Kd g<(ref/i32) -> i32>(h)"
+            "UnprovenOriginContract_Kd h"
         },
         // t09i (invalid, SPEC 10.7, 10.8.1): t08i at a constructor's Function Type parameter, Box<PC>.init(h).
         {
@@ -608,7 +608,7 @@ public partial class TypeBindingTest
                 let box = Box<(ref/i32) -> i32>.init(h)
                 return 0
             """,
-            "NoApplicableOverload_Kd Box<(ref/i32) -> i32>.init(h)"
+            "UnprovenOriginContract_Kd h"
         },
         // t10i (invalid, SPEC 10.8, 10.7): t08i with T inferred from a second argument w: PC (no T makes h fit).
         {
@@ -620,7 +620,7 @@ public partial class TypeBindingTest
 
             func f(w: (ref/i32) -> i32) -> i32 => g(h, w@move)
             """,
-            "NoApplicableOverload_Kd g(h, w@move)"
+            "UnprovenOriginContract_Kd h"
         },
         // cb1i (invalid, SPEC 8.10, 10.7): l3i's h through F is Callable<(ref/i32, PC) -> PC>.
         {
@@ -648,7 +648,7 @@ public partial class TypeBindingTest
 
             func f() -> i32 => take(h)
             """,
-            "NoApplicableOverload_Kd take(h)"
+            "UnprovenOriginContract_Kd h"
         },
         // x0i (invalid, SPEC 10.7, 8.10, 3.8): generic O, T written as (ref/i32, i32) -> i32; the implementation returns (ref/i32 during b, i32) -> i32.
         {
@@ -660,7 +660,7 @@ public partial class TypeBindingTest
 
             func f() -> i32 => g<(ref/i32, i32) -> i32>(h)
             """,
-            "NoApplicableOverload_Kd g<(ref/i32, i32) -> i32>(h)"
+            "UnprovenOriginContract_Kd h"
         },
         // x0v (valid, SPEC 10.7, 8.10): generic O, the valid twin: the implementation's nested Types keep their own per-call input.
         {

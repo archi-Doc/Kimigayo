@@ -267,10 +267,10 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.True(File.Exists(Path.Combine(this.directory, "b.exe")));
     }
 
-    // ADOPTION.md's helper suite (tests/native.c) on the runtime's memory functions (IMPL 21.4.7; the Tatara plan's decision 24, B7r4): the
-    // memory part alone, between the profile's target lines and the footer, optimized and emitted by Tatara at O0 and O2, defines exactly
-    // TargetProfile.MemorySymbols and calls nothing, itself included (no call instruction); linked with the suite (the pinned clang's object
-    // and probe.S's), the backend archive (for __chkstk) and kernel32, taking no archive memory member (the map), it exits 0.
+    // ADOPTION.md's memory-function suite (tests/memory.c) on the runtime's memory functions (IMPL 21.4.7; the Tatara plan's decision
+    // 24, B7r4, B7r5): the memory part alone, between the profile's target lines and the footer, optimized and emitted by Tatara at O0
+    // and O2, defines exactly TargetProfile.MemorySymbols and calls nothing, itself included (no call instruction); linked with the suite
+    // (the pinned clang's object) and kernel32 alone, no backend archive among the inputs, it exits 0.
     [Fact]
     public async Task TheMemoryPartPassesTheHelperSuite()
     {
@@ -278,8 +278,7 @@ public sealed class TataraExecutorTest : IDisposable
         var tests = Path.Combine(Repository.Root, "src", "backend", "windows-x64", "tests");
         var work = this.directory;
         string[] oracle = ["--target=" + Triple, "-O0", "-ffreestanding", "-fno-builtin", "-fno-stack-protector", "-fno-autolink", "-mno-avx", "-c"];
-        Assert.Equal(string.Empty, await Tool("clang", work, [.. oracle, Path.Combine(tests, "native.c"), "-o", "native.obj"]));
-        Assert.Equal(string.Empty, await Tool("clang", work, "--target=" + Triple, "-c", Path.Combine(tests, "probe.S"), "-o", "probe.obj"));
+        Assert.Equal(string.Empty, await Tool("clang", work, [.. oracle, Path.Combine(tests, "memory.c"), "-o", "suite.obj"]));
         var memory = Path.Combine(work, "memory.ll");
         File.WriteAllText(memory, $"target triple = \"{Triple}\"\ntarget datalayout = \"{TargetProfile.Windows.DataLayout}\"\n{LlvmModuleText.MemoryRuntime}{LlvmModuleText.Frame(TargetProfile.Windows).Footer}");
         foreach (var level in Levels)
@@ -298,9 +297,8 @@ public sealed class TataraExecutorTest : IDisposable
             var (failure, disassembly) = await Launch("llvm-objdump", work, "-d", obj);
             Assert.Equal(string.Empty, failure);
             Assert.DoesNotMatch(@"\scall", disassembly);
-            var exe = Path.Combine(work, $"native.{level}.exe");
-            Assert.Equal(string.Empty, await Tool("lld-link", work, obj, "native.obj", "probe.obj", Backend, Kernel32, "/entry:test_entry", "/subsystem:console", "/nodefaultlib", "/Brepro", "/map:native.map", "/out:" + exe));
-            Assert.DoesNotContain(Path.GetFileNameWithoutExtension(Backend) + ":mem", File.ReadAllText(Path.Combine(work, "native.map")), StringComparison.Ordinal);
+            var exe = Path.Combine(work, $"suite.{level}.exe");
+            Assert.Equal(string.Empty, await Tool("lld-link", work, obj, "suite.obj", Kernel32, "/entry:test_entry", "/subsystem:console", "/nodefaultlib", "/Brepro", "/out:" + exe));
             using var process = Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = work, UseShellExecute = false, CreateNoWindow = true })!;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             try

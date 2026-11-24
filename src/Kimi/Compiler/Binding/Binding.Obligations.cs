@@ -153,6 +153,8 @@ public sealed partial class Binding
 
     // Whether an Origin relation has an end that ForeignDeclarationAtom classes foreign to the forming body, a meet by its operands as
     // ClassifyMeet classes them (a Closure's result defaulting to the meet of its borrowed inputs, SPEC 15.4.3 rule 1; meets are flat).
+    // A call's argument fit relates the call's images and regions of its callee's Origins, never the callee's own atoms (a composite's
+    // value Type formed at the trial's parameter is completed at the call's, CompleteOperationTypes), so no call forms such a row.
     private bool ForeignEnd(in BindingObligation obligation)
     {
         if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter })

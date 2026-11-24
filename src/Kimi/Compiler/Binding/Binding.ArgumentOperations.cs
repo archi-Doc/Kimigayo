@@ -56,8 +56,12 @@ public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, Bound
 /// the Type the adaptation supplies, whose Origin relations to ParameterType are judged after selection (SPEC 15.6.1). MissingOrigin
 /// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).
 /// Positions: a Tuple or array literal argument's element positions' operations in the fit's order, recursively (SPEC 10.5.1; ranked
-/// by their classes, 10.4 step 1), a range of the candidate evaluation's positionOperations; Adaptation is then the literal's own fit.</summary>
-public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false, Range Positions = default);
+/// by their classes, 10.4 step 1), a range of the candidate evaluation's positionOperations; Adaptation is then the literal's own fit.
+/// ValueAtParameter marks a SourceType and AdaptedType its fit derived from ParameterType (a composite checked against its expected
+/// Type, ExpectedValueType: its value Type and, at `ref/U`, its owner temporary's borrow), which the call's completion derives again
+/// from the completed ParameterType (SPEC 10.2 row 2, 15.6.4 step 1); every other SourceType is the source's own Type and is never
+/// rewritten.</summary>
+public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false, Range Positions = default, bool ValueAtParameter = false);
 
 public sealed partial class Binding
 {
@@ -327,13 +331,14 @@ public sealed partial class Binding
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
+            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.ReborrowedType(actual, source, null, [], out _) is { } reborrowed)
             {
-                // SPEC 3.5.1, 8.14, 10.1 step 1 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T` or
-                // `objuniq/T` or a pair layer in an exclusive case, is Reborrowed in its own Semantics before inference, so a parameter that
-                // is no reference binds the Reborrow's Type; the path is walked only then (ReachOf). A receiver is taken by its call's
-                // receiver operation (TryPairReceiver, SPEC 7.3), never by bare acquisition.
-                adapted = this.ReborrowedType(actual, layer, this.ReachOf(source));
+                // SPEC 3.5.1, 8.14, 10.1 step 1, 10.2.2 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T`
+                // or `objuniq/T`, a pair layer in an exclusive case or its owner case's nested layer, is Reborrowed in its own Semantics
+                // before inference (a plan Reborrowing in the owner case alone too: Same-Semantics, not Exact), so a parameter that is no
+                // reference binds the Reborrow's Type; the path is walked only then (ReachOf). A receiver is taken by its call's receiver
+                // operation (TryPairReceiver, SPEC 7.3), never by bare acquisition.
+                adapted = reborrowed;
                 quality = ArgumentAdaptation.SameSemanticsReborrow;
                 kind = ArgumentOperationKind.Reborrow;
             }
