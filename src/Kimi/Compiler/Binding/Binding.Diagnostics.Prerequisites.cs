@@ -502,8 +502,10 @@ public sealed partial class Binding
 
     // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2), R7-E5 c1: whether the open consultation is `site`'s own check. A
     // failure's own checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity
-    // premise error (IdentityPremiseErrorRead); a failure (Fail) or a read (Consulted) of the frame's own node is no prerequisite of it.
-    private bool ChecksOwnSite(Koto site) => ReferenceEquals(site, this.consultationNode);
+    // premise error (IdentityPremiseErrorRead); a failure (Fail) or a read (Consulted) of the frame's own node, or of its own premise
+    // clause holding its error group's record (HoldsGroupRecord, R7-C3 C3d), is no prerequisite of it.
+    private bool ChecksOwnSite(Koto site)
+        => ReferenceEquals(site, this.consultationNode) || (this.consultationNode is { } node && this.HoldsGroupRecord(node, site));
 
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
     /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
