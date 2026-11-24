@@ -30,6 +30,7 @@ public sealed partial class Binding
             Origins = evaluation.OriginsOf(candidate),
             Inputs = evaluation.InputsOf(candidate),
             RequirementContract = evaluation.RequirementContractOf(candidate),
+            Kept = evaluation.Inferences.AsSpan(candidate, 1),
         };
     }
 
@@ -86,7 +87,14 @@ public sealed partial class Binding
         // slice (TryCandidate's: an evaluation's, unset when the candidate's evaluation begins, or a fixed construction's re-check,
         // which keeps the selected candidate's openings), so each evaluation's first solve clears them.
         internal bool FirstSolve;
+
+        // PLAN G1078: this run's solve, begun at its first bound (BeginInference), and the candidate's state across its runs, the one
+        // slot Kept: OriginInference is Kept[0] once begun, or null when the run began none. Kept is the candidate's slot of its call's
+        // evaluation (CallEvaluation.Inferences), kept across its trial, re-trials, fixed re-check and judgment; a Case construction's
+        // or a value call's own slot, returned by its function; empty for a property update, which begins none (an empty slot at a
+        // Begin is a broken contract).
         internal OriginInference? OriginInference;
+        internal Span<OriginInference?> Kept;
 
         // F1 (R4-M164): each argument's root row for this candidate's call (Contribute; Binding.ArgumentKinds.Rows.cs), a slice of the
         // call's pooled CallEvaluation.Rows (one per argument of each candidate; none for a call without arguments), which lives until
@@ -132,6 +140,21 @@ public sealed partial class Binding
 
             this.Left = left;
         }
+
+        // The candidate's state (Kept), rented clean at its first use; a candidate that begins no solve reads and writes only its
+        // openings there (OriginInference.Opened).
+        internal readonly OriginInference KeptInference()
+        {
+            if (this.Kept.IsEmpty)
+            {
+                throw new InvalidOperationException("A call or construction that solves Origins keeps its solve state's slot (InternalInvariant; PLAN G1078).");
+            }
+
+            return this.Kept[0] ??= this.Binding.RentInference(this.Call, this.Binder);
+        }
+
+        // This run's solve, begun over the candidate's state at its first bound.
+        internal OriginInference BeginInference() => this.OriginInference ??= this.Binding.BeginOriginInference(this.KeptInference());
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
@@ -249,7 +272,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var inference = this.OriginInference ??= binding.BeginOriginInference(this.Call, this.Binder);
+                var inference = this.BeginInference();
                 var opened = inference.SlotVariableCount;
                 var skeleton = binding.SlotSkeleton(head, this.Call, inference);
                 if (inference.SlotVariableCount == opened)
@@ -347,7 +370,7 @@ public sealed partial class Binding
                 return;
             }
 
-            var opened = this.Binding.InferenceOf(this.Call, this.Function);
+            var opened = this.KeptInference();
             if (this.FirstSolve)
             {
                 opened.Opened.Clear();
@@ -371,7 +394,7 @@ public sealed partial class Binding
                 return;
             }
 
-            var opened = this.Binding.InferenceOf(this.Call, this.Function);
+            var opened = this.KeptInference();
             for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
             {
                 if (waited.Opens(g) && this.Types[g] is { CarriesOrigin: true } solution && this.Frame.BindsCovariantly(g) && !this.FixedSlot(g))
@@ -401,15 +424,22 @@ public sealed partial class Binding
             return new(waiting, covariant, blocked);
         }
 
-        // Each operation's parameter Type with the solution substituted, where it is complete.
+        // Each operation's parameter Type with the solution substituted, where it is complete, and the source and adapted Types its fit
+        // derived from the parameter Type (ValueAtParameter) derived again from the completed one by the same rule (ExpectedValueType;
+        // SPEC 10.2 row 2, 15.6.4 step 1); any other operation's source and adapted Types are the source's own and stay.
         internal readonly void CompleteOperationTypes(Span<BoundArgumentOperation> operations)
         {
             for (var i = 0; i < operations.Length; i++)
             {
-                if (operations[i] is { Source: not null, ParameterIndex: >= 0 } operation &&
+                if (operations[i] is { Source: { } source, ParameterIndex: >= 0 } operation &&
                     this.Type(this.Function.Parameters[operation.ParameterIndex].Type.BoundType!) is { } completed)
                 {
                     operations[i] = operation with { ParameterType = completed };
+                    if (operation.ValueAtParameter)
+                    {
+                        var value = this.Binding.ExpectedValueType(source, completed, this.Scope, out _, out var borrow);
+                        operations[i] = operations[i] with { SourceType = value, AdaptedType = borrow };
+                    }
                 }
             }
         }
@@ -492,10 +522,7 @@ public sealed partial class Binding
                 return binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
             }
 
-            var rows = binding.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
-            var fits = binding.ErasureSignatureFits(actual, type, node, binding.comparisonRows, out _);
-            binding.DropComparisonRows(rows);
-            return fits;
+            return binding.ErasureSignatureFits(actual, type, node);
         }
 
         // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot

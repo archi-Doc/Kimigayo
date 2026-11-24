@@ -362,8 +362,8 @@ public partial class TypeIdentityTest
     // itself (pathqn above; before the bound it did not finish). Each row is a whole program after CyclePrelude. A declaration
     // whose requests are refused has the limit's record, PremiseClosureLimit_Kd, once (SPEC 8.3.3 Limits: "reported once ... at
     // the declaration that reaches it"), at its first refused use, and a later refused use rests on it (pq2: two uses, one record;
-    // F's ruling 206), alone (pqmix beside a proven use, pqorn, pqand, pqdn, pqodd); a request refused where no check's frame is
-    // open (a bare acquisition's Copy, judged at HIR publication) has it at the function whose premises it read (pqcopy, pqcopy2);
+    // F's ruling 206), alone (pqmix beside a proven use, pqorn, pqand, pqdn, pqodd); a bare acquisition's Copy, judged at HIR
+    // publication in a site frame at the Place it acquires (R7-C6 a), has it at that use (pqcopy, and pqcopy2's first read);
     // a judgment other evidence proves stands and nothing is
     // recorded (pqor, pqoro: a disjunction's Proven operand; before the bound they did not finish); a request proven within the
     // bound is proven (pqd1, pqd2, pqcopyv); a value that is moved needs no such judgment (pqmovev, pqletv, pqrefv ask none;
@@ -371,14 +371,20 @@ public partial class TypeIdentityTest
     // The owner's O-335 (a) (SPEC 10.1, 10.4): a refusal a candidate trial reads is held to the selection and settled only by the
     // selected candidate's obligation, so a losing candidate whose `X is Inner` reaches the bound refuses nothing (xov, xovr: step 4
     // selects the candidate without the default, in either declaration order; xov0 the same loser without Pq), and the selected one's
-    // is the limit's record at the call (xovn). Twins of other judgments a check reads: a bare owned Place to `ref/X` asks no Copy
-    // (xbare), a signature's struct Constraint (xstruct, xstructv) and a conditional conformance's `when` premise (xcond, xcondv).
+    // is the limit's record at the call (xovn), also under ko's argument probe at `ko(mid(x, mkNone()))` (rf1n). rf1r (V: step 4
+    // selects the `mid` without the default) pins today's record, the limit's at `mid(` (dev's UnprovenConstraint_Kd): a held refusal
+    // nothing settles is later read as a plain Unknown, a pre-existing defect of the refusal channel, a PLAN open issue to come
+    // (board D-1180; ArgFlow ruling 176), whose unit moves rf1r to accepted. Twins of other judgments a check reads: a bare owned
+    // Place to `ref/X` asks no Copy (xbare), a signature's struct Constraint (xstruct, xstructv) and a conditional conformance's
+    // `when` premise (xcond, xcondv).
     public static TheoryData<string, string, string> RoundBoundRows => new()
     {
         { "xov", Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", string.Empty },
         { "xovr", Pq + "func pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc pick<X>(x: ref/X) -> () => ()\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", string.Empty },
         { "xovn", Pq + "func pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", "PremiseClosureLimit_Kd" },
         { "xov0", Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner0\n    return\nfunc f<T, U>(x: ref/U)\n    U is Mid\n    pick(x)\n", string.Empty },
+        { "rf1r", Pq + "func mkNone<T>() -> Option<T> => .None\nfunc mid<X, R>(x: ref/X, o: Option<R>) -> R => $abort(\"n\")\nfunc mid<X, R>(x: ref/X, o: Option<R>, tag: i32 = 0) -> R\n    X is Inner\n    return $abort(\"m\")\nfunc ko(y: i64) -> i32 => 1\nfunc f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    return ko(mid(x, mkNone()))\n", "PremiseClosureLimit_Kd" },
+        { "rf1n", Pq + "func mkNone<T>() -> Option<T> => .None\nfunc mid<X, R>(x: ref/X, o: Option<R>, tag: i32 = 0) -> R\n    X is Inner\n    return $abort(\"m\")\nfunc ko(y: i64) -> i32 => 1\nfunc f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    return ko(mid(x, mkNone()))\n", "PremiseClosureLimit_Kd" },
         { "xbare", Pq + "func g<X>(x: ref/X) => ()\nfunc f<T>(x: T.(Pq).Up)\n    T is Pq\n    g(x)\n", string.Empty },
         { "xstruct", Pq + "struct Box<X>\n    X is Inner\n    var v: X\nfunc f<T>(x: ref/Box<T.(Pq).Up>)\n    T is Pq\n    return\n", "PremiseClosureLimit_Kd" },
         { "xstructv", Pq + "struct Box<X>\n    X is Inner\n    var v: X\nfunc f<T>(x: ref/Box<T.(Pq).Up>)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    return\n", string.Empty },
@@ -551,7 +557,8 @@ public partial class TypeIdentityTest
     // an `if`, `do`, `while` or `for` body, a match arm or a Closure (none states premises: a Closure's body is an ExecutableBody,
     // F.9.1) is its definition's and rests on the definition's one record, at its first refused use (the review's tw-blk, tw-blk2,
     // tw-do, tw-while with the nested use on `y`, so the record's line names the use: N1); a named function written in the body is
-    // its own declaration (tw-local: two records); a Copy judged with no check frame open records at the declaration (tw-copyblk).
+    // its own declaration (tw-local: two records); a bare acquisition's Copy, judged at HIR publication in a site frame at the Place
+    // (R7-C6 a), records at its first refused use (tw-copyblk; before, with no frame open, at the declaration).
     // Each row is a whole declaration after CyclePrelude and Pq; b0cec6e90 gave the block's, arm's or Closure's own record too.
     // F's ruling 220 (SPEC 8.2.3, 8.8.1: a conditional conformance's scope is a constrained declaration of its own): a conformance
     // path's requests extend the closure of the declaration whose premises it extends, so each conditional conformance has its own
@@ -566,7 +573,7 @@ public partial class TypeIdentityTest
         { "tw-arm", PqUses + "    need(x)\n    match 1\n        1 => need(y)\n        _ => ()\n", "PremiseClosureLimit_Kd: need(x)" },
         { "tw-closure", PqUses + "    need(x)\n    let g = func () => need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
         { "tw-local", PqUses + "    need(x)\n    func g<U>(z: ref/U.(Pq).Up)\n        U is Pq\n        need(z)\n", "PremiseClosureLimit_Kd: need(x) | PremiseClosureLimit_Kd: need(z)" },
-        { "tw-copyblk", "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    if true\n        return x\n    return x\n", "PremiseClosureLimit_Kd: func f<T>(x: T.(Pq).Up) -> T.(Pq).Up" },
+        { "tw-copyblk", "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    if true\n        return x\n    return x\n", "PremiseClosureLimit_Kd: return x" },
         { "tw-cc2", BoxWhen, "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq" },
         { "tw-cc3", BoxWhen + "    Self is Has3 when T is Pq\n        associate Has3.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq | PremiseClosureLimit_Kd: Self is Has3 when T is Pq" },
         { "tw-ccdir", HasItems + "struct Box<T>\n    T is Pq\n    var v: i32\n    Self is Has1\n    associate Has1.Item is T.(Pq).Up\n    Self is Has2\n    associate Has2.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1" },

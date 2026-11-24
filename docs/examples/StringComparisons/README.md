@@ -9,6 +9,6 @@ dotnet run --project src/Kimi -c Release --no-build -- build docs/examples/Strin
 dotnet run --project src/Kimi -c Release --no-build -- run docs/examples/StringComparisons/StringComparisons.kimiproj
 ```
 
-Requires the pinned tools and ABI 2 backend archive from [backend setup](../../../src/backend/windows-x64/README.md). Equality checks lengths before comparing data. Ordering uses backend `memcmp` for the common prefix, then compares lengths. Neither path allocates or reads the release tag or padding.
+Requires the pinned tools and the compiler's backend archive ([backend setup](../../../src/backend/windows-x64/README.md)). Equality checks lengths before comparing data. Ordering uses `memcmp` (the module's, [IMPL 21.4.7](../../impl/21-layout-runtime-and-code-generation.md#2147-native-imports-and-backend-support)) for the common prefix, then compares lengths. Neither path allocates or reads the release tag or padding.
 
 These implicit Loans do not add general borrow execution, string concatenation, interpolation or Heap construction. See [STATUS C.51](../../STATUS.md#4-llvm-generation-coverage).

@@ -453,7 +453,7 @@ public sealed partial class Binding
     }
 
     // DECISIONS BU-240: whether what was formed since `stamp` and `mark` read a split layer: a binding of the open combination, or a
-    // formation that formed none (the one predicate of a part's split read: FormReadsSplit, ItemPartFails).
+    // formation that formed none (the one predicate of a part's split read: FormReadsSplit, ItemPartFails, CheckedAt's store).
     private bool ReadSplitSince(int stamp, int mark) => this.splitReads != stamp || this.UnformedSince(mark);
 
     // DECISIONS BU-240: a part of a check judged in split cases starts (RestsOnSplitCases): its writes and reads count from here.

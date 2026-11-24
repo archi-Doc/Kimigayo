@@ -110,16 +110,17 @@ internal sealed unsafe partial class Tatara
         }
     }
 
-    // Verifies ir, optimizes it at default<O2> and writes the text to optimizedIr as opt -S does.
-    internal void Optimize(TataraContext context, string ir, string optimizedIr)
-        => this.Call("optimize", context, [.. Target(context), ir, optimizedIr], (texts, result) => NativeOptimize(texts, texts[5], texts[6], result));
+    // Verifies ir and optimizes it at default<O2>: the text opt -S writes, which the caller writes (tatara.h).
+    internal string Optimize(TataraContext context, string ir)
+        => Encoding.UTF8.GetString(this.Call("optimize", context, [.. Target(context), ir], (texts, result) => NativeOptimize(texts, texts[5], result)).Output);
 
-    // Verifies ir, then writes the object as llc -O0 or -O2 does (the level's digit).
-    internal void Emit(TataraContext context, string ir, string obj, int optimizationLevel)
-        => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => NativeEmit(texts, texts[5], texts[6], optimizationLevel, result));
+    // Verifies ir, then compiles it as llc -O0 or -O2 does (the level's digit): the object's bytes, which the caller writes; obj only
+    // names it (llc's -o, the name its debug information gives it) and is not opened (tatara.h).
+    internal byte[] Emit(TataraContext context, string ir, string obj, int optimizationLevel)
+        => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => NativeEmit(texts, texts[5], texts[6], optimizationLevel, result)).Output;
 
     internal ObjectFacts Inspect(TataraContext context, string obj)
-        => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result));
+        => this.Call("inspect", context, [obj], (texts, result) => NativeInspect(texts[0], result)).Facts;
 
     // Links with LLD's arguments, as NativeBuild builds them: arguments[0] names the flavor, lld-link or ld.lld (tatara.h).
     internal void Link(TataraContext context, IReadOnlyList<string> arguments)
@@ -159,7 +160,7 @@ internal sealed unsafe partial class Tatara
 
     [LibraryImport("tatara", EntryPoint = "tatara_optimize")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
-    private static partial int NativeOptimize(Text* target, Text ir, Text optimizedIr, nint* result);
+    private static partial int NativeOptimize(Text* target, Text ir, nint* result);
 
     [LibraryImport("tatara", EntryPoint = "tatara_emit")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
@@ -186,8 +187,9 @@ internal sealed unsafe partial class Tatara
     private static partial void NativeRelease(nint result);
 
     // One call: its inputs encoded into one buffer and pinned, the result's texts copied and the result released, all inside the lock.
-    // A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is.
-    private ObjectFacts Call(string operation, TataraContext context, string[] values, Invocation invocation)
+    // A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is. Returns the
+    // inspection's facts and the output (text kind 3; empty for inspect and link).
+    private (ObjectFacts Facts, byte[] Output) Call(string operation, TataraContext context, string[] values, Invocation invocation)
     {
         context.CancellationToken.ThrowIfCancellationRequested();
         var lengths = new int[values.Length];
@@ -199,6 +201,7 @@ internal sealed unsafe partial class Tatara
 
         int code;
         string message, undefined, defined;
+        byte[] output;
         bool hasUnwind, hasDefaultLibrary;
         lock (Gate)
         {
@@ -220,6 +223,7 @@ internal sealed unsafe partial class Tatara
                 message = NativeText(result, 0).Read();
                 undefined = NativeText(result, 1).Read();
                 defined = NativeText(result, 2).Read();
+                output = NativeText(result, 3).Bytes();
                 hasUnwind = NativeFlag(result, 0) == 1;
                 hasDefaultLibrary = NativeFlag(result, 1) == 1;
                 if (code == 2)
@@ -246,10 +250,10 @@ internal sealed unsafe partial class Tatara
             context.Report(DiagnosticSeverity.Warning, message.Trim());
         }
 
-        return new ObjectFacts(Symbols(undefined), Symbols(defined), hasUnwind, hasDefaultLibrary);
+        return (new ObjectFacts(Symbols(undefined), Symbols(defined), hasUnwind, hasDefaultLibrary), output);
     }
 
-    // TataraText: UTF-8 bytes and their length, not NUL-terminated.
+    // TataraText: bytes and their length, not NUL-terminated; UTF-8 text but emit's output (an object's bytes).
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct Text
     {
@@ -263,6 +267,8 @@ internal sealed unsafe partial class Tatara
         }
 
         internal string Read() => this.length == 0 ? string.Empty : Encoding.UTF8.GetString((byte*)this.bytes, (int)this.length);
+
+        internal byte[] Bytes() => new ReadOnlySpan<byte>((byte*)this.bytes, (int)this.length).ToArray();
     }
 }
 

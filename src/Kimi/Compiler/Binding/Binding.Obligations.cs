@@ -8,12 +8,13 @@ namespace Kimi.Compiler;
 // distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length,
 // call and erasure rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at
 // the obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which
-// it leaves Resolved: RecordFurtherOriginRecord); a Definition obligation still recorded at Final fails its use; an Owned obligation is
-// judged at Final by its discharge: an erasure's Owned condition deferred while a body is bound (Judgment), its failure the erasure's
-// Language record at its use (JudgeErasedOwned), or a result slot's default deferred at its last resolution (ResultDefault), its
-// failure the slot's missing Origin (JudgeDeferredDefault); any other obligation but an Origin relation with both ends is proven or
-// discharged by Final unless it rests on a failed part, and one that is not fails its use as InternalInvariant_Kd. Prohibitions: no
-// consumer decides an obligation's verdict from its own reading; it reads Binding's.
+// it leaves Resolved: RecordFurtherOriginRecord); each is stamped with the body Binding formed it in, but an Origin relation formed in a
+// body with an end foreign to it (ForeignEnd) is its nested signature's declaration row (R7-O3 U-O3); a Definition obligation still
+// recorded at Final fails its use; an Owned obligation is judged at Final by its discharge: an erasure's Owned condition deferred while
+// a body is bound (Judgment), its failure the erasure's Language record at its use (JudgeErasedOwned), or a result slot's default
+// deferred at its last resolution (ResultDefault), its failure the slot's missing Origin (JudgeDeferredDefault); any other obligation
+// but an Origin relation with both ends is proven or discharged by Final unless it rests on a failed part, and one that is not fails
+// its use as InternalInvariant_Kd. Prohibitions: no consumer decides an obligation's verdict from its own reading; it reads Binding's.
 public sealed partial class Binding
 {
     internal bool IsVerifiedLengthObligation(BindingObligation obligation)
@@ -138,12 +139,42 @@ public sealed partial class Binding
             return;
         }
 
-        obligation = obligation with { Body = this.formingBody }; // The body Binding formed it in (DECISIONS R4-M101 E1).
+        // The body Binding formed it in (DECISIONS R4-M101 E1), except a relation formed in a body with an end the view's row 1 classes
+        // foreign to it (a nested signature's per-call Origin): that signature's declaration row (SPEC 15.3.4; R7-O3 U-O3), stamped with
+        // the declaration judge's frame, where it bounds no local region (BoundableIn), for JudgeDeclarationRows to judge at its use.
+        obligation = obligation with { Body = this.formingBody.IsBody && this.ForeignEnd(obligation) ? ExecutableBody.Declarations : this.formingBody };
         if (this.obligationSet.Add(obligation))
         {
             this.obligations.Add(obligation);
             this.originStateVersion++;
             this.RecordLocalRegionBound(obligation);
+        }
+    }
+
+    // Whether an Origin relation has an end that ForeignDeclarationAtom classes foreign to the forming body, a meet by its operands as
+    // ClassifyMeet classes them (a Closure's result defaulting to the meet of its borrowed inputs, SPEC 15.4.3 rule 1; meets are flat).
+    // A call's argument fit relates the call's images and regions of its callee's Origins, never the callee's own atoms (a composite's
+    // value Type formed at the trial's parameter is completed at the call's, CompleteOperationTypes), so no call forms such a row.
+    private bool ForeignEnd(in BindingObligation obligation)
+    {
+        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter })
+        {
+            return false;
+        }
+
+        return Foreign(longer) || Foreign(shorter);
+
+        bool Foreign(BoundOrigin end)
+        {
+            for (var i = 0; i < end.Operands.Count; i++)
+            {
+                if (this.ForeignDeclarationAtom(end.Operands[i], this.formingBody))
+                {
+                    return true;
+                }
+            }
+
+            return this.ForeignDeclarationAtom(end, this.formingBody);
         }
     }
 }

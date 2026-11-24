@@ -21,7 +21,7 @@ internal static partial class NativeToolchain
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
         ValidateManifest(document.RootElement);
-        await new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken).Run();
+        new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken).Run();
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
@@ -37,7 +37,7 @@ internal static partial class NativeToolchain
         var manifest = document.RootElement;
         ValidateManifest(manifest);
         var optimization = LinkManifest.Text(manifest, "optimization");
-        await new NativeBuild(null, ArtifactPaths.Create(ir, optimization), manifest, Path.GetDirectoryName(path)!, optimization, report, cancellationToken).Run();
+        new NativeBuild(null, ArtifactPaths.Create(ir, optimization), manifest, Path.GetDirectoryName(path)!, optimization, report, cancellationToken).Run();
     }
 
     // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
@@ -70,14 +70,15 @@ internal static partial class NativeToolchain
     }
 
     // IMPL 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable original; a staged copy is reused
-    // only when its bytes still have that hash (IsStaged). A program's input is copied first and named by the copy's hash; a compiler's
+    // only when its bytes still have that hash (HoldStaged). A program's input is copied first and named by the copy's hash; a compiler's
     // supply is found by its catalog hash (StageSupply). The input is a stream (a program's file or the compiler's resource), which the
-    // caller disposes.
-    internal static string StageInput(Stream input, string stem, out string hash)
+    // caller disposes; the folder is the build's staged inputs (ArtifactPaths.Native). The result is the staged copy held (HoldStaged),
+    // which the caller releases after the link; a copy this call moved into place and then finds changed or gone at its hold is an
+    // output failure (StagedHold).
+    internal static FileStream StageInput(Stream input, string folder, out string hash)
     {
-        var directory = stem + ".native";
-        Directory.CreateDirectory(directory);
-        var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
+        Directory.CreateDirectory(folder);
+        var temporary = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
             using (var copy = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
@@ -86,12 +87,13 @@ internal static partial class NativeToolchain
             }
 
             hash = Hash(temporary);
-            if (!IsStaged(stem, hash, out var staged))
+            if (HoldStaged(folder, hash, out var staged) is { } held)
             {
-                Replace(temporary, staged);
+                return held;
             }
 
-            return staged;
+            Replace(temporary, staged);
+            return HoldStaged(folder, hash, out _) ?? throw new IOException($"The staged library changed before the build held it: {staged}.");
         }
         finally
         {
@@ -99,27 +101,49 @@ internal static partial class NativeToolchain
         }
     }
 
-    // A compiler's supply staged (IMPL 20.4; LC3 S1): the copy its catalog hash names is reused when its bytes, the whole file hashed,
-    // still have that hash, and the resource is not opened; otherwise the resource is staged as an input is, named by the copy's hash.
-    // The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8).
-    internal static string StageSupply(CompilerSupply supply, string stem, out string hash)
+    // A compiler's supply staged (IMPL 20.4; LC3 S1): the copy its catalog hash names is reused, held, when its bytes, the whole file
+    // hashed, still have that hash, and the resource is not opened; otherwise the resource is staged as an input is, named by the copy's
+    // hash. The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8). The result is the
+    // held copy, as StageInput's.
+    internal static FileStream StageSupply(CompilerSupply supply, string folder, out string hash)
     {
-        if (IsStaged(stem, supply.Sha256, out var staged))
+        if (HoldStaged(folder, supply.Sha256, out _) is { } held)
         {
             hash = supply.Sha256;
-            return staged;
+            return held;
         }
 
         using var input = supply.Open();
-        return StageInput(input, stem, out hash);
+        return StageInput(input, folder, out hash);
     }
 
-    // IMPL 20.4's reuse rule, stated once: the staged copy the hash names, <stem>.native/<hash>.lib, is reused only when it exists and its
-    // bytes still have that hash.
-    private static bool IsStaged(string stem, string hash, out string staged)
+    // IMPL 20.4's reuse rule and the hold's start in one step (StagedHold; DECISIONS T-M17's structural start): the staged copy the hash
+    // names, <stem>.native/<hash>.lib, is opened for reading with read sharing only and hashed from that handle; when its bytes still have
+    // that hash it is returned open, held, so until the caller releases it no write, replacement or deletion of it, no rename of its
+    // folder and no open without read sharing succeeds. LLD opens its inputs for reading and shares read, write and delete, so the hold
+    // admits it (StagedHold's design §3). A missing copy or other bytes give null; a failed open or read propagates, the handle closed.
+    private static FileStream? HoldStaged(string folder, string hash, out string staged)
     {
-        staged = Path.Combine(stem + ".native", hash + ".lib");
-        return File.Exists(staged) && Hash(staged) == hash;
+        staged = Path.Combine(folder, hash + ".lib");
+        if (!File.Exists(staged))
+        {
+            return null;
+        }
+
+        var file = File.OpenRead(staged);
+        var held = false;
+        try
+        {
+            held = Hash(file) == hash;
+            return held ? file : null;
+        }
+        finally
+        {
+            if (!held)
+            {
+                file.Dispose();
+            }
+        }
     }
 
     // The external functions the module declares, keyed by symbol, with their dllimport form: the manifest's externalDeclarations, which
@@ -166,8 +190,10 @@ internal static partial class NativeToolchain
     /// (a)): should the process end between the success record and the move, or the move and the invalidation both fail (one IOException
     /// naming both, the move's as its inner exception), the attempt's success record stays, naming a hash no file at the path has. run
     /// --no-build runs only an executable whose hash the record names, so it refuses that one, and the next build invalidates the record.
-    /// From the pair's hash to its end the build holds its IR open for reading only (G1202): a write, replacement or deletion of it fails
-    /// meanwhile, so Tatara compiles the bytes the record names.</summary>
+    /// From the pair's hash to its end the build holds its IR open for reading only (G1202), each staged library from its check, released
+    /// with the private file on every outcome (StagedHold), and its O2 text and object from their creation, which the build writes from
+    /// Tatara's returned bytes, the text until emit has read it (Intermediates): a write, replacement or deletion of any of them fails
+    /// meanwhile, so Tatara compiles and LLD links the bytes the record names and what the build derived from them.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -198,7 +224,7 @@ internal static partial class NativeToolchain
                 report, cancellationToken, TargetProfile.Windows.Target, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
         }
 
-        internal async Task Run()
+        internal void Run()
         {
             // The pair's IR, held with read sharing only from its hash to the build's end: no writer changes or replaces it before Tatara
             // reads it, so Tatara compiles the bytes the record names (G1202). The platform is checked after the hash, so a mismatched pair
@@ -224,14 +250,19 @@ internal static partial class NativeToolchain
             WriteRecord(this.paths.Record, this.record);
             var tatara = Tatara.Instance;
             tools.Add("tatara", new JsonObject { ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion });
-            var libraries = this.ResolveLibraries();
-            WriteRecord(this.paths.Record, this.record);
-            var obj = await this.Compile(tatara);
-            var undefined = this.Inspect(tatara, obj);
+
+            // The staged libraries, each held with read sharing only from its check to the build's end, so LLD links the bytes the record
+            // names; the finally releases them with the private file on every outcome (StagedHold). The object is held from its creation
+            // (Compile) to the build's end, so the inspection and LLD read the object emit produced (Intermediates).
+            var libraries = new List<FileStream>();
             var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe"; // Private until the commit moves it into place.
             try
             {
-                this.Link(tatara, obj, libraries, undefined, executable);
+                this.ResolveLibraries(libraries);
+                WriteRecord(this.paths.Record, this.record);
+                using var obj = this.Compile(tatara);
+                var undefined = this.Inspect(tatara, obj.Name);
+                this.Link(tatara, obj.Name, libraries, undefined, executable);
                 this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
                 this.context.CancellationToken.ThrowIfCancellationRequested();
                 WriteRecord(this.paths.Record, this.record);
@@ -258,6 +289,11 @@ internal static partial class NativeToolchain
             }
             finally
             {
+                foreach (var library in libraries)
+                {
+                    library.Dispose();
+                }
+
                 File.Delete(executable);
             }
         }
@@ -272,6 +308,31 @@ internal static partial class NativeToolchain
             if (supply is null || expectedKind != kind || (expectedHash is not null && !expectedHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new InvalidDataException($"Native library '{name}' does not match its NativeLibraries Kind or Sha256 assertion.");
+            }
+        }
+
+        // An intermediate the build writes, held from its creation (Intermediates; DECISIONS T-M17's rule): created with write access and
+        // read sharing only, written, flushed and returned open, so until the caller releases it no write, replacement or deletion of it,
+        // no rename of its folder and no open without read sharing succeeds; a reader that does not share write is refused too. LLVM's and
+        // LLD's opens for reading share read, write and delete, so emit, the inspection and LLD read the bytes written (Intermediates'
+        // design §3, probed). A failure after the open closes the handle and propagates.
+        private static FileStream Hold(string path, byte[] bytes)
+        {
+            var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+            var held = false;
+            try
+            {
+                file.Write(bytes);
+                file.Flush();
+                held = true;
+                return file;
+            }
+            finally
+            {
+                if (!held)
+                {
+                    file.Dispose();
+                }
             }
         }
 
@@ -291,14 +352,13 @@ internal static partial class NativeToolchain
             }
         }
 
-        // The manifest's libraries in its order, each staged (the file the linker receives), checked against its assertions and
-        // identified in the record by its staged path and hash (IMPL 20.4). A reserved name is the compiler's supply: its entry the one
-        // this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies), found by their catalog hash or
-        // staged from its resource (StageSupply); any other is a program's, staged from its input and checked against the project's
-        // supply. Every compiler's supply is listed.
-        private List<string> ResolveLibraries()
+        // The manifest's libraries in its order, each staged (the file the linker receives) and added, held, to Run's list as soon as it
+        // is staged, so Run releases it on every outcome; then checked against its assertions and identified in the record by its staged
+        // path and hash (IMPL 20.4). A reserved name is the compiler's supply: its entry the one this compiler writes (LinkManifest) and its
+        // bytes the compiler's (ToolchainIdentity.Supplies), found by their catalog hash or staged from its resource (StageSupply); any
+        // other is a program's, staged from its input and checked against the project's supply. Every compiler's supply is listed.
+        private void ResolveLibraries(List<FileStream> libraries)
         {
-            var libraries = new List<string>();
             var libraryIdentities = new JsonArray();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in LinkManifest.Items(this.manifest, "libraries"))
@@ -311,24 +371,23 @@ internal static partial class NativeToolchain
                 }
 
                 var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name);
-                string path;
+                FileStream library;
                 string hash;
                 if (supply is not null)
                 {
                     LinkManifest.CheckCompilerSupply(item, supply);
-                    path = StageSupply(supply, this.paths.Stem, out hash);
+                    library = StageSupply(supply, this.paths.Native, out hash);
                 }
                 else
                 {
-                    using (var input = File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory)))
-                    {
-                        path = StageInput(input, this.paths.Stem, out hash);
-                    }
+                    using var input = File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory));
+                    library = StageInput(input, this.paths.Native, out hash);
+                }
 
-                    if (this.project is not null)
-                    {
-                        CheckSupply(this.project, name, kind, hash);
-                    }
+                libraries.Add(library);
+                if (supply is null && this.project is not null)
+                {
+                    CheckSupply(this.project, name, kind, hash);
                 }
 
                 if (LinkManifest.OptionalText(item, "libraries.sha256") is { } assertion &&
@@ -337,8 +396,7 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException($"Native library '{name}' does not match its manifest Sha256 assertion.");
                 }
 
-                libraries.Add(path);
-                libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, this.directory), ["sha256"] = hash });
+                libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(library.Name, this.directory), ["sha256"] = hash });
             }
 
             if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Supply.Name)))
@@ -347,25 +405,23 @@ internal static partial class NativeToolchain
             }
 
             this.record["libraries"] = libraryIdentities;
-            return libraries;
         }
 
-        // The object: the IR verified, for O2 optimized, its module paths redacted and verified again, then compiled.
-        private async Task<string> Compile(Tatara tatara)
+        // The object: the IR verified, for O2 optimized, its module paths redacted, written and verified again, then compiled and
+        // written. Tatara returns each output and the build writes it through Hold: the O2 text is held until emit has read it, and the
+        // object is returned held, for Run to release at the build's end.
+        private FileStream Compile(Tatara tatara)
         {
-            var selectedIr = this.paths.Ir;
-            if (this.optimization == "O2")
+            var obj = this.paths.Stem + ".obj";
+            var level = this.optimization[1] - '0';
+            if (this.optimization != "O2")
             {
-                selectedIr = this.paths.Stem + ".ll";
-                tatara.Optimize(this.context, this.paths.Ir, selectedIr);
-                var ir = await File.ReadAllTextAsync(selectedIr, this.context.CancellationToken);
-                ir = ModulePathPattern().Replace(ir, m => Redact(m.Value, this.directory));
-                await File.WriteAllTextAsync(selectedIr, ir, Utf8, this.context.CancellationToken);
+                return Hold(obj, tatara.Emit(this.context, this.paths.Ir, obj, level));
             }
 
-            var obj = this.paths.Stem + ".obj";
-            tatara.Emit(this.context, selectedIr, obj, this.optimization[1] - '0');
-            return obj;
+            var ir = ModulePathPattern().Replace(tatara.Optimize(this.context, this.paths.Ir), m => Redact(m.Value, this.directory));
+            using var optimized = Hold(this.paths.Stem + ".ll", Utf8.GetBytes(ir));
+            return Hold(obj, tatara.Emit(this.context, optimized.Name, obj, level));
         }
 
         // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
@@ -407,17 +463,26 @@ internal static partial class NativeToolchain
         }
 
         // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
-        // record's linked state, naming the private file's hash, which Run's commit publishes before the file.
-        private void Link(Tatara tatara, string obj, List<string> libraries, string undefined, string executable)
+        // record's linked state, naming the private file's hash, which Run's commit publishes before the file. LLD reads no environment
+        // (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds no VC or
+        // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1). LLD opens the held object and each
+        // held library by its path, for reading, which the holds admit (StagedHold, Intermediates).
+        private void Link(Tatara tatara, string obj, List<FileStream> libraries, string undefined, string executable)
         {
-            var link = new string[libraries.Count + 7];
+            var link = new string[libraries.Count + 9];
             link[0] = "lld-link";
             link[1] = obj;
-            libraries.CopyTo(link, 2);
-            link[^5] = "/entry:" + TargetProfile.Windows.EntrySymbol;
-            link[^4] = "/subsystem:" + TargetProfile.Windows.Subsystem;
-            link[^3] = "/nodefaultlib";
-            link[^2] = "/Brepro";
+            for (var i = 0; i < libraries.Count; i++)
+            {
+                link[i + 2] = libraries[i].Name;
+            }
+
+            link[^7] = "/entry:" + TargetProfile.Windows.EntrySymbol;
+            link[^6] = "/subsystem:" + TargetProfile.Windows.Subsystem;
+            link[^5] = "/nodefaultlib";
+            link[^4] = "/Brepro";
+            link[^3] = "/lldignoreenv";
+            link[^2] = "/winsysroot:" + this.paths.Native;
             link[^1] = "/out:" + executable;
             tatara.Link(this.context, link);
             this.context.CancellationToken.ThrowIfCancellationRequested();

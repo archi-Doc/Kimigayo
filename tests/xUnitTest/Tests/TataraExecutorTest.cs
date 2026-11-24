@@ -140,7 +140,7 @@ public sealed class TataraExecutorTest : IDisposable
         foreach (var level in Levels)
         {
             var (obj, exe) = (Path.Combine(this.directory, "probe." + level + ".o"), Path.Combine(this.directory, "probe." + level));
-            tatara.Emit(LinuxContext, probe, obj, level[1] - '0');
+            File.WriteAllBytes(obj, tatara.Emit(LinuxContext, probe, obj, level[1] - '0'));
             var facts = tatara.Inspect(LinuxContext, obj);
             Assert.Empty(facts.Undefined);
             Assert.Equal([new ObjectSymbol("_start", 'T')], facts.DefinedExternal);
@@ -157,10 +157,10 @@ public sealed class TataraExecutorTest : IDisposable
         }
 
         var deplibs = Path.Combine(this.directory, "deplibs.o");
-        tatara.Emit(LinuxContext, this.LinuxProbe("deplibs", DependentLibrary), deplibs, 0);
+        File.WriteAllBytes(deplibs, tatara.Emit(LinuxContext, this.LinuxProbe("deplibs", DependentLibrary), deplibs, 0));
         Assert.True(tatara.Inspect(LinuxContext, deplibs).HasDefaultLibrary);
         var macho = Path.Combine(this.directory, "probe.macho.o");
-        tatara.Emit(Context with { Triple = "x86_64-apple-macosx" }, probe, macho, 0);
+        File.WriteAllBytes(macho, tatara.Emit(Context with { Triple = "x86_64-apple-macosx" }, probe, macho, 0));
         Assert.Contains("not a COFF or ELF object", Assert.Throws<IOException>(() => tatara.Inspect(Context, macho)).Message, StringComparison.Ordinal);
     }
 
@@ -181,7 +181,7 @@ public sealed class TataraExecutorTest : IDisposable
         foreach (var level in Levels)
         {
             var (obj, exe) = (Path.Combine(this.directory, name + "." + level + ".o"), Path.Combine(this.directory, name + "." + level));
-            Tatara.Instance.Emit(LinuxContext, ir, obj, level[1] - '0');
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, ir, obj, level[1] - '0'));
             Assert.Empty(Tatara.Instance.Inspect(LinuxContext, obj).Undefined);
             Tatara.Instance.Link(LinuxContext, ["ld.lld", "-e", TargetProfile.Linux.EntrySymbol, .. ElfLinkArguments(obj, exe, [])]);
             ElfFile.Read(exe).AssertStatic(TargetProfile.Linux.EntrySymbol);
@@ -199,7 +199,7 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var folder = Directory.CreateDirectory(Path.Combine(this.directory, "elf" + i)).FullName;
             var (obj, exe) = (Path.Combine(folder, "probe.o"), Path.Combine(folder, "probe"));
-            Tatara.Instance.Emit(LinuxContext, probe, obj, 2);
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, probe, obj, 2));
             Tatara.Instance.Link(LinuxContext, ["ld.lld", .. ElfLinkArguments(obj, exe, [])]);
             products[i] = Hash(obj) + Hash(exe);
         }
@@ -237,8 +237,8 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // A request that fails with return 1 is the toolchain's failure, and the next request succeeds: an invalid IR; an inline-asm
-    // constraint error, which llc reports after opening the object and which leaves no object, as llc's; then a link without
-    // kernel32's import library, whose imports are undefined symbols.
+    // constraint error, which llc reports after opening the object and which leaves no object, as llc's (Tatara's emit writes no
+    // file); then a link without kernel32's import library, whose imports are undefined symbols.
     [Fact]
     public async Task FailedRequestsLeaveTataraUsable()
     {
@@ -257,7 +257,7 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.StartsWith("Tatara failed: emit\n", asmError.Message, StringComparison.Ordinal);
         Assert.False(File.Exists(Path.Combine(this.directory, "asmerror.obj")));
         var obj = Path.Combine(this.directory, "hello.obj");
-        tatara.Emit(Context, ir, obj, 0);
+        File.WriteAllBytes(obj, tatara.Emit(Context, ir, obj, 0));
         var link = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
         Assert.StartsWith("Tatara failed: link\n", link.Message, StringComparison.Ordinal);
         Assert.Contains("undefined symbol", link.Message, StringComparison.Ordinal);
@@ -267,10 +267,10 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.True(File.Exists(Path.Combine(this.directory, "b.exe")));
     }
 
-    // ADOPTION.md's helper suite (tests/native.c) on the runtime's memory functions (IMPL 21.4.7; the Tatara plan's decision 24, B7r4): the
-    // memory part alone, between the profile's target lines and the footer, optimized and emitted by Tatara at O0 and O2, defines exactly
-    // TargetProfile.MemorySymbols and calls nothing, itself included (no call instruction); linked with the suite (the pinned clang's object
-    // and probe.S's), the backend archive (for __chkstk) and kernel32, taking no archive memory member (the map), it exits 0.
+    // ADOPTION.md's memory-function suite (tests/memory.c) on the runtime's memory functions (IMPL 21.4.7; the Tatara plan's decision
+    // 24, B7r4, B7r5): the memory part alone, between the profile's target lines and the footer, optimized and emitted by Tatara at O0
+    // and O2, defines exactly TargetProfile.MemorySymbols and calls nothing, itself included (no call instruction); linked with the suite
+    // (the pinned clang's object) and kernel32 alone, no backend archive among the inputs, it exits 0.
     [Fact]
     public async Task TheMemoryPartPassesTheHelperSuite()
     {
@@ -278,8 +278,7 @@ public sealed class TataraExecutorTest : IDisposable
         var tests = Path.Combine(Repository.Root, "src", "backend", "windows-x64", "tests");
         var work = this.directory;
         string[] oracle = ["--target=" + Triple, "-O0", "-ffreestanding", "-fno-builtin", "-fno-stack-protector", "-fno-autolink", "-mno-avx", "-c"];
-        Assert.Equal(string.Empty, await Tool("clang", work, [.. oracle, Path.Combine(tests, "native.c"), "-o", "native.obj"]));
-        Assert.Equal(string.Empty, await Tool("clang", work, "--target=" + Triple, "-c", Path.Combine(tests, "probe.S"), "-o", "probe.obj"));
+        Assert.Equal(string.Empty, await Tool("clang", work, [.. oracle, Path.Combine(tests, "memory.c"), "-o", "suite.obj"]));
         var memory = Path.Combine(work, "memory.ll");
         File.WriteAllText(memory, $"target triple = \"{Triple}\"\ntarget datalayout = \"{TargetProfile.Windows.DataLayout}\"\n{LlvmModuleText.MemoryRuntime}{LlvmModuleText.Frame(TargetProfile.Windows).Footer}");
         foreach (var level in Levels)
@@ -287,20 +286,19 @@ public sealed class TataraExecutorTest : IDisposable
             var ir = level == "O2" ? Path.Combine(work, "memory.O2.ll") : memory;
             if (level == "O2")
             {
-                Tatara.Instance.Optimize(Context, memory, ir);
+                File.WriteAllText(ir, Tatara.Instance.Optimize(Context, memory));
             }
 
             var obj = Path.Combine(work, $"memory.{level}.obj");
-            Tatara.Instance.Emit(Context, ir, obj, level[1] - '0');
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(Context, ir, obj, level[1] - '0'));
             var facts = Tatara.Instance.Inspect(Context, obj);
             Assert.Empty(facts.Undefined);
             Assert.Equal(TargetProfile.MemorySymbols, facts.DefinedExternal.Select(static x => x.Name).Order(StringComparer.Ordinal));
             var (failure, disassembly) = await Launch("llvm-objdump", work, "-d", obj);
             Assert.Equal(string.Empty, failure);
             Assert.DoesNotMatch(@"\scall", disassembly);
-            var exe = Path.Combine(work, $"native.{level}.exe");
-            Assert.Equal(string.Empty, await Tool("lld-link", work, obj, "native.obj", "probe.obj", Backend, Kernel32, "/entry:test_entry", "/subsystem:console", "/nodefaultlib", "/Brepro", "/map:native.map", "/out:" + exe));
-            Assert.DoesNotContain(Path.GetFileNameWithoutExtension(Backend) + ":mem", File.ReadAllText(Path.Combine(work, "native.map")), StringComparison.Ordinal);
+            var exe = Path.Combine(work, $"suite.{level}.exe");
+            Assert.Equal(string.Empty, await Tool("lld-link", work, obj, "suite.obj", Kernel32, "/entry:test_entry", "/subsystem:console", "/nodefaultlib", "/Brepro", "/out:" + exe));
             using var process = Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = work, UseShellExecute = false, CreateNoWindow = true })!;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             try
@@ -331,9 +329,9 @@ public sealed class TataraExecutorTest : IDisposable
         var ir = ArtifactPaths.IrOf(Manifest(row));
         var tatara = Tatara.Instance;
         var before = FilterOwner();
-        tatara.Optimize(Context, ir, Path.Combine(this.directory, "hello.O2.ll"));
+        tatara.Optimize(Context, ir);
         var obj = Path.Combine(this.directory, "hello.obj");
-        tatara.Emit(Context, ir, obj, 0);
+        File.WriteAllBytes(obj, tatara.Emit(Context, ir, obj, 0));
         var asm = Path.Combine(this.directory, "asmerror.ll");
         File.WriteAllText(asm, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f() {\nentry:\n  %r = call i32 asm sideeffect \"mov $0, 1\", \"={notaregister}\"()\n  ret i32 %r\n}\n");
         Assert.Throws<IOException>(() => tatara.Emit(Context, asm, Path.Combine(this.directory, "asmerror.obj"), 0));
@@ -394,9 +392,11 @@ public sealed class TataraExecutorTest : IDisposable
 
     private static string Hash(string path) => File.Exists(path) ? ArtifactFiles.Hash(path) : "(none)";
 
-    // lld-link's arguments after its flavor: the object, the libraries in the build's order, then P13's options.
+    // lld-link's arguments after its flavor, as NativeBuild.Link's list: the object, the libraries in the build's order, then P13's
+    // options and LC3 D1's (no environment, no toolchain detection; the system root the executable's own .native folder, as /out: is
+    // each side's own).
     private static string[] LinkArguments(string obj, string exe, string[] libraries)
-        => [obj, .. libraries, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/out:" + exe];
+        => [obj, .. libraries, "/entry:" + TargetProfile.Windows.EntrySymbol, "/subsystem:" + TargetProfile.Windows.Subsystem, "/nodefaultlib", "/Brepro", "/lldignoreenv", "/winsysroot:" + Path.ChangeExtension(exe, ".native"), "/out:" + exe];
 
     // ld.lld's arguments after its flavor: a static executable of the object and the libraries, no library a .deplibs section names.
     private static string[] ElfLinkArguments(string obj, string exe, string[] libraries) => ["-m", "elf_x86_64", "-static", "--no-dependent-libraries", obj, .. libraries, "-o", exe];
@@ -571,10 +571,10 @@ public sealed class TataraExecutorTest : IDisposable
         if (level == "O2")
         {
             (toolIr, tataraIr) = (Path.Combine(tools, "input.O2.ll"), Path.Combine(tatara, "input.O2.ll"));
-            yield return ("optimize", () => Tool("opt", tools, "-S", "-passes=default<O2>", "-mtriple=" + context.Triple, ir, "-o", toolIr), () => library.Optimize(context, ir, tataraIr));
+            yield return ("optimize", () => Tool("opt", tools, "-S", "-passes=default<O2>", "-mtriple=" + context.Triple, ir, "-o", toolIr), () => File.WriteAllText(tataraIr, library.Optimize(context, ir)));
         }
 
-        yield return ("emit", () => Tool("llc", tools, "-" + level, "-filetype=obj", "-mtriple=" + context.Triple, "-mcpu=" + context.Cpu, "-mattr=" + context.Features, "-relocation-model=" + context.RelocationModel, "-code-model=" + context.CodeModel, toolIr, "-o", "input.obj"), () => library.Emit(context, tataraIr, Path.Combine(tatara, "input.obj"), level[1] - '0'));
+        yield return ("emit", () => Tool("llc", tools, "-" + level, "-filetype=obj", "-mtriple=" + context.Triple, "-mcpu=" + context.Cpu, "-mattr=" + context.Features, "-relocation-model=" + context.RelocationModel, "-code-model=" + context.CodeModel, toolIr, "-o", "input.obj"), () => File.WriteAllBytes(Path.Combine(tatara, "input.obj"), library.Emit(context, tataraIr, Path.Combine(tatara, "input.obj"), level[1] - '0')));
         yield return ("inspect", async () =>
         {
             var (failure, facts) = await ToolFacts(tools, Path.Combine(tools, "input.obj"), target);
@@ -786,7 +786,7 @@ public sealed class TataraExecutorTest : IDisposable
             File.WriteAllText(Path.Combine(directory, "malformed.lib"), "!<arch>\nnot a library member\n");
             var tatara = Tatara.Instance;
             var obj = Path.Combine(directory, "f.obj");
-            tatara.Emit(Context, Path.Combine(directory, "f.ll"), obj, 0);
+            File.WriteAllBytes(obj, tatara.Emit(Context, Path.Combine(directory, "f.ll"), obj, 0));
             var error = Assert.Throws<IOException>(() => tatara.Link(Context, ["lld-link", obj, Path.Combine(directory, "malformed.lib"), "/entry:f", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(directory, "f.exe")]));
             Assert.StartsWith("Tatara failed: link\n", error.Message, StringComparison.Ordinal);
             Assert.Contains("lld-link: error:", error.Message, StringComparison.Ordinal);
@@ -797,7 +797,7 @@ public sealed class TataraExecutorTest : IDisposable
             Assert.True(NativeToolchain.IsToolchainFailure(later));
         }
 
-        // An LLVM fatal error after the object is opened; the object is removed, as llc leaves none (C-424 R2).
+        // An LLVM fatal error during emit; no object is written, as llc leaves none (C-424 R2).
         [Fact(Explicit = true)]
         public void FatalErrorRefusesEveryLaterCall()
         {

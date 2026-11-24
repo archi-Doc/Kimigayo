@@ -236,15 +236,16 @@ public sealed partial class Binding
         // the children an Error keeps, evaluated in place before its derived value; the others stay replaced. The parent, a node Binding
         // rejected or left unresolved, keeps each child its form evaluates as a value on every path through it (Unconditional) that has an
         // Op the builder evaluates and that the builder can form, judged at the part itself, under any groups and a label (inner): a part
-        // Binding resolved with its Op's facts and a Type, or an Error whose form is a value (not Syntax: a rejected Type or container name
-        // in a qualifier is none) and rests on causes (RestingCauses), which keeps its own children by this rule. Stay replaced: an Error
-        // Binding left unresolved without causes of its own, such as a closure whose parameters the failed call was to give their Types,
-        // whose value rests on the parent's failure; a part without a Type that is no Error, since no destination Type holds it (a
-        // construct, PLAN G121's kept-construct design, its parts' problems lost; a noinit); a function's name Binding resolved, whose value
-        // its consumer forms (its erasure, which a kept part has none of; one left unresolved is an Error, HasFacts); and a part holding a
-        // jump published without failure whose target row is the Error, a form a jump can target (StructuralCompletion.IsTransferTarget),
-        // since the builder resolves such a row against the targets it opened, and an Error opens none (its InternalInvariant_Kd;
-        // DECISIONS BU-106).
+        // Binding resolved with its Op's facts and a Type, a Field Place over its Field's failed slot (Binding.FailedField: a Place is
+        // formed in place, so no destination Type has to hold it; PLAN G1184), or an Error whose form is a value (not Syntax: a rejected
+        // Type or container name in a qualifier is none) and rests on causes (RestingCauses), which keeps its own children by this rule.
+        // Stay replaced: an Error Binding left unresolved without causes of its own, such as a closure whose parameters the failed call was
+        // to give their Types, whose value rests on the parent's failure; another part without a Type that is no Error, since no
+        // destination Type holds it (a construct, PLAN G121's kept-construct design, its parts' problems lost; a noinit); a function's name
+        // Binding resolved, whose value its consumer forms (its erasure, which a kept part has none of; one left unresolved is an Error,
+        // HasFacts); and a part holding a jump published without failure whose target row is the Error, a form a jump can target
+        // (StructuralCompletion.IsTransferTarget), since the builder resolves such a row against the targets it opened, and an Error opens
+        // none (its InternalInvariant_Kd; DECISIONS BU-106).
         private bool Keeps(Koto child, Koto parent)
         {
             var op = binding.OpOf(child);
@@ -258,7 +259,7 @@ public sealed partial class Binding
             var innerOp = ReferenceEquals(inner, child) ? op : binding.OpOf(inner);
             var formed = innerOp == HirOp.Error
                 ? binding.KindOp(inner) != HirOp.Syntax && (inner.BindingState == BindingState.Resolved || binding.HasRestingCauses(inner))
-                : (HirTables.Meaning(inner) is not null || HirTables.Meaning(child) is not null) &&
+                : (HirTables.Meaning(inner) is not null || HirTables.Meaning(child) is not null || binding.FailedField(inner)) &&
                     !(innerOp == HirOp.Name && HirTables.Symbol(inner) is { Kind: BindingSymbolKind.Function });
             return formed && !(StructuralCompletion.IsTransferTarget(parent) && (this.targets ??= new(binding)).Targeted(child, parent));
         }

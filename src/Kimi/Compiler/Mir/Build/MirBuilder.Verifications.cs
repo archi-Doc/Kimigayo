@@ -12,7 +12,7 @@ internal sealed partial class MirBuilder
     // which TestCatalog numbers, giving the failure's issue) before its temporaries are cleaned up; on false its message, evaluated and
     // recorded for the issue (testMessage of a shared view; the Never value has nothing to view, nor has a message of no Type, an Error or
     // a failed slot's derived value, which is evaluated into a temp of no Type and not viewed: no access MirValidator's Bounded admits
-    // borrows a slot of no Type, and its body, which Binding rejected, is checked, never run; SPEC 23.1.2, PLAN G1073) with its own
+    // borrows a slot of no Type (Typed), and its body, which Binding rejected, is checked, never run; SPEC 23.1.2, PLAN G1073) with its own
     // temporaries cleaned up, then for $require the case's Abort (testRequireAbort), which has no successor; $expect continues with Unit
     // either way. Its test phases are the backend's (plan 5.6.7).
     private void Verification(MirPlace destination, TestVerificationKoto verification)
@@ -31,7 +31,7 @@ internal sealed partial class MirBuilder
             var text = this.Hold(KnownType(message), message);
             var start = this.arguments.Count;
             this.Assign(text, message);
-            if (!this.IsNever(this.Made(text)) && this.body.TypeOf(text) is not null)
+            if (!this.IsNever(this.Made(text)) && this.Typed(text))
             {
                 this.arguments.Add(MirOperand.Copy(issue));
                 this.arguments.Add(this.Borrow(SemanticsKind.Ref, text, message));

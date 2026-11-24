@@ -9,9 +9,10 @@
 // are its body's uses, recorded as each captures.
 // A failed capture's facts and record belong to Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its
 // call receiver to Binding.ClosureReceivers.
-// Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until
-// PLAN G254's unit), and a captured pair target or projection under an identity premise (until PLAN G170's query), are a located
-// Unsupported_Kd at a written entry; an omitted list's use of one reports InvalidCaptureBinding_Kd instead.
+// Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case where the
+// bare Reborrow rule names no layer or has its limit (until PLAN G254's family limit and G254c), and a captured pair target or projection
+// under an identity premise (until PLAN G170's query), are a located Unsupported_Kd at a written entry; an omitted list's use of one
+// reports InvalidCaptureBinding_Kd instead.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -156,7 +157,7 @@ public sealed partial class Binding
     }
 
     // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. Any
-    // Type is held but those of the interim rows below (PLAN G254, G170).
+    // Type is held but those of the interim rows below (PLAN G254's family limit, G254c, G170).
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -197,13 +198,16 @@ public sealed partial class Binding
 
         // Interim rows, as before G721: a located Unsupported_Kd at a written entry, and for an omitted list a function-level Unsupported
         // that surfaces no record, so the use reports InvalidCaptureBinding_Kd (a pre-existing Language error on a valid program).
-        // (1) Removal condition PLAN G254's unit: a pair layer (SPEC 13.5.5) other than the original `s/T` whose bare acquisition the
-        // one plan (SPEC 8.14) makes a Reborrow in some admitted case, the owner case's own included (BareReborrows): a body's bare use
-        // of it would Reborrow there, and no rule contains that Reborrow in the call receiver (G254). The original (a Parameter) was
-        // captured before G721 and stays: its forms are G254's own.
+        // (1) Removal condition: the bare Reborrow rule names an adaptation family (PLAN G254's family limit) and carries its limit
+        // (PLAN G254c). A pair layer (SPEC 13.5.5) other than the original `s/T` whose complete plan (SPEC 8.14, BareAcquisition)
+        // Reborrows in some admitted case where that rule names no layer (ReborrowedType null: a family, OuterOrigin having no family row)
+        // or has its limit (an owner case's target beside an invariant case, which a body's use reaches through the call receiver): a
+        // body's bare use of it would Reborrow there, uncontained in the call receiver. Every other such layer is captured, its uses
+        // named by the rule; an incomplete plan's use has no plan (SPEC 8.14). The original (a Parameter) was captured before G721 and stays.
         // (2) Removal condition PLAN G170's identity query: an abstract Type dev did not capture (a pair target, a projection) where an
         // identity premise is available in scope (HasTypeIdentity, SPEC 8.2.3), which may make it a pair layer that no plan reads.
-        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareReborrows(type, function)) ||
+        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareAcquisition(type, function, out var reborrow) == SemanticsMask.None &&
+                reborrow != SemanticsMask.None && (this.ReborrowedType(type, function, BoundOrigin.Static, [], out var limit) is null || limit != ReborrowLimit.None)) ||
             (type is { IsAbstract: true, IsPairLayer: false, Kind: not BoundTypeKind.Parameter } && HasTypeIdentity(this.ConstraintScope(function))))
         {
             if (entry is { } written)
@@ -305,7 +309,7 @@ public sealed partial class Binding
     // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot. A bare entry that
     // Reborrows an enclosing Closure's environment binding `u: uniq/T during o` is contained in that Closure's call receiver too, so its
     // binding has `uniq/T during meet(o, ρ)`, a pair layer that meet on its outer-Origin slot where its plan Reborrows the layer: the bare
-    // Reborrow's one rule, BareReborrowLayer and ReborrowedType (DECISIONS R4-M123's 7.7.2, R4-M126 P4, PLAN G254); an enclosing local's
+    // Reborrow's one rule, ReborrowedType (DECISIONS R4-M123's 7.7.2, R4-M126 P4, PLAN G254); an enclosing local's
     // or parameter's keeps its Type (BU-28).
     private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
     {
@@ -325,9 +329,9 @@ public sealed partial class Binding
 
                 environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
                 if (bare is HirAcquire.Reborrow or HirAcquire.ByCase && this.EnvironmentContainment(source) is { } receiver &&
-                    this.BareReborrowLayer(type, function) is { } layer)
+                    this.ReborrowedType(type, function, receiver, [], out _) is { } reborrowed)
                 {
-                    environment.Type = this.ReborrowedType(type, layer, receiver);
+                    environment.Type = reborrowed; // No limit: the enclosing entry's row (1) held the source's (Capture).
                 }
 
                 return null;

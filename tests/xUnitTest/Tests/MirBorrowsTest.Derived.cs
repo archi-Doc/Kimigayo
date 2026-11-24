@@ -238,7 +238,7 @@ public sealed partial class MirBorrowsTest
         "func f()\n    var p = P.init(\"s\", 1)\n    let r = p.s@uniq\n    let q = p.nofield\n    r@follow = \"t\"\n",
         "")]
     [InlineData("func k(a: uniq/i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    var y = 1\n    let z = k(y@uniq, missing)\n    y = 2\n    return z\n", "")]
-    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let z = match y@uniq\n        .Nope => 1\n        _ => 2\n    y = .None\n", "")]
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let z = match y@uniq\n        .Some(_) => 1\n    y = .None\n", "")]
     [InlineData("func f()\n    var a: [2 of i32]\n    missing = a[0]\n", "f: a[0] UninitializedPlace_Kd")]
     [InlineData("func f()\n    var y = 1\n    let r = y@uniq\n    missing = r@follow\n    y = 2\n", "")]
     [InlineData("struct Q\n    public var n: i32\n    public init(n: i32) => self.n = n\nfunc f(p: ref/Q)\n    missing = p.n\n", "")]
@@ -302,7 +302,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n    let t = (Option.Some(y@uniq), g(y))\n", "ComparisonLoanConflict_Kd@4:35")] // cr-tw-opt
     [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    missing(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:13")] // n27-ridx
     [InlineData("func inspect(v: ref/[2 of i32]) => ()\nfunc k(x: i32) => ()\nfunc f()\n    var v: [2 of i32] = [1, 2]\n    var i = 0\n    let r = v@uniq\n    k(v[i])\n    inspect(r)\n", "ComparisonLoanConflict_Kd@7:7 | ComparisonLoanConflict_Kd@7:5")] // n27-tw-ridx
-    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match
+    [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match
     [InlineData("func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Some(_) => 1\n        _ => 2\n    r@follow = .None\n", "ComparisonLoanConflict_Kd@4:19")] // r3-kept-match-ok
     [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-missing
     [InlineData("func f()\n    var h = 1\n    let r = h@uniq\n    let p = h@raw\n    r@follow = 2\n", "ComparisonLoanConflict_Kd@4:13")] // z-raw-ok
@@ -323,8 +323,9 @@ public sealed partial class MirBorrowsTest
     // too (tests/milestones/Milestone41.kimi's `self.selfWeak = selfWeak@move`, Milestone43.kimi's `owner.level = 30`), and keep the
     // records they had before it: Binding's limits and no construction record; (w2) the construction receiver `self`, the target's kept
     // operand, is an enclosing use whose own bit the constructor sets, so `v` uninitialized gives no record (PLAN G1058's first form,
-    // D-983, closed by DECISIONS Z27; fail-before: a false UninitializedPlace_Kd at the write). Each row: the program, Binding's codes,
-    // the problems.
+    // D-983, closed by DECISIONS Z27; fail-before: a false UninitializedPlace_Kd at the write). Since PLAN G1184 (Z28) w2's and Milestone
+    // 41's write into the failed Weak Field is that Field's Place, no derived write, with the same records (MirInitTest
+    // AFieldWhoseSlotFailedIsItsOwnPlace). Each row: the program, Binding's codes, the problems.
     [Theory]
     [InlineData("struct Node\n    public let w: Weak<rc/Node>\n    public let v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n        self.w = w@move\n        self.v = v\n", "Unsupported_Kd Unsupported_Kd", "")]
     [InlineData("open struct Device\n    public var level: i32\n        set(value: i32) -> ()\n            storage = value\n    protected init(level: i32)\n        self.level = level\nstruct Lamp : Device\n    public init(level: i32) : base(level) => ()\nfunc g()\n    var owner = Kimi.Intrinsics.makeObj<Lamp>(Lamp.init(40))\n    owner.level = 30\n", "Unsupported_Kd", "")]
@@ -342,8 +343,8 @@ public sealed partial class MirBorrowsTest
     // PLAN G1058, G1186 (DECISIONS Z27; SPEC 13.7.1 steps 1-2, 15.1.2, 15.1.3, 6.3.4, 23.1.2): a derived write takes its right side at its
     // own node (step 1), then evaluates its target's kept operands (step 2), and its site names the in-place ones as enclosing uses, which
     // A1 checks for construction only, their own bits and their ancestors'. A target over a partly moved root, a constructing receiver or
-    // a placed Field gives no record (p03, p04 at 10:5, p19, p22, t05 at 10:9, t06, t08, t16, Milestone 41 at 11:9; fail-before: a false
-    // MovedPlace_Kd or UninitializedPlace_Kd at the write); one whose root is moved whole, never constructed or a moved reference keeps it
+    // a placed Field gives no record (p03, p04 at 10:5, p19, p22, t05 at 10:9, t06, t08, t16, Milestone 41 at 11:9, since PLAN G1184 a
+    // Field Place's write; fail-before: a false MovedPlace_Kd or UninitializedPlace_Kd at the write); one whose root is moved whole, never constructed or a moved reference keeps it
     // (p07, p08, p09), as a runtime index reads its array whole (t09) and the valid twin has none (p10). Step 2's operands are checked at
     // their own nodes (p11's uninitialized index at 4:7 and t11's second move at 3:16, fail-before: at the write; p12's MovedPlace_Kd at
     // 6:9 and p21's conflict, fail-before: none), after step 1 (t12, u1: the right side is read, or its failed take is a site at its node,

@@ -83,7 +83,14 @@ public sealed partial class Binding
 
     internal sealed class CopyDeclaration(IsKoto clause, DeclarationContainerKoto container, BindingScope scope, SyntaxFormKoto? premises)
     {
+        private PremiseFailure? failed;
+
         internal IsKoto Clause { get; } = clause;
+
+        // What a proof reading the opt-in once its clause failed rests on: the clause's own record (NominalCopy; SPEC 23.1.2; R7-C6 a,
+        // F's C8 rulings 25 and 29: a limit's record makes the reader its dependent, a Language one leaves the reader's own), made once,
+        // as an environment's PremiseFailure is.
+        internal PremiseFailure Failed => this.failed ??= new(this.Clause, null);
 
         internal DeclarationContainerKoto Container { get; set; } = container;
 
