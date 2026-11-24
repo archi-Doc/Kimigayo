@@ -4,9 +4,11 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("check")]
-public sealed class CheckCommand : ISimpleCommand<KimiOptions>
+[SimpleCommand(CheckCommand.Name)]
+public sealed class CheckCommand : ISimpleCommand
 {
+    public const string Name = "check";
+
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
     private readonly Solution solution;
@@ -18,19 +20,14 @@ public sealed class CheckCommand : ISimpleCommand<KimiOptions>
         this.solution = solution;
     }
 
-    public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(string[] arguments, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, Name, arguments, async (options, args) =>
         {
-            if (string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase))
+            if (options.Format == "json")
             {
                 // SPEC 23.3: one check unit through the shared check entry, written as one JSON document.
                 return CheckJsonOutput.Run(options, args, cancellationToken);
-            }
-
-            if (!string.Equals(options.Format, "text", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new CommandInputException($"Unknown --Format '{options.Format}'; the forms are text and json.");
             }
 
             this.solution.LoadForBuild(this.logger, options, args);
