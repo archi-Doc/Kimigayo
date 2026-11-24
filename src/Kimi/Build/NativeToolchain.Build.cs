@@ -470,9 +470,9 @@ internal static partial class NativeToolchain
         // inspection of its staged copy, read once per process (LinkInputs). The closure starts from the module's declared references,
         // the manifest's external declarations in their referenced form and the fixed RuntimeReferences, the same at O0 and O2 (never the
         // object's undefined symbols), and from the references of the library files the link loads whole (DependencyClosure); a symbol
-        // it references that two or more libraries define, a unit it loads that its library's Kind does not admit and a declared import
-        // bound to code fail the build before the link, every line in one failure: the native build's input failure, the record left
-        // incomplete.
+        // it references that two or more libraries define, a library input that is no library (no archive and no object), a unit it loads
+        // that its library's Kind does not admit and a declared import bound to code fail the build before the link, every line in one
+        // failure: the native build's input failure, the record left incomplete.
         private void CheckDependencies(Tatara tatara, ObjectMember module, List<(string Name, string Kind, string Sha256, FileStream Held)> libraries)
         {
             var inputs = new (string Name, LinkClass Admits, LinkInput Input)[libraries.Count];
@@ -535,8 +535,9 @@ internal static partial class NativeToolchain
     /// <summary>A staged input's facts as the dependency step reads them (LinkAmbiguity, design §2): Tatara's inspection
     /// (<c>Facts</c>); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, which lld-link loads
     /// for it, and whether that member's definition of it is a copy (text kind 5; on COFF the index is the pick, ELF's comes with B7b7);
-    /// <c>Whole</c>, an input that is no archive and of form o or i, which the link loads whole (one of form s, a linked image, defines
-    /// nothing for it); <c>Classes</c>, each member's class (Kind, kind-design.md §2).</summary>
+    /// <c>Whole</c>, an input that is no archive and of form o, the only form lld-link loads whole (it refuses a short import file and a
+    /// linked image given as inputs, which the step reports as no library; T's rulings 53 and 54); <c>Classes</c>, each member's class
+    /// (Kind, kind-design.md §2).</summary>
     internal sealed record LinkInput(ObjectFacts Facts, Dictionary<string, (int Member, bool Copy)> Picks, bool Whole, LinkClass[] Classes)
     {
         /// <summary>Reads an input's facts once.</summary>
@@ -559,7 +560,7 @@ internal static partial class NativeToolchain
                 's' => LinkClass.Image,
                 _ => x.DefinedExternal.Any(static s => s.Kind == 'I') ? LinkClass.Import : LinkClass.Code,
             });
-            return new(facts, picks, !facts.IsArchive && facts.Members[0].Form != 's', [.. classes]);
+            return new(facts, picks, !facts.IsArchive && facts.Members[0].Form == 'o', [.. classes]);
         }
     }
 
@@ -584,9 +585,10 @@ internal static partial class NativeToolchain
     // (a unit's strong undefined symbol, U; a weak one loads nothing; or its /include: directive) that no whole file defines joins each
     // library's pick for it, one member per library, and two or more libraries picking it are an ambiguous dependency, the copies of one
     // COMDAT symbol counting as one library. An /alternatename:A=B of a joined unit makes B referenced once the references are done when
-    // A is referenced and neither a whole file nor any library defines A (then the references resume). Each library input that is no
-    // archive and each pick is judged against its library's Kind, which admits one class (Admits); an inconsistent pick still joins, so
-    // every other failure is found (Kind, kind-design.md §2 with its corrections 1-3).
+    // A is referenced and neither a whole file nor any library defines A (then the references resume). Each whole library input and
+    // each pick is judged against its library's Kind, which admits one class (Admits); an inconsistent pick still joins, so every other
+    // failure is found (Kind, kind-design.md §2 with its corrections 1-3). A library input that is no archive and not of form o is no
+    // library, whatever its Kind, and is reported before the link (T's rulings 24, 53 and 54).
     private sealed class DependencyClosure
     {
         private readonly (string Name, LinkClass Admits, LinkInput Input)[] inputs;
@@ -599,7 +601,9 @@ internal static partial class NativeToolchain
         private readonly List<(string Library, string Head, string? Symbol)> inconsistent = []; // K: each line's head and its symbols.
         private readonly List<(string Symbol, string Line)> symbols = []; // The ambiguous symbols' and K2's lines.
 
-        // The whole files: their definitions first, then their references; each library input that is no archive judged (K).
+        // The whole files: their definitions first, then their references; each whole library input judged (K). A library input that
+        // is no archive and not of form o (a linked image, s; a bare import member, i) is no library, whatever its Kind: one line, so
+        // LLD, which refuses it with a fatal() that ends Tatara for the process, never sees it (T's rulings 24, 53 and 54).
         internal DependencyClosure((string Name, LinkClass Admits, LinkInput Input)[] inputs, ObjectMember module)
         {
             this.inputs = inputs;
@@ -614,14 +618,16 @@ internal static partial class NativeToolchain
 
             for (var i = 0; i < inputs.Length; i++)
             {
-                if (inputs[i].Input.Whole)
+                var (name, admits, input) = inputs[i];
+                if (input.Whole)
                 {
                     this.Join(i, 0);
-                }
-
-                if (!inputs[i].Input.Facts.IsArchive)
-                {
                     this.Judge(i, 0, null);
+                }
+                else if (!input.Facts.IsArchive)
+                {
+                    var form = input.Facts.Members[0].Form == 'i' ? "a bare import member" : "a linked image (a DLL or shared object)";
+                    this.inconsistent.Add((name, Declared(name, admits) + $"its input is {form}, not a library", null));
                 }
             }
         }
@@ -661,6 +667,9 @@ internal static partial class NativeToolchain
             return list.Count == 1 ? list[0] : string.Join(", ", list.Take(list.Count - 1)) + " and " + list[^1];
         }
 
+        // The head of K's lines: "Native library '<name>' is declared static|import, but ".
+        private static string Declared(string name, LinkClass admits) => $"Native library '{name}' is declared {(admits == LinkClass.Code ? "static" : "import")}, but ";
+
         // A referenced symbol, once: unless a whole file defines it, each library's pick joins and is judged (K), and two or more
         // candidates are recorded; a module's import that no library picks is K2's.
         private void Resolve(string symbol)
@@ -694,9 +703,8 @@ internal static partial class NativeToolchain
             }
         }
 
-        // K: a unit the link loads, a library input that is no archive (symbol null) or the library's pick for the symbol, recorded under
-        // its library when its class is not the one the library's Kind admits; a linked image as an archive member has its own line (T's
-        // ruling 24).
+        // K: a whole library input (symbol null) or the library's pick for the symbol, recorded under its library when its class is not
+        // the one the library's Kind admits; a linked image as an archive member has its own line (T's ruling 24).
         private void Judge(int input, int member, string? symbol)
         {
             var (name, admits, facts) = this.inputs[input];
@@ -706,10 +714,9 @@ internal static partial class NativeToolchain
                 return;
             }
 
-            var declared = $"Native library '{name}' is declared {(admits == LinkClass.Code ? "static" : "import")}, but ";
+            var declared = Declared(name, admits);
             var head = (symbol, unit) switch
             {
-                (null, LinkClass.Image) => declared + "its input is a linked image (a DLL or shared object), not a library",
                 (null, _) => declared + $"its input is {(unit == LinkClass.Import ? "an import member" : "an object")}, which the link loads whole",
                 (_, LinkClass.Image) => $"Native library '{name}' holds a linked image (a DLL or shared object) as an archive member",
                 _ => declared + $"the link would load {(unit == LinkClass.Import ? "import members" : "code")} from it",

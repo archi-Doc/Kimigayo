@@ -1262,18 +1262,23 @@ public sealed class NativeToolchainTest : IDisposable
     // library input that is no archive, each library's pick) that its library's Kind does not admit, and a declared import that no import
     // member defines but a library defines as code (K2, from the declarations: k8o2's only call O2 removes), fail the build before the
     // link with every line in its order (§3), the record left incomplete and no executable. Row 22 is LinkAmbiguity's (a DLL as static
-    // zlib), which gains its Kind line. On the base rows k2, k3, k5, k8o2, k9, k11 and k13 built (k9 and k13 with LLD's LNK4217
-    // warning), k8 and k14 failed in LLD (an undefined __declspec(dllimport) codec_add; an unknown file type) and 22 lacked its Kind line.
+    // zlib), which gains its Kind line. k5w is row 5's object as the input itself (an import member the link loads whole); k2p is row
+    // 2 twice (two static import libraries, each defining both called symbols: a line per library naming both, and the ambiguity
+    // lines); k13p is row 13 with a second library defining codec_add as code (K2's plural). On the base rows k2, k3, k5, k5w, k8o2,
+    // k9, k11, k13 and k13p built (k9, k13 and k13p with LLD's LNK4217 warning), k8 and k14 failed in LLD (an undefined
+    // __declspec(dllimport) codec_add; an unknown file type), and 22 and k2p lacked their Kind lines.
     [Theory]
     [InlineData("k2", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add'.")]
-    [InlineData("k2", "zlib", "Native library 'zlib' is declared static, but the link would load import members from it for 'codec_add'.")]
+    [InlineData("k2p", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add' and 'codec_sub'.\nNative library 'zlib' is declared static, but the link would load import members from it for 'codec_add' and 'codec_sub'.\nAmbiguous native symbol 'codec_add': defined by the libraries codec and zlib.\nAmbiguous native symbol 'codec_sub': defined by the libraries codec and zlib.")]
     [InlineData("k3", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'GetTickCount'.")]
     [InlineData("k5", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add'.")]
+    [InlineData("k5w", "codec", "Native library 'codec' is declared static, but its input is an import member, which the link loads whole.")]
     [InlineData("k8", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the library codec defines it as code.")]
     [InlineData("k8o2", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the library codec defines it as code.")]
     [InlineData("k9", "codec", "Native library 'codec' is declared import, but its input is an object, which the link loads whole.\nNative function 'codec_add' is imported, but no import member defines it, and the library codec defines it as code.")]
     [InlineData("k11", "codec", "Native library 'codec' is declared import, but the link would load code from it for 'codec_version'.")]
     [InlineData("k13", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the library zlib defines it as code.")]
+    [InlineData("k13p", "codec", "Native function 'codec_add' is imported, but no import member defines it, and the libraries alpha and zlib define it as code.")]
     [InlineData("k14", "codec", "Native library 'codec' is declared import, but its input is a linked image (a DLL or shared object), not a library.")]
     [InlineData("22", "alpha", "Native library 'zlib' is declared static, but its input is a linked image (a DLL or shared object), not a library.\nAmbiguous native symbol 'codec_add': defined by the libraries alpha and codec.")]
     public async Task AnInputInconsistentWithItsKindFailsBeforeTheLink(string row, string name, string lines)
@@ -1283,11 +1288,12 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // Kind's valid rows (kind-design.md §1): an archive's import member no loaded unit references (k4), a bare object as a static input
-    // (k6), an import library (k7), a mixed library whose loaded members are its imports (k10) and a long-format import library, objects
-    // whose definitions lie in .idata sections (k12; P-K3: built from clang objects): each builds; k4 and k6 run (the others import from a
-    // codec.dll no test has).
+    // (k6), an import library (k7), a mixed library whose loaded members are its imports (k10), a long-format import library, objects
+    // whose definitions lie in .idata sections (k12; P-K3: built from clang objects), and k5w's object as an import input (k5wi): each
+    // builds; k4 and k6 run (the others import from a codec.dll no test has).
     [Theory]
     [InlineData("k4", true)]
+    [InlineData("k5wi", false)]
     [InlineData("k6", true)]
     [InlineData("k7", false)]
     [InlineData("k10", false)]
@@ -1302,6 +1308,20 @@ public sealed class NativeToolchainTest : IDisposable
         {
             await RunsOk(ArtifactPaths.Create(project).Executable);
         }
+    }
+
+    // A bare short import file (row 2's import library's codec_add member alone, its bytes as llvm-lib /def writes them; C-544 PB3) is
+    // no library, whatever its Kind (T's rulings 53 and 54): LLD refuses it with its fatal(), after which Tatara refuses every later
+    // call of its process, so the step reports it before the link, as it reports an image input (k14). On a24ce9194 k2m (static) failed
+    // before the link with the whole-input Import line and k7m (import) reached LLD's fatal, as both did on 330801e63; the rows have
+    // their own theory so that a fail-before run on such a base runs them last.
+    [Theory]
+    [InlineData("k2m", "Native library 'codec' is declared static, but its input is a bare import member, not a library.")]
+    [InlineData("k7m", "Native library 'codec' is declared import, but its input is a bare import member, not a library.")]
+    public async Task AShortImportFileFailsBeforeTheLink(string row, string line)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        await this.AssertFailsBeforeTheLink(await this.Dependency(row, "codec", "O2"), line);
     }
 
     // LinkAmbiguity's valid rows (design §1): an unreferenced definition (10), one library's two definers (11, its pick the member its
@@ -1544,8 +1564,10 @@ public sealed class NativeToolchainTest : IDisposable
     // and its program libraries, static unless named, each native/<library>.lib built by Archive. name: the row's variant, the name of
     // the library that holds codec's or alpha's part (before or after kernel32 and kimi_backend in name order). Rows 29 and 30 are
     // P9's programs (an import called only under a condition O2 folds; codec_add(int, int)). Rows k<n> are Kind's (kind-design.md §1
-    // row n; k8o2 row 8's O2 twin): a library named "codec:import" is import, "codec=mixed" reads native/mixed.lib; Long is a
-    // long-format import member from a clang object (__imp_codec_add in .idata$5 and its thunk; P-K3).
+    // row n; k8o2 row 8's O2 twin; k5w, k5wi, k2p, k13p, k2m and k7m as their theories state; k2m and k7m write the short import
+    // header: Sig1 0, Sig2 0xFFFF, version 0, x64, no time stamp, 20 bytes of names, hint 0, a code import by name): a library named
+    // "codec:import" is import, "codec=mixed" reads native/mixed.lib; Long is a long-format import member from a clang object
+    // (__imp_codec_add in .idata$5 and its thunk; P-K3).
     private async Task<Project> Dependency(string row, string name, string level)
     {
         const string Add = "int codec_add(void) { return 3; }\n";
@@ -1638,8 +1660,12 @@ public sealed class NativeToolchainTest : IDisposable
                 await Archive("codec", ("m1", Add + "int VirtualProtect(void) { return 1; }\n"));
                 break;
             case "k2":
-                await this.ImportLibrary(name, "codec_add");
-                (imports, libraries) = ([(name, "codec_add")], [name]);
+                await this.ImportLibrary("codec", "codec_add");
+                break;
+            case "k2p":
+                await this.ImportLibrary("codec", "codec_add", "codec_sub");
+                await this.ImportLibrary("zlib", "codec_add", "codec_sub");
+                (imports, libraries) = ([("codec", "codec_add"), ("zlib", "codec_sub")], ["codec", "zlib"]);
                 break;
             case "k3" or "k4":
                 await Archive("codec", m1, ("m2", "unsigned GetTickCount(void);\nint codec_tick(void) { return (int)GetTickCount(); }\n"));
@@ -1650,10 +1676,15 @@ public sealed class NativeToolchainTest : IDisposable
             case "k5":
                 await Archive("codec", ("m1", Long));
                 break;
-            case "k6" or "k9":
-                await Archive("object", m1);
+            case "k2m" or "k7m":
+                byte[] importFile = [0, 0, 0xFF, 0xFF, 0, 0, 0x64, 0x86, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 4, 0, .. "codec_add\0codec.dll\0"u8];
+                File.WriteAllBytes(Path.Combine(Directory.CreateDirectory(Path.Combine(this.directory, "native")).FullName, "codec.lib"), importFile);
+                libraries = [row == "k2m" ? "codec" : "codec:import"];
+                break;
+            case "k6" or "k9" or "k5w" or "k5wi":
+                await Archive("object", ("m1", row.StartsWith("k5", StringComparison.Ordinal) ? Long : Add));
                 File.Copy(Path.Combine(this.directory, "native", "object.members", "m1.obj"), Path.Combine(this.directory, "native", "codec.lib"));
-                libraries = [row == "k6" ? "codec" : "codec:import"];
+                libraries = [row is "k6" or "k5w" ? "codec" : "codec:import"];
                 break;
             case "k7" or "k14":
                 await (row == "k7" ? this.ImportLibrary("codec", "codec_add") : this.Image("codec", Add));
@@ -1681,10 +1712,16 @@ public sealed class NativeToolchainTest : IDisposable
                     ("tail", "char __codec_iname[] __attribute__((section(\".idata$7\"))) = \"codec.dll\";\nvoid *__codec_end __attribute__((section(\".idata$5\"))) = 0;\n"));
                 libraries = ["codec:import"];
                 break;
-            case "k13":
+            case "k13" or "k13p":
                 await this.ImportLibrary("codec", "codec_other");
                 await Archive("zlib", ("z1", "int zlib_f(void) { return 4; }\n" + Add));
                 (imports, libraries) = ([("codec", "codec_add"), ("zlib", "zlib_f")], ["codec:import", "zlib"]);
+                if (row == "k13p")
+                {
+                    await Archive("alpha", alpha, ("m2", Add));
+                    (imports, libraries) = ([.. imports, ("alpha", "alpha_x")], [.. libraries, "alpha"]);
+                }
+
                 break;
             case "11":
                 await Archive("codec", ("m1", Helper), ("m2", "int helper(void) { return 2; }\n"), ("m3", "int helper(void) { return 3; }\n"));
@@ -1748,11 +1785,11 @@ public sealed class NativeToolchainTest : IDisposable
         File.Copy(Path.Combine(native, library + ".dll"), Path.Combine(native, library + ".lib"));
     }
 
-    // native/<library>.lib, an import library exporting the symbol (llvm-lib /def; design §1 row 23).
-    private async Task ImportLibrary(string library, string symbol)
+    // native/<library>.lib, an import library exporting the symbols (llvm-lib /def; design §1 row 23).
+    private async Task ImportLibrary(string library, params string[] symbols)
     {
         var native = Directory.CreateDirectory(Path.Combine(this.directory, "native")).FullName;
-        File.WriteAllText(Path.Combine(native, library + ".def"), $"LIBRARY {library}\nEXPORTS\n    {symbol}\n");
+        File.WriteAllText(Path.Combine(native, library + ".def"), $"LIBRARY {library}\nEXPORTS\n" + string.Concat(symbols.Select(static x => $"    {x}\n")));
         Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", native, "/machine:x64", "/def:" + library + ".def", "/out:" + library + ".lib"));
     }
 
