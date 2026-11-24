@@ -25,6 +25,10 @@ namespace XunitTest;
 // (Fatal).
 public sealed class TataraExecutorTest : IDisposable
 {
+    // What NativeBuild gives Tatara's calls, without a report or a cancellation.
+    internal static readonly TataraContext Context = new(
+        (_, _) => { }, CancellationToken.None, TargetProfile.Windows.Target, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
+
     private const string Windows = "Tatara and the LLVM tools run on Windows.";
 
     // The probe's metadata naming a dependent library, so its ELF object has a .deplibs section.
@@ -35,10 +39,6 @@ public sealed class TataraExecutorTest : IDisposable
     private static readonly string[] Levels = ["O0", "O2"];
 
     private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
-
-    // What NativeBuild gives Tatara's calls, without a report or a cancellation.
-    private static readonly TataraContext Context = new(
-        (_, _) => { }, CancellationToken.None, Triple, TargetProfile.Windows.Cpu, TargetProfile.Windows.Features, TargetProfile.Windows.RelocationModel, TargetProfile.Windows.CodeModel);
 
     // The Linux row's target (Tatara B7b2a): a static x86-64 ELF.
     private static readonly TataraContext LinuxContext = new(

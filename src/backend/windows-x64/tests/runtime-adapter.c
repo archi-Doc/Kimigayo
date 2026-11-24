@@ -6,9 +6,9 @@ __declspec(dllimport) void ExitProcess(u32);
 int test_mode;
 static u32 stdout_count, stderr_count, writes, handles, allocs, frees, errors;
 static char stdout_bytes[64], stderr_bytes[1024];
-// The pages the fake VirtualAlloc gives: one 1 MiB region for the allocator's small blocks and mode 17's large run (300,000 bytes and
-// the 16-byte header, rounded up to 74 pages).
-static __declspec(align(4096)) char region_bytes[1 << 20], large_bytes[303104];
+// The pages the fake VirtualAlloc gives: one 1 MiB region for the allocator's small blocks and mode 17's large run (1,048,576 bytes
+// and the 16-byte header, rounded up to 257 pages, above the allocator's spare bound, so its release reaches VirtualFree).
+static __declspec(align(4096)) char region_bytes[1 << 20], large_bytes[1052672];
 static int contains(const char* bytes, u32 count, const char* text) {
     for (u32 i = 0; i < count; i++) {
         u32 j = 0;
