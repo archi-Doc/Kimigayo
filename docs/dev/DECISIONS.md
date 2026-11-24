@@ -7289,6 +7289,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded in part by R4-M241 (G841a, Q-722, 2026-11-24): U3c's "the pointee is judged at its own key" with `OwnPointer`'s
     Loan test (deleted), "until their own unit" for rule 5's `Any` row's E (now rule 4's), the pointee's entry for rule 4 at an
     `Any` layer (now `All`), and, in part, "Rule 4 ... is read where a node reads on" (also at a key that keeps the declared step).
+  - Superseded in part by R4-M243 (G841b, Q-729, 2026-11-24): U3b's first-step source (now each layer of the input's key) and its
+    rows' guard (now the layers' greatest), the G785 bullet's "an input whose key has no single layer ... keeps its referent's root
+    key", and U3c's layer gate (`Declared` no longer suppresses the reading of a key's other layers).
 - **R4-M220 Rule H: a local that a store of the body gives a value read from a holder is an A5 holder, and a Loan-free Case payload
   of a call's result carries nothing (the Case bound)** (2026-11-19, landed with the A5 one-tree landing, Q-539; Middle, A5; Major,
   an acceptance mover; the owner's O-209, O-359 (a), O-364 (a), O-383 (b) (verbatim 「O-383  b」) and O-424 (a); implementation
@@ -8161,6 +8164,42 @@ and migration obligations remain in force; no numeric cap changes are authorized
     rvBorrowTwiceMixedBad and r3MixRefCastBad, which the answered option counted closed, and its may row still limits
     r4MixOpenCastOk across holders: no single-holder reading is met on today's values); a slot-keyed read entry (it misses a
     non-holder's bytes); a `+ 0` clause for `p[n]`.
+- **R4-M243 W's first step reads every layer of the input's key, and a key that keeps the declared step still reads its layers without
+  an Origin (PLAN G841, Revision 3's clauses (1) H1 and (2) F2)** (2026-11-24; the Middle; G841b, Q-729, D-1239; Major, an acceptance
+  mover, class 1; design `middle\notes\g841-design.md` Revision 3, its review's C1 and C3) SPEC 15.6.4 item 4, 5.7 Calls, 15.6 Holders.
+  - **Rule.** `Reach.Keyed` and `Reach.Punned` read the argument at each layer its input key lists (`InputKey`, the key table's
+    per-entry `PastLayer`): a raw layer without an Origin (Its) and an exclusive borrow give a node at the key past them (typed where
+    the layer's Type designates the entry's Place, punned through its raw pointer rows otherwise), whatever else the key holds; the
+    punned reading takes each raw layer without an Origin, each raw layer stating one and each exclusive borrow whose referent is
+    punnable, its guard the layers' greatest; a layer a declaration states (`PastLayer.Any`) keeps the declared step in both (reading
+    a by-value input's Field layers punned decided a store the declared step leaves to the depth bound). `ReadAt` at a key that keeps
+    the declared step reads the holder by that step and reads on at its Its layers and borrows (`ReadLayers`, one with every other
+    key); `Node` sets `keyedBy` only at a key with no other part, as before. A Semantics `raw/`/`uniq/` input's key has one layer
+    whose Type is the old referent, so nothing changes there; `Keep`'s referent stays only `Arrive`'s receiving Type.
+  - **Departs from R4-M219**, each with the reason that no longer holds:
+    - (i) U3b's "W's first step reads the Places the argument names at the input's pointee or referent, read once in Keep": it reads
+      them at each layer of the input's key. The first step's Type came from the input's syntax, which names a layer only for a
+      Semantics input, while 15.6.4 item 4 (a Tuple element, an Option payload, a Field or a Type argument of an input) and 5.7
+      Calls decide per layer.
+    - (ii) G785's "an input whose key has no single layer (a shared borrow, a key at Binding's Limit) keeps its referent's root key":
+      a shared borrow is no layer a call writes through, and a key at Binding's Limit is read at the layers it lists, the declared
+      step covering the rest.
+    - (iii) U3c's "W reads a holder layer by layer only at a key whose parts are all layers the walked Type expression writes ... A
+      key with any other part ... keeps the declared step ... read by `Keyed`, `Node` and `ReadAt`": `Declared` adds the declared
+      step for the holder and no longer suppresses the reading of the key's other layers. A stated element beside an unstated one was
+      read as changing the unstated one, while 5.7 Calls decides per layer (R-G841-5).
+    - (iv) U3b's "the holder's state is read at the rows' guard": `Punned` reads every punned holder at the layers' greatest guard
+      (`Math.Max` over `MirWrites`' order). An input had one punning layer, whose rows' guard was its holder's; a by-value input may
+      pun holders at several layers, and a holder punned at one layer and not at another is one the other layer's Type designates,
+      read there as a typed node at that Type's own guard (`ReadAt`), so the greatest adds no step that node does not take.
+  - **Records (Q13):** invalid programs newly rejected only, with `ComparisonLoanConflict_Kd`: twoTupleSlotBad, twoTupleTwoBad,
+    twoTuplePunBad, h1OptSlotBad, h1TupUniqSlotBad, h1DispTupBad, h1MixTupleBad, h1MixStaticBad, h1Mix3Bad, h1Mix3OnlyBorrowBad,
+    xPairRawDeclBad (its valid twin xPairRawU8Ok accepted). No valid program moves.
+  - **Rejected:** a separate first-step rule for aggregates; a Tuple-only arm; the first step at the referent's root key for a
+    multi-layer input (it reads no element's own layer).
+  - **Known limit kept:** a by-value Tuple's value does not say which element holds which address (one set per value), so an
+    element's Place may also be read punned at another element's raw layer (as past a holder, `ReadPart`); no valid row moved by it
+    (PLAN G1361: p3CrossU8Ok, a valid by-value Tuple form, rejected on dev before this unit as after it).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
