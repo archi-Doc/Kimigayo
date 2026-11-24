@@ -291,15 +291,16 @@ std::optional<StringRef> optionValue(StringRef token, StringRef option)
     return named ? std::optional<StringRef>(token.substr(option.size() + 1)) : std::nullopt;
 }
 
-// Whether a name can be listed: the texts are lines (tatara.h), so a name holding a line break fails the input (1) with llvm-nm's
-// message naming the member (C-533 N-1), never a misaligned block.
+// Whether a name can be listed: the texts are lines and an empty line ends a member's block (tatara.h; kind 5's lines are bare
+// names), so an empty name or one holding a line break fails the input (1) with llvm-nm's message naming the member (C-533 N-1, C1),
+// never a misaligned block.
 bool listable(StringRef text, StringRef name, raw_ostream& message)
 {
-    if (text.find_first_of("\r\n") == StringRef::npos) {
+    if (!text.empty() && text.find_first_of("\r\n") == StringRef::npos) {
         return true;
     }
 
-    message << "llvm-nm: error: " << name << ": a name holds a line break: ";
+    message << "llvm-nm: error: " << name << (text.empty() ? ": a name is empty" : ": a name holds a line break: ");
     message.write_escaped(text);
     message << "\n";
     return false;

@@ -197,6 +197,7 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData("linebreak")]
     [InlineData("truncated")]
     [InlineData("unterminated")]
+    [InlineData("emptyname")]
     public async Task TataraInspectsAnArchivesMembers(string row)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
@@ -225,10 +226,11 @@ public sealed class TataraExecutorTest : IDisposable
             "malformed" => this.FailsOnAMalformedArchive(),
             "thin" => this.FailsOnAThinArchive(),
 
-            // Crafted members (C-533): a COFF resource; short import members whose name holds a line break, that end inside their
-            // header (the magic alone), or whose name has no NUL (LLD's "broken import library").
+            // Crafted members (C-533): a COFF resource; short import members whose name holds a line break, is empty (an empty line
+            // ends a block), ends inside their header (the magic alone), or has no NUL (LLD's "broken import library").
             "resource" => this.FailsOnAMember("not a COFF or ELF object", [0, 0, 0, 0, 0x20, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0xFF, 0xFF, 0, 0, .. new byte[16]]),
             "linebreak" => this.FailsOnAMember("a name holds a line break", ShortImport("a\nb\0KERNEL32.dll\0"u8)),
+            "emptyname" => this.FailsOnAMember("a name is empty", ShortImport("\0KERNEL32.dll\0"u8)),
             "truncated" => this.FailsOnAMember("broken import library", [0, 0, 0xFF, 0xFF]),
             "unterminated" => this.FailsOnAMember("broken import library", ShortImport("abc"u8)),
             _ => throw new ArgumentOutOfRangeException(nameof(row)),
