@@ -18787,6 +18787,130 @@ resumed by R4-M86 (2026-10-20).
     carry); select and reject (D-1247 (b), the owner chose (a)).
   - Open: PLAN G1375 (a new set or Origin name in a default equal to a later parameter's; R5's "hides"),
     G1376 (a capture entry that selects nothing is located at its Closure).
+- **BU-260 G464: no per-use formation enters a nested signature; one judge of each half and of a call's instantiated input; a
+  decision over a written Type rests on its failed occurrence where it is made** (2026-11-24; Q-765, D-1265; PLAN G464, Q17 classes 3
+  and 4; R7-E3 E3e; B's planning decision, rulings 1-24; Major; design review C-523 Revision 1: the Middle ACCEPT WITH CONDITIONS, the Front
+  ACCEPT; Revision 2 (ruling 18): the Front's C-535 D1/D2; implementation review C-535) SPEC 15.6.1, 15.3.4, 15.6.4 step 3, 8.1.2,
+  8.6.3, 10.1 step 5, 12.5.2, 23.1.2.
+  - Rule: a Function Type is a nested signature wherever it occurs; its inputs are its premises, judged at each of its calls
+    (`RequireInputPremises`, R4-M137), and its result is formed where it is written, under the containing declaration's premises and
+    the nested inputs (`FormNestedResult`, R4-M162). So the per-use walk (`CheckTypeConstraints`) enters no Function Type's components,
+    as the declaration walk (R4-M163): one component rule for both walks and all their callers, no mode. An instantiated occurrence
+    is well formed by the clauses its call proves. A call's or Case construction's instantiated input is judged by
+    `RequireInputPremises` alone (its Origin part); its Contract part follows from step 5 and the judgment of each Type where it is
+    written (R7-V1c `JudgedOccurrence`, SPEC 8.6.3).
+  - Rule W for a decision over written Type syntax (O-8 (a), rulings 11, 13-15, 18): the judgment of a written occurrence (R7-V1c)
+    is a per-pass query (`JudgeOccurrence`, made once per pass, demanded by its first reader or by `ValidateConstraintUses`), and a
+    use's decision asks, where it is made, whether a node of the written Type syntax it reads failed, by one rule
+    (`FailedWrittenType`): the written Type syntax under the use's own syntax (`FailedWrittenChild`: its children that are written
+    Types, and `FailedPart`: their written Type components at any depth; an invocation's through its callee): a call's, a member
+    call's and a reference's explicit Type arguments (SPEC F.5), a constructor's, a Case's and a static member's Type-application
+    qualifier, a runtime test's target (Appendix F's NamedCoreType), a conversion's target; and a Property's written Type, its
+    certificate's. The ask sites are a use bound in an executable body (`formingBody`, R4-M101 E1), asking at the end of `BindNode`
+    (every expression decision there, a reference deferred without a Type included), and a Property's certificate
+    (`ValidateProperties`) (ruling 24): a declaration's own syntax, bound with no body (a clause, an associated Type's binding, a
+    declared Property Type), asks nothing at its binding, so its occurrences are judged first by `ValidateConstraintUses`, after the
+    declaration verdicts they read (a judgment never reads a verdict still being decided). The decision rests where it asks
+    (`CompleteDependent`), so each reader, bound after it,
+    rests by its own binding (SPEC 23.1.2) and nothing rests late: a value call whose callee is a resting invocation rests (an
+    invocation is called by its value, SPEC 12.5.2: its symbol is its own call's target, never a group of the outer call; one whose
+    Type takes no call is `NotCallable_Kd`), and a call whose argument rests is not tried. It keys on the written node's failure,
+    whatever its cause (a Contract judgment, an Origin record), when the decision is made, and reads Binding's states only, never an
+    A5 row. The reader finds the failure under the layers that hold it: no layer takes a state its occurrence's judgment did not give
+    it (`RestLayersOnType` keeps R7-M80's layers forming their operand's Type), so a declaration's written Type keeps its states for
+    its other readers (a stored Type's Owned proof, R7-C2e2 e2-5a). Check keeps one rest, dev's (a called declaration that failed).
+  - An early judgment that read a pending conformance gives no verdict (ruling 20; SPEC 8.3.3 "held pending", Finality): a written
+    occurrence's judgment demanded before the pass's final conformance decision can prove a program conformance whose path keeps only
+    Proven and Invalid and answers Unknown until that decision (PropertyWitness's `Box<S>` reading `S is C`). The decision's readiness
+    is a fact of Contracts beside `contractHeadersReady`, `conformancesDecided`, set by ValidateConformances' final reset and cleared
+    by ResetContracts. BodyBinding (R7-O2 A1+A2) gains a second source: ResolveConformance's read of a program path (ImplTable's
+    overlay, the part the final reset judges again) answering Unknown before that decision depends on the bound bodies' validations
+    (`ReadBodyBinding`). `JudgeOccurrence` reads its answer's dependence (BeginAnswer/EndAnswer): before the decision a dependent
+    answer is no verdict (not memoized, its frame dropped: no record and no rest; FailedPart reads the occurrence as not failed), and
+    `ValidateConstraintUses` judges the occurrence after the decision, as before E3e; from the decision every answer is the verdict.
+    An early Proven later absorbed by an Error is record selection (Q13; EndAnswer's rule, dev's between ValidateConstraintUses and the
+    certificate rounds). The judgment's per-pass memo is the working-state NodeColumns family `JudgedOccurrences` (released at the
+    library's freeze). A capability work that reads a pending path now has ReadsBodyBinding and is not cached past its request.
+  - Removes: `CheckOperationTypeConstraints` and its two calls (`CheckCallTypeConstraints`); the Case construction's payload formation
+    (`CompleteEnumAcquisitions`); the per-use walk's entry into Function Types; ArchitectureRulesTest's Type-comparison row for
+    `CheckOperationTypeConstraints` (its one comparison went with it).
+  - Acceptance moves (16, each labelled valid from SPEC first): g464v, g464v2, g464u, g464u2, g464e, o6v, o6r, c1f, c1fr, c1p, c1r,
+    c1rr, c1is, c1cs, c1pa, c1ic (dev: a fact-less `UnprovenConstraint_Kd`; c1p also two `Unsupported_Kd`, c1cs an
+    `InvalidConstraint_Kd`, c1ic an `InvalidTypeFormation_Kd`).
+  - Records (Q13): rule-W removals: `UnprovenConstraint_Kd` -2 (g464 at the call, c1fi / the `field` row at the Field: each restated
+    the written occurrence's record), `InvalidConstraint_Kd` -6 and `UnsatisfiedConstraint_Kd` -1 (dependent: a call no longer forms
+    its instantiated inputs, so a failed declaration named only in a call's input gives the call no record; one named in its result
+    keeps it through the result's formation), `NoApplicableOverload_Kd` -1 at `take<() -> Box<string>>()`,
+    `UnsatisfiedConstraint_Kd` -1 at `var value: () -> Box<string>` and -2 on o8k (its Field's and its requirement Property's) (O-8:
+    the call and the Property rest on the failed written `Box<string>`, whose record stays; o8k's pre-existing
+    `IncompatibleContractImplementation_Kd` is not E3e's, ruling 12), and -1 each at a reference `ku<() -> Box<string>>`
+    (`UnsatisfiedConstraint_Kd`), a construction `Holder<() -> Box<string>>.init(u: 1)` (`NoApplicableOverload_Kd`), a Case
+    construction `E<() -> Box<string>>.C(1)` (`UnsatisfiedConstraint_Kd`), a payload-less Case `E<() -> Box<string>>.N`
+    (`UnsatisfiedConstraint_Kd`; ruling 13) and a runtime test `x is D<() -> Box<string>>` (`UnsatisfiedConstraint_Kd`; ruling 14):
+    each use rests on the written occurrence's failure. `ComparisonLoanConflict_Kd` -2 on objref (R5-M72's former program
+    `own(if flag => a@move@objref/Base else => b@move@objref/Base)`: each conversion rests on its written target's reported
+    `MissingOriginBinding_Kd`, and the two Loan records rested on those conversions; ruling 15 (b)); MirValidatorTest's R5-M72 row
+    now takes `let done = own(if flag => a@objref/Base else => b@objref/Base)`, its purpose unchanged (the Middle, C-535 21:34).
+    The readers of a resting use (ruling 18; the Front's C-535 twins, labelled in its `twins-d\LABELS.txt`): `NoApplicableOverload_Kd`
+    -1 each at a value call of a resting call (`make<() -> Box<string>>()(1)`, `s.mk<() -> Box<string>>()(1)`), at a parenthesized
+    one, and at the call over a parenthesized resting reference `(ku2<() -> Box<string>>)(1)` (with its `Unsupported_Kd` -1), and
+    `UnsatisfiedConstraint_Kd` -1 at a reference awaiting its call (`apply(ku2<() -> Box<string>>, 1)`): each reads the resting use
+    and rests. The same rest on forms outside the probes (the Front's N5, ruling 22 (3)): `NoApplicableOverload_Kd` -1 at a static
+    member's call on a failed Type-application qualifier without explicit Type arguments (`Holder<() -> Box<string>>.make(v: 1)`, d2b,
+    t6's shape: the call rests), and `UnsatisfiedConstraint_Kd` -2 at a match's arm patterns over `E<() -> Box<string>>` (`.C(_)` and
+    `.N`, e4c: a pattern's Type is the Subject's instantiated Type, which no use judges again; the construction rests). The open
+    issue G1382 below (ruling 23, PLAN (d)): at a static member's call whose failed qualifier is under its explicit-Type-argument name
+    (`Holder<() -> Box<string>>.make<i32>(v: 1)`, r2l) `NoApplicableOverload_Kd` -1 at the call and `TypeMismatch_Kd` +1 at its
+    reader `let y: bool = x`; at that member's reference (`Holder<() -> Box<string>>.make<i32>`, r2r) `UnsatisfiedConstraint_Kd` -1
+    at the reference and `TypeMismatch_Kd` +1 at its reader: the use keeps its Type, so the reader's mismatch is a dependent record
+    of the written `Box<string>`'s (GenericCallFormationBindingTest `AnInlineBoundQualifierUnderAnExplicitArgumentNameKeepsTheUsesType`
+    pins them). A mutable group static over a failed written Type (ruling 24 (2)): `Unsupported_Kd` -1 at `public var view: View`
+    (corpus case `static-exclusive-origin-formation`, and its semantic snapshot line), whose `View` keeps its
+    `InvalidOriginBinding_Kd`: the capability row (R5-M82) reads the static's certificate, which rests on that reported record, and
+    R5-M82 records only a verified static, so the record is dependent (a direct input, AGENTS Diagnostics). No move on
+    ErasureOwnedDiagnosticTest's five closure `UnprovenConstraint_Kd` rows (ruling 24 (3): with the ask sites above they keep dev's
+    records). No move on uSliceBad3 (MirBorrowsTest): a target failing by a later Origin-binding check keeps dev's records (ruling
+    18; the open issue below). No move on R7-C2e2 e2-5a's family: rf3 and regular-n
+    keep their three `UnprovenConstraint_Kd`, the use's included (ruling 15 (a)). A false record corrected: `UnprovenConstraint_Kd`
+    -1 at o6i's and o6ri's `r(s)` (it judged a result's nested input). A SPEC-required record dev lacked (c1pm, SPEC 11):
+    `TypeMismatch_Kd` +1 at the getter, `UnprovenConstraint_Kd` -1 at the Property.
+  - Supersedes in part R4-M163: the per-use walk's "enters every component (n1a's call record)" (n1a's records did not move), and its
+    nin bullet's "+2" (the selected call's instantiated input adds no record now; the Closure parameter's stays). R7-M80, R4-M162 and
+    R4-M137 stand.
+  - A defect fixed with it (SPEC 12.5.2, class 1, wrong code; ruling 19): a value call of a call whose Type takes no call,
+    `inc(1)(2)` with `func inc(x: i32) -> i32 => x`, was accepted on dev 34d96c664 and bound as the named call `inc(2)` (the outer
+    call read the inner call's selected target as its own group and re-resolved the callee); an invocation callee is now read by its
+    value only, so it is `NotCallable_Kd` (BindingTest `FinalBindingRejectsInvalidProgramsWithoutDuplicatingIssues`, row nc1r).
+    The same reading fixes a second dev wrong-code acceptance, `id(1)(2)` (an identity function's result called), and moves
+    record kinds at the same site (Q13): `NoApplicableOverload_Kd` -> `NotCallable_Kd` (`ok(1)(2)`, `inc(1)()`) and
+    `UnresolvedBinding_Kd` -> `NotCallable_Kd` (`mk(1)(2)(3)`, a Closure local's `add(1)(2)`) (the Middle's RP17 on C-535,
+    `artifacts\handoff\2026-11-16-pause\middle\notes\c535-rp17.md`: a5b, a1, a7, a3, a4).
+  - Records (Q13), f6i (ruling 20 Q3): at a reference at an expected Function Type, `let g: (i32) -> i32 = ku2<() -> Box<string>>`,
+    the reference's record at 11:27 is `UnprovenConstraint_Kd` where dev records `UnsatisfiedConstraint_Kd`: a restating record of
+    the written `Box<string>`'s reported `UnsatisfiedConstraint_Kd`, which stays (SPEC 23.1.2: whether a dependent record is reported,
+    and so its kind, is implementation-defined); its pending input, the nested result's formation obligation read by the reference's
+    erasure Owned proof through a BoundType, is the open issue below.
+  - Open (rulings 18 Q2 (i), 20 Q3; PLAN G1381): a reader decided before the verdict of what it read keeps dev's records: a written
+    Type failing by a check made after its reader's decision (an Origin-binding verdict, `InvalidOriginBinding_Kd` in
+    `ValidateBoundDeclarations`: uSliceBad3's `ComparisonLoanConflict_Kd`), an occurrence whose judgment reads a program conformance
+    before the final conformance decision (judged after it; its readers decided before keep their records: PropertyWitness's
+    construction and Property certificate), Check's rest on a called declaration that failed later (`InvalidCalledDeclaration`), and
+    a nested result's formation read through a BoundType before its deadline (f6i).
+  - Rejected: Revision 0 (skip the input only: a nested result judged without its inputs, the Middle's B1); judging the nested result
+    at each use with its inputs (a second judge of R4-M162's); deleting the per-argument walk alone (10 of 12 rows stay rejected); a
+    mode steering the walk (R4-M163); (C) the walk entering a Function result for its Contract clauses (ruling 8); a late rest in
+    Check of a decision over a written Type failed afterwards (rulings 11, 13-17's form: it enumerated the readers by syntax and could
+    not carry the rest to the readers already bound, the Front's C-535 D1/D2; widening it needed a reader whitelist); judging every
+    occurrence inside `BindType` (a declaration's written Type would fail its other readers, ruling 16); resting every enclosing
+    written Type layer up to the outermost written node (ruling 11's first form: it reached a declaration's other readers, so rf3's
+    use lost e2-5a's record; ruling 15 (a)); narrowing the rule to Contract judgments (a second rule; ruling 15 (b)); every judgment
+    of a written occurrence, the Origin-binding ones included, a demanded query in this unit (ruling 18 Q2 (ii): outside E3e); the
+    occurrence's judgment demanding the conformance verdicts it reads (ruling 19 (ii): it needs the final conformance decision before
+    its owner's inputs, a reader mode in the proof engine or a second copy of the path selection); moving the final conformance
+    decision before the bodies (conformance verdicts read the bodies: intrinsic paths' capabilities, the final reset, the certificate
+    rounds); an early Unknown left unmemoized by its value alone (it loses g464's and c1fi's rest, whose Unknowns read no program
+    path); a new dependence constant (the erasure's Owned owner would read the forgotten work as final); re-judging at the final pass
+    (a late correction).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
