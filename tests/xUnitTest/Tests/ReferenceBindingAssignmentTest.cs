@@ -43,8 +43,8 @@ public class ReferenceBindingAssignmentTest
     // R7-E4 ruling 9 (its review's C2): on a borrowed path a `var` binding is a reassignable reference too (SPEC 15.1.6), so a literal
     // assigned to it at `ref/i32` is a temporary borrowed for the assignment (SPEC 10.2 Temporaries), a rebind, not the mode's record;
     // its uses after the assignment read a dead temporary, which A5 rejects (AReassignableBindingHasItsOwnRegionSlots' a3u, snu rows).
+    // This row (snv) pins Binding's own rule (ruling 15); the end-to-end verdicts are that theory's a3, snv, a3u and snu.
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield 0\n    .None => 0\npublic func main() => ()", null)]
-    [InlineData("func f(items: ref/Array<i32>) -> ()\n    for var item in items\n        item = 5\npublic func main() => ()", null)]
     public void OwnedReferenceBindingsTakeALiteralAsABorrowedTemporary(string source, DiagnosticCode? limit)
     {
         var c = MinimalEmissionTest.Analyze(source);
