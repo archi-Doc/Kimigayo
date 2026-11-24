@@ -54,7 +54,6 @@ public sealed partial class Binding
         this.importDeclarations.Clear();
         this.libraryImports.Clear();
         this.environmentsJudged = -1;
-        this.judgedOccurrences.Clear();
         this.ResetPrerequisites();
         this.ResetMatches();
         this.argumentParts.Clear();

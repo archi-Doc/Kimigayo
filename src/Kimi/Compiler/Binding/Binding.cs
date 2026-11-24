@@ -110,6 +110,7 @@ public sealed partial class Binding
         this.inferredConstructionTargets = new(this);
         this.qualificationStops = new(this);
         this.formationCauses = new(this);
+        this.judgedOccurrences = new(this);
         this.knownBases = new(this);
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
