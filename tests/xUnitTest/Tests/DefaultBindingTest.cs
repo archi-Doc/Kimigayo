@@ -272,6 +272,8 @@ public class DefaultBindingTest
     [InlineData("signature", "func f(a: ref/i32 during z, z: ref/i32) -> i32 => 0", true)]
     [InlineData("body", "func f(a: ref/i32, z: ref/i32) -> i32\n    func g(x: ref/i32 during z) -> i32 => 0\n    return 0", true)]
     [InlineData("do_set", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during q) -> i32 => 0\n    exit to w 0\n, z: ref/i32 during q) -> i32 => k", true)]
+    [InlineData("shadow_val", "group G\n    let y = 7\n    func f(x: i32 = y, y: i32 = 1) -> i32 => x", true)]
+    [InlineData("shadow_origin", "func h(z: ref/i32) -> i32\n    func f(a: ref/i32, k: i32 = label w: do\n        func g(x: ref/i32 during z) -> i32 => 0\n        exit to w 0\n    , z: ref/i32) -> i32 => k\n    return 0", true)]
     public void ADefaultNamesOnlyThePrecedingParametersAsOrigins(string row, string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
