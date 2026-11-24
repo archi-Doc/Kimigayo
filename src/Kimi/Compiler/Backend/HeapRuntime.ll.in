@@ -67,11 +67,16 @@ bump:
   store i64 %k, ptr %block, align 16
   br label %done
 large:
-  %pages = call ptr @__kimi_heap_take_run(i64 %size)
+  %rounded = add i64 %size, 4095
+  %run = and i64 %rounded, -4096
+  %pages = call ptr @__kimi_heap_take_run(i64 %run)
   %no_pages = icmp eq ptr %pages, null
-  br i1 %no_pages, label %failed, label %done
+  br i1 %no_pages, label %failed, label %own
+own:
+  store i64 %run, ptr %pages, align 16
+  br label %done
 done:
-  %start = phi ptr [ %free, %pop ], [ %block, %bump ], [ %pages, %large ]
+  %start = phi ptr [ %free, %pop ], [ %block, %bump ], [ %pages, %own ]
   %payload = getelementptr i8, ptr %start, i64 16
   ret ptr %payload
 failed:
@@ -100,12 +105,11 @@ large:
   ret i64 %error
 }
 
-; A large block's run for a block size, the header included: the spare when the size rounded up to whole pages is its length, else
-; the layer's pages of that length, which word 0 records; null when the layer has none.
-define internal ptr @__kimi_heap_take_run(i64 %size) noinline #0 {
+; A large block's run of a byte length in whole pages: the spare when it has that length, else the layer's pages of that length;
+; null when the layer has none. It replaces only the layer's call: the allocation records the length in word 0 itself, so its
+; join keeps the shape the backend copies into the class list's path at O2 (PLAN G1311 Revision 1).
+define internal ptr @__kimi_heap_take_run(i64 %run) noinline #0 {
 entry:
-  %rounded = add i64 %size, 4095
-  %run = and i64 %rounded, -4096
   %spare_run = load i64, ptr @__kimi_heap_spare_run, align 8
   %same = icmp eq i64 %spare_run, %run
   br i1 %same, label %take, label %map
@@ -115,13 +119,7 @@ take:
   ret ptr %spare
 map:
   %pages = call ptr @__kimi_pages(i64 %run)
-  %no_pages = icmp eq ptr %pages, null
-  br i1 %no_pages, label %failed, label %own
-own:
-  store i64 %run, ptr %pages, align 16
   ret ptr %pages
-failed:
-  ret ptr null
 }
 
 ; A released run of a byte length: at most 1 MiB, it becomes the spare and the spare it replaces goes to the layer; a larger one goes
