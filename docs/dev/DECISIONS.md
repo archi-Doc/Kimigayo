@@ -7222,7 +7222,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     which `Scalared` now reads too), and `Reach.Unowned` states the reach once, for the first step and past a holder (rule 3's two
     sites). The first step's rows are read at the reading key past the input's own layer at the call's parameter key (`InputKey`),
     as `Keyed` reads on, so a row in a binding of the called function's own Type parameter adds no reach of its own (SPEC 15.6.4);
-    an input whose key has no single layer (a shared borrow, a key at Binding's Limit) keeps its referent's root key.
+    an input whose key has no single layer (a shared borrow, a key at Binding's Limit) keeps its referent's root key. The body's
+    read: R4-M242.
   - The pun rule's call walk (R4-M198) stays its own (U3d leaves the chain): it judges where a call may write a Scalar (every input
     its contract may store through, past every layer a Scalar may be written through, on the state after the call's stores), W where
     it may store a Loan (per written output, past a layer whose storage may hold one, before them); they share the key table
@@ -8131,6 +8132,35 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Loan-free pointee (Binding's entry already bounds what that storage keeps).
   - The departures of clauses (1)-(3) (U3b's first-step source, G785's "no single layer" bullet, rule 4's site at the result key)
     are G841b's and G841c's entries.
+- **R4-M242 The pun rule's read site: a raw pointer a body reads punned reaches storage the body does not own (PLAN G785)**
+  (2026-11-24; the Middle; G785, Q-745, D-1235; Major, an acceptance mover both ways; the owner's O-521 Q1 (a) and Q2 (V); design
+  `middle\notes\g785-design.md` Revision 3b) SPEC 5.2, 5.5, 15.6 Holders (example punnedRef).
+  - **Rule.** At each Deref of the one step walk (`MirBorrows.Values.Prefix`) that reads a raw Place (a raw Deref at its pointee; a
+    `ref` or `uniq` Deref at its referent where punnable), each direct entry of any mode naming a Place, a non-holder local's
+    included, answers None where the read Type designates the Place or `PunTypes.NoProvenance` is None, else `NoProvenance` (may: the
+    Place holds both kinds of byte or states none of its bytes; surely: it lacks provenance); the step answers surely only where
+    every entry does, None where every entry does, else may. Where that adds a marker, it asks `MirBorrows.Lent` whether the
+    referent is formed exactly (`LentExactly`: its exact lent position, or each referring store's for a whole non-argument local);
+    if so nothing is added. Lent resolves in its own step buffer. A stated Origin exempts no read (SPEC 15.6 Holders).
+  - **Defect fixed (PLAN G785, Q17 class 1).** On dev such a read reached nothing past the viewed holder, so a store through it was
+    accepted though SPEC 5.2 gives it no provenance and 5.5 makes it reach only storage the body does not own: 30 labelled invalid
+    programs are now rejected, 19 with `ComparisonLoanConflict_Kd` and 11 with the located `Unsupported_Kd`.
+  - **The reduction, approved by its rule** (the owner's O-521 Q1 (a), the owner question's §4 (a) with its aggregation point):
+    through a referent Lent does not resolve (a call's result; `p + n`, and so `p[n]`, a Deref of `p + n`; a reference read from a
+    part, an aggregate or a payload; an exposed or part-stored local; an argument; a Cast), a raw pointer read from a raw-pointer part
+    of a holder that also holds other bytes, in one holder or across the holders a value names where any keeps provenance
+    (designated, or raw-pointer bytes only); read from a Place whose structure states none of its bytes (a Slice, an abstract part, a
+    Closure, an enum's own bytes); or read at a raw pointer Type over a holder whose layout decides whether the bytes read are a raw
+    pointer's (IMPL 21.1, uPtrTupleBodyOk), gives the located `Unsupported_Kd` where a check only a store through it meets fails,
+    never a Language error (PLAN G785b).
+  - **Removal:** a representation of the pointed-to part (PLAN G785b, the owner question's option (d)). No staged unit removes it:
+    U5's markers (R4-M219's staged line) mark a Position On or Off, not the part, so O-517 (a)'s "removal by U5" reads (d).
+  - **Rejected:** R1's one-level key (unsound); a per-borrow lend-end class; the one-store rule alone; taking the most of the entries
+    (Revision 2: skipping designated entries, a decided E on r3MixRefCastOk; Revision 3's prototype: a holder of both kinds beside a
+    no-provenance one, a decided E on r3bOpenRefCastOk); Revision 3a's None where the named holders disagree (it reopens
+    rvBorrowTwiceMixedBad and r3MixRefCastBad, which the answered option counted closed, and its may row still limits
+    r4MixOpenCastOk across holders: no single-holder reading is met on today's values); a slot-keyed read entry (it misses a
+    non-holder's bytes); a `+ 0` clause for `p[n]`.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
