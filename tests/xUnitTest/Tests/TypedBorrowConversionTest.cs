@@ -9,6 +9,7 @@ public class TypedBorrowConversionTest
 {
     private const string Counter = "struct Counter\n    public var value: i32 = 0\n";
     private const string Cell = "struct Cell\n    public let value: i32\n    public init(value: i32) => self.value = value\n";
+    private const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n";
     private const string Tree = "open struct Base\n    public let legs: i32 = 4\n    protected init() => ()\nstruct Leaf : Base\n    public init() : base() => ()\n" +
         "struct Other : Base\n    public init() : base() => ()\n";
 
@@ -52,11 +53,15 @@ public class TypedBorrowConversionTest
 
     // SPEC 13.5.6 with 15.3.6 (DECISIONS R8-M56; PLAN G1369): the written and the stored Type are read at the borrow, where a region of
     // its own body with a value is that value: `during r` in the Core's argument names r's value p (tb_let; a borrow layer of the target
-    // takes no Origin, SPEC 13.5.1, F.5). A set slot the local's clause equates with x.source names it (OriginRedesignTest's
-    // CompletesDeclarationOriginContracts). An omitted slot is inferred (SPEC 15.4.4), so x1c_inf is valid, but an inferred slot has no
-    // fixed value at the typed borrow: rejected as on dev (PLAN G1369's row).
+    // takes no Origin, SPEC 13.5.1, F.5), and where r's value is q the written Type is not the stored one (rv_tb_bad). A slot c's
+    // equality fixes is its value there too (rvi_tb_eq; rvi_tb_eq_bad, k.at being q). A set slot the local's clause equates with
+    // x.source names it (OriginRedesignTest's CompletesDeclarationOriginContracts). An omitted slot is inferred (SPEC 15.4.4), so x1c_inf
+    // is valid, but an inferred slot has no fixed value at the typed borrow: rejected as on dev (PLAN's x1c_inf row).
     [Theory]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\nfunc f(p: ref/i32, x: ref/Box<ref/i32 during p>) -> i32\n    let r = p\n    let y = x@follow@ref/Box<ref/i32 during r>\n    return 0\n", "")] // tb_let
+    [InlineData(Box + "func f(p: ref/i32, x: ref/Box<ref/i32 during p>) -> i32\n    let r = p\n    let y = x@follow@ref/Box<ref/i32 during r>\n    return 0\n", "")] // tb_let
+    [InlineData(Box + "func f(p: ref/i32, q: ref/i32, x: ref/Box<ref/i32 during p>) -> i32\n    let r = q\n    let y = x@follow@ref/Box<ref/i32 during r>\n    return 0\n", "TypeMismatch_Kd@6")] // rv_tb_bad
+    [InlineData(LocalOriginClauseTest.CursorType + Box + "func f(p: ref/i32, x: ref/Box<ref/i32 during p>) -> i32\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n    let y = x@follow@ref/Box<ref/i32 during k.at>\n    return 0\n", "")] // rvi_tb_eq
+    [InlineData(LocalOriginClauseTest.CursorType + Box + "func f(p: ref/i32, q: ref/i32, x: ref/Box<ref/i32 during p>) -> i32\n    let c: Cursor{k} = Cursor.init(q)\n        origin k.at == q\n    let y = x@follow@ref/Box<ref/i32 during k.at>\n    return 0\n", "TypeMismatch_Kd@10")] // rvi_tb_eq_bad
     [InlineData("struct V<T> {source}\n    public let value: ref/T during source\nfunc f(x: ref/V<i32>) -> i32\n    let y = x@follow@ref/V<i32>{v}\n    return 0\n", "TypeMismatch_Kd@4")] // x1c_inf
     public void ATypedBorrowReadsARegionAsItsValue(string source, string records)
         => Assert.Equal(records, TypeIdentityTest.PremiseRecords(source));

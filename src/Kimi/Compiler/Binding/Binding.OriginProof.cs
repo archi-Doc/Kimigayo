@@ -99,7 +99,8 @@ public sealed partial class Binding
     // the comparison reads that end as the region (O-363 (a)), which may lie inside its value, so only the region reading decides the
     // condition, and the uses of the compared Type read values (LeavesBodyRows leaves no row their values do not prove), until (a) or (a')
     // designs the region reading at uses. A direction with a fixed shorter end keeps its record: a `let` region outlives nothing its value
-    // does not, so the readings agree; so does a region equal to its value (an equality-fixed slot, SPEC 15.3.6) at either end.
+    // does not, so the readings agree; so does a region equal to its value (a slot fixed by equality to an Origin through which no
+    // inclusion is read, FixedRegion; SPEC 15.3.6) at either end.
     // Valid and invalid programs alike: no fact at the comparison separates them, since each verdict is decided at the uses of the
     // compared Type (us2 and us2n are identical through the comparison). So the invalid us family is rejected at the comparison by
     // this limit at dev's UnprovenOriginContract_Kd site, a record that differs from the one O-400 (b) states (Q13; no acceptance move).
@@ -112,9 +113,10 @@ public sealed partial class Binding
             => this.ReadsLetValue(b, use) || this.JudgeOriginRelation(a, b, use, this.formingBody) == OriginJudgment.Proven;
     }
 
-    // Whether `end` holds a `let` region of the use's body, which a use reads as its value (RegionValueAtUse), published as an inclusion
-    // (O-400 (b)): a region whose value is an equality (LocalRegion.Equality) equals it, so it is none and the value reading decides (SPEC
-    // 15.3.6 "Unless fixed by equality"; DECISIONS R8-M56 as amended, C-548).
+    // Whether `end` holds a region of the use's body that may lie inside the value a use reads for it (RegionValueAtUse): a value published
+    // as an inclusion (LocalRegion.Equality false). A region whose value is an equality equals it, so it is none and the value reading
+    // decides (SPEC 15.3.6 "Unless fixed by equality"; DECISIONS R8-M56 as amended, C-548). Read by O-400 (b)'s limit
+    // (ComparedRegionLimit) and by FixedRegion, whose region equal to such an end lies inside its value too.
     internal bool ReadsLetValue(BoundOrigin end, Koto use)
     {
         for (var i = 0; this.regionValues != 0 && i < (end.Kind == OriginKind.Intersection ? end.Operands.Count : 1); i++)
