@@ -464,6 +464,22 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
+    // R7-C6 a (PLAN G651 a1; BU-161's third form): the site frame of a judgment's proof query (a QuerySite at a node) asked during the pass
+    // with no consultation frame open, opened by the proof channel's outermost scope (BeginProof) and dropped at its close (EndProof), so
+    // its reads explain nothing; null where it opens none: inside a frame the frame is the site, Nested and AfterPass name no node, and
+    // after the pass no node is failed (Binding.TypeHeight, RefuseProof).
+    private (int Start, Koto? Node)? OpenQuerySite(QuerySite site)
+        => this.producing && this.consultationNode is null && site.Node is { } node ? this.BeginConsultation(node) : null;
+
+    // Closes the frame OpenQuerySite opened, if any.
+    private void CloseQuerySite((int Start, Koto? Node)? parent)
+    {
+        if (parent is { } opened)
+        {
+            this.DropConsultation(opened);
+        }
+    }
+
     // SPEC 23.1.2: a check whose result the node being checked does not read runs with no frame open, so nothing it fails becomes that
     // node's prerequisite: a header that a set Type demands is its declaration's (BindType), a part an unselected call binds on its
     // own is read by no check of that call (CompleteUnselected; DECISIONS U4b), and the binding result of a declaration that a container
@@ -489,7 +505,7 @@ public sealed partial class Binding
     private void Consulted(Koto dependency)
     {
         if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !this.ChecksOwnSite(dependency) &&
-            !this.IsWaitingPart(dependency))
+            !this.IsCheckedCall(dependency))
         {
             this.consulted.Add(dependency);
         }
@@ -606,9 +622,9 @@ public sealed partial class Binding
         => this.RecordedFailure(node) is var failure && failure != BindingFailure.None && IsResource(this.CodeOf(node, failure));
 
     // SPEC 8.3.3 (Limits), 23.1.1: an input holds a reached implementation limit when its slot's failure is Resource (ResourceFailed: a
-    // Binding limit is recorded through Fail alone, CaseLimit, TypeHeightLimit and PremiseClosureLimit) or one of its problems is,
-    // whatever its first record (F's ruling 339, the review's B1). The limit half's one input test (RestsOnRecoveryOrLimit), read only
-    // at publication; a valid program has no problem and pays the slot's test alone.
+    // Binding limit is recorded through Fail alone, CaseLimit, TypeHeightLimit, PremiseClosureLimit and ResolutionWorkLimit) or one of its
+    // problems is, whatever its first record (F's ruling 339, the review's B1). The limit half's one input test (RestsOnRecoveryOrLimit),
+    // read only at publication; a valid program has no problem and pays the slot's test alone.
     private bool HoldsLimit(Koto node)
     {
         if (this.ResourceFailed(node))
@@ -763,6 +779,34 @@ public sealed partial class Binding
         }
 
         return pending.Count != count;
+    }
+
+    /// <summary>PLAN G651 a1 (R7-C6 a, F's C8 rulings 9 and 13): where a proof query is asked from, an input of every proof entry and
+    /// every proof opener (BeginProof's callers at nesting 0), so a query that names no site does not compile: the node of the judgment
+    /// that needs the answer (a Koto converts to it: the node whose validity, acquisition or published plan reads the verdict); Nested,
+    /// no frame of its own: a scope inside a running proof or capability work (a connective's operand, a clause of a clause list, a
+    /// work's read), a query SubstituteType's family asks while it forms a Type, or a publication whose checks open their own site
+    /// frames, whose site is the open frame's; AfterPass, a query after Binding's pass (MIR, R7-M38's after-pass rule, PLAN G651 U2).
+    /// Nested and AfterPass are one value, a query that opens no frame of its own; their two names are the census's reading.
+    /// SubstituteType's family takes no site: its refusal reads the open consultation frame, the site's one carrier (BU-134, BU-161);
+    /// during the pass the outermost BeginProof opens a site frame at a judgment's node where none is open (OpenQuerySite).</summary>
+    internal readonly struct QuerySite
+    {
+        private QuerySite(Koto node) => this.Node = node;
+
+        /// <summary>Gets a scope nested in a running proof or capability work.</summary>
+        internal static QuerySite Nested => default;
+
+        /// <summary>Gets a query after Binding's pass.</summary>
+        internal static QuerySite AfterPass => default;
+
+        /// <summary>Gets the judgment's node; null for Nested and AfterPass.</summary>
+        internal Koto? Node { get; }
+
+        /// <summary>The judgment at a node.</summary>
+        /// <param name="node">The node whose judgment needs the answer.</param>
+        /// <returns>The site at the node.</returns>
+        public static implicit operator QuerySite(Koto node) => new(node);
     }
 
     // R7-N5 E (DECISIONS BU-220 as R7-N5 B2a-2 and B4 amend it): the Prerequisites family's one accessor, a node's consultation range in

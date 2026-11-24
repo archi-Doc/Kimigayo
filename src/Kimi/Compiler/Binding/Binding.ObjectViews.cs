@@ -23,6 +23,9 @@ public sealed partial class Binding
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
+    // SPEC 15.8.1: erasing a payload behind a view needs its complete data Type Owned. An Owned proof that read a region with no answer yet
+    // (ValueIn's deferral fact, while a body is bound) is the erasure's obligation (BindingObligationKind.Owned), judged once the body is
+    // bound (JudgeErasedOwned, the one deferral path; the owner's O-481 (b), R7-O2 A1+A2's D2): the view's evidence stands until then.
     private bool RequireObjectErasure(Koto use, Koto operand, BoundType source, BoundType target)
     {
         if (ReferenceEquals(source, target))
@@ -37,10 +40,19 @@ public sealed partial class Binding
             return false;
         }
 
+        var held = this.readsUnboundedRegion;
+        this.readsUnboundedRegion = false;
         var proof = inherited ? ConstraintProof.Proven : this.ProveOwned(source, use);
-        if (proof == ConstraintProof.Proven)
+        var deferred = proof == ConstraintProof.Unknown && this.readsUnboundedRegion && this.formingBody.IsBody;
+        this.readsUnboundedRegion = held;
+        if (proof == ConstraintProof.Proven || deferred)
         {
             this.objectErasures[use] = new(source, target, entry);
+            if (deferred)
+            {
+                this.AddObligation(new(BindingObligationKind.Owned, use, BindingDeadline.BodyOrigins, source));
+            }
+
             return true;
         }
 
@@ -208,9 +220,9 @@ public sealed partial class Binding
                 return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
-            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion), conversion) is not ConstraintProof.Proven and var copyProof)
             {
-                return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+                return this.ProofRestsOnLimit(conversion, copyProof) ? null : this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
 
             result = target;

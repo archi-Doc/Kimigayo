@@ -7,6 +7,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 8.3.3 Finality, 15.3.6 (R7-O2 A1+A2; the owner's O-471 (a)): the depth of a bound body's binding, below every obligation's: an
+    // answer that read a local region with no answer yet (StaticOrigin, through ValueIn's deferral fact) depends on that binding (EndAnswer),
+    // so its work is forgotten after its outermost request (ForgetDependentCapabilities) and its asker judges it once the body is bound
+    // (JudgeErasedOwned).
+    private const int BodyBinding = -1;
+
     // SPEC 8.3.3 Recursion (R7-C2e2 e2-3b): the obligations being proven, each open at its depth (the number open when it opened; they
     // nest, every open and close a try/finally pair): a nominal `T is C` while ResolveConformance proves it, keyed by the obligation,
     // not the requester, and a declaration path while VerifyConformance verifies it (every instance), keyed by the path. A request
@@ -106,7 +112,7 @@ public sealed partial class Binding
         return false;
     }
 
-    private ConstraintProof VerifyConformanceAgreement(BoundConformance identity)
+    private ConstraintProof VerifyConformanceAgreement(BoundConformance identity, QuerySite site)
     {
         if (identity.Invalid)
         {
@@ -146,8 +152,8 @@ public sealed partial class Binding
                 // Only refutation in an independently valid environment establishes exclusion.
                 // Arbitrary errors (invalid names, declarations, cycles) are never disjointness.
                 var self = this.SelfType(a.Type);
-                var ab = this.ProveConformanceConditions(a, self, b.Scope);
-                var ba = this.ProveConformanceConditions(b, self, a.Scope);
+                var ab = this.ProveConformanceConditions(a, self, b.Scope, site);
+                var ba = this.ProveConformanceConditions(b, self, a.Scope, site);
                 var disjoint = this.DisjointConformanceFacts(a.Scope, b.Scope);
                 if (ab == ConstraintProof.Error || ba == ConstraintProof.Error)
                 {
@@ -178,12 +184,12 @@ public sealed partial class Binding
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
                 {
                     var witness = a.WitnessStorage[w];
-                    same &= b.WitnessMap.TryGetValue(witness.Identity, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope);
+                    same &= b.WitnessMap.TryGetValue(witness.Identity, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope, a.Use);
                 }
 
                 foreach (var binding in a.AssociatedStorage)
                 {
-                    same &= b.AssociatedStorage.TryGetValue(binding.Key, out var otherType) && this.SameConformanceType(binding.Value, otherType, scope);
+                    same &= b.AssociatedStorage.TryGetValue(binding.Key, out var otherType) && this.SameConformanceType(binding.Value, otherType, scope, a.Use);
                 }
 
                 for (var w = 0; w < a.PropertyWitnessStorage.Count; w++)
@@ -195,7 +201,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    same &= this.SamePropertyWitness(x, y, scope);
+                    same &= this.SamePropertyWitness(x, y, scope, a.Use);
                 }
 
                 if (!same)
@@ -212,17 +218,17 @@ public sealed partial class Binding
         return proof;
     }
 
-    private bool SameConformanceType(BoundType? a, BoundType? b, BindingScope scope)
-        => ReferenceEquals(a, b) || (a is not null && b is not null && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.TypeIdentity, this.ContractType(a, scope), this.ContractType(b, scope))), scope) == ConstraintProof.Proven);
+    private bool SameConformanceType(BoundType? a, BoundType? b, BindingScope scope, QuerySite site)
+        => ReferenceEquals(a, b) || (a is not null && b is not null && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.TypeIdentity, this.ContractType(a, scope), this.ContractType(b, scope))), scope, site) == ConstraintProof.Proven);
 
     // SPEC 8.6.1, 8.2.3: a conformance's bound Contract reference `formal`, in its declaration's terms, names the bound reference
     // `required` of the same Contract for `receiver` when its instance is one Type with `required` in `scope`, judged as two paths are
     // (SameConformanceType): the substitution can leave a projection over the receiver's arguments that names a Type
     // (`Iter<S.(HasItem).Item>` of `B<SrcI>` is `Iter<i32>`), or a premise of `scope` names one, so the substituted form's reference
     // decides no identity.
-    private bool NamesReference(BoundType formal, BoundType receiver, BoundType required, BindingScope scope)
+    private bool NamesReference(BoundType formal, BoundType receiver, BoundType required, BindingScope scope, QuerySite site)
         => ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, receiver) is { } instance &&
-            this.SameConformanceType(instance, required, scope);
+            this.SameConformanceType(instance, required, scope, site);
 
     private void BindConditionalDeclarations(bool conditions)
     {
@@ -332,17 +338,17 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, out BoundConformancePath? evidence)
+    private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site, out BoundConformancePath? evidence)
     {
         evidence = null;
 
         // SPEC 13.3.3, 13.4.1, 4.6.1, 8.7, 22.1: the built-in row of the Type and the reference's Contract (BuiltinConformance); a
         // composed comparison holds by its parts (R7-C9's Prove).
-        if (this.contractHeadersReady && this.BuiltinConformance(type, contract, scope) is { Kind: not ImplTable.BuiltinKind.None } builtin)
+        if (this.contractHeadersReady && this.BuiltinConformance(type, contract, scope, site) is { Kind: not ImplTable.BuiltinKind.None } builtin)
         {
             return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error
                 : builtin.Kind == ImplTable.BuiltinKind.Absent ? ConstraintProof.Refuted
-                : builtin.Kind == ImplTable.BuiltinKind.Composed ? this.ComparisonProof(type, contract, scope, false, out _) : ConstraintProof.Proven;
+                : builtin.Kind == ImplTable.BuiltinKind.Composed ? this.ComparisonProof(type, contract, scope, site, false, out _) : ConstraintProof.Proven;
         }
 
         // SPEC 8.3: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
@@ -367,10 +373,10 @@ public sealed partial class Binding
 
         // SPEC 8.6.1, 8.9: the one conformance the Contract selects (a Contract named without Type arguments, a requirement's owner, by
         // its declaration); an ambiguous selection (several by declaration, or two colliding direct conformances) stays undecided here.
-        var identity = this.SelectConformance(type, contract, scope, out var candidates);
+        var identity = this.SelectConformance(type, contract, scope, site, out var candidates);
         if (identity is null)
         {
-            return candidates == 0 && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return candidates == 0 && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope, site) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -386,7 +392,7 @@ public sealed partial class Binding
 
         try
         {
-            this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
+            this.BeginProof(site); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
             for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
@@ -399,7 +405,7 @@ public sealed partial class Binding
                     definition = ConstraintProof.Error;
                 }
 
-                var condition = this.PathEvidence(path, type, scope);
+                var condition = this.PathEvidence(path, type, scope, QuerySite.Nested);
                 var available = definition == ConstraintProof.Proven ? condition : condition == ConstraintProof.Error ? ConstraintProof.Error : definition;
                 result = CombineProof(result, available, false);
                 if (available == ConstraintProof.Proven)
@@ -410,7 +416,7 @@ public sealed partial class Binding
 
             if (result == ConstraintProof.Proven)
             {
-                result = CombineProof(result, this.InstanceFormation(type, scope), true);
+                result = CombineProof(result, this.InstanceFormation(type, scope, QuerySite.Nested), true);
             }
 
             if (result != ConstraintProof.Proven)
@@ -430,16 +436,16 @@ public sealed partial class Binding
     // in `scope` and a bound Contract reference, None where none applies: the reference's argument SPEC fixes is judged first, once: an
     // arithmetic reference's is Self (`C<Self>`), one Type with it in `scope` (SameConformanceType), as a projection naming it is
     // (`i32 is Addable<U.(HasItem).Item>` with SrcI for U); an Entailed row applies when its subject is proven PrimitiveInteger.
-    private ImplTable.BuiltinRow BuiltinConformance(BoundType type, BindingSymbol contract, BindingScope scope)
+    private ImplTable.BuiltinRow BuiltinConformance(BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site)
     {
         if (ArithmeticContractSyntax.Identity(contract) is { } id && !KimiLibraryCatalog.IsLeftContract(id) && id != KimiDeclarationId.Negatable &&
-            (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, type, scope)))
+            (contract.Type is not { Components: [var counterpart] } || !this.SameConformanceType(counterpart, type, scope, site)))
         {
             return default;
         }
 
         var row = ImplTable.Builtin(type, contract);
-        return row.Kind != ImplTable.BuiltinKind.Entailed || this.IsGenericInteger(row.Subject, scope) ? row : default;
+        return row.Kind != ImplTable.BuiltinKind.Entailed || this.IsGenericInteger(row.Subject, scope, site) ? row : default;
     }
 
     // The start of an answer whose dependence a reader asks: the depth now and the dependence of the answers enclosing it.
@@ -508,6 +514,9 @@ public sealed partial class Binding
         return true;
     }
 
+    // The answers in progress read a local region with no answer yet: they depend on the body's binding (BodyBinding).
+    private void ReadBodyBinding() => this.dependence = Math.Min(this.dependence, BodyBinding);
+
     // Whether a request reaching `key` finds it open (it then reads no evidence, and the answers in progress read it).
     private bool ReadOpen(Obligation key)
     {
@@ -555,16 +564,16 @@ public sealed partial class Binding
     // holds only for the bindings the declaration's Constraints allow, so it rests on those Constraints at the instance's arguments (the
     // formation step alone, BeginTypeFormation and EndTypeFormation; R7-C2e2 e2-3b R2.5), each proven with SPEC 8.3.3's re-entry rule: a
     // Constraint whose obligation is open supplies none. An argument's own formation is its written site's, judged there.
-    private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
+    private ConstraintProof InstanceFormation(BoundType type, BindingScope scope, QuerySite site)
         => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
             : type.Components.Count != symbol.Schema.GenericSlots.Count ? ConstraintProof.Unknown
-            : this.BeginTypeFormation(type, scope) is { } proof ? this.EndProof(this.EndTypeFormation(type, scope, proof)) : ConstraintProof.Error;
+            : this.BeginTypeFormation(type, scope, site) is { } proof ? this.EndProof(this.EndTypeFormation(type, scope, proof)) : ConstraintProof.Error;
 
     // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
     // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
     // scope's (IdentityRefuted), or each of its paths' own conditions is Refuted (PLAN G866). The walk opens the obligation as
     // ResolveConformance does (openObligations); a request reaching it open reads no evidence and rules out nothing.
-    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope)
+    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope, QuerySite site)
     {
         if (contract.Type is not { } required || ReferenceEquals(required.Symbol, contract) || this.ConformancesOf(symbol) is not { } bindings)
         {
@@ -586,7 +595,7 @@ public sealed partial class Binding
                 {
                     for (var p = 0; p < this.impls.PathsOf(bindings[i]).Count; p++)
                     {
-                        if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope) != ConstraintProof.Refuted)
+                        if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope, site) != ConstraintProof.Refuted)
                         {
                             return true;
                         }
@@ -608,11 +617,11 @@ public sealed partial class Binding
     // (DeclaredPath, SPEC 8.6.2), so that path's Failed state is read the same way (the joint code review's B1, F's C2 ruling 302). A
     // test of whether a path can apply reads the conditions alone (ProveConformanceConditions): an Invalid path is never evidence that
     // the conformance does not apply (8.3.2 closed world).
-    private ConstraintProof PathEvidence(BoundConformancePath path, BoundType type, BindingScope scope)
+    private ConstraintProof PathEvidence(BoundConformancePath path, BoundType type, BindingScope scope, QuerySite site)
         => (path.Invalid ? path : path.DeclaredPath is { Invalid: true } declared ? declared : null) is { } failed ? this.RestOnFailure(failed)
-            : this.ProveConformanceConditions(path, type, scope);
+            : this.ProveConformanceConditions(path, type, scope, site);
 
-    private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
+    private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope, QuerySite site)
     {
         if (path.InheritedFrom is not null)
         {
@@ -621,16 +630,16 @@ public sealed partial class Binding
             this.inheritedPremiseSteps++;
             if (path.DeclaredSelf is { } layer)
             {
-                return this.StoredType(layer, type) is { } declared ? this.ProveConformanceConditions(path.DeclaredPath!, declared, scope) : ConstraintProof.Unknown;
+                return this.StoredType(layer, type) is { } declared ? this.ProveConformanceConditions(path.DeclaredPath!, declared, scope, site) : ConstraintProof.Unknown;
             }
 
-            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
+            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope, site) : ConstraintProof.Unknown;
         }
 
-        return this.ProveConditionalPremises(path.Premises, type, scope);
+        return this.ProveConditionalPremises(path.Premises, type, scope, site);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, BoundType type, BindingScope scope)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, BoundType type, BindingScope scope, QuerySite site)
     {
         if (premises is null)
         {
@@ -644,7 +653,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        this.BeginProof();
+        this.BeginProof(site);
         var result = ConstraintProof.Proven;
         var derived = false;
         ClauseFact? conditions = null;
@@ -654,7 +663,7 @@ public sealed partial class Binding
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.StoredConstraint(written, type), scope, type) : null;
             var limit = this.ScopeReads.Limit;
             var error = this.ScopeReads.Error;
-            var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
+            var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope, QuerySite.Nested);
             if (this.DerivedObligation(proof, error))
             {
                 derived = true;

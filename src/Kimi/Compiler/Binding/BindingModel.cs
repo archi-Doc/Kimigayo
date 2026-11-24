@@ -78,6 +78,11 @@ public enum BoundTypeKind : byte
     // check that reads it rests, as rule W's failed part does. Never a node's published Type (the split call's completion unmarks what
     // it publishes, CompleteOnSplit; the HIR publisher lists one that holds it as Broken, InternalInvariant_Kd).
     Open,
+
+    // PLAN G924 AF-3b v3-A (the owner's O-499 (a)): an open atom, the slot Symbol of the candidate at owner level Length, which no
+    // evidence binds at an open position (Binding.OpenSlots: OpenType forms it, TyCtxt.OpenSlot interns it). No components, no Origin;
+    // never a Parameter: identical only to itself, and nothing binds it. Never a node's published Type (the HIR publisher's Broken check).
+    OpenSlot,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.7.2).</summary>
@@ -174,6 +179,7 @@ internal enum BindingFailure : byte
     CaseLimit,
     TypeHeightLimit,
     PremiseClosureLimit,
+    ResolutionWorkLimit,
     InvalidAssignment,
     InvalidLiteral,
     Access,
@@ -499,6 +505,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     private readonly bool containsPairLayer;
     private readonly bool containsNested;
     private readonly bool containsOpen;
+    private readonly bool containsOpenSlot;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
@@ -538,6 +545,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         var abstractPart = this.IsAbstract;
         var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
         var open = kind == BoundTypeKind.Open;
+        var openSlot = kind == BoundTypeKind.OpenSlot || lengthExpression is { ContainsOpenSlot: true };
         var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
@@ -549,6 +557,7 @@ public sealed class BoundType : IEquatable<BoundType?>
             pair |= components[i].containsPairLayer;
             nested |= components[i].containsNested;
             open |= components[i].containsOpen;
+            openSlot |= components[i].containsOpenSlot;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -560,6 +569,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         foreach (var argument in this.LengthArguments)
         {
             parameter |= argument is { IsConstant: false };
+            openSlot |= argument is { ContainsOpenSlot: true };
         }
 
         // R8-W2: a fixed array's interpolation-bound term over abstract value Types is an abstract part, open until its instance folds it.
@@ -582,6 +592,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.containsPairLayer = pair;
         this.containsNested = nested;
         this.containsOpen = open;
+        this.containsOpenSlot = openSlot;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -743,6 +754,9 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     // DECISIONS BU-240 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
     internal bool ContainsOpen => this.containsOpen;
+
+    // PLAN G924 AF-3b v3-A (Binding.OpenSlots): whether this subtree holds an open atom, of a Type or of a length (BoundLength.OpenSlot).
+    internal bool ContainsOpenSlot => this.containsOpenSlot;
 
     /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
     /// wrapping integer Core (SPEC 3.1.1); no layer is followed. The one definition every phase reads: Binding, the MIR builder's
@@ -1025,16 +1039,18 @@ public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
     internal int Problem { get; init; } = -1;
 }
 
-/// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>
-public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount)
+/// <summary>Summarizes the current pass. Provisional completion never certifies a final program; a Final pass is complete when it rejected
+/// no part: no node Unresolved or Invalid and no Resolved node with a published problem of its own (LimitedCount: a located limit beside
+/// its Resolved node, PLAN G254c, or a report's Defect, an Internal record).</summary>
+public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount, int LimitedCount = 0)
 {
-    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
+    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0 && this.LimitedCount == 0;
 }
 
-/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol and the supply kind
-/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6).</summary>
+/// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol, the supply kind
+/// that selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.4, 22.6), and its physical signature (ImportAbi).</summary>
 // R5-M25: the extern names its definition the way MirDefKey does; a syntax reader takes Decl.Declaration.
-internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind);
+internal readonly record struct LibraryImport(BindingSymbol Decl, string Library, string Symbol, string Kind, string Signature);
 
 /// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
 /// position, at the value that supplies the longer end; <c>Refuted</c> when the longer end is a body-local finite Origin.</summary>

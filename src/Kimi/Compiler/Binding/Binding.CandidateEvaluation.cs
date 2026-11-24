@@ -49,6 +49,12 @@ public sealed partial class Binding
     // premise-unproven candidate ranked as applicable; no judgment of those premises then changes the winner. The ordinary comparison
     // decides, so a tie or an incomparable pair still defers.
     private bool PremisesCannotAffect(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+        => this.PremisedBest(call, candidates, operations, stride) is var best && best >= 0 &&
+            candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+
+    // SPEC 10.1, 8.3.3: the candidate strictly best with every premise-unproven candidate ranked as the applicable candidate it would be
+    // (compared as though applicable), or -1 when none is, or when candidates holding waiting callables are not comparable.
+    private int PremisedBest(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
         foreach (ref readonly var candidate in candidates)
         {
@@ -56,15 +62,14 @@ public sealed partial class Binding
             {
                 if (!this.ComparableCallableSlots(call, candidates, operations, stride, true))
                 {
-                    return false;
+                    return -1;
                 }
 
                 break;
             }
         }
 
-        var best = StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
-        return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+        return StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
     }
 
     // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent), keyed by the solve's node and judged in the use's
@@ -259,13 +264,6 @@ public sealed partial class Binding
 
         for (var i = 0; i < left.Length; i++)
         {
-            if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
-                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
-                this.IsWaiting(source))
-            {
-                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
-            }
-
             var x = left[i].ParameterType;
             var y = right[i].ParameterType;
             if (ReferenceEquals(x, y) && (x is not null || left[i].Source is null))
@@ -273,9 +271,30 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 10.4 step 2: the structural parts must be identical (Origin bindings never rank, even inside Function Types), or the
-            // candidates are incomparable; open slots are never identical.
-            if (x is null || y is null || !this.FitsStructuralPart(x, y))
+            // SPEC 10.4 step 2: for each source argument the substituted parameter Types' structural parts must be identical (Origin
+            // bindings never rank, even inside Function Types), or the candidates are incomparable; open slots are never identical, and a
+            // Type holding an atom is identical only to itself (Binding.OpenSlots: a pair whose walk met an atom is incomparable; a
+            // reference-equal pair is skipped above; SPEC 10.8 Unbound slots, ArgFlow ruling 166). A waiting checked part (a Call or Case,
+            // checked at each candidate's Type, 10.5.1) is compared like any source argument (ArgFlow ruling 173). The one position not
+            // compared is a waiting callable's at a parameter `F`, `ref/F` or `uniq/F` that it binds (its operation is not an Erasure):
+            // SPEC 10.8 Unbound slots compares such an F by its form, "equal forms compare equal in step 2", and the candidates acquire it
+            // in one mode (ComparableCallableSlots), so the position ties (ArgFlow ruling 175 C3); it is walked only when a side holds an
+            // atom, the only thing it can meet there. At a Function Type the callable's operation is an Erasure, compared as above.
+            var callable = a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
+                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source && this.IsWaitingCallable(source);
+            var metOpenSlot = false;
+            var fits = x is not null && y is not null && (!callable || x.ContainsOpenSlot || y.ContainsOpenSlot) && this.FitsStructuralPart(x, y, out metOpenSlot);
+            if (metOpenSlot)
+            {
+                return false;
+            }
+
+            if (callable)
+            {
+                continue;
+            }
+
+            if (!fits)
             {
                 return false;
             }
@@ -362,7 +381,7 @@ public sealed partial class Binding
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
-            if (this.IsWaitingPart(argument))
+            if (this.IsCheckedCall(argument))
             {
                 this.CompleteDependent(argument, call);
             }
@@ -386,6 +405,14 @@ public sealed partial class Binding
         internal Refusal? HeldRefusal { get; set; }
 
         internal AcquisitionFailure? Acquisition { get; set; }
+
+        // SPEC 10.5.1: an inapplicable candidate's failed check of a part against its expected Type (TakeTrialChecked).
+        internal CheckedPartFailure? CheckedFailure { get; set; }
+
+        // SPEC 10.5.1 bullet 1 (ArgFlow rulings 160 C3, 171 C2): the trial left a checked part unqueried under the argument probe
+        // (ProbedResultOpen), which gives the part no class: applicable, the candidate makes the call not independently typable
+        // whatever the others give, so the call defers unranked (ClassifySelection, SolveSelected).
+        internal bool Deferred { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

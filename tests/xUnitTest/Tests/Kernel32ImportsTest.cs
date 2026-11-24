@@ -38,10 +38,13 @@ public sealed class Kernel32ImportsTest
             Assert.Contains(match.Groups[1].Value, exports);
         }
 
-        var native = File.ReadAllText(Path.Combine(repo, "src/backend/windows-x64/tests/native.c"));
-        foreach (Match match in Regex.Matches(native, @"(?m)^__declspec\(dllimport\).*\b(\w+)\([^();]*\);"))
+        foreach (var suite in (string[])["native.c", "memory.c"])
         {
-            Assert.Contains(match.Groups[1].Value, exports);
+            var source = File.ReadAllText(Path.Combine(repo, "src/backend/windows-x64/tests", suite));
+            foreach (Match match in Regex.Matches(source, @"(?m)^__declspec\(dllimport\).*\b(\w+)\([^();]*\);"))
+            {
+                Assert.Contains(match.Groups[1].Value, exports);
+            }
         }
     }
 

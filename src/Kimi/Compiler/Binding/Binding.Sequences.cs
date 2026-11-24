@@ -186,7 +186,7 @@ public sealed partial class Binding
     {
         var entry = this.IterationEntry(source, scope, ref subject, out _);
         var proposition = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry));
-        var proof = this.ProveConstraint(proposition, scope);
+        var proof = this.ProveConstraint(proposition, scope, source);
         if (proof == ConstraintProof.Proven)
         {
             return this.Fail(source, BindingFailure.Unsupported);
@@ -239,8 +239,8 @@ public sealed partial class Binding
         // (SPEC 4.6.4).
         // A built-in Type's entry conformance is the witness table's (SPEC 22.1): it adds no member, so its requirement is the call.
         var library = WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null;
-        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } && this.SelectConformance(subject, entry, scope, out _) is not null &&
-                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
+        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } && this.SelectConformance(subject, entry, scope, source, out _) is not null &&
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope, source) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
         if (!nominal && !this.PremiseRefines(subject, entry, scope))
         {
@@ -309,7 +309,7 @@ public sealed partial class Binding
     }
 
     // SPEC 14.6.2, 15.1.6: a user iteration's item bindings are acquired by the match's rule (AcquireBinding) at the same point, after the
-    // declaration checks its Copy proof reads; a loop's plan has no written Pattern Type to recheck.
+    // declaration checks (an owned item's part Moves and asks no Copy); a loop's plan has no written Pattern Type to recheck.
     private void CompleteIterationAcquisitions()
     {
         for (var i = 0; i < this.userIterations.Count; i++)
@@ -424,8 +424,9 @@ public sealed partial class Binding
 
         var plan = source.Iteration!;
         var some = match.PositionStorage[0];
-        var none = AdtDef.Case(some.MatchedType, this.Library.OptionNone);
-        match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, some.MatchedType, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
+        var option = some.MatchedType!; // The synthesized Some position's, the item's Option.
+        var none = AdtDef.Case(option, this.Library.OptionNone);
+        match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, option, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
         match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
         match.ArmStorage.Add(new(plan.Match.Arms[1], some.End));
     }

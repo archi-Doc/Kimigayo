@@ -227,20 +227,20 @@ public sealed class MirInitTest
             Problems("struct S\n    var value: i32\n    public init(flag: bool)\n        if flag => return\n        self.value = 1\n"));
     }
 
-    // SPEC 6.3.5, 23.1.2 (PLAN G105, G522): a Field Binding formed no stored Type for, its initializer failed in the parser or in
-    // Binding or its Type annotation unresolved, is a part of a rejected declaration that its constructor places nothing into
-    // (MirBuilder.Stored), so no exit requires it: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit
-    // one, also one that never sets the annotated Field, a generic and a nested struct's report only the Field's own failure; another Field
-    // an explicit init leaves unset is still reported (fail-before: UninitializedPlace_Kd at the struct or the init for the failed Field).
+    // SPEC 6.3.3, 6.3.5, 23.1.2 (DECISIONS Q13, R7-M88): a Field whose initializer failed in the parser or in Binding is placed by that
+    // initializer where its slot failed (MirBuilder.Construct into its Field Place) and is no part otherwise (MirBody.SelectsPart), so no
+    // exit finds it unplaced: the synthesized init() (SPEC 6.3.6, whatever the initializer's validity), an explicit one, a generic and a
+    // nested struct's report only the Field's own failure; another Field an explicit init leaves unset is still reported (fail-before,
+    // f5e9aaf7d: UninitializedPlace_Kd at the struct or the init for the failed Field). An annotated Field whose Type failed and that its
+    // constructor never places reports at the exit since Z28's M3 (AFieldWhoseSlotFailedIsItsOwnPlace's q07 rows).
     [Theory]
     [InlineData("struct Node\n    var next = (1 x)\n", "")]
     [InlineData("struct Node\n    var next = undefinedName\n", "")]
     [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    init(k: i32) => self.k = k\n", "")]
-    [InlineData("struct S\n    var a: Missing\n    var k: i32\n    init() => self.k = 1\n", "")]
     [InlineData("struct Box<T>\n    var next = (1 x)\nfunc f()\n    let b = Box<i32>.init()\n", "")]
     [InlineData("struct Outer\n    public let k: i32 = 1\n    struct Inner\n        var next = (1 x)\n", "")]
     [InlineData("struct Node\n    var next = (1 x)\n    var k: i32\n    var m: i32\n    init(k: i32) => self.k = k\n", "UninitializedPlace_Kd init(k: i32) => self.k = k 1")]
-    public void AConstructorRequiresNoFieldWithoutAStoredType(string source, string expected)
+    public void AFailedFieldsInitializerPlacesIt(string source, string expected)
     {
         var c = CompilationTestHelper.Parse(source);
         c.Bind();
@@ -1585,7 +1585,7 @@ public sealed class MirInitTest
     public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
-    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS R5-M195; PLAN G105, G791): a write Binding rejected for its value's fit after admitting its
+    // SPEC 13.7.1, 15.1.1, 23.1.2 (DECISIONS R5-M195): a write Binding rejected for its value's fit after admitting its
     // destination still places a value derived from that failure, as one whose value Binding left unresolved does: a second placement of
     // a let local or Field is reported, and a first placement, the target's later use, a constructor's end and a later write to a replaced
     // reference's old referent are not; its target's operands are evaluated (SPEC 13.7.1 step 2), so a move there is a later use's
@@ -1605,7 +1605,7 @@ public sealed class MirInitTest
     public void ARejectedWriteKeepsItsWrite(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
-    // SPEC 15.1.3, 15.1.4, 23.1.2 (DECISIONS Z17; PLAN G105 (2), G1058's second form): an Opaque site's kept or located part is checked at
+    // SPEC 15.1.3, 15.1.4, 23.1.2 (DECISIONS Z17, R4-M232): an Opaque site's kept or located part is checked at
     // its own Place, so a part of a partly moved root is no use of the moved part: a derived write's located right side (`missing = p.n`),
     // a failed call's kept argument (`g(p.n, missing)`, also r2-oq's last form) and a failed call's only one (`missing(p.n)`) report
     // nothing beside Binding's record (fail-before: MovedPlace_Kd at the site, the root read whole), while the moved part itself and an
@@ -1673,6 +1673,66 @@ public sealed class MirInitTest
     [InlineData("func f() -> i32\n    var p = (1, 2)\n    let t = p.0@move\n    defer => return p.0\n    return 1\n", "MovedPlace_Kd p.0 1")]
     public void AnOpaqueSitesPartIsCheckedAtItsPlace(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Parts + source));
+
+    // PLAN G1184 (DECISIONS BU-250, R7-M88; SPEC 6.3.4, 11.7, 13.7.1, 15.1.2, 15.1.3, 23.1.2): a use of a stored Field whose own slot
+    // failed (HirFormsTest.FailedSlot's `w`, the Weak limit's Field), accessed directly over a receiver whose Type stores it, is its Field
+    // Place of no Type, so a write places it and a read names that Place, never its receiver whole: a read after the constructor's
+    // placement (q04), a read beside a moved sibling, also in a Consuming closure (q10, r01), report nothing (fail-before: a false
+    // UninitializedPlace_Kd or MovedPlace_Kd at the read), while a read before the placement (q05), of a wholly moved root (q11, r02) and
+    // a constructor placing it on one branch only (r21, the typed twin's record at the constructor; fail-before: none) keep their true
+    // records. A constructor's _0 has a path per Field it places (MirMoveData, Z28's M3), so a constructor that never places it (q07;
+    // q07m over an unresolved Type, which G105's rule, f5e9aaf7d, left without a record while no Place could hold the Field) or places
+    // a let one twice (q06) reports at its exit (SPEC 6.3.5) or at the second placement, as the typed twin does (fail-before: none),
+    // and one whose only write of it is an update (u7: a derived write until PLAN G1340) reports at its exit, as the typed twin's
+    // dependent second record (PLAN G1114), its read's independent record still lost (G1340).
+    // Every other form reports nothing and builds without a fault: the constructor's placement (q01), through a custom `set`
+    // (r23) or beside a custom `get` (g1), whose read stays the getter's call (g2: its receiver read whole, the twin's record); a discard
+    // or a Move of it (d1, d2, q14), a write through a user index, an Array element, a held `uniq` reference, an exclusive parameter, a
+    // generic instance and a base layer (d5, d7, d8, d6, d11, d13), a shared borrow through a user index (d10), a read beside a moved
+    // sibling through a Tuple element (c4); and `storage` over a failed `self` (d3, d4: Binding's records alone) or a typed one (d4t). A
+    // receiver Place of a Type parameter an identity premise makes the struct (SPEC 8.2.3), direct, in a chain or nested in an array, an
+    // Array or a struct (d14, d15, x4, x1, x2, x3, x5), stores no Field the builder can index: each gives the builder's located
+    // Unsupported_Kd at the Field, its typed twin's (G168b's limit), with no fault (fail-before on 7135677d7: CheckFaulted, "no published
+    // Type", at x1, x2, x3, x5; no limit at d14, d15, x4).
+    [Theory]
+    [InlineData(HirFormsTest.FailedSlot, "")] // q01
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        self.w = w@move\n        let k = self.w@ref\n        self.s = s@move\n", "")] // q04
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public var s: string\n    public init(w: Weak<rc/N>, s: string)\n        let k = self.w@ref\n        self.w = w@move\n        self.s = s@move\n", "UninitializedPlace_Kd self.w@ref 1")] // q05
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let t = n.s@move\n    let k = n.w@ref\n", "")] // q10
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let t = n@move\n    let k = n.w@ref\n", "MovedPlace_Kd n.w@ref 1")] // q11
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let c = func [n@move] ()\n        let t = n.s@move\n        let k = n.w@ref\n", "")] // r01
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let c = func [n@move] ()\n        let t = n@move\n        let k = n.w@ref\n", "MovedPlace_Kd n.w@ref 1")] // r02
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n    public let v: i32\n    public init(c: bool, w: Weak<rc/N>, v: i32)\n        if c\n            self.w = w@move\n        self.v = v\n", "UninitializedPlace_Kd public init(c: bool, w: Weak<rc/N>, v: i32) 1")] // r21
+    [InlineData("struct N\n    public let w: Weak<rc/N>\n    public let v: i32\n    public init(w: Weak<rc/N>, w2: Weak<rc/N>, v: i32)\n        self.w = w@move\n        self.w = w2@move\n        self.v = v\n", "ReassignedLet_Kd self.w = w2@move 1")] // q06
+    [InlineData("struct N\n    public let w: Weak<rc/N>\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n", "UninitializedPlace_Kd public init(v: i32) 1")] // q07
+    [InlineData("struct S\n    var a: Missing\n    var k: i32\n    init() => self.k = 1\n", "UninitializedPlace_Kd init() => self.k = 1 1")] // q07m
+    [InlineData("struct H\n    public var x: Missing\n    public var s: string\n    public init(s: string)\n        self.x += 1\n        self.s = s@move\n", "UninitializedPlace_Kd public init(s: string) 1")] // u7
+    [InlineData(HirFormsTest.CustomSet, "")] // r23
+    [InlineData(HirFormsTest.CustomGet, "")] // g1
+    [InlineData(HirFormsTest.CustomGet + "func f(n: N)\n    let t = n.s@move\n    let k = n.w\n", "MovedPlace_Kd n.w 1")] // g2
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    n.w@move\n", "")] // d1
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    n.w\n", "")] // d2
+    [InlineData(HirFormsTest.FailedSlot + "func f(n: N)\n    let k = n.w@move\n", "")] // q14
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: uniq/Dictionary<i32, N>, w: Weak<rc/N>)\n    d[1].w = w@move\n", "")] // d5
+    [InlineData(HirFormsTest.FailedSlot + "func f(p: uniq/N, w: Weak<rc/N>)\n    p.w = w@move\n", "")] // d6
+    [InlineData(HirFormsTest.FailedSlot + "func f(a: uniq/Array<N>, w: Weak<rc/N>)\n    a[0].w = w@move\n", "")] // d7
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: uniq/Dictionary<i32, N>, w: Weak<rc/N>)\n    let r = d[1]@uniq\n    r.w = w@move\n", "")] // d8
+    [InlineData(HirFormsTest.FailedSlot + "func f(d: ref/Dictionary<i32, N>)\n    let k = d[1].w@ref\n", "")] // d10
+    [InlineData(HirFormsTest.FailedSlot + "struct B<T>\n    public var w: Weak<rc/N>\n    public var t: T\n    public init(w: Weak<rc/N>, t: T)\n        self.w = w@move\n        self.t = t@move\nfunc f(b: uniq/B<i32>, w: Weak<rc/N>)\n    b.w = w@move\n", "")] // d11
+    [InlineData(HirFormsTest.FailedSlot + "open struct A\n    public var w: Weak<rc/N>\n    public init(w: Weak<rc/N>)\n        self.w = w@move\nstruct D : A\n    public var s: string\n    public init(w: Weak<rc/N>, s: string) : base(w@move)\n        self.s = s@move\nfunc f(d: uniq/D, w: Weak<rc/N>)\n    d.w = w@move\n", "")] // d13
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        set(self: uniq/Missing, value: Weak<rc/N>) -> ()\n            storage = value@move\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d3
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        get(self: ref/Missing) -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4
+    [InlineData("struct N\n    public var w: Weak<rc/N>\n        get() -> Weak<rc/N>\n            return Kimi.Intrinsics.clone(storage@ref)\n    public init(w: Weak<rc/N>) => self.w = w@move\n", "")] // d4t
+    [InlineData(HirFormsTest.FailedSlot + "func f(p: (N, i32))\n    let t = p.0.s@move\n    let k = p.0.w@ref\n", "")] // c4
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: uniq/T, w: Weak<rc/N>)\n    T is N\n    t.w = w@move\n", "Unsupported_Kd t.w 18446744073709551615")] // d14
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(t: ref/T)\n    T is N\n    let k = t.w@ref\n", "Unsupported_Kd t.w 18446744073709551615")] // d15
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(a: uniq/[2 of T], w: Weak<rc/N>)\n    T is N\n    a[0].w = w@move\n", "Unsupported_Kd a[0].w 18446744073709551615")] // x1
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(xs: uniq/Array<T>, w: Weak<rc/N>)\n    T is N\n    xs[0].w = w@move\n", "Unsupported_Kd xs[0].w 18446744073709551615")] // x2
+    [InlineData(HirFormsTest.FailedSlot + "struct B<T>\n    public var inner: T\n    public init(inner: T)\n        self.inner = inner@move\nfunc f<T>(b: uniq/B<T>, w: Weak<rc/N>)\n    T is N\n    b.inner.w = w@move\n", "Unsupported_Kd b.inner.w 18446744073709551615")] // x3
+    [InlineData(HirFormsTest.FailedSlot + "func f<T, U>(t: uniq/T, w: Weak<rc/N>)\n    T is U\n    U is N\n    t.w = w@move\n", "Unsupported_Kd t.w 18446744073709551615")] // x4
+    [InlineData(HirFormsTest.FailedSlot + "func f<T>(a: ref/[2 of T])\n    T is N\n    let k = a[0].w@ref\n", "Unsupported_Kd a[0].w 18446744073709551615")] // x5
+    public void AFieldWhoseSlotFailedIsItsOwnPlace(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)

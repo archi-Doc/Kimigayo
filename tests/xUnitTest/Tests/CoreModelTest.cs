@@ -84,16 +84,24 @@ public class CoreModelTest
 
     // The target table (IMPL 21.4, 21.5): two rows, windows-x64, whose triple is the literal the [InlineData] rows name, and linux-x64 (the
     // Tatara plan's B7b2a). Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
-    // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library). The Windows row: kernel32
-    // providing every runtime declaration (IMPL 21.4.7), and IMPL 21.2's reserved external names; the Linux row: none until B7b2b.
+    // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), each one's kind among the
+    // row's Kinds and the table's supply of its name (B7b5), and a C runtime, if any, that names one of them; each runtime declaration is
+    // the table's for its symbol, provided by one of the row's supplies (G1 (i)). The Windows row: kernel32 providing every runtime
+    // declaration (IMPL 21.4.7), both kinds, no C runtime and no argument extension; the Linux row (B7b2b): c, a static library providing
+    // the C functions the layer stands for, its C runtime, the static kind (Q3a (a)), and System V's argument extension (IMPL 21.2). The
+    // table's reserved external names (IMPL 21.2, every target; B7b5) are built once from pairwise disjoint parts: each row's float marker
+    // and kimi_backend symbols (Windows': __chkstk alone, B7r5), MemorySymbols and MainSymbol.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
         Assert.Equal([TargetProfile.Windows, TargetProfile.Linux], TargetProfile.Rows);
         Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
         Assert.Equal("x86_64-unknown-linux-musl", TargetProfile.Linux.Target);
+        List<string> reserved = [];
         foreach (var row in TargetProfile.Rows)
         {
+            reserved.AddRange(row.FloatMarker is { } marker ? [marker] : []);
+            reserved.AddRange(row.Supply("kimi_backend")?.Symbols ?? []);
             var supplies = row.Supplies;
             for (var i = 1; i < supplies.Length; i++)
             {
@@ -103,6 +111,8 @@ public class CoreModelTest
             for (var i = 0; i < supplies.Length; i++)
             {
                 Assert.Same(supplies[i], row.Supply(supplies[i].Name));
+                Assert.Contains(supplies[i].Kind, row.Kinds);
+                Assert.Equal(supplies[i].Kind, TargetProfile.ReservedSupply(supplies[i].Name)!.Kind);
                 for (var j = i + 1; j < supplies.Length; j++)
                 {
                     Assert.Empty(supplies[i].Symbols.Intersect(supplies[j].Symbols, StringComparer.Ordinal));
@@ -111,15 +121,34 @@ public class CoreModelTest
 
             Assert.Null(row.Supply("codec"));
             Assert.Null(row.Supply(null));
+            Assert.True(row.CRuntime is null || row.Supply(row.CRuntime) is not null);
+            foreach (var (symbol, signature) in row.RuntimeDeclarations)
+            {
+                Assert.True(TargetProfile.TryGetRuntimeDeclaration(symbol, out var declared, out var provider));
+                Assert.Equal((signature, Assert.Single(supplies, x => x.Symbols.Contains(symbol)).Name), (declared, provider));
+            }
         }
 
         var windows = TargetProfile.Windows;
         Assert.Equal(["kernel32", "kimi_backend"], windows.Supplies.Select(static x => x.Name));
         Assert.Equal(["import", "static"], windows.Supplies.Select(static x => x.Kind));
+        Assert.Equal(["import", "static"], windows.Kinds);
         var kernel32 = windows.Supply("kernel32")!.Symbols.ToHashSet(StringComparer.Ordinal);
         Assert.Subset(kernel32, windows.RuntimeDeclarations.Select(static x => x.Symbol).ToHashSet(StringComparer.Ordinal));
-        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset"], windows.ReservedSymbols);
-        Assert.Empty(TargetProfile.Linux.Supplies);
+        Assert.Equal(["__chkstk"], windows.Supply("kimi_backend")!.Symbols);
+        reserved.AddRange([.. TargetProfile.MemorySymbols, TargetProfile.MainSymbol]);
+        Assert.Equal(reserved.Distinct(StringComparer.Ordinal), reserved);
+        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset", "main"], TargetProfile.ReservedSymbols);
+        Assert.Same(TargetProfile.ReservedSymbols, TargetProfile.ReservedSymbols);
+        Assert.Null(windows.CRuntime);
+        Assert.Null(windows.ArgumentExtension);
+        var linux = TargetProfile.Linux;
+        var c = Assert.Single(linux.Supplies);
+        Assert.Equal(("c", "static"), (c.Name, c.Kind));
+        Assert.Equal(["write", "_exit", "exit", "mmap", "munmap", "clock_gettime"], c.Symbols);
+        Assert.Equal(["static"], linux.Kinds);
+        Assert.Equal("c", linux.CRuntime);
+        Assert.Equal("SystemV", linux.ArgumentExtension);
     }
 
     // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C

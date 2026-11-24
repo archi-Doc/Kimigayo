@@ -75,14 +75,14 @@ public sealed partial class Binding
     // part's answer depends on the part alone in one query (its contract, scope and operators fixed), so each distinct one is composed
     // once (DECISIONS BU-19, BU-55).
     private ConstraintProof ComparisonProof(
-        BoundType type, BindingSymbol contract, BindingScope scope, bool operators, out BoundConstraint? failedRequirement)
+        BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site, bool operators, out BoundConstraint? failedRequirement)
     {
-        (var proof, failedRequirement) = this.ComparisonProof(type, contract, scope, operators, this.comparedParts.Begin(this.storageVersion));
+        (var proof, failedRequirement) = this.ComparisonProof(type, contract, scope, site, operators, this.comparedParts.Begin(this.storageVersion));
         return proof;
     }
 
     private (ConstraintProof Proof, BoundConstraint? Failed) ComparisonProof(
-        BoundType type, BindingSymbol contract, BindingScope scope, bool operators, uint query)
+        BoundType type, BindingSymbol contract, BindingScope scope, QuerySite site, bool operators, uint query)
     {
         if (!TyCtxt.IsComposite(type))
         {
@@ -92,7 +92,7 @@ public sealed partial class Binding
             }
 
             var requirement = this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract));
-            var proof = this.ProveConstraint(requirement, scope);
+            var proof = this.ProveConstraint(requirement, scope, site);
             return (proof, proof == ConstraintProof.Proven ? null : requirement);
         }
 
@@ -104,7 +104,7 @@ public sealed partial class Binding
         var result = (Proof: ConstraintProof.Proven, Failed: (BoundConstraint?)null);
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var part = this.ComparisonProof(type.Components[i], contract, scope, operators, query);
+            var part = this.ComparisonProof(type.Components[i], contract, scope, site, operators, query);
             var combined = CombineProof(result.Proof, part.Proof, true);
             result = (combined, combined != result.Proof ? part.Failed : result.Failed);
         }

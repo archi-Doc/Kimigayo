@@ -51,6 +51,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.VirtualEffectBounds"] = "never written: the library declares no virtual function",
         ["NodeColumns.ImplicitConstructorDecisions"] = "never written: the library declares no derived structure",
         ["NodeColumns.ObjectErasures"] = "never written: the library erases no object view",
+        ["NodeColumns.DeferredDefaults"] = "never written: no library Closure header's result default reads a region with no answer yet (R7-O2 O2-F)",
         ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
         ["NodeColumns.ImportedContainers"] = "never written: the library's one alias, its configured `Kimi` (N1-13 C2), binds no environment, so no qualifier selects an alias import",
         ["NodeColumns.QualificationFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",

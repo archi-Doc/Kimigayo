@@ -24,7 +24,7 @@ namespace Kimi.Compiler;
 /// attribute, or the inside of an Error).
 /// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: the
 /// lexer, the parser or Binding rejected the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type,
-/// a name of a binding its Type, a match or a try its valid plan; a form no member describes that Binding left unresolved has none); its value is
+/// a name of a binding its Type, a match or a try its settled plan; a form no member describes that Binding left unresolved has none); its value is
 /// derived, after the parts the HIR keeps, those its form evaluates on every path through it (Binding's Keeps; DECISIONS Z16, which
 /// R4-M88 and R5-M63 are cases of). The contract of derived values (DECISIONS Z16): an Error, a failed acquisition
 /// (<see cref="HirAcquire.Failed"/>, at the acquired node) and the declaration of a stored Property whose value the builder reads, not
@@ -134,15 +134,14 @@ internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adap
     internal bool Reads => this.Acquire is HirAcquire.Copy or HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase or HirAcquire.Temporary ||
         (this.Acquire == HirAcquire.None && this.Adaptation == HirAdaptation.SharedBorrow);
 
-    // A Pattern binding (SPEC 15.1.6): Copied, or borrowed in the mode its path grants; an owned part whose Copy is not proven is
-    // transferred, which an instance whose Type is Copy performs as a Copy. One whose Pattern Type check failed (None) or whose Copy proof
-    // is Error (Deferred) failed (SPEC 23.1.2; DECISIONS BU-103).
+    // A Pattern binding (SPEC 15.1.6): Copied, transferred, or borrowed in the mode its path grants (Binding.AcquireBinding). One whose
+    // Pattern Type check failed (None) failed (SPEC 23.1.2; DECISIONS BU-103).
     internal static HirAdjust Of(PatternAcquisition acquisition, PatternAccessMode access) => acquisition switch
     {
         PatternAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
-        PatternAcquisition.Move or PatternAcquisition.CopyOrMove => new(HirAcquire.Move, HirAdaptation.None),
+        PatternAcquisition.Move => new(HirAcquire.Move, HirAdaptation.None),
         PatternAcquisition.Borrow => new(HirAcquire.None, access == PatternAccessMode.Exclusive ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow),
-        PatternAcquisition.None or PatternAcquisition.Deferred => new(HirAcquire.Failed, HirAdaptation.None),
+        PatternAcquisition.None => new(HirAcquire.Failed, HirAdaptation.None),
         _ => throw new UnreachableException(),
     };
 

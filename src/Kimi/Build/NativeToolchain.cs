@@ -7,9 +7,10 @@
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run;
 // toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
 // its supplies' bytes against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
-// toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is;
-// ToolchainIdentity, with Kernel32Imports' DLL and generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
-// development toolchain's tools and files are checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
+// toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is, a
+// staged copy that still has its catalog hash reused without copying the resource; ToolchainIdentity, with Kernel32Imports' DLL and
+// generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The development toolchain's tools and files are
+// checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
@@ -34,8 +35,10 @@
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders). A build of a record (Project.Build, build --Manifest) holds the record's lock
 // (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave; a build's files are
-// named from its record's Name (ArtifactPaths), a --Manifest build's IR included, so the lock covers every file it writes. A native build
-// holds its IR, with read sharing only, from the pair's hash to its end, so it compiles the bytes its record names.
+// named from its record's Name (ArtifactPaths), a --Manifest build's IR included, so the lock covers every file it writes. Every file
+// Tatara or LLD reads in a native build is held, with read sharing only, from the moment its bytes are fixed until its last reader is
+// done: its IR from the pair's hash, each staged library from its check, its O2 text and object from their creation (Tatara returns
+// them and the build writes them); LLD's executable is hashed after the link.
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
 // The link manifest's fixed fields (one table), the compiler's supplies' entries (their rows) and its readers are LinkManifest's: no

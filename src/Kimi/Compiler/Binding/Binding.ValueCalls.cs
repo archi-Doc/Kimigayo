@@ -8,7 +8,8 @@
 //   parts at their instantiated parameters (PLAN G494); the substitution, and the result (ValueCallResult). P9: a Closure's result
 //   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage), the image of the Closure binder's reserved atom
 //   built only where the result names it (CallAtomsOf, PerCallImages); its call result atom, which names a Refuted relation A5 judges in
-//   the Closure's body (P8), is published as it is, never an Unbound atom resting on no Binding failure (R4-M118; R7-O1 H); a Closure value
+//   the Closure's body (P8), is published as it is, never an Unbound atom resting on no Binding failure (R4-M118; R7-O1 H) but a
+//   deferred result slot's atom Final proved, which the intakes complete (CompletedOrigin, R7-O2 O2-F); a Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
 //   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
 //   Unsupported_Kd.
@@ -41,7 +42,7 @@ public sealed partial class Binding
     }
 
     // What one formation of a value call's callee acquisition gives (FormValueCallee): formed; formed, lending the callee's or the handle's
-    // Place, whose static root AcquireValueCallee judges in the call's mode (FailStaticBorrow); or the failure whose record it makes at the
+    // Place, whose static root AcquireValueCallee judges in the call's mode (JudgeSelectedInput); or the failure whose record it makes at the
     // call on its callee: a write, an object authority, a required transfer or a located limit. A BindingFailure cannot carry it:
     // AccessFailure's Unsupported is not RecordLocated's limit.
     private enum CalleeOutcome : byte
@@ -381,12 +382,12 @@ public sealed partial class Binding
     // its payload is read through the layer); any other handle or view as its payload (FormPayloadReceiver, whose limit is a handle below a
     // reference); owned only by the value read of a Copy closure; a Shared or Exclusive call borrows an owned callee Place as SPEC lends it
     // (LendsPlace), exclusively only where its lending point is exclusively writable, whose static root is the located limit until P42,
-    // final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC 23.1.2; FailStaticBorrow).
+    // final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC 23.1.2; JudgeSelectedInput).
     // False when the acquisition fails, its record made: the one place a callee's records are made, of the formation (FormValueCallee),
     // then the static root of the Place it lends, once, in the call's mode.
     private bool AcquireValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
     {
-        switch (this.FormValueCallee(call, scope, receiver, out receiverOperation))
+        switch (this.FormValueCallee(call, scope, receiver, out receiverOperation, out var copy))
         {
             case CalleeOutcome.Write:
                 this.FailWrite(call, call.Method);
@@ -395,16 +396,20 @@ public sealed partial class Binding
                 this.FailObjectAuthority(call, call.Method);
                 return false;
             case CalleeOutcome.TransferRequired:
-                this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
+                if (!this.ProofRestsOnLimit(call, copy))
+                {
+                    this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
+                }
+
                 return false;
             case CalleeOutcome.Located:
                 this.RecordLocated(call, call.Method.Span);
                 return false;
             case CalleeOutcome.LendsCallee:
-                _ = this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
+                _ = this.JudgeSelectedInput(call.Method, ArgumentOperationKind.Borrow, receiver, null, null);
                 return true;
             case CalleeOutcome.LendsHandle:
-                _ = this.FailStaticBorrow(receiverOperation.Source!, ArgumentOperationKind.PayloadProjection, receiver);
+                _ = this.JudgeSelectedInput(receiverOperation.Source!, ArgumentOperationKind.PayloadProjection, receiver, null, null);
                 return true;
             default: // Formed.
                 return true;
@@ -413,11 +418,12 @@ public sealed partial class Binding
 
     // The callee's acquisition in a receiver mode as AcquireValueCallee's contract states it, formed only: it records nothing, and returns
     // what it formed or the failure whose record AcquireValueCallee makes, each check in SPEC 7.3's order (authority, legality, then the
-    // acquisition).
-    private CalleeOutcome FormValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
+    // acquisition), with the Copy verdict a TransferRequired rests on (`copy`; Proven otherwise).
+    private CalleeOutcome FormValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation, out ConstraintProof copy)
     {
         var receiverType = call.Method.BoundType!;
         receiverOperation = default;
+        copy = ConstraintProof.Proven;
         var terminal = ComparisonReferent(receiverType, out var layers);
         var callable = CallableCore(receiverType)!;
         var read = layers != 0 && receiver == SemanticsKind.Ref && !ReferenceEquals(callable, terminal);
@@ -438,8 +444,8 @@ public sealed partial class Binding
             }
 
             // SPEC 7.7.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
-            return receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) && this.ProveCopy(receiverType, this.ConstraintScope(call)) != ConstraintProof.Proven
-                ? CalleeOutcome.TransferRequired : CalleeOutcome.Formed;
+            return receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) &&
+                (copy = this.ProveCopy(receiverType, this.ConstraintScope(call), call)) != ConstraintProof.Proven ? CalleeOutcome.TransferRequired : CalleeOutcome.Formed;
         }
 
         if (layers != 0)
@@ -499,7 +505,7 @@ public sealed partial class Binding
         var closureType = this.CallableClosure(this.CalledThrough(call.Method.BoundType!, scope), scope);
         var decider = receiver == SemanticsKind.Uniq && closureType is not null && BoundClosure.Of(closureType)!.CaseFreeReceiver == SemanticsKind.Ref ? closureType : null;
         var sharedReceiver = default(BoundArgumentOperation);
-        if (decider is not null && this.FormValueCallee(call, scope, SemanticsKind.Ref, out sharedReceiver) is not (CalleeOutcome.Formed or CalleeOutcome.LendsCallee or CalleeOutcome.LendsHandle))
+        if (decider is not null && this.FormValueCallee(call, scope, SemanticsKind.Ref, out sharedReceiver, out _) is not (CalleeOutcome.Formed or CalleeOutcome.LendsCallee or CalleeOutcome.LendsHandle))
         {
             throw new InvalidOperationException("A by-case value call's Shared callee acquisition fails where its Exclusive one was formed (PLAN G13).");
         }
@@ -579,8 +585,9 @@ public sealed partial class Binding
                     continue;
                 }
 
-                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-                if (!this.FailStaticBorrow(at, operations[i].Kind, parameter.Semantics) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
+                // An input's located limits (JudgeSelectedInput): a Borrow of a static root fails it, its relations waiting for P42; a
+                // Shortened Reborrow is recorded beside it, its fit judged.
+                if (!this.JudgeSelectedInput(at, operations[i].Kind, parameter.Semantics, operations[i].SourceType, operations[i].AdaptedType) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
                 {
                     var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
                     if (failure.Kind == ComparisonFailureKind.Shape && !erasure)

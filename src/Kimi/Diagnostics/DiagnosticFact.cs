@@ -209,13 +209,15 @@ internal readonly record struct DiagnosticFact(
 internal readonly record struct LocatedRecord(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceDocument? Document, SourceSpan? Span);
 
 /// <summary>A module's syntax records taken out of their owner (PLAN G949 Stage 2 U2b; form (R)): the frozen library's syntax list, each
-/// record with its document; a reading compilation registers it read-only from U3.</summary>
+/// record with its document, and the excluded syntax of those documents (SPEC 19.4; B's U3 ruling 25), so a reading compilation that
+/// registers it read-only from U3 names a record's excluding directive.</summary>
 /// <param name="Facts">The records.</param>
 /// <param name="Documents">Each record's document, or null for none.</param>
-internal sealed record DetachedSyntax(DiagnosticFact[] Facts, SourceDocument?[] Documents)
+/// <param name="Excluded">Each excluded range of a record's document, with that document's index in the owner it was taken from.</param>
+internal sealed record DetachedSyntax(DiagnosticFact[] Facts, SourceDocument?[] Documents, (int Source, DiagnosticOwner.ExcludedRange Range)[] Excluded)
 {
     /// <summary>Gets an empty list.</summary>
-    internal static DetachedSyntax Empty { get; } = new([], []);
+    internal static DetachedSyntax Empty { get; } = new([], [], []);
 }
 
 /// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.1.3).</summary>

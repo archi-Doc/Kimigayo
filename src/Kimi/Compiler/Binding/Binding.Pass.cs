@@ -57,6 +57,7 @@ public sealed partial class Binding
         this.ResetPrerequisites();
         this.ResetMatches();
         this.argumentParts.Clear();
+        this.dependentChecks.Clear();
         this.argumentProbe = null;
         this.resultLocalEvidence.Clear();
         this.resultCursor = 0;
@@ -73,6 +74,7 @@ public sealed partial class Binding
         this.aliases.Clear();
         this.ResetAliases();
         this.obligations.Clear();
+        this.completedDefaults = 0;
         this.ResetLocalRegions();
         this.ResetBorrows();
         this.rawFits.Clear();
