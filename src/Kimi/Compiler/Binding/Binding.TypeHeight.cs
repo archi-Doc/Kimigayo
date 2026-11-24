@@ -66,7 +66,7 @@ public sealed partial class Binding
     private int markStart; // The innermost body site's first mark.
 
     /// <summary>The innermost owner of a height refusal after Binding's run (PLAN G651 U2b R1, R2): none, the instance collector's answer
-    /// frame, a body site or a node site.</summary>
+    /// frame, a body site, a node site or a capability work's evaluation.</summary>
     internal enum AfterRunOwner : byte
     {
         /// <summary>No owner: a refusal after the run, or a read of one, is a broken contract, thrown (R13.1).</summary>
@@ -360,7 +360,8 @@ public sealed partial class Binding
 }
 
 /// <summary>The state an after-run owner's opener saves and its close restores (PLAN G651 U2b R2): the formation state, the innermost
-/// after-run owner and its subject, and the open body site's first mark.</summary>
+/// after-run owner and its subject, and the open body site's first mark. A node site saves and restores only the owner and its subject
+/// (its openers are MIR drivers inside a body site, outside every formation; B's ruling 30 (1)); the other openers save all of it.</summary>
 /// <param name="Answer">The answer frame's state.</param>
 /// <param name="Kind">The innermost after-run owner.</param>
 /// <param name="Subject">Its site's subject.</param>
