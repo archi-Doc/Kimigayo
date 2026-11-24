@@ -308,7 +308,8 @@ public sealed partial class RecursiveContractTest
     // one parameter against L1's conditions joining it with the other and with i32, which is not C in the closed world, is N9's premise
     // error in L1's conformance scope (SPEC 8.8.1, 8.2.3): three InvalidConstraint_Kd records on L1's conformance line, at `Self`,
     // `Self is L1` and the whole clause (dev's t-direct shape, `Self is L1 when U is i32`, with UnsatisfiedConstraint_Kd at the first
-    // two); accepted on dev.
+    // two); accepted on dev. PLAN G1278 (G1278-A, Q13; F's G1278-3): the subject `Self` names the Self symbol and forms no Type, so its record,
+    // which restated the premise error, goes: two records.
     [Theory]
     [InlineData("l2", "T", "U")]
     [InlineData("l2r", "U", "T")]
@@ -320,7 +321,7 @@ public sealed partial class RecursiveContractTest
             $"    Self is L3 when {joined} is C\n    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\npublic func main() => ()\n";
         var records = CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source))
             .Select(x => $"{x.Code}: {source.Substring(x.Span.Start, x.Span.Length)}").Order(StringComparer.Ordinal).ToArray();
-        string[] expected = ["InvalidConstraint_Kd: Self", "InvalidConstraint_Kd: Self is L1", $"InvalidConstraint_Kd: {clause}"];
+        string[] expected = ["InvalidConstraint_Kd: Self is L1", $"InvalidConstraint_Kd: {clause}"];
         Assert.True(expected.SequenceEqual(records), $"{form} [N9]: found [{string.Join(" | ", records)}]");
     }
 

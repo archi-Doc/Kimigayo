@@ -158,7 +158,7 @@ public partial class PropertyBindingTest
         "UnsatisfiedConstraint_Kd h.x";
 
     private const string UnformedSetterRecords = "UnsatisfiedConstraint_Kd public var x: i32;UnsatisfiedConstraint_Kd W<NC>;" +
-        "UnsatisfiedConstraint_Kd h.x;TypeMismatch_Kd 5;TypeMismatch_Kd h.x += 4";
+        "TypeMismatch_Kd 5;TypeMismatch_Kd h.x += 4"; // the write `h.x` carries the setter's input Type: its restating record goes (G1278-A, Q13; F's G1278-3)
 
     // A group Property beside a custom `get` of another Type, and a bare update inside its group.
     private const string WrongCountGetter = "group Config\n    public var count: i32 = 0\n        get() -> i64\n            return 1\n";

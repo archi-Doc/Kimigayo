@@ -1119,7 +1119,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("uniq2_n", UniqHead + BOutlivesA + UniqLet, "UnprovenOriginContract_Kd " + UniqClosure)]
     [InlineData("arg2", ValueRun + InnerHead + BothWays + "    return run(" + InnerClosure + ", w)\n", "")]
     [InlineData("cal2", CallableHolder + InnerHead + BothWays + InnerHolder, "")]
-    [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, "UnprovenConstraint_Kd .None; " + HolderConstraint)]
+    [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, HolderConstraint)] // `.None` carries the annotated Type: its restating UnprovenConstraint_Kd goes (G1278-A, Q13; F's G1278-3)
     [InlineData("pnest1", NestedClauseHead + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("pnest1_c", NestedClauseHead + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] (g) => 5)\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     public void AClosuresContractIsJudgedWithItsUsesPremises(string form, string body, string records)
