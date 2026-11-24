@@ -17236,6 +17236,8 @@ resumed by R4-M86 (2026-10-20).
     class 1, extending `HiddenWritableBelow` past rc, a writer test per form.
   - Superseded in part by BU-236 (D-940): "Binding's Limit and an Unsupported entry make the contract the Limit" reads "Binding's
     Limit makes the contract the Limit".
+  - Superseded in part by BU-257 (C-527, Q-747; the owner's C-527 Q1 (a)): `HiddenKinds`' reads (Content, Chain) are bounded by
+    the Type the call binds (`CanCarryLoan`); the Value row and the fills stay in the callee's terms.
 - **BU-232 Past the holder a kept binding's hidden raw layer addresses, a declaration's `Holds Any` applies only where the declaring
   code acts (PLAN G964)** (2026-11-19; Front, Binding; Q17 class 3; Major, an acceptance mover; F's G964 rulings 1-12, the owner's
   O-398 (a); reviews in Q-517's cells; D-742; Q-517 folded into Q-539, landing with the A5 one-tree landing) SPEC 15.6.4, 5.7 Calls.
@@ -18490,6 +18492,35 @@ resumed by R4-M86 (2026-10-20).
     may refute it); a Refuted answer for a source-less region (8.3.1); a memo without a measured need (`OccurrenceVariance` runs per
     call-region read on Binding's hot path; its nested `visitedParts` query changes no answer; the window's RP8 Bind reading decides).
   - Open: PLAN G1030 (1)-(3).
+- **BU-257 The kept-Type record keeps an input's reads only where the Type the call binds can carry a Loan or an address (PLAN G841
+  clause (3)'s Binding prerequisite, C-527)** (Front, 2026-11-24; Binding; Q-747, D-1243; Major, an acceptance mover, class 3; the owner's
+  C-527 Q1 (a) and Q2 (b), verbatim 「C-527 a, b」; F's C-527 rulings 1-5) SPEC 15.6.4, 15.6, 3.2.1, 15.8.2. Supersedes in part BU-231.
+  - Rule: at the root of a binding of the called function's own abstract Type, `HiddenKinds` keeps an input's Content and Chain rows
+    only where a value of the Type the call binds there can carry a Loan or an address (`Binding.CanCarryLoan`, SPEC 15.6's Type-level
+    predicate: a fold over Holdings' entries that pass on, `Passes`, the row the hold walk's Loans fact reads too). A borrow, a raw
+    layer, an erased environment, an abstract part or a part Binding did not bind carries; a Function Item and a Scalar do not; a
+    concrete Closure carries what its captures hold (Q2 (b): an owned `raw/u8` capture carries an address). The Value row and a handed
+    callable's fill stay in the callee's terms for every binding, the fill's R gate (`MayRetain`) reading the callee's-terms row
+    (`FilledKinds`' `gate`). The storage walk publishes the bound Type with the root (`storageBound`). At Binding's Limit the predicate
+    makes the contract the Limit.
+  - Reads O-360 (a)'s Content/Chain sentence ("Content/Chain for an input whose referent or pointee Type holds it") through O-353 (a)
+    ("the instantiated-contract sentence decides which storage may retain"), by Q1 (a); O-360 (a)'s Value sentence and G935 ruling 16
+    (2) (fills) are unchanged.
+  - Supersedes in part BU-231's Rule, its reading of the called function's own abstract Type in the callee's terms for the reads
+    (`HiddenKinds`: "never by the binding's Origins, which are the caller's, nor by the Type the call binds it to: every binding gets
+    the declared record's rows"): for the reads, the Type the call binds decides. The reason that no longer holds: the declared reads
+    stood in for what may hide inside the binding (the hold walk walks none; its Origins are the caller's), but whether a storage may
+    retain a read is the instantiated contract's question (O-353 (a), Q1 (a)), and a binding that can carry no Loan or address
+    retains none (SPEC 15.6.4's oneLayer).
+  - Moves (class 3, newly accepted): keepS1OneOk, keepRefTOk, holderShownOk, enumFreeShownOk, neverShownOk, nestedShownOk,
+    optResultOk, itemResultOk, closureOwnedResultOk, closureEmptyResultOk, closureTupleCapOk
+    (`MirBorrowsTest.AKeptTypesReadsAreKeptOnlyWhereItsBindingCanCarryALoan`); every invalid row keeps its record. Two record rows
+    lose a kept read by Q1 (a): `RetentionTest`'s readVolatile (T is PrimitiveInteger) and trade<T> with T = u64. Scaling:
+    `TypeDagScalingTest.AKeptRootsBoundIsDecidedOncePerDistinctPart` (linear in the bound Type's distinct parts).
+  - Rejected: dropping every callee's-terms row at a Loan-free binding (accepts fillShownBad and mkConcWnBad, against G935 ruling 16
+    (2)); the intersection with the instantiated rows for every binding (accepts keepS1RawBad and G841c's W2); SPEC 15.6's callable
+    clause read literally for a concrete Closure (the owner's Q2 (a)); A5 testing the case Type at the kept entry.
+  - Open: PLAN G1366 (one publisher of SPEC 15.6's Type-level Loan predicate).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
