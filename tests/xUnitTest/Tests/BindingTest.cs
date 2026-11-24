@@ -104,6 +104,7 @@ public class BindingTest
     [InlineData("func f(x: i32) => x\nfunc f(y: i32) -> i64 => 1", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<T>(x: T) => x\nfunc f<U>(x: U) => x", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f() -> i32 => 1\nfunc g()\n    let f = 1\n    f()", DiagnosticCode.NotCallable_Kd)]
+    [InlineData("func inc(x: i32) -> i32 => x\nfunc g() -> i32\n    return inc(1)(2)", DiagnosticCode.NotCallable_Kd)] // SPEC 12.5.2: an invocation is called by its value (nc1r; dev 34d96c664 accepted it as inc(2): wrong code)
     [InlineData("func f() => return 1", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("let x: i8 = 128", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x: f32 = 1e100", DiagnosticCode.InvalidNumericLiteral_Kd)]

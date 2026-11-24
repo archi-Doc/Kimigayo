@@ -92,6 +92,18 @@ internal static class TestDiagnostics
     internal static string? Text(DiagnosticOwner owner, string path, SourceSpan span)
         => owner.FindDocument(path)?.SourceText.Substring(span.Start, span.Length);
 
+    /// <summary>Gets every published error of a compilation of one ASCII source as <c>Code@line:column</c> (1-based), in source order,
+    /// joined by <c> | </c>.</summary>
+    /// <param name="compilation">The compilation.</param>
+    /// <param name="source">The source's text.</param>
+    /// <returns>The errors.</returns>
+    internal static string ErrorSites(Compilation compilation, string source)
+        => string.Join(" | ", Of(compilation).Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span.Start).Select(x =>
+        {
+            var start = x.Span.Start == 0 ? 0 : source.LastIndexOf('\n', x.Span.Start - 1) + 1;
+            return $"{x.Code}@{source.AsSpan(0, x.Span.Start).Count('\n') + 1}:{x.Span.Start - start + 1}";
+        }));
+
     private static TestDiagnostic[] Collect(DiagnosticOwner owner, string? path, SourceDocument? snapshot)
     {
         var result = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission);
