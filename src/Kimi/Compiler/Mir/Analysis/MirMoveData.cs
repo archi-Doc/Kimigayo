@@ -97,7 +97,8 @@ internal sealed class MirMoveData(TyCtxt types)
     internal int FlowCount { get; private set; }
 
     /// <summary>Gets a value indicating whether a view decides an access of the body: a case-dependent access (a PairLayer step, a
-    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>).</summary>
+    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>) or a case branch, whose side the view selects (<see
+    /// cref="MirBody.CaseSwitches"/>; a side may hold only case-free accesses, a by-case call's borrows of its callee).</summary>
     internal bool ViewDependent { get; private set; }
 
     /// <summary>Gets a value indicating whether the body constructs its object in _0 from fresh storage (SPEC 6.3).</summary>
@@ -117,7 +118,7 @@ internal sealed class MirMoveData(TyCtxt types)
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.indexCount) = (0, false, 0, 0, 0, -1);
+        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.indexCount) = (0, body.CaseSwitches > 0, 0, 0, 0, -1);
         this.children.Clear();
         this.places.Clear();
         this.nevers.Clear();

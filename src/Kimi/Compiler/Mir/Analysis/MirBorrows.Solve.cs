@@ -26,7 +26,7 @@ internal sealed partial class MirBorrows
         }
 
         var all = MirCases.Every(body);
-        (this.program, this.body, this.view, this.views, this.held) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all, false);
+        (this.program, this.body, this.view, this.views) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all);
         this.mixedKnown = false;
         this.sets.Clear();
         (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));

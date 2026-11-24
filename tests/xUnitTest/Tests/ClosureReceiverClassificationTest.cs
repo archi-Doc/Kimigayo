@@ -364,12 +364,23 @@ public class ClosureReceiverClassificationTest
     public void AScalarReadThroughACapturedExclusiveReferenceIsShared()
         => ScalarEmissionTest.EmitFixture("ClosureReceiverScalarRead", "var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow + 1\nlet r = f()\nrequire r == 8 and f() == 8 else => $abort(\"r\")", string.Empty);
 
+    // R7 plan Z4 (SPEC 7.7.3; PLAN G13): a call whose Closure receiver is by case borrows its callee shared in the owner case and
+    // exclusively in the uniq case (a case branch, MirBuilder.Calls); each instance runs the side its case selects, the owner instance's
+    // calls through a shared borrow of h.
+    [Fact]
+    public void EachInstanceCallsAByCaseClosureAsItsCaseAdmits()
+        => ScalarEmissionTest.EmitFixture("ClosureReceiverByCase", ByCase, string.Empty);
+
+    private const string ByCase = "func f<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    T is Copy\n" +
+        "    var h = func [value] () -> i32\n        let local = value\n        _ = local\n        return 7\n    let first = h()\n" +
+        "    return first + h()\nvar n: i32 = 1\nrequire f(n) == 14 and f(n@uniq) == 14 else => $abort(\"by case\")";
+
     private const string PairHead = "func take<t/U>(y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\nfunc f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
     private const string PairMain = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
     private const string PairCall = "func pair<t/U>(a: i32, y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
     private const string UniqHead = "public func main() -> ()\n    var n: i32 = 1\n    let value = n@uniq\n";
     private const string MissingAndExclusive = "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h";
-    private const string PendingGxs = "Unsupported_Kd let g = func (z: s/T) -> () => (); ComparisonLoanConflict_Kd let g = func (z: s/T) -> () => ()";
+    private const string PendingGxs = "ComparisonLoanConflict_Kd let g = func (z: s/T) -> () => ()";
     private const string Node = "contract Loaded\n    func load(self: ref/Self) -> i32\ncontract Bump\n    func bump(self: uniq/Self)\n" +
         "struct Node\n    Self is Copy\n    Self is Loaded\n    Self is Bump\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n" +
         "    public func load(self: ref/Self) -> i32 => self.weight\n    public func bump(self: uniq/Self) => self.weight += 1\n";
@@ -421,8 +432,9 @@ public class ClosureReceiverClassificationTest
     // the call is Exclusive there: the strongest receiver is Exclusive, and a `let` Closure's call is invalid; under admitted cases that
     // only Copy it stays Shared. The value call, the assignment and the Dictionary entry were Shared in every case (2c-2 review B1).
     // The exclusive rows' `var` twin is valid, but the Exclusive call `f(y)` stores the receiver's Content, which leaves the shared capture
-    // `g@ref`'s Loan where `g`'s storage ends, so since the MIR decides (R6-check H5; H3b T30) it publishes, under `s = uniq`, a located
-    // Unsupported_Kd and a ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
+    // `g@ref`'s Loan where `g`'s storage ends, so since the MIR decides (R6-check H5; H3b T30) it publishes, under `s = uniq`, a
+    // ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs; Z4-M removed PD13's Unsupported_Kd there, as each view's call now acquires
+    // `f` as its case admits). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
     // board O-1): PLAN G148 (2), GXS's proposal, which reconciles SPEC 15.6.4 with 15.8.2's retention, restores the acceptance and
     // re-points these rows back to no record. G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.4.2, 15.6.3, 15.8.2): under `s = uniq`
     // the use Reborrows the captured `x` within the call receiver, and `g`'s parameter and the annotated Dictionary element are the

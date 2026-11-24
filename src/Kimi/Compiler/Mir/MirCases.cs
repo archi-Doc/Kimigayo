@@ -237,9 +237,11 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>Whether it Reborrows.</returns>
     internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.TypeOf(acquire));
 
-    /// <summary>Gets whether a CaseSwitch of the selected body takes its exclusive side under the selected view (SPEC 8.14, 4.7.1 step
-    /// 3): where its decider's case Type is an exclusive reference (<see cref="MirTypes.IsExclusive"/>, the rule <see cref="Reborrows"/>
-    /// applies), the case in which the take it decides Reborrows; else its shared side. A case-free decider (a default's copy) is its own
+    /// <summary>Gets whether a CaseSwitch of the selected body takes its exclusive side under the selected view, where its decider's case
+    /// acquires exclusively: a reference decider's case Type is an exclusive reference (SPEC 8.14, 4.7.1 step 3; <see
+    /// cref="MirTypes.IsExclusive"/>, the rule <see cref="Reborrows"/> applies), the case in which the take it decides Reborrows; a
+    /// Closure Type decider's case receiver (<see cref="TyCtxt.ClosureReceiverIn"/>) is Exclusive (SPEC 7.7.3, PLAN G13), the case in
+    /// which the call it decides borrows its callee exclusively; else its shared side. A case-free decider (a default's copy) is its own
     /// case Type, so it selects one side in every view.</summary>
     /// <param name="branch">A CaseSwitch of the selected body.</param>
     /// <returns>Whether the exclusive side is taken.</returns>
@@ -291,6 +293,11 @@ internal sealed class MirCases(TyCtxt types)
         };
     }
 
-    // Branch's rule under the selected view: whether a decider's case Type is an exclusive reference.
-    private bool Exclusive(BoundType decider) => MirTypes.IsExclusive(this.Type(decider));
+    // Branch's rule under the selected view, the receiver a decider's case acquires: a Closure Type's case receiver, another Type's own
+    // Semantics.
+    private bool Exclusive(BoundType decider)
+    {
+        var type = this.Type(decider);
+        return type.Kind == BoundTypeKind.Closure ? types.ClosureReceiverIn(type) == SemanticsKind.Uniq : MirTypes.IsExclusive(type);
+    }
 }

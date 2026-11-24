@@ -1722,6 +1722,28 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(1, body.CaseSwitches); // Terminate, their one writer, counts them.
     }
 
+    // R7 plan Z4 (SPEC 7.7.3; PLAN G13): a value call whose Closure receiver is by case borrows its callee exclusively only in the views
+    // whose case receiver is Exclusive (MirBuilder.Calls' case branch), so the built body is valid; with the branch's sides swapped, the
+    // owner view reaches the call whose callee operand is `uniq/C` while C's case admits a Shared receiver: one Operation finding at that
+    // call (MirValidator.Types' Receivers), and none for the uniq view's shared borrow.
+    [Fact]
+    public void NoViewAcquiresAClosureMoreStronglyThanItsCaseAdmits()
+    {
+        var c = MirBuildTest.Compile("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
+            "    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var blocks = body.Blocks.ToArray();
+        var at = Array.FindIndex(blocks, static x => x.Terminator.Kind == MirTerminatorKind.CaseSwitch);
+        var calls = blocks.Select(static x => x.Terminator).Where(static x => x is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value }).ToArray();
+        Assert.Equal(1, body.CaseSwitches);
+        Assert.Equal(2, calls.Length); // The call on each side, into one destination.
+        var branch = blocks[at].Terminator;
+        body.Terminate(at, MirTerminator.CaseSwitch(branch.Operand, body.AddCase(1, branch.Target), body.Cases[branch.Start].Target, branch.Source));
+        Assert.Equal([(MirViolation.Operation, body.Subject(calls[0].Source))], Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // SPEC 8.15, 23.1.1, 8.3.4: Binding publishes no part of a definition beyond PairBinder.CaseBound views or whose binders admit no case
     // (Binding.CaseLimits), so a body with more views or none is a Binder finding at the body, which is not checked further: six binders of
     // two cases, 64 views, are valid but for an Adapt no view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views
