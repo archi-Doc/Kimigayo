@@ -399,12 +399,13 @@ public sealed partial class Binding
     // SPEC 15.3.6 (R7-O2 A1): whether a local region's recorded bounds are complete, so that its candidate has an answer: its body is not
     // being bound, that is the forming body is neither its body nor evaluated in it (a Closure's body, bound at its literal: the
     // EvaluatingBody chain) nor declared in it (a nested function's), or its body is a Closure whose binding has ended
-    // (BoundClosure.Classified; its publication's fit re-enters it). The one gate of a candidate's Binding-time reading: RegionValue and
-    // SolvedStatic read it.
+    // (BoundClosure.Classified; its publication's fit re-enters it), or it is a call's region that its call completed (R1-a:
+    // CallRegionComplete, Binding.OpenOrigins). The one gate of a candidate's Binding-time reading: RegionValue, ValueIn's deferral fact,
+    // SolvedStatic and the erasure's Final class (RegionLeaf) read it.
     private bool RegionBounded(BoundOrigin region)
     {
         var owner = region.Binder is { } binder ? BodyOwner(binder) : null;
-        if (!this.formingBody.IsBody || owner is FunctionKoto { IsAnonymous: true, ClosureStorage.Classified: true })
+        if (!this.formingBody.IsBody || owner is FunctionKoto { IsAnonymous: true, ClosureStorage.Classified: true } || this.CallRegionComplete(region))
         {
             return true;
         }
