@@ -577,9 +577,9 @@ public sealed partial class Binding
     // equality of an unfixed slot (for a local, an Unbound Origin: Flexibility above 0) with an Origin that is no unfixed slot
     // substitutes the slot's region, numbered first (FixedRegions), whose value is that Origin as the body reads it (FixedRegion; SPEC
     // 15.3.6 "Unless fixed by equality", 15.4.4), so its own body reads the value and a nested signature or body the region, fixed there
-    // with no premise (SPEC 15.3.4, 15.6.1, 15.6.5); an equality of two unfixed slots substitutes nothing in a pass, and once a later pass
-    // has fixed one of them, it fixes the other to that one's region; a slot no equality fixes completes as its own region. The clause is
-    // judged against the initializer (ValidateOriginRelations).
+    // with no premise (SPEC 15.3.4, 15.6.1, 15.6.5); an equality of two unfixed slots substitutes nothing in a round, and once a later
+    // round has fixed one of them, it fixes the other to that one's region; a slot no equality fixes completes as its own region. The
+    // clause is judged against the initializer (ValidateOriginRelations).
     private void SubstituteOriginEqualities(OriginDeclaration declaration)
     {
         var regions = 0;
@@ -644,11 +644,13 @@ public sealed partial class Binding
         }
     }
 
-    // A local's slot `pending` an equality fixes to `value` (SubstituteOriginEqualities): its region at `slot`, its row the slot's in the
-    // local's Type (invariant for a slot of an initializer's written Type), publishing `value` as the region's value (DECISIONS R8-M56 as
-    // amended, C-548). The region is `value`, so the published value, `value` as the body reads it, is an equality, unless `value` holds a
-    // region of the body published as an inclusion (ReadsLetValue), which the region then is: an inclusion (`origin k.at == r` with
-    // `let r = p` publishes p as an inclusion, as r's region does; with an equality-fixed region the equality composes to an equality).
+    // A local's slot `pending` an equality fixes to `value` (SubstituteOriginEqualities): its region at `slot`, its row the slot's variance
+    // in the local's written Type, where a slot no position of that Type names (no written Type, or a slot of the initializer's written
+    // Type) is invariant, as SPEC 15.3.5 compares an unused position (ComposeVariance, ClosureArgumentVariance); publishing `value` as the
+    // region's value (DECISIONS R8-M56 as amended, C-548, C-554). The region is `value`, so the published value, `value` as the body reads
+    // it, is an equality, unless `value` holds a region of the body published as an inclusion (ReadsLetValue), which the region then is:
+    // an inclusion (`origin k.at == r` with `let r = p` publishes p as an inclusion, as r's region does; with a region published as an
+    // equality the equality composes).
     private BoundOrigin FixedRegion(Koto local, BoundOrigin pending, BoundOrigin value, int slot)
     {
         var row = (local as VariableKoto)?.TypeKoto?.BoundType is { } type ? this.OccurrenceVariance(type, pending, this) : OriginVariance.Unused;

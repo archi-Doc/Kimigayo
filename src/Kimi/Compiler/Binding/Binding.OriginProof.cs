@@ -95,12 +95,12 @@ public sealed partial class Binding
     internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use) => this.CompletedOrigin(this.RegionValueAtUse(this.DeclaredAtUse(origin, use), use));
 
     // O-400 (b) (PLAN G492-a (ii) Revision 5): a failed condition of a Callable comparison is the located limit where a direction its
-    // ends' values do not prove has a `let` region of the use's body at its shorter end (ReadsLetValue: a value published as an inclusion):
-    // the comparison reads that end as the region (O-363 (a)), which may lie inside its value, so only the region reading decides the
-    // condition, and the uses of the compared Type read values (LeavesBodyRows leaves no row their values do not prove), until (a) or (a')
-    // designs the region reading at uses. A direction with a fixed shorter end keeps its record: a `let` region outlives nothing its value
-    // does not, so the readings agree; so does a region equal to its value (a slot fixed by equality to an Origin through which no
-    // inclusion is read, FixedRegion; SPEC 15.3.6) at either end.
+    // ends' values do not prove has, at its shorter end, a region of the use's body published as an inclusion (ReadsLetValue: a `let`
+    // region, or a slot an equality fixes to one, FixedRegion): the comparison reads that end as the region (O-363 (a)), which may lie
+    // inside its value, so only the region reading decides the condition, and the uses of the compared Type read values (LeavesBodyRows
+    // leaves no row their values do not prove), until (a) or (a') designs the region reading at uses. A direction with a fixed shorter end
+    // keeps its record: a `let` region outlives nothing its value does not, so the readings agree; so does a region equal to its value (a
+    // slot fixed by equality to an Origin through which no inclusion is read, FixedRegion; SPEC 15.3.6) at either end.
     // Valid and invalid programs alike: no fact at the comparison separates them, since each verdict is decided at the uses of the
     // compared Type (us2 and us2n are identical through the comparison). So the invalid us family is rejected at the comparison by
     // this limit at dev's UnprovenOriginContract_Kd site, a record that differs from the one O-400 (b) states (Q13; no acceptance move).
@@ -114,8 +114,9 @@ public sealed partial class Binding
     }
 
     // Whether `end` holds a region of the use's body that may lie inside the value a use reads for it (RegionValueAtUse): a value published
-    // as an inclusion (LocalRegion.Equality false). A region whose value is an equality equals it, so it is none and the value reading
-    // decides (SPEC 15.3.6 "Unless fixed by equality"; DECISIONS R8-M56 as amended, C-548). Read by O-400 (b)'s limit
+    // as an inclusion (LocalRegion.Equality false): a `let` region's, or that of a `let` or `var` slot an equality fixes to such an end
+    // (the name, C-548's, says its `let` case). A region whose value is an equality equals it, so it is none and the value reading
+    // decides (SPEC 15.3.6 "Unless fixed by equality"; DECISIONS R8-M56 as amended, C-548, C-554). Read by O-400 (b)'s limit
     // (ComparedRegionLimit) and by FixedRegion, whose region equal to such an end lies inside its value too.
     internal bool ReadsLetValue(BoundOrigin end, Koto use)
     {
