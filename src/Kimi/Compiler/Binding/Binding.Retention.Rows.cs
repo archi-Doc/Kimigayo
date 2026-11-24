@@ -24,7 +24,6 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, RetentionKind[]> retentionHidden = new(ReferenceEqualityComparer.Instance); // HiddenKinds' per Type, per Storages.
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
     private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // CanCarryLoan's walk, per query: the Types met.
-    private RetentionKind[] retentionGate = []; // HiddenKinds' row in the callee's terms, which its fill's R gate reads (FilledKinds), reused.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
     private readonly HashSet<(HoldAt At, HeldIn In, int Storage)> retentionMet = new();
@@ -49,6 +48,7 @@ public sealed partial class Binding
     private bool retentionFilled; // A callable's write keeps a row in the Abstract storage of the walk made (FilledKinds), whose entry Written then forms.
     private (RetentionKind Raw, RetentionKind Free)[] retentionUndecided = []; // Per input, what the premise closure does not decide (FilledKinds), reused.
     private FunctionKoto? retentionCallee; // Whose own abstract Types those are (Parametric): a Closure's enclosing function's are the caller's.
+    private RetentionKind[] retentionGate = []; // HiddenKinds' row in the callee's terms, which its fill's R gate reads (FilledKinds), reused.
     private RetentionKind[] retentionChained = []; // Rule A's rows of the output (Hold), which a Chained storage joins as it admits.
     private bool[] retentionAssigned = []; // Written's storages already in an entry, and the storages whose pairs Pairs reads, reused.
     private bool[] retentionMembers = [];
