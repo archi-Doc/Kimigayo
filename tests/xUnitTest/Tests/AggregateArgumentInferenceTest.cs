@@ -161,11 +161,21 @@ public class AggregateArgumentInferenceTest
     [Theory]
     // SPEC 12, 10.2, 4.3.1 (PLAN G361): each element fits the expected element Type on its own, so the record is the misfitting element's, whatever
     // precedes it.
-    [InlineData("E3", "q12", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        x,\n        y\n    ]\n    return 0\n", "TypeMismatch_Kd: x,", Explicit = true)]
-    [InlineData("E3", "q12f", "func k(x: i32, y: i64) -> i32\n    let a: [2 of i64] = [\n        x,\n        y\n    ]\n    return 0\n", "TypeMismatch_Kd: x,", Explicit = true)]
+    [InlineData("E3", "q12", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        x,\n        y\n    ]\n    return 0\n", "TypeMismatch_Kd: x,")]
+    [InlineData("E3", "q12f", "func k(x: i32, y: i64) -> i32\n    let a: [2 of i64] = [\n        x,\n        y\n    ]\n    return 0\n", "TypeMismatch_Kd: x,")]
     [InlineData("guard", "q12r", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        y,\n        x\n    ]\n    return 0\n", "TypeMismatch_Kd: x")]
-    [InlineData("E3", "q12two", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        x,\n        y,\n        x\n    ]\n    return 0\n", "TypeMismatch_Kd: x, | TypeMismatch_Kd: x", Explicit = true)]
+    [InlineData("E3", "q12two", "func k(x: i32, y: i64) -> i32\n    let a: Array<i64> = [\n        x,\n        y,\n        x\n    ]\n    return 0\n", "TypeMismatch_Kd: x, | TypeMismatch_Kd: x")]
     [InlineData("guard", "q12ok", "func k(y: i64) -> i32\n    let a: Array<i64> = [\n        1,\n        y\n    ]\n    return 0\n", "")]
+    // SPEC 10.2, 4.3.1: each element is checked on the Type its adaptation at the element Type gave: a read of a reference, and the
+    // Origins a local's omitted ones are inferred from (15.3.6), which the elements keep.
+    [InlineData("guard", "g361g1", "func k(n: ref/i32) -> i32\n    let a: Array<i32> = [\n        n,\n        1\n    ]\n    return 0\n", "")]
+    [InlineData("guard", "g361g2", "func k(p: ref/i32, q: ref/i32) -> i32\n    let a: Array<ref/i32> = [\n        p,\n        q\n    ]\n    return 0\n", "")]
+    // SPEC 7.7.4, 15.2.3: at a common Function element Type a Function Item is erased; a Closure whose environment is not Owned is the
+    // erasure's Owned record and one whose signature does not fit its Type mismatch, each recorded once at the element.
+    [InlineData("guard", "e1fi", "func one() -> i32 => 1\nfunc two() -> i32 => 2\nfunc k() -> i32\n    let a: Array<() -> i32> = [\n        one,\n        two\n    ]\n    return 0\n", "")]
+    [InlineData("guard", "e1ow", "func k() -> i32\n    let n = 7\n    let a: Array<() -> i32> = [\n        func [n@ref] () => n + 1\n    ]\n    return 0\n", "UnsatisfiedConstraint_Kd: func [n@ref] () => n + 1")]
+    [InlineData("guard", "e1ar", "func k() -> i32\n    let a: Array<() -> i32> = [\n        func (x: i32) -> i32 => x\n    ]\n    return 0\n", "TypeMismatch_Kd: func (x: i32) -> i32 => x")]
+    [InlineData("guard", "e1ac", "func k() -> i32\n    let c = func (x: i32) -> i32 => x\n    let a: Array<() -> i32> = [\n        c@move\n    ]\n    return 0\n", "TypeMismatch_Kd: c@move")]
     public void AnElementsMisfitIsRecordedAtThatElement(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }
