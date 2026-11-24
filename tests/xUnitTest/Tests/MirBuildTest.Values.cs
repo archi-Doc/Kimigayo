@@ -248,6 +248,7 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData("func f<s/T>(x: s/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = acquire b0 (_1@b0)", "move (_1@b0)")]
     [InlineData("func f(r: uniq/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = &uniq (*(*_1))", "move (*(*_1))")]
+    [InlineData("func f<s/T, U>(m: s/T, h: uniq/(s/(uniq/U during b) during a) during c)\n    s is owner or ref\n    let x = h@follow\n", "_3 = acquire b0 (*_2)", "move (*_2)")] // G254b: built at Binding's name (MirTypes.Agree).
     public void ABareAcquisitionThroughItsOwnLayersKeepsItsPlan(string source, string built, string absent)
     {
         var c = Compile(source);
