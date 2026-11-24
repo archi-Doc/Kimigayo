@@ -82,7 +82,8 @@ public sealed partial class Binding
 
     // SPEC 15.2.3, 15.3.6, 8.3.3 (DECISIONS: G572 U2a, R7-O2 A1+A2): whether a call's open region of the judgment's body (a region with no
     // slot value: J2's waited regions, BU-136's), in `origin` or a meet's operand, is `static`, the oracle's reading of it through its sources
-    // (UniversalRelations.Outlives, SourcesOutlive), once its body is bound (RegionBounded); a region slot is read through ValueIn alone (its
+    // (UniversalRelations.Outlives, SourcesOutlive), once its bounds are complete (RegionBounded: its body is bound, or its call completed
+    // it, R1-a); a region slot is read through ValueIn alone (its
     // candidate in a body that reads it so; a region a body only names stays the region, e-ownf). Removed with PLAN G936's late solve.
     private bool SolvedStatic(BoundOrigin origin, Koto? function)
     {
