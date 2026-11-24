@@ -38,6 +38,24 @@ public sealed partial class RecursiveContractTest
 
     private const string Marks = "contract Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\n";
 
+    // R7-C2c2 c2-5a (G837, the Middle's C-304 R2, rebuilt from its text): MT's clause names MT's own parameter.
+    private const string MarkArgs = "contract Tree\n    associate Child is Tree\ncontract Mark<A>\ncontract MT<A>: Tree, Mark<A>\n    Self.(Tree).Child is MT<A>\n" +
+        "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc needMT<V, W>(v: ref/V)\n    V is MT<W>\n    ()\n";
+
+    private const string KArgs = "contract K<A>\n    associate X\n";
+
+    private const string KTwice = "group H\n    public func twice<T>(x: T.(K<i32>).X) -> (T.(K<i32>).X, T.(K<i32>).X)\n";
+
+    private const string MarkHolder = "struct Holder<T>\n    T is MT<i32>\n    public var tag: i32 = 0\n    public func probe(self: ref/Self, c: ref/T.(Tree).Child)\n";
+
+    private const string Swap = "contract P2<A, B>: Tree, Mark<A>\n    Self.(Tree).Child is P2<B, A>\n";
+
+    private const string Fixed = "contract MF<A>: Tree, Mark<A>\n    Self.(Tree).Child is MF<i32>\n";
+
+    private const string GTwice = "contract GTree<A>\n    associate Child\ngroup H\n    public func twice<T>(x: T.(GTree<i32>).Child) -> (T.(GTree<i32>).Child, T.(GTree<i32>).Child)\n";
+
+    private const string NeedE = "contract E\nfunc needE<V>(v: ref/V)\n    V is E\n    ()\n";
+
     // The Middle's C-313 B1 views (c2-2): AT2 supplies `T.(Tree).Child is AT3`, whose identity clause makes `T.(Tree).Child.(Tree).Alias`
     // identical with `T.(Tree).Child.(Tree).Child`, an AT3 (SPEC 8.2.3), so it is Copy; the view has no identity premise, so it keeps rows.
     private const string Orders = OrdersHead + "    Self.(Tree).Alias is Self.(Tree).Child\n" + OrdersTail;
@@ -329,6 +347,54 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "b1n4-noparent", "contract Tree\n    associate Child is Tree\ncontract PTree: Tree\n    Self.(Tree).Child is PTree\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is PTree\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
     [InlineData("guard", "b1-r2-failed", IntTrees + "    bool is PrimitiveInteger\n" + IntTwice, "UnsatisfiedConstraint_Kd: contract IntTree: Tree | UnprovenConstraint_Kd: Self.(Tree).Child is IntTree | UnprovenConstraint_Kd: Self.(Tree).Value is PrimitiveInteger | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | InvalidConstraint_Kd: public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)")] // R7-C3 C3-1b (F's C2 rulings 288 (2), 290; DECISIONS Q13, code): `twice`'s premise `T is IntTree` names an invalid declaration (IntTree's closed `bool is PrimitiveInteger` is Refuted; SPEC 8.3.1, 8.2.3), as `caller`'s `T is Marker` does: one record, same site
     [InlineData("guard", "b1-r12-userchild", "contract IntP: PrimitiveInteger\nstruct S\n    Self is IntP\n    public var tag: i32 = 0\n", "UnsatisfiedConstraint_Kd: Self is IntP")]
+
+    // SPEC 8.3.2 Contract refinement, 8.4.1, 8.4.3 (R7-C2c2 c2-5a; PLAN G402, G837, G849): `T is C<i32>` supplies C's own and
+    // inherited Constraints with T for Self and i32 for C's parameter, at every projection a query needs: a clause naming the Contract's
+    // parameter (x-args, MT), swapping two (x-swap), over an ancestor reference's projection (b-cargs, k-nonrec, contractargs, p05) or
+    // over the parameter alone (x-carried). The invalid twins keep their records: an abstract projection's other Contract argument is
+    // Unknown (8.3.2 Closed world). Programs rebuilt from the Middle's C-304 R2 and C-310 F3 texts (artifacts\units\r7-c25\labels.md).
+    [InlineData("c2-5a", "x-args0-v", MarkArgs + "func probe<T>(t: ref/T)\n    T is MT<i32>\n    needMark<T, i32>(t)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-args1-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-args2-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-args3-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-argsrow2-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "b-args-v", MarkArgs + MarkHolder + "        needMark<T.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-args1-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-args2-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-args3-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-argsrow2-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMT<T.(Tree).Child.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-args1-nmt", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMT<T.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-args-noclause-n", "contract Tree\n    associate Child is Tree\ncontract Mark<A>\ncontract MT<A>: Tree, Mark<A>\nfunc needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i32>(c)", Explicit = true)]
+    [InlineData("c2-5a", "b-args-n", MarkArgs + MarkHolder + "        needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "b-args-mixn", MarkArgs + MarkHolder + "        needMark<T.(Tree).Child, i32>(c)\n        needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-swap0-v", MarkArgs + Swap + "func probe<T>(t: ref/T)\n    T is P2<i32, i64>\n    needMark<T, i32>(t)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-swap1-v", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child, i64>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-swap2-v", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-swap0-n", MarkArgs + Swap + "func probe<T>(t: ref/T)\n    T is P2<i32, i64>\n    needMark<T, i64>(t)\n", "UnprovenConstraint_Kd: needMark<T, i64>(t)", Explicit = true)]
+    [InlineData("c2-5a", "x-swap1-n", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i32>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-swap2-n", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-fixed1-i32", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-fixed2-i32", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-fixed1-i64", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-fixed2-i64", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "x-argsplain2-v", "contract Tree\n    associate Child is Tree\ncontract Plain\ncontract MP<A>: Tree, Plain\n    Self.(Tree).Child is MP<A>\nfunc needPlain<V>(v: ref/V)\n    V is Plain\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MP<i32>\n    needPlain<T.(Tree).Child.(Tree).Child>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "b-cargs-v", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Copy\n", "", Explicit = true)]
+    [InlineData("c2-5a", "b-cargs2-v", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Copy\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "k-nonrec", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is PrimitiveInteger\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "k-nonrec-marker", "contract Marker\n" + KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Marker\nfunc needMarker<V>(v: ref/V)\n    V is Marker\n    ()\nfunc probe<T>(x: ref/T.(K<i32>).X)\n    T is CK<i32>\n    needMarker<T.(K<i32>).X>(x)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "contractargs-i32", "contract K<A>\n    associate X\n    associate Child is K<A>\ncontract CK<A>: K<A>\n    Self.(K<A>).Child is CK<A>\n    Self.(K<A>).X is PrimitiveInteger\ngroup H\n    public func twice<T>(x: T.(K<i32>).Child.(K<i32>).X) -> (T.(K<i32>).Child.(K<i32>).X, T.(K<i32>).Child.(K<i32>).X)\n        T is CK<i32>\n        return (x, x)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "contractargs-single", "contract K<A>\n    associate X\n    associate Child is K<A>\ncontract CK<A>: K<A>\n    Self.(K<A>).Child is CK<A>\n    Self.(K<A>).X is PrimitiveInteger\nfunc probe<T>(t: ref/T)\n    T is CK<i32>\n    ()\n", "", Explicit = true)]
+    [InlineData("c2-5a", "b-cargs-n1", KArgs + "contract CK<A>: K<A>\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)", Explicit = true)]
+    [InlineData("c2-5a", "b-cargs-n2", "contract Marker\n" + KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Marker\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)", Explicit = true)]
+    [InlineData("c2-5a", "b-cargs-n3", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Copy\n" + KTwice + "        T is K<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)", Explicit = true)]
+    [InlineData("c2-5a", "p05", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "p05-n1", "contract CT<A>: GTree<A>\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)", Explicit = true)]
+    [InlineData("c2-5a", "p05-n2", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is GTree<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)", Explicit = true)]
+    [InlineData("c2-5a", "p05-n3", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is GTree<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)", Explicit = true)]
+    [InlineData("c2-5a", "x-carried-v", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<A>(a)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "x-carried-n1", NeedE + "contract D<U>\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<A>(a)\n", "UnprovenConstraint_Kd: needE<A>(a)", Explicit = true)]
+    [InlineData("c2-5a", "x-carried-n2", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<T>(t)\n", "UnprovenConstraint_Kd: needE<T>(t)", Explicit = true)]
+    [InlineData("c2-5a", "x-carried-n3", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A, B>(t: ref/T, a: ref/A, b: ref/B)\n    T is D<B>\n    needE<A>(a)\n", "UnprovenConstraint_Kd: needE<A>(a)", Explicit = true)]
     public void APremiseSuppliesItsRefinementsByDemand(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
