@@ -56,7 +56,11 @@ public sealed partial class Binding
     public ConstraintProof ProveSealed(BoundType type, Koto context) => this.ProveSealed(type, this.ConstraintScope(context), context);
 
     // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises), from `site`
-    // (QuerySite: MIR's queries are QuerySite.AfterPass).
+    // (QuerySite): during the pass a judgment's query runs in its caller's consultation frame, or in a site frame at its node where none
+    // is open (BeginProof), so what its proof forms past the height limit is refused at that site (Binding.TypeHeight). MIR's query is
+    // QuerySite.AfterPass: after the pass a capability work's height refusal fails no node, so the work answers Unknown with no record,
+    // as the round bound's (RefuseProof, R7-M38; a lint's, MIR's or the editor's question is no judgment); the instance collector's own
+    // formations keep R7-T1's answer. PLAN G651 U2 gives the after-run queries their outcome.
     internal ConstraintProof ProveCopy(BoundType type, BindingScope scope, QuerySite site)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope, site);
 
@@ -302,32 +306,10 @@ public sealed partial class Binding
             return this.WithClassPremises(leaf, type, intrinsic, scope);
         }
 
-        // A proof can re-enter a declaration with ever larger arguments: Copy's conditional premise over a projection, and Owned's
-        // projection normalized at the use through a conformance binding that uses itself (SPEC 8.3.3, DECISIONS BU-22); the second
-        // growth step stays Unknown. Removal condition: SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200).
-        if (!derivation && type.Symbol is not null)
-        {
-            var growing = false;
-            var depth = type.Height;
-            for (var ancestor = this.capabilityConsumer; ancestor is not null; ancestor = ancestor.Parent)
-            {
-                if (ReferenceEquals(ancestor.Type.Symbol, type.Symbol) && !ReferenceEquals(ancestor.Type, type))
-                {
-                    var previous = ancestor.Type.Height;
-                    if (depth > previous)
-                    {
-                        if (growing)
-                        {
-                            return ConstraintProof.Unknown;
-                        }
-
-                        growing = true;
-                        depth = previous;
-                    }
-                }
-            }
-        }
-
+        // A proof can re-enter a declaration with ever larger arguments (Copy's conditional premise over a projection; Owned's projection
+        // normalized at the use through a conformance binding that uses itself): each re-entry forms a higher Type, so the first one past
+        // the height limit is refused where it is formed, the limit's one Resource record, which the proof rests on (SPEC 8.3.3 Limits,
+        // Binding.TypeHeight; R7-C6 a, PLAN G200). No guard of the proof's own: whether the limit is reached depends on the Type alone.
         var key = this.CapabilityKey(type, intrinsic, scope, derivation);
         if (!this.capabilityNodes.TryGetValue(key, out var work))
         {
@@ -337,7 +319,6 @@ public sealed partial class Binding
 
         if (!work.Evaluated && !work.Queued)
         {
-            work.Parent = this.capabilityConsumer;
             work.Queued = true;
             this.capabilityQueue.Enqueue(work);
         }
@@ -369,6 +350,7 @@ public sealed partial class Binding
         }
 
         this.BeginProof(site);
+        this.BeginClearParts(); // A chain of works over shared parts walks each part once (OperandContexts; R7-C6 a).
         try
         {
             do
@@ -383,6 +365,7 @@ public sealed partial class Binding
             this.capabilityConsumer = null;
             this.assuming = false;
             this.capabilityEvaluated.Clear();
+            this.EndClearParts();
         }
 
         this.ScopeReads = default;
@@ -653,8 +636,7 @@ public sealed partial class Binding
     // initial state, keeping Depends until it is evaluated again when next requested (read as Final by the erasure's Owned owner,
     // OwnedMember). A work whose last evaluation depends on none stays, unless it read one that does (a decided reader holds whatever
     // that one settles to, EndAnswer, so evaluating it again changes no verdict: one spread for every reader). A forgotten work stays in
-    // its sources' Dependents and edges: a later change of a source evaluates it again with no Parent, which only the growth guard reads
-    // (no verdict depends on it).
+    // its sources' Dependents and edges: a later change of a source evaluates it again.
     private void ForgetDependentCapabilities()
     {
         var dependents = this.dependentCapabilities;
@@ -801,7 +783,15 @@ public sealed partial class Binding
         {
             var declaration = declarations[i];
             var validation = this.RequestCapability(this.SelfType(container.BoundSymbol!), this.Library.Copy, declaration.Scope, QuerySite.Nested, derivation: true);
-            if (declaration.Clause.BindingState == BindingState.Invalid || validation is ConstraintProof.Error or ConstraintProof.Refuted)
+            if (declaration.Clause.BindingState == BindingState.Invalid)
+            {
+                // SPEC 23.1.2 (R7-C6 a, F's C8 rulings 25 and 29): the failed opt-in keeps its own record, on which this Error rests (the
+                // proof channel's cause): a judgment reading the Type's Copy rests on a limit's record (ProofRestsOnLimit); after a
+                // Language failure its readers keep their records as before (RestsOnRecoveryOrLimit).
+                return this.ReadVerdict(ConstraintProof.Error, declaration.Failed, null);
+            }
+
+            if (validation is ConstraintProof.Error or ConstraintProof.Refuted)
             {
                 return ConstraintProof.Error;
             }
@@ -905,7 +895,7 @@ public sealed partial class Binding
 
     // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
     // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed. The closed signature is the
-    // part Owned judges.
+    // part Owned judges, and a held Function Type's part of a borrow layer's well-formedness (RetainInnerOutlives, SPEC 15.6.1).
     private BoundType ClosedSignature(BoundType signature, Koto binder)
     {
         var count = InputOriginCount(binder);

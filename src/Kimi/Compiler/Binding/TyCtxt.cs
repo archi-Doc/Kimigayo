@@ -365,6 +365,12 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // Origin (a raw layer's stays in the formed Type alone), so a Function Type whose input it is keeps its per-call binder.
     internal BoundType Open(BoundType formed) => this.Intern(BoundTypeKind.Open, null, formed.Semantics, [formed], origin: formed.Origin);
 
+    // PLAN G924 AF-3b v3-A (Binding.OpenSlots): the open atom of Type slot `slot` of the candidate at owner level `level`, one per pair.
+    internal BoundType OpenSlot(BindingSymbol slot, int level) => this.Intern(BoundTypeKind.OpenSlot, slot, SemanticsKind.Owner, [], level);
+
+    // PLAN G924 AF-3b v3-A (Binding.OpenSlots): the length atom of length slot `slot` of the candidate at owner level `level`.
+    internal BoundLength OpenSlotLength(BindingSymbol slot, int level) => binding.InternLength(LengthOperation.OpenSlot, level, openSlot: slot);
+
     // SPEC 22.10.5 and rule L (StackLimit): the interpolation-bound term of a direct interpolation with these value Types
     // (a Tuple) and literal bytes, its stack region's size: the constant StackBound decides, else the term (Term), which a
     // substitution folds again (Refold). R8-W2 a2's builder forms it.

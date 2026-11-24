@@ -6,12 +6,15 @@ namespace Kimi.Build;
 
 /// <summary>One resolved artifact set shared by emission, build records and native execution. It alone names an output's files (IMPL
 /// 20.3.2): for the IR <c>Name.ll</c>, the manifest <c>Name.link.json</c>, the record <c>Name.link.build.json</c> (Begin keeps its lock
-/// beside it) and the stem <c>Name.O0</c> or <c>Name.O2</c> of the native build's own files.</summary>
+/// beside it) and the stem <c>Name.O0</c> or <c>Name.O2</c> of the native build's own files, among them the folder
+/// <c>Name.O0.native</c> of its staged inputs.</summary>
 internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, string Stem)
 {
     private const string ManifestSuffix = ".link.json";
 
     internal string Executable => this.Stem + ".exe";
+
+    internal string Native => this.Stem + ".native";
 
     // A project's output: its OutputPath, bin/<target>/<Name>.ll by default.
     internal static ArtifactPaths Create(Project project)

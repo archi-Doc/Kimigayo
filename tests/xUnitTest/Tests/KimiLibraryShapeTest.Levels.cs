@@ -45,7 +45,7 @@ public partial class KimiLibraryShapeTest
         Assert.NotEmpty(layer.Intersections);
         Assert.Equal(program.Length == 0, Own<int, List<Subst>>(c.Types, "substs").Count == 0);
         Assert.DoesNotContain(Own<ConstraintKey, BoundConstraint>(c.Binding, "constraints").Keys, layer.Constraints.ContainsKey);
-        Assert.DoesNotContain(Own<(LengthOperation, long, BindingSymbol?, BoundLength?, BoundLength?, BoundType?), BoundLength>(c.Binding, "lengths").Keys, layer.Lengths.ContainsKey);
+        Assert.DoesNotContain(Own<(LengthOperation, long, BindingSymbol?, BoundLength?, BoundLength?, BoundType?, BindingSymbol?), BoundLength>(c.Binding, "lengths").Keys, layer.Lengths.ContainsKey);
         foreach (var type in Own<int, List<BoundType>>(c.Types, "types").Values.SelectMany(static x => x))
         {
             Assert.Same(type, c.Types.Rebuild(type, [.. type.Components], type.Origin, [.. type.OriginArguments]));

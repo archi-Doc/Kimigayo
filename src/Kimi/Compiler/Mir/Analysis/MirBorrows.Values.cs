@@ -290,7 +290,8 @@ internal sealed partial class MirBorrows
     }
 
     // The one step walk (A3 5, E3) over a Place's first end steps in the walk buffer: val of that prefix (its layer) and the parents a
-    // borrow of it follows, from the last shared layer on the values its Derefs go through. Read, Issued and Store's prefix read it.
+    // borrow of it follows, from the last shared layer on the values its Derefs go through; a Deref's layer is the pun rule's read
+    // (MirBorrows.Puns' PunRead: a raw pointer read punned over bytes no raw pointer wrote). Read, Issued and Store's prefix read it.
     private (int Layer, int Parents) Prefix(ulong[] state, int root, int end)
     {
         var (layer, parents) = (this.Root(state, root), 0);
@@ -299,9 +300,9 @@ internal sealed partial class MirBorrows
             var pointer = this.PointerOf(root, layer, parents, i);
             (parents, layer) = this.walk[i].Class switch
             {
-                MirStepClass.Shared => (pointer, this.Content(state, pointer)),
-                MirStepClass.Raw => (pointer, this.Indirect(this.Content(state, pointer))), // A fresh anchor (5.2.2); no reference (rule W).
-                MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.Content(state, pointer)),
+                MirStepClass.Shared => (pointer, this.PunRead(root, i, pointer, this.Content(state, pointer))),
+                MirStepClass.Raw => (pointer, this.PunRead(root, i, pointer, this.Indirect(this.Content(state, pointer)))), // A fresh anchor (5.2.2); no reference (rule W).
+                MirStepClass.Uniq => (this.sets.Union(parents, pointer), this.PunRead(root, i, pointer, this.Content(state, pointer))),
                 _ => (parents, this.Indirect(layer)), // Rule W: a part of a holder is no Copy of a borrow it holds.
             };
         }

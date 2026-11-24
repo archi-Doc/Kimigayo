@@ -16,8 +16,9 @@ namespace XunitTest;
 /// the analyses' costs (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
 public sealed class MirAnalysisTest
 {
-    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys: R3,
-    // a static's destruction reading itself, which needs no Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42).
+    // One problem of each recording rule of A1-A4 and of A5's conflict, depth-limit and effect rules (Rules has the rest; MirEffectsTest's,
+    // MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys: R3, a static's destruction reading itself, which needs no
+    // Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42).
     internal const string Requirements = """
         contract Sink
             func put(self: uniq/Self, value: i32) -> i32
@@ -108,9 +109,81 @@ public sealed class MirAnalysisTest
 
         """;
 
+    // One problem of each recording rule Requirements lacks, the rest of DIAGNOSTICS' A6 code table's Language and Proof rows (Z21), each
+    // its family test's form, invalid by SPEC but the Warning: A1's Move of a default's prepared slot (7.2.3; MirInitTest); A5's Borrow of a target an
+    // exclusive input reserves (15.6.7; CallReservationTest), a call's activation meeting a shared Loan (15.6.7; CallReservationTest), an
+    // update's writeback activation meeting one (13.7.2, 15.6.7; MirBorrowsTest.Updates), a Move ending an own step's stay while its
+    // pointer is used (a Warning, 5.2.1 condition 3; MirBorrowsTest.OwnSteps), an input's own part stored past it (5.2.1's retained
+    // dependencies; MirBorrowsTest.Storing), a default's exclusive Borrow of a slot and its result keeping a Reborrow of one (R26-access,
+    // R26-borrow, 7.2.3; MirBorrowsTest.Defaults); the Origin stratum's local Borrow outliving a fixed Origin (15.6.5) and a relation
+    // between fixed Origins no premise derives (15.6.5; MirOriginsTest).
+    internal const string Rules = """
+        func moved(x: string, y: string = x@move) => ()
+        func swapped()
+            var p: i32 = 1
+            Kimi.Intrinsics.swap(p@uniq, p@uniq)
+        struct Cell
+            public var value: i32 = 1
+        func both(c: uniq/Cell, r: ref/Cell) => ()
+        func activated()
+            var c = Cell.init()
+            both(c@uniq, c@ref)
+        func inspect(value: ref/i32) => ()
+        func updated()
+            var x = 1
+            let r = x@ref
+            x++
+            inspect(r)
+        struct Buf<T>
+            internal var data: raw/T during self
+            public init(capacity: isize)
+                unsafe => self.data = Raw.allocate<T>(capacity)@(raw/T during self)
+        func usep<T>(p: raw/T) => ()
+        func departed()
+            var b = Buf<i32>.init(4)
+            let p = b.data
+            let c = b@move
+            usep(p)
+        func stored(t: uniq/(uniq/(raw/u8) during a))
+            t@follow@follow = t@follow@raw@raw/u8
+        func increment(x: uniq/i32) -> i32
+            x@follow += 1
+            return x@follow
+        func accessed(x: uniq/i32, y: i32 = increment(x)) => ()
+        func borrowed(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
+        func escaped(x: ref/i32) -> ref/i32 during x
+            let local: i32 = 1
+            return local@ref
+        func unproven(x: ref/i32, y: ref/i32) -> ref/i32 during y
+            let r = x
+            return r
+        public func main() => ()
+
+        """;
+
     // A destructor's environment effect, which A4 composes from the planned cleanups, and group H's discard, open for more members.
     // N reference locals live across N branches (ArenaWorkload's parts): they fit A1's arena but not A5's Loans table.
     internal const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+
+    // The A6 code table's analyses (DIAGNOSTICS §12's lead; Z21 design §3.1), the closed set its Analysis column may name.
+    internal static readonly string[] A6Analyses = ["A1", "A3", "A4", "A5", "U", "B"];
+
+    // DIAGNOSTICS §12's A6 code table (2g-7; DECISIONS R4-M67, R5-M23, R5-M56; Z21), the consistency set and its one copy: per row the
+    // requirement, the code, the analysis it counts in (the first word: A1, A3, A4, A5, U for a limit A4 and A5 share, B for a broken
+    // contract) and the fact kinds its problems may carry. A row naming a requirement no MIR analysis records (outside RecordedKinds), a
+    // code or kind that does not exist or a kind past Cause (Binding's), an analysis outside that closed set (an edited cell such as
+    // "A5," would otherwise drop the census's assertion silently), or a (requirement, code) twice, fails the read.
+    internal static readonly Lazy<(DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis, ProblemFactKind[] Facts)[]> A6Rows = new(static () =>
+    {
+        var kinds = RecordedKinds().ToDictionary(static x => x.Name);
+        var rows = DiagnosticsRows(static x => x == "| Requirement | Code | Analysis | Facts |").Select(x => (
+            Requirement: kinds[Names(x[0]).Single()], Code: Enum.Parse<DiagnosticCode>(Names(x[1]).Single()), Analysis: x[2].Split(' ')[0],
+            Facts: Names(x[3]).Select(static y => Enum.Parse<ProblemFactKind>(y)).ToArray())).ToArray();
+        Assert.All(rows, static x => Assert.All(x.Facts, y => Assert.True(y <= ProblemFactKind.Cause, $"{x.Code}: {y}")));
+        Assert.All(rows, static x => Assert.Contains(x.Analysis, A6Analyses));
+        Assert.Equal(rows.Length, rows.DistinctBy(static x => (x.Requirement, x.Code)).Count());
+        return rows;
+    });
 
     private const string Loud = "struct Loud\n    public var n: i32 = 0\n    drop => Console.writeLine(\"drop\")\ngroup H\n" +
         "    public func discard<T>(item: T) => ()\n";
@@ -119,6 +192,22 @@ public sealed class MirAnalysisTest
     private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
     private static readonly MirProblem Conflict = new(
         DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 1), 0, 0b01);
+
+    // The problems of the recording rules' programs (Requirements, Rules), which Binding accepts, with their fact kinds: their own bodies'
+    // problems (Module 0: a library body records none, R4-M12, which the contract test does not assert), no construction or collection
+    // record.
+    private static readonly Lazy<(DiagnosticRequirement Requirement, DiagnosticCode Code, ProblemFactKind[] Facts)[]> Recorded = new(static () =>
+        [.. new[] { Requirements, Rules }.SelectMany(static source =>
+        {
+            var c = MirBuildTest.Compile(source);
+            Assert.Empty(c.Binding.Issues);
+            var problems = c.BuildMir().Problems;
+            return problems.All.ToArray().Index().Where(static x => !x.Item.IsRecord && x.Item.Subject.Module == 0)
+                .Select(x => (x.Item.Requirement, x.Item.Code, problems.Facts(x.Index).ToArray().Select(static f => f.Kind).ToArray()));
+        })]);
+
+    // The requirement kinds a MIR analysis records (RecordedKinds), by name.
+    public static TheoryData<string> Kinds => [.. RecordedKinds().Select(static x => x.Name)];
 
     // R4-M3a, R4-M71: a problem of a code, subject and body added again ORs its views into the first; another code, subject or body is its
     // own problem, so the views of one body's cases are never ORed into another's. Add returns the problem's index, the first's on a merge
@@ -623,37 +712,32 @@ public sealed class MirAnalysisTest
         Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Body(x.Body))));
     }
 
-    // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
-    // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
-    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its depth limit, and A5's Loan conflicts and
-    // its depth limit (a destruction past the walk's bound; R4-M153) and its effect rule, which the driver gives A4's keys (R4-M92). The
-    // storage limits need large bodies: A5ChecksTheViewsA1Completed has A1's. A parameter's record is at its Type occurrence
-    // (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
-    [Fact]
-    public void EachRecordingRuleNamesItsRequirement()
+    // DIAGNOSTICS §12, A6's code table (2g-7; DECISIONS R4-M67, R5-M23, R5-M56; Z21): every requirement kind a MIR analysis records has its
+    // rows (A6Rows reads no row of another); each problem of the recording rules (Recorded) lies in a row of its requirement and carries
+    // only that row's facts, so only A3's and rule W's problems carry a Cause (R7-M65); and each row of a Language or Proof code is
+    // recorded there. An Unsupported, Resource or Internal code is located (the publisher's rule, DIAGNOSTICS 4.1): its row needs no
+    // program (the storage limit's large body is A5ChecksTheViewsA1Completed's; a broken contract has none).
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public void EachRequirementHasItsA6Rows(string requirement)
     {
-        var c = MirBuildTest.Compile(Requirements);
-        Assert.Empty(c.Binding.Issues);
-        Assert.Equal(
-            [
-                "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
-                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init()",
-                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
-                "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a>",
-                "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store",
-                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
-                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
-                "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
-                "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
-            ],
-            c.BuildMir().Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
-                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}").Order(StringComparer.Ordinal));
+        var rows = A6Rows.Value.Where(x => x.Requirement.Name == requirement).ToArray();
+        Assert.NotEmpty(rows);
+        var found = Recorded.Value.Where(x => x.Requirement.Name == requirement).ToArray();
+        Assert.All(found, x => Assert.True(Array.Exists(rows, r => r.Code == x.Code && x.Facts.All(f => r.Facts.Contains(f))), $"{x.Code} {string.Join(", ", x.Facts)}"));
+        Assert.All(
+            rows.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Category is DiagnosticCategory.Language or DiagnosticCategory.Proof),
+            x => Assert.True(Array.Exists(found, y => y.Code == x.Code), $"{x.Code} is not recorded"));
     }
 
-    // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
-    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its depth limit) none, since they lie at Binding's
-    // rows.
-    // A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
+    // R5-M23, R4-M71, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code, and the body whose views
+    // number its problem's views: A1's uses, Moves without a Move Path and second initializations of a let, A2's incomplete layer at a
+    // Drop, A3's falling failure body, and A5's Loan conflicts, its depth limit (a destruction past the walk's bound; R4-M153) and its
+    // effect rule, which the driver gives A4's keys (R4-M92), the body they analyze; A4's confined obligations as Binding's row carries
+    // them (a conformance, a virtual function, a Callable binding) and its depth limit none, since they lie at Binding's rows. One exact
+    // list pins each site's requirement, code, subject and body, so two sites of one code cannot swap requirements, which
+    // EachRequirementHasItsA6Rows, reading pairs, would pass (Z21). The storage limits need large bodies: A5ChecksTheViewsA1Completed has
+    // A1's. A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
     public void EachRecordingRuleNamesItsBody()
     {
@@ -661,17 +745,18 @@ public sealed class MirAnalysisTest
         var program = c.BuildMir();
         Assert.Equal(
             [
-                "ComparisonLoanConflict_Kd tally = Tally.init() effect", "ComparisonLoanConflict_Kd x = 2 conflict",
-                "IncompatibleContractImplementation_Kd Self is Sink -",
-                "MovedPlace_Kd r moved",
-                "MovedPlace_Kd var box = Box.init(make()) layer", "OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep",
-                "OwnershipDepthLimit_Kd Self is Store -",
-                "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
-                "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
-                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
+                "ControlFlow RequireFallthrough_Kd () falls", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy -",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init() effect",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2 conflict",
+                "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep", "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store -",
+                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink -", "Ownership.PossiblyMovedUse MovedPlace_Kd r moved",
+                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make()) layer",
+                "Ownership.ReassignedLet ReassignedLet_Kd resource = make() twice",
+                "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i] runtime", "Ownership.UninitializedUse UninitializedPlace_Kd n unset",
+                "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
             ],
             program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
-                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
+                .Select(x => $"{x.Requirement} {x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
     }
 
@@ -864,7 +949,7 @@ public sealed class MirAnalysisTest
     // Labels (SPEC): X1 valid (8.11.4; Stopwatch.reset has no environment effect, 8.11.2); X2 invalid (start reads the counter, an
     // environment effect, so the confined bound fails at the argument: UnsatisfiedEffectBound_Kd, 8.11.4); Yp invalid, the same record at
     // each of its two arguments (start's, and noisy's Console output, an environment effect, 8.11.2; 23.1.2); X3 valid (10.5.3, 7.7.4); H1
-    // valid (22.9.2, 16.2.1); the examples and milestones valid; Requirements invalid (one problem of each recording rule, above). X2 needs
+    // valid (22.9.2, 16.2.1); the examples and milestones valid; Requirements invalid (problems of the recording rules, above). X2 needs
     // A4's second round (start, first named by its obligation); Yp too, while noisy's obligation is decided in the first, so only the
     // commit rule keeps the report's order; H1, Utf8Formatting and Milestone31 one for a destructor, a witness and storage bodies first
     // named by the solve.
@@ -1189,6 +1274,22 @@ public sealed class MirAnalysisTest
             _ => Repository.ReadText(name.Split('/')),
         };
     }
+
+    // The rows of each DIAGNOSTICS table whose header line `header` selects, each row its trimmed cells (A6Rows; MirPublicationTest's A6
+    // fact tables).
+    internal static IEnumerable<string[]> DiagnosticsRows(Func<string, bool> header)
+    {
+        var lines = Repository.ReadText("docs", "dev", "DIAGNOSTICS.md").Split('\n');
+        return lines.Index().Where(x => header(x.Item)).SelectMany(x => lines.Skip(x.Index + 2).TakeWhile(static y => y.StartsWith('|')))
+            .Select(static x => x.Split('|')[1..^1].Select(static y => y.Trim()).ToArray());
+    }
+
+    // The names a table cell writes in backticks.
+    internal static IEnumerable<string> Names(string cell) => Regex.Matches(cell, "`([^`]+)`").Select(static x => x.Groups[1].Value);
+
+    // The requirement kinds a MIR analysis records: the Ownership partition's members and A3's ControlFlow.
+    private static DiagnosticRequirement[] RecordedKinds()
+        => [.. Enum.GetValues<OwnershipRequirement>().Select(DiagnosticRequirement.Ownership), DiagnosticRequirement.ControlFlow];
 
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().
     private static string RequireEnds(int n)

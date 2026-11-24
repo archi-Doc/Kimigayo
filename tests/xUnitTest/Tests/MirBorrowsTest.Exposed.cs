@@ -1155,10 +1155,10 @@ public sealed partial class MirBorrowsTest
                 kk = 2
                 put8(q, null)
             """,
-        ["intPastOk"] = """
+        ["intPastComposedBad"] = """
             func keep(slot: raw/(raw/u8), value: raw/u8) => ()
             func put64p(w: uniq/(raw/u64), v: u64) => ()
-            func intPastOk()
+            func intPastComposedBad()
                 var kk: u8 = 1
                 let r = kk@uniq
                 var spare: raw/u8 = r@follow@raw
@@ -3168,7 +3168,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("storeSafeOk", "")] // V, a safe store of a constant
     [InlineData("intPastBad", "intPastBad: kk = 2")] // I; kk = 2 with G935's rule R (the storage past a parameter's raw layer without an Origin)
     [InlineData("intPastPunBad2", "intPastPunBad2: kk = 2")] // I; kk = 2 with G935's rule R
-    [InlineData("intPastOk", "")] // I by 15.6.4's composition (twoLayers; O-230 Q2 (a)); kk = 2 with G935's rule R and OwnPointer's pointee test deleted (rule D, PLAN G841)
+    [InlineData("intPastComposedBad", "intPastComposedBad: kk = 2")] // I by 15.6.4's composition (twoLayers; O-230 Q2 (a)); kk = 2 since PLAN G841's rule 4 (4) (OwnPointer's pointee test deleted); intPastOk before
     [InlineData("ownerQBad", "ownerQBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R)
     [InlineData("ownerQOk", "")] // V
     [InlineData("intPastScalarOk", "")] // V, the control: w0 never punned, so it carries nothing
@@ -3178,8 +3178,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("cpyReplOk", "")] // V, z = 5 replaces the Copy (15.6 Holders: completely replaced)
     [InlineData("replOk", "")] // V
     [InlineData("partWriteBad", "partWriteBad: kk = 2")] // I, a part write ends none (15.6 Holders)
-    [InlineData("rvPastU64HolderBad", "")] // I (O-364 (a): v = t.0 carries t's Loans; 15.6.4's composition); kk = 2 with G935's rule R
-    [InlineData("rvPastU8OwnBad", "")] // I (O-364 (a): a u8 own value at a u8 past layer); kk = 2 with G935's rule R
+    [InlineData("rvPastU64HolderBad", "rvPastU64HolderBad: kk = 2")] // I (O-364 (a): v = t.0 carries t's Loans; 15.6.4's composition); kk = 2 since PLAN G841's rule 4 (4)
+    [InlineData("rvPastU8OwnBad", "rvPastU8OwnBad: kk = 2")] // I (O-364 (a): a u8 own value at a u8 past layer); kk = 2 since PLAN G841's rule 4 (4)
     [InlineData("rvPastU8Ok", "")] // V, past a parameter's raw/u8 layer the u8 admits no raw/u8 own value (15.6.4's oneLayer)
     [InlineData("rvPastU8UniqOk", "")] // V
     [InlineData("rvPastU8UniqBad", "rvPastU8UniqBad: y@follow = 5")] // I, x itself receives v, which addresses t

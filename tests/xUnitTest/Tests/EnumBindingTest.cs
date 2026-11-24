@@ -205,16 +205,27 @@ public class EnumBindingTest
         }
     }
 
-    // SPEC 10.5.1, 10.1 (owner decision (1)): a contextual Case is never probed per candidate, so candidates that differ only in its payload
-    // Type are ambiguous even where only one payload Type would fit.
+    // SPEC 10.5.1, 6.5.2, 10.1 (K's G924 text; the owner's O-333 R3 (a), superseding BU-2's owner decision (1), "never probed per
+    // candidate"; PLAN G924 AF-3b, ArgFlow ruling 121): a contextual Case is checked against the expected Type under each remaining
+    // candidate, so a candidate whose payload Type takes no payload is inapplicable: `128` is no `i8` (12.3), so the `i32` candidate is
+    // selected (its result `i32` is the one `s` takes), in either declaration order and inside a Tuple payload; where both
+    // payload Types take it, step 2 of 10.4 finds no candidate best (the invalid twin).
     [Theory]
-    [InlineData("func f(x: Option<i8>) => ()\nfunc f(x: Option<i32>) => ()\nf(.Some(128))", "f(.Some(128))")]
-    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.Some(128))", "f(.Some(128))")]
-    [InlineData("func f(x: Option<(i8, i8)>) => ()\nfunc f(x: Option<(i32, i32)>) => ()\nf(.Some((128, 1)))", "f(.Some((128, 1)))")]
-    public void AContextualCaseIsNotProbedPerCandidate(string source, string at)
+    [InlineData("func f(x: Option<i8>) -> bool => true\nfunc f(x: Option<i32>) -> i32 => 1\nlet r = f(.Some(128))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<i32>) -> i32 => 1\nfunc f(x: Option<i8>) -> bool => true\nlet r = f(.Some(128))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<(i8, i8)>) -> bool => true\nfunc f(x: Option<(i32, i32)>) -> i32 => 1\nlet r = f(.Some((128, 1)))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i64>) => ()\nf(.Some(1))", "f(.Some(1))")]
+    public void AContextualCaseIsCheckedPerCandidate(string source, string? ambiguous)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+        var check = DiagnosticCorpus.Check(source);
+        if (ambiguous is null)
+        {
+            Assert.True(check.Accepted, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
+            return;
+        }
+
+        var error = Assert.Single(check.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), ambiguous), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction takes the expected Type's slots first, then its payloads' evidence by kind,
@@ -280,7 +291,7 @@ public class EnumBindingTest
     [InlineData("func f()\n    let x: Option<i64> = Option.Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option.Some(true)")]
     [InlineData("func f() -> Option<i64> => .Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() -> Two<i64> => Two.Both(\"a\", \"b\")\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(\"a\", \"b\")")]
-    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(.Some(true))\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
+    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(.Some(true))\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeOpt(.Some(true))")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f(b: bool)\n    let x: Two<i64> = Two.Both(b, 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(b, 1)")]
     [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() => Two.Both(1, 2.0)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(1, 2.0)")]
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: bool) -> i64 => 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(a, func (v: bool) -> i64 => 1)")]
@@ -329,7 +340,7 @@ public class EnumBindingTest
     }
 
     // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch, and only it: the Field
-    // has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
+    // has no stored Type, which its constructor does not require (SPEC 23.1.2; DECISIONS Q13).
     [Fact]
     public void ACaseConstructionInAFieldInitializerReportsItsOwnFailure()
     {
@@ -341,7 +352,7 @@ public class EnumBindingTest
 
     // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381, G826): a payload erased in a Field initializer, bound with the Field's header before
     // the capability engine judges, is one located Unsupported_Kd at a converted Function Item with bound Type arguments, the only
-    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13). It was
+    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; DECISIONS Q13). It was
     // the construction's TypeMismatch_Kd; typed and local twins are valid. A Closure there captures nothing (SPEC 7.7.2, 6.1.3), so its
     // environment is empty and decided (it was the located limit before G826). In a group the Field is static storage: its Closure
     // storage limit sits at the `let`, with the located limit at a use, as its annotated twin has them (v45; it was one located limit at

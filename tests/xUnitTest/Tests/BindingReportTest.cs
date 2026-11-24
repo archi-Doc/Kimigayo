@@ -68,6 +68,22 @@ public sealed class BindingReportTest
         Assert.Same(types[0], report.Value(Assert.Single(report.Facts(first).ToArray())));
     }
 
+    // DIAGNOSTICS 4.3 (AF-3b's Checked fact, ProblemFact.cs): a Checked fact is equal by its expected Type and its part's outcome, not by its
+    // packed kept index; another Type or outcome is a broken contract.
+    [Theory]
+    [InlineData(0, false, true)]
+    [InlineData(1, false, false)]
+    [InlineData(0, true, false)]
+    public void ACheckedFactIsEqualByItsTypeAndOutcome(int type, bool ambiguous, bool equal)
+    {
+        var report = new BindingReport();
+        BoundType[] types = [BoundType.Boolean, BoundType.Unit];
+        var first = report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Checked, Other, report.KeepChecked(types[0], false))]);
+        var again = report.Add(Problem(Subject, Mismatch), [new(ProblemFactKind.Checked, Other, report.KeepChecked(types[type], ambiguous))]);
+        Assert.Equal(equal ? first : -1, again);
+        Assert.Equal((types[0], false), report.Checked(Assert.Single(report.Facts(first).ToArray())));
+    }
+
     // A further problem at a subject (one rule, Condition; R7-E2 E2-3b): an equal problem keeps its condition and adds nothing; new facts take
     // their check's condition, or the one after the subject's last when that is taken (an Origin record beyond the first comes at 1, its
     // first being the slot's, as OriginCondition numbered it; a refining Contract's inherited conflicts from 0); a retried attempt starts over.
@@ -268,8 +284,13 @@ public sealed class BindingReportTest
         var c = MinimalEmissionTest.Analyze("func f(b: bool) -> ()\n    b++\npublic func main() => ()");
         var issues = c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").ToArray();
         Assert.Equal([DiagnosticCode.InvalidAssignment_Kd, DiagnosticCode.NonNumericOperand_Kd], issues.Select(static x => x.Code));
-        Assert.Equal(-1, issues[0].Problem);
-        Assert.True(issues[1].Problem >= 0);
+        // R7-E4 E4a-1 (rulings 2, 3): the denied write records its problem (RecordWrite), the slot's: InvalidAssignment_Kd with the
+        // target `b` as its related location (role 0); the operand's NonNumericOperand_Kd is a problem of its own.
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding)!;
+        Assert.Equal(DiagnosticCode.InvalidAssignment_Kd, report.Problem(issues[0].Problem).Code);
+        var target = Assert.Single(report.Facts(issues[0].Problem).ToArray());
+        Assert.Equal((ProblemFactKind.Related, 0L, "b"), (target.Kind, target.Value, c.SyntaxOf(target.Site).ToString()));
+        Assert.Equal(DiagnosticCode.NonNumericOperand_Kd, report.Problem(issues[1].Problem).Code);
         Assert.False(c.Binding.CheckBound().IsComplete);
         Assert.Equal(issues.Select(static x => x.Code), c.Binding.Issues.Where(static x => x.Node.ToString() == "b++").Select(static x => x.Code));
     }

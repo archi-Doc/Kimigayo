@@ -248,6 +248,7 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData("func f<s/T>(x: s/(s/T during a) during b)\n    s is ref or uniq\n    let y = x@follow\n", "_2 = acquire b0 (_1@b0)", "move (_1@b0)")]
     [InlineData("func f(r: uniq/(uniq/i32 during a) during b)\n    let y = r@follow\n", "_2 = &uniq (*(*_1))", "move (*(*_1))")]
+    [InlineData("func f<s/T, U>(m: s/T, h: uniq/(s/(uniq/U during b) during a) during c)\n    s is owner or ref\n    let x = h@follow\n", "_3 = acquire b0 (*_2)", "move (*_2)")] // G254b: built at Binding's name (MirTypes.Agree).
     public void ABareAcquisitionThroughItsOwnLayersKeepsItsPlan(string source, string built, string absent)
     {
         var c = Compile(source);
@@ -557,6 +558,27 @@ public sealed partial class MirBuildTest
         Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
     }
 
+    // PLAN G1184 (DECISIONS R7-M88; IMPL A.4, R7-T1): the one projection rule (MirBody.SelectsPart) gives a Field step of no Type only for
+    // a stored Field whose own slot failed; a part past IMPL A.4's height whose slot is typed is no part, so neither the builder's Stored
+    // nor a constructor's Move Paths (MirMoveData) take it as one: D<T>'s `v: W^250<T>` is no part of D<W^8000<i32>> (8,251) and a typed
+    // part of D<W^7800<i32>> (8,051) (fail-before: a struct arm admitting every part in range answers true past the height).
+    [Theory]
+    [InlineData(40, false)]
+    [InlineData(39, true)]
+    public void APartPastTheHeightIsNoPart(int lifts, bool stored)
+    {
+        var c = Compile($"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {W(250)}\nfunc lift<T>(p: raw/T) -> raw/{W(200)} => null\n" +
+            "func mk<T>(p: raw/T) -> raw/D<T> => null\npublic func main() -> ()\n    let p0: raw/i32 = null\n" +
+            string.Concat(Enumerable.Range(1, lifts).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    let d = mk(p{lifts})\n    return\n");
+        var main = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var type = main.Locals.ToArray().Single(static x => x.Name == "d").Type!.Components[0];
+        Assert.True(AdtDef.IsStruct(type));
+        Assert.Equal((stored, stored), (MirBody.SelectsPart(c.Types, type, MirProjectionKind.Field, 0, out var part), part is not null));
+        Assert.False(AdtDef.FieldSlotFailed(type, 0));
+
+        static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
     // PLAN G396 (3) Z1 (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR vocabulary, or of a fact a published Op
     // guarantees, that no published form takes is a broken contract, InternalInvariant_Kd at the node with an Opaque value in its place,
     // which the validator accepts. Each row publishes one node so by hand after the publish (fail-before: Unsupported_Kd at the same node):
@@ -843,12 +865,12 @@ public sealed partial class MirBuildTest
         }
     }
 
-    // SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2 (DECISIONS BU-110): a for item is acquired by the match's rule, so one whose Copy proof is Error is
-    // published Failed with no record of its own (the declaration's is reported) and its local takes a value derived from that failure,
-    // while the loop and its body are built: the body's independent MovedPlace_Kd stays. Fail-before: the item was moved out of the
-    // Subject's payload.
+    // SPEC 15.1.6, 14.6.2, 3.5.2, 23.1.2 (F's C8 ruling 24, superseding BU-110's Error rule for an iteration item): a for item is
+    // transferred with its responsibility, so it is moved out of the Subject's payload whatever its Copy proof (Error here: the
+    // declaration's record is reported) and no Copy is asked; the loop and its body are built, and the body's independent MovedPlace_Kd
+    // stays. It took a value derived from the failure (BU-110) before the ruling.
     [Fact]
-    public void AForItemWhoseCopyProofIsErrorIsDerived()
+    public void AForItemOfAMovedSubjectMovesWhateverItsCopyProof()
     {
         var c = Compile("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc g(xs: Array<Bad>)\n" +
             "    for x in xs@move\n        let s: string = \"a\"\n        let t = s@move\n        let u = s@move\npublic func main() => ()\n");
@@ -863,13 +885,14 @@ public sealed partial class MirBuildTest
         var item = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "x");
         var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(item));
         var source = body.Operands[write.Rvalue.Start].Place;
-        Assert.Contains(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
+        Assert.DoesNotContain(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
     }
 
-    // SPEC 15.1.6, 14.8, 23.1.2 (DECISIONS R4-M179): a match binding whose Copy proof is Error is Failed with no record of its own and takes
-    // a derived value, while its match is built as over the Copy twin: an arm's independent MovedPlace_Kd stays, in either arm and either
+    // SPEC 15.1.6, 14.8, 23.1.2 (F's C8 ruling 24, superseding R4-M179's Error rule for a moved Subject): a binding of a moved Subject is
+    // transferred with its responsibility, so it is moved out of the payload whatever its Copy proof (Error for Bad, Proven for Good) and
+    // takes no derived value; the match is built as over the Copy twin: an arm's independent MovedPlace_Kd stays, in either arm and either
     // match of a nesting, and a use of the match's value adds none; an arm reading the binding by value fails at bind time and adds no
-    // MIR record. Fail-before: the match was built Opaque.
+    // MIR record. Fail-before (R4-M179): the match was built Opaque; before the ruling the Bad binding took a derived value.
     [Theory]
     [InlineData("    let s: string = \"a\"\n    match o@move\n        .Some(let v) => pair(s@move, s@move)\n        .None => ()\n", "MovedPlace_Kd s")]
     [InlineData("    let t: string = \"b\"\n    match o@move\n        .Some(let v) => ()\n        .None => pair(t@move, t@move)\n", "MovedPlace_Kd t")]
@@ -877,7 +900,7 @@ public sealed partial class MirBuildTest
     [InlineData("    let s: string = \"a\"\n    match n\n        .Some(let k) => match o@move\n            .Some(let v) => pair(s@move, s@move)\n            .None => ()\n        .None => ()\n", "MovedPlace_Kd s")]
     [InlineData("    match o@move\n        .Some(let v) => take(v, v)\n        .None => ()\n", "")]
     [InlineData("    let r: i32 = match o@move\n        .Some(let v) => 1\n        .None => 2\n    use(r)\n", "")]
-    public void AMatchBindingWhoseCopyProofIsErrorIsDerived(string body, string expected)
+    public void AMovedSubjectsBindingMovesWhateverItsCopyProof(string body, string expected)
     {
         foreach (var (type, field) in new[] { ("Bad", "s: string = \"\""), ("Good", "n: i32 = 0") })
         {
@@ -902,7 +925,7 @@ public sealed partial class MirBuildTest
 
             var write = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } && x.Place == new MirPlace(v));
             var source = g.Operands[write.Rvalue.Start].Place;
-            Assert.Equal(type == "Bad", statements.Any(x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root)));
+            Assert.DoesNotContain(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque } && x.Place == new MirPlace(source.Root));
         }
     }
 
