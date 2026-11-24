@@ -49,7 +49,7 @@ public sealed partial class HirFormsTest
     // Declarations whose callers' inputs need an Origin relation between fixed Origins the premises do not prove, whatever the input's
     // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved. State's
     // static Places, which a call's input borrows, are the inputs Binding still rejects after selection: the located limit until P42
-    // (FailStaticBorrow; DECISIONS BU-25).
+    // (JudgeSelectedInput; DECISIONS BU-25).
     private const string DerivedInputs = """
         struct Tally
             public var n: i32 = 0

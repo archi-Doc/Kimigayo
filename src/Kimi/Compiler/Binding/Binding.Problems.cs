@@ -11,12 +11,15 @@ namespace Kimi.Compiler;
 //   CollectProblems); the adapter's reads of a problem's facts (ReportProblem, Mismatch, LocatedPart, FactOf).
 // - Inputs: a node, its failure and the facts its check read.
 // - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure; a node's further
-//   issues, each by its own code and condition. Record is a check's way in; RecordFurtherOriginRecord and a report's defect add a problem
-//   that sets no slot.
+//   issues, each by its own code and condition. Record is a check's way in; a problem that sets no slot is a further Origin record
+//   (RecordFurtherOriginRecord), a selected input's located limit beside its node (RecordLocatedLimit, PLAN G254c) or a report's Defect.
 // - Invariants: one way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one way in control:
-//   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem: a pass's
-//   reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves its chain; HirTables.Reset
-//   of a try's arms comes before anything binds them (SemanticsIndexed).
+//   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem but one
+//   that sets no slot: a pass's reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves
+//   its chain; HirTables.Reset of a try's arms comes before anything binds them (SemanticsIndexed). A located limit is recorded only at an
+//   input whose operation is final (JudgeSelectedInput: judged once per pass, never adapted again at another Type; a candidate trial records
+//   nothing), so it leaves only with the pass's reset or a trial's snapshot, never through ClearFailure. The Final summary publishes a
+//   node's problems that set no slot, Origin records aside (ReportResolvedOriginRecords'), and counts the node as limited (Binding.Check).
 // - Prohibitions: no failure is decided and no message rendered here.
 public sealed partial class Binding
 {
@@ -186,6 +189,16 @@ public sealed partial class Binding
         this.Record(node, BindingFailure.Unsupported, [new(ProblemFactKind.Span, SourceRef.Of(node), value)], unresolved: unresolved);
     }
 
+    // SPEC 23.1.1, 23.1.2 (PLAN G254c): a located limit beside its node, which keeps its state, Type and rows: a problem that sets no slot,
+    // so no consumer reads the node as a failed input, published by its subject (CollectIssue). At condition 1 at least, as a further
+    // Origin record is, so the node's own first failure, set later at 0, keeps its key; an equal record keeps its first's (DIAGNOSTICS 4.3).
+    private void RecordLocatedLimit(Koto node, SourceSpan part)
+    {
+        ReadOnlySpan<ProblemFact> facts = [new(ProblemFactKind.Span, SourceRef.Of(node), ((long)part.Start << 32) | (uint)part.Length)];
+        BindingProblem problem = new(this.CodeOf(node, BindingFailure.Unsupported), DiagnosticRequirement.Binding(BindingFailure.Unsupported), SourceRef.Of(node), 1);
+        this.report.Add(problem with { Condition = this.report.Condition(problem, facts) }, facts);
+    }
+
     // A fact's site is a node the check read, so normally numbered. One that is not takes its module's next id here, as a semantic write would,
     // on a rejected program only, and is counted.
     [Transitional("R7", Reason = "Its count is the row of the fact-site hypothesis, until R7-N5 owns SourceRef.Of numbering an id-less node.")]
@@ -205,13 +218,14 @@ public sealed partial class Binding
     // record, since Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
     private void CollectProblems(Koto node)
     {
-        if (this.report.Count == 0)
+        var first = this.report.Count == 0 ? -1 : this.report.First(SourceRef.Written(node));
+        if (first < 0)
         {
             return;
         }
 
         var slot = this.SlotProblem(node);
-        for (var i = this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
+        for (var i = first; i >= 0; i = this.report.Next(i))
         {
             if (i != slot && this.FactOf(i, ProblemFactKind.OriginRecord) is null)
             {
@@ -369,6 +383,10 @@ public sealed partial class Binding
                 break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
+                break;
+            case BindingFailure.InvalidAssignment or BindingFailure.SharedPathAccess when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 } target:
+                // Role 0, "target": the written target whose path denies the write (RecordWrite).
+                this.ReportWrite(node, store, this.compilation.SyntaxOf(target.Site), problem.Requirement, problem.Code, problem.Condition);
                 break;
             case BindingFailure.Access when this.FactOf(index, ProblemFactKind.Related) is not null:
                 this.ReportInaccessible(node, store, index, problem);

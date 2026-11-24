@@ -215,10 +215,6 @@ public sealed partial class Binding
         {
             this.ReportCaptureEntry(issue.Node, store, entry, requirement, issue.Code);
         }
-        else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
-        {
-            this.ReportWrite(issue.Node, store, target, requirement, issue.Code);
-        }
         else if (this.takeLayers?.TryGetValue(issue.Node, out var takeCases) == true)
         {
             this.ReportTake(issue.Node, store, takeCases, requirement, issue.Code);
