@@ -23,6 +23,9 @@ public sealed class NativeToolchainTest : IDisposable
 {
     private const string Windows = "Native builds run on Windows.";
 
+    // HelloUnderALinkerVariable's expected executable hash, which its parent passes.
+    private const string ExpectedExecutable = "KIMI_TEST_EXPECTED_EXECUTABLE";
+
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-native-" + Guid.NewGuid().ToString("N"));
 
     // The host's console of the test's projects, which reads a refusal's message.
@@ -52,7 +55,7 @@ public sealed class NativeToolchainTest : IDisposable
         string Stage(out string stagedHash)
         {
             using var stream = File.OpenRead(input);
-            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output"), out stagedHash);
+            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output.native"), out stagedHash);
         }
     }
 
@@ -857,6 +860,29 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Executable));
     }
 
+    // IMPL 20.3.2 and 20.4 (a native build reads no toolchain root and uses no search path; T's ruling 1 on LC3 Revision 1, a defect
+    // fix): the executable is the one the record's inputs determine, whatever LINK or _LINK_ holds; LLD otherwise adds either to its
+    // arguments (LC3's P-D: _LINK_=/filealign:4096 linked 74bdf2c3... against e201e8ab...). The environment is the process's and other
+    // tests link in this one, so the child HelloUnderALinkerVariable builds Hello under the variable and expects this process's
+    // executable (O2: the folder enters no byte). On the installed toolchain.
+    [Theory]
+    [InlineData("_LINK_")]
+    [InlineData("LINK")]
+    public async Task TheLinkReadsNoLinkerVariable(string variable)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, _, v1) = await this.BuildHello();
+        await FreshProcess.RunExplicit(typeof(NativeToolchainTest), nameof(NativeToolchainTest.HelloUnderALinkerVariable), (variable, "/filealign:4096"), (ExpectedExecutable, v1));
+    }
+
+    // TheLinkReadsNoLinkerVariable's child: Hello built in its own folder links the executable its parent passes.
+    [Fact(Explicit = true)]
+    public async Task HelloUnderALinkerVariable()
+    {
+        var (_, _, executable) = await this.BuildHello();
+        Assert.Equal(Environment.GetEnvironmentVariable(ExpectedExecutable), executable);
+    }
+
     // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
     // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member.
     // A second build reuses both copies by their catalog hashes and writes nothing in the folder (LC3 S1): denied creating files there,
@@ -869,7 +895,7 @@ public sealed class NativeToolchainTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var (project, paths, v1) = await this.BuildHello();
-        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Native, x.Sha256 + ".lib"), x.Sha256)).ToArray();
         string libraries;
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
@@ -884,7 +910,7 @@ public sealed class NativeToolchainTest : IDisposable
         }
 
         Assert.All(staged, static x => Assert.Equal(x.Sha256, ArtifactFiles.Hash(x.Path)));
-        var allow = DenyCreatingFiles(new DirectoryInfo(paths.Stem + ".native"));
+        var allow = DenyCreatingFiles(new DirectoryInfo(paths.Native));
         try
         {
             Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
@@ -915,7 +941,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var project = await this.Codec("codec", true);
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
-        var folder = ArtifactPaths.Create(project).Stem + ".native";
+        var folder = ArtifactPaths.Create(project).Native;
         var allow = DenyCreatingFiles(new DirectoryInfo(folder));
         try
         {

@@ -72,12 +72,11 @@ internal static partial class NativeToolchain
     // IMPL 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable original; a staged copy is reused
     // only when its bytes still have that hash (IsStaged). A program's input is copied first and named by the copy's hash; a compiler's
     // supply is found by its catalog hash (StageSupply). The input is a stream (a program's file or the compiler's resource), which the
-    // caller disposes.
-    internal static string StageInput(Stream input, string stem, out string hash)
+    // caller disposes; the folder is the build's staged inputs (ArtifactPaths.Native).
+    internal static string StageInput(Stream input, string folder, out string hash)
     {
-        var directory = stem + ".native";
-        Directory.CreateDirectory(directory);
-        var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
+        Directory.CreateDirectory(folder);
+        var temporary = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
             using (var copy = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
@@ -86,7 +85,7 @@ internal static partial class NativeToolchain
             }
 
             hash = Hash(temporary);
-            if (!IsStaged(stem, hash, out var staged))
+            if (!IsStaged(folder, hash, out var staged))
             {
                 Replace(temporary, staged);
             }
@@ -102,23 +101,23 @@ internal static partial class NativeToolchain
     // A compiler's supply staged (IMPL 20.4; LC3 S1): the copy its catalog hash names is reused when its bytes, the whole file hashed,
     // still have that hash, and the resource is not opened; otherwise the resource is staged as an input is, named by the copy's hash.
     // The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8).
-    internal static string StageSupply(CompilerSupply supply, string stem, out string hash)
+    internal static string StageSupply(CompilerSupply supply, string folder, out string hash)
     {
-        if (IsStaged(stem, supply.Sha256, out var staged))
+        if (IsStaged(folder, supply.Sha256, out var staged))
         {
             hash = supply.Sha256;
             return staged;
         }
 
         using var input = supply.Open();
-        return StageInput(input, stem, out hash);
+        return StageInput(input, folder, out hash);
     }
 
     // IMPL 20.4's reuse rule, stated once: the staged copy the hash names, <stem>.native/<hash>.lib, is reused only when it exists and its
     // bytes still have that hash.
-    private static bool IsStaged(string stem, string hash, out string staged)
+    private static bool IsStaged(string folder, string hash, out string staged)
     {
-        staged = Path.Combine(stem + ".native", hash + ".lib");
+        staged = Path.Combine(folder, hash + ".lib");
         return File.Exists(staged) && Hash(staged) == hash;
     }
 
@@ -316,13 +315,13 @@ internal static partial class NativeToolchain
                 if (supply is not null)
                 {
                     LinkManifest.CheckCompilerSupply(item, supply);
-                    path = StageSupply(supply, this.paths.Stem, out hash);
+                    path = StageSupply(supply, this.paths.Native, out hash);
                 }
                 else
                 {
                     using (var input = File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory)))
                     {
-                        path = StageInput(input, this.paths.Stem, out hash);
+                        path = StageInput(input, this.paths.Native, out hash);
                     }
 
                     if (this.project is not null)
@@ -407,17 +406,21 @@ internal static partial class NativeToolchain
         }
 
         // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
-        // record's linked state, naming the private file's hash, which Run's commit publishes before the file.
+        // record's linked state, naming the private file's hash, which Run's commit publishes before the file. LLD reads no environment
+        // (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds no VC or
+        // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1).
         private void Link(Tatara tatara, string obj, List<string> libraries, string undefined, string executable)
         {
-            var link = new string[libraries.Count + 7];
+            var link = new string[libraries.Count + 9];
             link[0] = "lld-link";
             link[1] = obj;
             libraries.CopyTo(link, 2);
-            link[^5] = "/entry:" + TargetProfile.Windows.EntrySymbol;
-            link[^4] = "/subsystem:" + TargetProfile.Windows.Subsystem;
-            link[^3] = "/nodefaultlib";
-            link[^2] = "/Brepro";
+            link[^7] = "/entry:" + TargetProfile.Windows.EntrySymbol;
+            link[^6] = "/subsystem:" + TargetProfile.Windows.Subsystem;
+            link[^5] = "/nodefaultlib";
+            link[^4] = "/Brepro";
+            link[^3] = "/lldignoreenv";
+            link[^2] = "/winsysroot:" + this.paths.Native;
             link[^1] = "/out:" + executable;
             tatara.Link(this.context, link);
             this.context.CancellationToken.ThrowIfCancellationRequested();
