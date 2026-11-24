@@ -459,7 +459,7 @@ public sealed partial class Binding
     // value of `bound` can carry a Loan or an address (CanCarryLoan, SPEC 15.6's predicate) the storage keeps no Content or Chain row; an
     // input's own value (Value: it is, or holds by value, that Type) and a handed callable's fill it keeps whatever `bound` is: what the
     // abstract slot can hold is the callee's terms' question (15.6.4's argument sentence; the owner's O-359 (a), O-360 (a); F's G935
-    // ruling 16 (2): mkConcWnBad), and whether it may retain a read the instantiated one (O-353 (a); F's C-527 ruling 1).
+    // ruling 16 (2): mkConcWnBad), and whether it may retain a read the instantiated one (O-353 (a); the owner's C-527 Q1 (a)).
     // `excluded`, the input this storage is written through (its output), keeps nothing here: its own value never (15.6.4: a pointer is
     // never part of its own pointee), and what a read or chain of reads through it gives is that storage's own content.
     private void HiddenKinds(RetentionKind[] kinds, BoundType hidden, BoundType bound, int excluded)
@@ -521,18 +521,18 @@ public sealed partial class Binding
         return known!;
     }
 
-    // SPEC 15.6's Type-level predicate (HiddenKinds' bound; F's C-527 ruling 1): whether a value of a Type can carry a Loan or an address,
-    // that is, whether some part of it, through its own storage, its Type arguments and the storage its owning handles own (Holdings'
-    // entries that pass a walk on, Passes), is a borrow, a raw pointer, a callable value other than a Function Item or a value of an
-    // abstract Type: an entry that does not pass on (a borrow or raw layer, an erased environment, an abstract part), a part Binding did
-    // not bind (it may be any Type), or a concrete Closure, whatever its environment holds (SPEC 15.6's callable value read literally, F's
-    // C-527 ruling 1 (2), until the owner's Q2 answers it). A Function Item and a Scalar hold no entry. It folds the same SPEC 15.6
-    // predicate as MirTypes.HoldsLoans' Loan fact, which Binding does not read (MIR); HoldsLoans keeps its own walk for its modes and its
-    // write fact. They disagree at a part Binding did not bind (HoldsLoans: no Loan; here: carries, failing closed) and, until Q2, at a
-    // concrete Closure (HoldsLoans reads its environment); PLAN's open issue (F's C-527 ruling 2, C1): one publisher, TyCtxt, after Q2.
-    // It decides no Loan, holder or write. At Binding's Limit it answers true and makes the contract the Limit (retentionLimit, as
-    // HiddenKind); past StorageBound true (the storage walk's depth bound names that limit). Each Type is walked once per query
-    // (retentionCarried), so a recursive Type ends; its repeat adds nothing its first meeting lacks.
+    // SPEC 15.6's Type-level predicate (HiddenKinds' bound; the owner's C-527 Q1 (a)): whether a value of a Type can carry a Loan or an
+    // address, that is, whether some part of it, through its own storage, its Type arguments and the storage its owning handles own
+    // (Holdings' entries that pass a walk on, Passes), is a borrow, a raw pointer, a callable value other than a Function Item or a value
+    // of an abstract Type: an entry that does not pass on (a borrow or raw layer, an erased environment, an abstract part) or a part
+    // Binding did not bind (it may be any Type). A concrete Closure carries what its captures hold (Holdings' Closure row; SPEC 3.2.1,
+    // 15.8.2; the owner's C-527 Q2 (b)); a Function Item and a Scalar hold no entry. It folds the same SPEC 15.6 predicate as
+    // MirTypes.HoldsLoans' Loan fact, which Binding does not read (MIR); HoldsLoans keeps its own walk for its modes and its write fact.
+    // They disagree only at a part Binding did not bind (HoldsLoans: no Loan; here: carries, failing closed); PLAN's open issue: one
+    // publisher, TyCtxt, that both read. It decides no Loan, holder or write. At Binding's Limit it answers true and makes the contract
+    // the Limit (retentionLimit, as HiddenKind); past StorageBound it answers true and reports nothing, as the input fold's walk stops
+    // there silently (StorageWalk). Each Type is walked once per query (retentionCarried), so a recursive Type ends; its repeat adds
+    // nothing its first meeting lacks.
     private bool CanCarryLoan(BoundType type)
     {
         this.retentionCarried.Clear();
@@ -542,7 +542,7 @@ public sealed partial class Binding
     // CanCarryLoan's fold over Holdings: a Type and, through the entries that pass on, its parts.
     private bool MayCarry(BoundType? type, int depth)
     {
-        if (type is null || type.Kind == BoundTypeKind.Closure || depth > StorageBound)
+        if (type is null || depth > StorageBound)
         {
             return true;
         }
