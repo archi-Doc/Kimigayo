@@ -259,12 +259,14 @@ public class DefaultBindingTest
     // SPEC 7.2.3 with 15.3.4 and 9.5 (the owner's D-1236 (A) and D-1247 (a), PLAN G1362): a default's content names only the preceding
     // parameters, as Origins and as values, wherever the name lies in it: a named function's signature (do_*, a relation clause rel_*,
     // a projection proj_*, in a constructor's default ctor_*, a local function's local_*, bound from a call before it do_later_call,
-    // two defaults deep nestdef_origin_later) or body (do_body_*), a Closure's header (clo_*) or body (clo_do_*), a local's annotation
-    // (let_*), a nested function's body or default reading a value (nestval_*, nestdef_*). A later parameter, or the default's own
-    // (self_origin), is skipped by lookup, so the name selects an outer binding (shadow_*, skip2_origin, nestval_shadow) or nothing, and
-    // `code` is the one record, at `at` in a default (null: valid). Boundaries: the signature itself, a nested signature in the body, a
-    // signature Origin or set a later parameter's annotation introduces (do_set, set_sig), names the default declares (letz_later,
-    // set_free) and a capture entry of a preceding parameter (cap_prec).
+    // two defaults deep nestdef_origin_later), result (res_*) or body (do_body_*), a Closure's header (clo_*) or body (clo_do_*), a
+    // local's annotation (let_*) or a projection in it (projlet_*), a nested function's body or default reading a value (nestval_*,
+    // nestdef_*). A later parameter, the default's own (self_origin) or the receiver (a constructor's, ctor_self_let, SPEC 6.3.3; a
+    // later explicit `self`, meth_self_later, 7.3.1) is skipped by lookup, so the name selects an outer binding (shadow_*,
+    // skip2_origin, nestval_shadow; one of another Type or kind, shadow_proj_*, shadow_set) or nothing, and `code` is the one record,
+    // at `at` in a default (null: valid). Boundaries: the signature itself, a nested signature in the body, a signature Origin or set
+    // a later parameter's annotation introduces (do_set, set_sig), names the default declares (letz_later, set_free) and a capture
+    // entry of a preceding parameter (cap_prec).
     [Theory]
     [InlineData("do_later", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during z) -> i32 => 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "z")]
     [InlineData("do_prec", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during a) -> i32 => 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", null, null)]
@@ -274,12 +276,18 @@ public class DefaultBindingTest
     [InlineData("let_prec", "func f(a: ref/i32, k: i32 = label w: do\n    let q: ref/i32 during a = a\n    exit to w 0\n, z: ref/i32) -> i32 => k", null, null)]
     [InlineData("do_body_later", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during a) -> i32\n        let q: ref/i32 during z = x\n        return 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "z")]
     [InlineData("do_body_prec", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during a) -> i32\n        let q: ref/i32 during a = x\n        return 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", null, null)]
+    [InlineData("res_later", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32) -> ref/i32 during z => x\n    exit to w 0\n, z: ref/i32) -> i32 => k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "z")]
+    [InlineData("res_prec", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32 during a) -> ref/i32 during a => x\n    exit to w 0\n, z: ref/i32) -> i32 => k", null, null)]
     [InlineData("rel_later", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32) -> i32\n        origin z outlives x\n        return 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "z")]
     [InlineData("rel_prec", "func f(a: ref/i32, k: i32 = label w: do\n    func g(x: ref/i32) -> i32\n        origin a outlives x\n        return 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", null, null)]
     [InlineData("proj_later", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc f(c: Cursor, k: i32 = label w: do\n    func g(x: ref/i32 during z.at) -> i32 => 0\n    exit to w 0\n, z: Cursor) -> i32 => k", nameof(DiagnosticCode.InvalidOriginBinding_Kd), "z.at")]
     [InlineData("proj_prec", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc f(c: Cursor, k: i32 = label w: do\n    func g(x: ref/i32 during c.at) -> i32 => 0\n    exit to w 0\n, z: Cursor) -> i32 => k", null, null)]
+    [InlineData("projlet_later", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc f(c: Cursor, k: i32 = label w: do\n    let q: ref/i32 during z.at = c.item\n    exit to w 0\n, z: Cursor) -> i32 => k", nameof(DiagnosticCode.InvalidOriginBinding_Kd), "z.at")]
+    [InlineData("projlet_prec", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc f(c: Cursor, k: i32 = label w: do\n    let q: ref/i32 during c.at = c.item\n    exit to w 0\n, z: Cursor) -> i32 => k", null, null)]
     [InlineData("ctor_later", "struct S\n    public let v: i32\n    public init(a: ref/i32, k: i32 = label w: do\n        func g(x: ref/i32 during z) -> i32 => 0\n        exit to w 0\n    , z: ref/i32) => self.v = k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "z")]
     [InlineData("ctor_prec", "struct S\n    public let v: i32\n    public init(a: ref/i32, k: i32 = label w: do\n        func g(x: ref/i32 during a) -> i32 => 0\n        exit to w 0\n    , z: ref/i32) => self.v = k", null, null)]
+    [InlineData("ctor_self_let", "struct S\n    public let v: i32\n    public init(a: ref/i32, k: i32 = label w: do\n        let q: ref/i32 during self = a\n        exit to w 0\n    ) => self.v = k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "self")]
+    [InlineData("meth_self_later", "struct S\n    public let v: i32\n    public init(v: i32) => self.v = v\n    public func m(a: ref/i32, k: i32 = label w: do\n        let q: ref/i32 during self = a\n        exit to w 0\n    , self: ref/Self) -> i32 => k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "self")]
     [InlineData("local_later", "func f(a: ref/i32) -> i32\n    func g(b: i32 = label w: do\n        func h(x: ref/i32 during y) -> i32 => 0\n        exit to w 0\n    , y: ref/i32) -> i32 => b\n    return 0", nameof(DiagnosticCode.MissingOriginBinding_Kd), "y")]
     [InlineData("do_later_call", "func f(a: ref/i32, k: i32 = label w: do\n    let r = g(a)\n    func g(x: ref/i32 during z) -> i32 => 0\n    exit to w 0\n, z: ref/i32) -> i32 => k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "z")]
     [InlineData("nestdef_origin_later", "func f(a: ref/i32, k: i32 = label w: do\n    func g(b: i32 = label v: do\n        func h(x: ref/i32 during z) -> i32 => 0\n        exit to v 0\n    ) -> i32 => b\n    exit to w 0\n, z: ref/i32) -> i32 => k", nameof(DiagnosticCode.MissingOriginBinding_Kd), "z")]
@@ -294,6 +302,9 @@ public class DefaultBindingTest
     [InlineData("set_free", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc f(a: ref/i32, k: i32 = label w: do\n    let c: Cursor{s} = Cursor.init(a)\n    exit to w 0\n, z: ref/i32) -> i32 => k", null, null)]
     [InlineData("shadow_val", "group G\n    let y = 7\n    func f(x: i32 = y, y: i32 = 1) -> i32 => x", null, null)]
     [InlineData("shadow_origin", "func h(z: ref/i32) -> i32\n    func f(a: ref/i32, k: i32 = label w: do\n        func g(x: ref/i32 during z) -> i32 => 0\n        exit to w 0\n    , z: ref/i32) -> i32 => k\n    return 0", null, null)]
+    [InlineData("shadow_proj_inv", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc h(z: ref/i32) -> i32\n    func f(a: ref/i32, k: i32 = label w: do\n        func g(x: ref/i32 during z.at) -> i32 => 0\n        exit to w 0\n    , z: Cursor) -> i32 => k\n    return 0", nameof(DiagnosticCode.InvalidOriginBinding_Kd), "z.at")]
+    [InlineData("shadow_proj_valid", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc h(z: Cursor) -> i32\n    func f(a: ref/i32, k: i32 = label w: do\n        func g(x: ref/i32 during z.at) -> i32 => 0\n        exit to w 0\n    , z: ref/i32) -> i32 => k\n    return 0", null, null)]
+    [InlineData("shadow_set", "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n\nfunc h(c: Cursor{z}) -> i32\n    func f(a: ref/i32, k: i32 = label w: do\n        func g(x: ref/i32 during z.at) -> i32 => 0\n        exit to w 0\n    , z: ref/i32) -> i32 => k\n    return 0", null, null)]
     [InlineData("skip2_origin", "func f(z: ref/i32, k: i32 = label w: do\n    func g(b: i32 = label v: do\n        func h(x: ref/i32 during z) -> i32 => 0\n        exit to v 0\n    , z: ref/i32) -> i32 => b\n    exit to w 0\n) -> i32 => k", null, null)]
     [InlineData("nestval_later", "func f(a: i32, k: i32 = label w: do\n    func g() -> i32 => z\n    exit to w 0\n, z: i32) -> i32 => k", nameof(DiagnosticCode.UnresolvedBinding_Kd), "z")]
     [InlineData("nestval_prec", "func f(a: i32, k: i32 = label w: do\n    func g() -> i32 => a\n    exit to w 0\n, z: i32) -> i32 => k", nameof(DiagnosticCode.InvalidCaptureBinding_Kd), "a")]
