@@ -51,7 +51,8 @@ public sealed partial class Binding
     }
 
     // The view's rows 1 and 9 for a declaration's atom, a universal or per-call Origin: Fixed in body B when its binder is B's contract
-    // (its or an enclosing declaration's), else another declaration's atom, Unclassed: an end no row of B judges (ClassifyAtom).
+    // (its or an enclosing declaration's), else another declaration's atom, Unclassed: an end no row of B judges (ClassifyAtom). Obligation
+    // formation reads the same predicate: a relation with such an end is its nested signature's declaration row, in no body (ForeignEnd).
     internal bool ForeignDeclarationAtom(BoundOrigin atom, ExecutableBody body)
         => atom.Kind is OriginKind.Parameter or OriginKind.Input && !this.InContract(atom.Binder, body);
 

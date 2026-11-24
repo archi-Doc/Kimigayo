@@ -23,21 +23,6 @@ namespace Kimi.Compiler;
 // conversion.
 public sealed partial class Binding
 {
-    // Whether an Origin, or an operand of its meet, is a local region `body` judges (RegionIn): the region of the erasure's Final class
-    // (RefutedStatic).
-    private static bool RegionLeaf(BoundOrigin origin, ExecutableBody body)
-    {
-        for (var i = 0; origin.Kind == OriginKind.Intersection && i < origin.Operands.Count; i++)
-        {
-            if (RegionLeaf(origin.Operands[i], body))
-            {
-                return true;
-            }
-        }
-
-        return RegionIn(origin, body);
-    }
-
     // The uses FailDerived failed in this pass, each with its held cause's candidates at failure, its first and the rest (none for an
     // operand context, recorded at once), and a re-entry's site, settled in Binding.Check's Final prologue (DECISIONS BU-76; removed
     // once the erasure's Owned failure is decided after the prologue).
@@ -516,8 +501,8 @@ public sealed partial class Binding
     // an Owned obligation's at Final, JudgeErasedOwned)
     // (JudgeOriginRelation with `static` as the shorter end: the Origin at the use, a local region through its recorded sources,
     // JudgeLocalRegion, an atom by JudgeOriginAtoms); a Refuted verdict is final (a recorded bound is never removed). A leaf with a local
-    // region the forming body judges that is not refuted is decided only once the body is bound (`final`: its later bounds may refute
-    // it); any other leaf keeps the engine's verdict.
+    // region the forming body judges whose bounds are not complete (RegionBounded) that is not refuted is decided only once the body is
+    // bound (`final`: its later bounds may refute it); any other leaf keeps the engine's verdict.
     private bool RefutedStatic(BoundOrigin origin, Koto use, ExecutableBody body, ref bool final)
     {
         if (this.JudgeOriginRelation(origin, BoundOrigin.Static, use, body) == OriginJudgment.Refuted)
@@ -525,7 +510,22 @@ public sealed partial class Binding
             return true;
         }
 
-        final |= this.formingBody.IsBody && RegionLeaf(this.OriginAtUse(origin, use), this.formingBody);
+        final |= this.formingBody.IsBody && this.RegionLeaf(this.OriginAtUse(origin, use), this.formingBody);
         return false;
+    }
+
+    // Whether an Origin, or an operand of its meet, is a local region `body` judges (RegionIn) whose bounds are not complete yet
+    // (RegionBounded): the region of the erasure's Final class (RefutedStatic).
+    private bool RegionLeaf(BoundOrigin origin, ExecutableBody body)
+    {
+        for (var i = 0; origin.Kind == OriginKind.Intersection && i < origin.Operands.Count; i++)
+        {
+            if (this.RegionLeaf(origin.Operands[i], body))
+            {
+                return true;
+            }
+        }
+
+        return RegionIn(origin, body) && !this.RegionBounded(origin);
     }
 }
