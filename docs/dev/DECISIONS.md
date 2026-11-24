@@ -27562,7 +27562,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   (8.9.2): the selection returns the first member in declaration order, the set's **representative**, not a preference; no candidate
   is ranked by how its reference is written (SPEC 8.2.3). Two declared directly collide (8.9.1; the clause's DuplicateBinding_Kd) and
   several by declaration are distinct: both are ambiguous and none is selected. `candidates` publishes the count: each reader says
-  what an ambiguity is for it (the solver Unknown, the index AmbiguousBinding_Kd, the others none), and the members share one associated Type, which a specification naming any of them specifies (R7-M103; it supersedes this entry's
+  what an ambiguity is for it (the solver Unknown, the index AmbiguousBinding_Kd with the members it weighed, R7-M104, the others none), and the members share one associated Type, which a specification naming any of them specifies (R7-M103; it supersedes this entry's
   located `Unsupported_Kd` for such a specification, full text at 9a166973f); a use of a projection on an unsupported specification
   rests on that limit: `FailConstraint`, the InvalidConstraint record's owner, names as its
   cause the part a cause's failure rests on when that part is missing information (a conformance on its unsupported specification,
@@ -28572,6 +28572,31 @@ R8-M* and R9-M* by the stage of the recording unit.
     across root paths (a conditional root path forms under its own premises); a per-clause member table; a block-only representative,
     or the selection judged again at each reader (a second statement beside JoinMembers' keys); the count-once test restricted to the
     conformance loop (8.5.1 governs every receiver).
+- **R7-M104 An index key's record names the conformances its selection weighed (R7-C3 C3b-3)** (Back, 2026-11-25; PLAN G1300's
+  index half, Q-767, D-1268; Major, records only; design `artifacts\units\c3b-3\design.md` Revision 3, the Front's review C-552;
+  commits 810538560, 75195fbe9) SPEC 4.7.1, 8.6.1, 8.9.1, 23.1.1. Amends R7-M82's index clause.
+  - **Rule.** The index check (`TryBindIndexer`) selects by declaration, then, for a typed key, by the key's reference:
+    `KeyReference` replaces `ConformanceForKey`, and the check builds the reference and the site once and passes the same values to
+    `SelectConformance` and to `RecordKeyAmbiguity`. When the selection by the key is ambiguous, the check records
+    `AmbiguousBinding_Kd` at the index expression with, per member of that selection (`SelectionMembers` with the selection's own
+    receiver, reference, scope and site), `Related(clause, 8)` "conformance" at the member's declaring clause and its `Instance`.
+    Fewer than two members after an ambiguous fold is `InternalInvariant_Kd`. The adapter (`ReportKeyAmbiguity`) counts the recorded
+    members in the label. A typed key that no conformance takes and an unfitted literal key keep the fact-less `AmbiguousBinding_Kd`
+    until PLAN G1252 chooses one record for every index no conformance fits and fits a literal key per conformance.
+  - **Published fact.** `UniqIndexing` gains `Key`: the UniqIndexable reference the check selected by when that selection found no
+    member, else none. `SharedIndexNote` chooses its form from the entry alone and names the declaration's UniqIndexable identities
+    (a query by declaration: no judgment), with the key's reference none of them takes when `Key` is published; its own selection,
+    `byKey` guess and "for this key" form are removed.
+  - **Reading** (the Front's ruling, C-552). The member list is the failed selection's own enumeration, R7-M82's published query,
+    read by the check that selected, at its own failure, with that selection's inputs: no second rule, and it explains no other
+    component's failure (AGENTS Diagnostics; DIAGNOSTICS §2).
+  - **Records moved (Q13).** x2, x4 (and the twin f-x2w) gain the members as Related entries and their count; x11's Note names
+    `UniqIndexable<Name>`. x2n, x2l and the literal forms keep their records (G1252). No acceptance change.
+  - **Rejected:** a members sink on `SelectConformance` (a steering parameter); the check folding `SelectionMembers` itself (the
+    fold twice); a member list per `UniqIndexing` row; the members repeated in a Note; `NotIndexable_Kd` for a typed key no
+    conformance takes (a fourth record for G1252's one failure); the literal key's members by declaration (parties the literal never
+    fits); `RetainedImplementation` reading `SelectionMembers` at the failure (a re-judgment that explains the proof's failure:
+    PLAN G1386).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
