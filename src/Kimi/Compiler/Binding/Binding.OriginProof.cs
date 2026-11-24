@@ -95,10 +95,11 @@ public sealed partial class Binding
     internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use) => this.CompletedOrigin(this.RegionValueAtUse(this.DeclaredAtUse(origin, use), use));
 
     // O-400 (b) (PLAN G492-a (ii) Revision 5): a failed condition of a Callable comparison is the located limit where a direction its
-    // ends' values do not prove has a `let` region of the use's body at its shorter end: the comparison reads that end as the region
-    // (O-363 (a)), which may lie inside its value, so only the region reading decides the condition, and the uses of the compared Type
-    // read values (LeavesBodyRows leaves no row their values do not prove), until (a) or (a') designs the region reading at uses. A
-    // direction with a fixed shorter end keeps its record: a `let` region outlives nothing its value does not, so the readings agree.
+    // ends' values do not prove has a `let` region of the use's body at its shorter end (ReadsLetValue: a value published as an inclusion):
+    // the comparison reads that end as the region (O-363 (a)), which may lie inside its value, so only the region reading decides the
+    // condition, and the uses of the compared Type read values (LeavesBodyRows leaves no row their values do not prove), until (a) or (a')
+    // designs the region reading at uses. A direction with a fixed shorter end keeps its record: a `let` region outlives nothing its value
+    // does not, so the readings agree; so does a region equal to its value (an equality-fixed slot, SPEC 15.3.6) at either end.
     // Valid and invalid programs alike: no fact at the comparison separates them, since each verdict is decided at the uses of the
     // compared Type (us2 and us2n are identical through the comparison). So the invalid us family is rejected at the comparison by
     // this limit at dev's UnprovenOriginContract_Kd site, a record that differs from the one O-400 (b) states (Q13; no acceptance move).
@@ -111,8 +112,25 @@ public sealed partial class Binding
             => this.ReadsLetValue(b, use) || this.JudgeOriginRelation(a, b, use, this.formingBody) == OriginJudgment.Proven;
     }
 
-    // Whether `end` holds a `let` region of the use's body, which a use reads as its value (RegionValueAtUse changes it; O-400 (b)).
-    internal bool ReadsLetValue(BoundOrigin end, Koto use) => !ReferenceEquals(this.RegionValueAtUse(end, use), end);
+    // Whether `end` holds a `let` region of the use's body, which a use reads as its value (RegionValueAtUse), published as an inclusion
+    // (O-400 (b)): a region whose value is an equality (LocalRegion.Equality) equals it, so it is none and the value reading decides (SPEC
+    // 15.3.6 "Unless fixed by equality"; DECISIONS R8-M56 as amended, C-548).
+    internal bool ReadsLetValue(BoundOrigin end, Koto use)
+    {
+        for (var i = 0; this.regionValues != 0 && i < (end.Kind == OriginKind.Intersection ? end.Operands.Count : 1); i++)
+        {
+            if (this.ValueRow(end.Kind == OriginKind.Intersection ? end.Operands[i] : end, BodyOwner(use)) is { Equality: false })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether `end` holds a region of the use's body with a published value, an inclusion or an equality, which a use reads as that value
+    // (RegionValueAtUse changes it): the comparison leaves a row over it only where the values prove it (LeavesBodyRows, O-400 (b)).
+    internal bool ReadsAsValue(BoundOrigin end, Koto use) => !ReferenceEquals(this.RegionValueAtUse(end, use), end);
 
     // The order in which a judgment fails a relation: Refuted before Unknown before Unrepresentable.
     private static int Severity(OriginJudgment judgment) => judgment switch
@@ -451,10 +469,10 @@ public sealed partial class Binding
             var operand = conjuncts == 1 ? longer : longer.Operands[i];
             if (HasLocalRegion(operand) && (conjuncts == 1 || !this.ProvesOriginOutlives(operand, shorter, use, comparison, condition)))
             {
-                // O-400 (b): a row over a `let` region of the use's body only where its ends' values prove it too, as every use of the
-                // compared Type reads them; otherwise the condition fails (ComparedRegionLimit classes it). A row over `var` regions alone
-                // is as before.
-                if ((this.ReadsLetValue(operand, use) || this.ReadsLetValue(bound, use)) && this.JudgeOriginRelation(this.OriginAtUse(operand, use), this.OriginAtUse(bound, use), use, this.formingBody, condition) != OriginJudgment.Proven)
+                // O-400 (b): a row over a region of the use's body with a value only where its ends' values prove it too, as every use of
+                // the compared Type reads them; otherwise the condition fails (ComparedRegionLimit classes it). A row over `var` regions
+                // alone is as before.
+                if ((this.ReadsAsValue(operand, use) || this.ReadsAsValue(bound, use)) && this.JudgeOriginRelation(this.OriginAtUse(operand, use), this.OriginAtUse(bound, use), use, this.formingBody, condition) != OriginJudgment.Proven)
                 {
                     return false;
                 }

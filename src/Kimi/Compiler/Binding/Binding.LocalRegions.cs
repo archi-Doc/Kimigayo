@@ -13,10 +13,11 @@ namespace Kimi.Compiler;
 // The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's D-9 line): the find reads the library layer's part first, then the
 // running pass's, and a new row goes into the running pass's. The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 // Output (PLAN G492-a (ii); R7-O2 A1): a `let` local's region has a value, the Origin its declaration fixes for the slot
-// (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region;
-// a slot that the local's equality fixes, `let` or `var`, is a region whose value is the equality's other end (FixedRegion; SPEC 15.3.6
-// "Unless fixed by equality", PLAN G1369). Its readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read
-// through it) and RegionValuesAt (a Type), RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
+// (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region,
+// an inclusion (the value outlives the region); a slot that the local's equality fixes, `let` or `var`, is a region whose value is the
+// equality's other end, an equality (FixedRegion, LocalRegion.Equality; SPEC 15.3.6 "Unless fixed by equality", PLAN G1369). Its
+// readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type),
+// RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
 // one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
 // body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
@@ -543,7 +544,7 @@ public sealed partial class Binding
     {
         if (origin.Kind != OriginKind.Intersection)
         {
-            return this.Region(origin) is { Value: { } value } region && ReferenceEquals(region.Body, body) ? value : origin;
+            return this.ValueRow(origin, body)?.Value ?? origin;
         }
 
         var first = 0;
@@ -577,17 +578,23 @@ public sealed partial class Binding
         return resolved;
     }
 
+    // The row of `origin` where it is a region of `body` with a published value, which that body reads as the value; null otherwise.
+    private LocalRegion? ValueRow(BoundOrigin origin, Koto? body)
+        => this.Region(origin) is { Value: not null } region && ReferenceEquals(region.Body, body) ? region : null;
+
     // A `let` region's value (RegionValueAtUse), published by its declaration once per binding of it, read through the earlier regions of
     // the same body; also the region's one bound, so a nested body that reads the region through its sources (DECISIONS BU-127) reads
-    // that value's. A re-binding publishes the same region again (the same slot) with its value read anew.
-    private void PublishRegionValue(BoundOrigin region, BoundOrigin value, Koto evidence)
+    // that value's. A re-binding publishes the same region again (the same slot) with its value read anew. Published as an inclusion;
+    // FixedRegion makes an equality-fixed slot's an equality (LocalRegion.Equality).
+    private LocalRegion PublishRegionValue(BoundOrigin region, BoundOrigin value, Koto evidence)
     {
         var record = this.WrittenRegion(region);
         record.Body = BodyOwner(region.Binder!);
-        record.Value = null;
+        (record.Value, record.Equality) = (null, false);
         record.Value = this.RegionValueIn(value, record.Body);
         this.regionValues++;
         this.RecordRegionBound(record.Value, region, evidence);
+        return record;
     }
 
     // O25 (PLAN G949 S1-1, R): every row of the running part has its sources for the run's version, so no later pass forms a source
@@ -626,7 +633,7 @@ public sealed partial class Binding
             region.Sources.Clear();
             region.Row = OriginVariance.Unused;
             region.Version = -1;
-            region.Value = null;
+            (region.Value, region.Equality) = (null, false);
             region.Body = null;
             region.Solved = null;
             (region.Solution, region.SolutionVersion) = (null, -1);
@@ -833,6 +840,11 @@ public sealed partial class Binding
         internal List<Koto> Values { get; } = new();
 
         internal BoundOrigin? Value { get; set; }
+
+        // How the value is published (DECISIONS R8-M56 as amended, PLAN G1369, C-548): an inclusion (false: the value outlives the region,
+        // which may lie inside it), or an equality (true: a slot fixed by equality, FixedRegion, bounded both ways, SPEC 15.3.6 "Unless
+        // fixed by equality"). Written with the value (PublishRegionValue, FixedRegion); read by O-400 (b)'s limit alone (ReadsLetValue).
+        internal bool Equality { get; set; }
 
         internal Koto? Body { get; set; }
 

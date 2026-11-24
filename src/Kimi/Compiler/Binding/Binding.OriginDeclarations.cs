@@ -639,12 +639,13 @@ public sealed partial class Binding
     }
 
     // A local's slot `pending` an equality fixes to `value` (SubstituteOriginEqualities): its region at `slot`, its row the slot's in the
-    // local's Type (invariant for a slot of an initializer's written Type), publishing `value` as the region's value (DECISIONS R8-M56).
+    // local's Type (invariant for a slot of an initializer's written Type), publishing `value` as the region's value, an equality (DECISIONS
+    // R8-M56 as amended, C-548).
     private BoundOrigin FixedRegion(Koto local, BoundOrigin pending, BoundOrigin value, int slot)
     {
         var row = (local as VariableKoto)?.TypeKoto?.BoundType is { } type ? this.OccurrenceVariance(type, pending, this) : OriginVariance.Unused;
         var region = this.LocalRegionSlot(local, slot, row == OriginVariance.Unused ? OriginVariance.Invariant : row);
-        this.PublishRegionValue(region, value, local);
+        this.PublishRegionValue(region, value, local).Equality = true;
         return region;
     }
 
