@@ -84,7 +84,9 @@ public sealed partial class Binding
     }
 
     // The body a declaration `owner` owns is formed in (the local rule above): a local's declaring body whoever demands it; the demander's
-    // context for any other owner (a Property's own syntax with no body, BindHeader; a Type's, an alias's, a function's).
+    // context for any other owner (a Property's own syntax with no body, BindHeader; a Type's, an alias's, a function's). Contract: the
+    // index walk declares every local with its body (IndexNode); a local it did not declare, or declared with none, is a broken contract,
+    // an InternalInvariant without recovery (one fault for both).
     private ExecutableBody FormingBodyOf(Koto? owner)
     {
         if (owner is not FieldKoto local)
@@ -92,7 +94,7 @@ public sealed partial class Binding
             return this.formingBody;
         }
 
-        var body = this.symbols[local].DeclaringBody;
-        return body.IsBody ? body : throw new InvalidOperationException("A local has no declaring body (InternalInvariant; PLAN G1369).");
+        return this.symbols.TryGetValue(local, out var symbol) && symbol.DeclaringBody is { IsBody: true } body
+            ? body : throw new InvalidOperationException("A local has no declaring body (InternalInvariant; PLAN G1369).");
     }
 }
