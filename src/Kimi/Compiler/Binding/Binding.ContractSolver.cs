@@ -1121,11 +1121,6 @@ public sealed partial class Binding
                         binding.DependentConstraint(constraint, contractSelf: true))
                     {
                         this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol), declaration.ClauseStorage[this.next - 1]);
-                        if (Environment.GetEnvironmentVariable("KIMI_TRACE_C25") is not null) // TRACE-TEMP c2-5a P0
-                        {
-                            Console.Error.WriteLine($"TRACE-TEMP c25 supply anc={this.ancestor} shape={shape.Symbol.Type} shapeBound={IsBoundContractReference(shape.Symbol)} decl={declaration.Symbol.Type} declBound={IsBoundContractReference(declaration.Symbol)} self={self} clause=[{TraceC25(constraint)}] clauseContractBound={(constraint.Contract is { } cc ? IsBoundContractReference(cc) : null)} premise=[{TraceC25(this.Current.Premise!)}]");
-                        }
-
                         this.next++;
                         return true;
                     }
@@ -1134,9 +1129,5 @@ public sealed partial class Binding
 
             return false;
         }
-
-        private static string TraceC25(BoundConstraint c) // TRACE-TEMP c2-5a P0
-            => c.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not ? $"{c.Kind}({(c.Left is { } l ? TraceC25(l) : null)}, {(c.Right is { } r ? TraceC25(r) : null)})"
-            : $"{c.Kind} {c.Subject} {c.RequiredType} {c.Contract?.Type}";
     }
 }
