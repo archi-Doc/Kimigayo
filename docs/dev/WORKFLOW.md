@@ -28,7 +28,8 @@ This document owns who plans, designs, reviews, implements and lands a change. P
   implementing unit. Where a rule says a unit records something in a document, the Coordinator edits it on the session's request.
 - AGENTS, SPEC and IMPL changes get an independent review by an agent who did not write them; no other document needs review.
   Policy documents still change only on the owner's explicit instruction (AGENTS Documentation).
-- A session that needs a document change adds a row with the proposed text to the board's document requests. The Coordinator handles
+- A session that needs a document change adds a row with the proposed text to the board's document requests, patch-ready: per
+  document the anchor and the complete new text, quoting the old text where a sentence changes (DECISIONS Q24). The Coordinator handles
   the requests when a window opens or closes and every 30 minutes. A message only points at a row that needs an answer.
 - A DECISIONS entry is drafted by the implementer (state file or request row) and landed by the Coordinator in the window that lands
   the unit.
@@ -244,7 +245,8 @@ PLAN's open issues hold one row per cause (DECISIONS Q17).
 A window merges queued units onto dev, verifies them once and lands them together (DECISIONS Q15).
 
 - **Entry.** A unit enters when its review is ACCEPT, its unit checks (Unit verification, no Session of its own: DECISIONS Q20) passed on a base at most two windows old, and its queue row
-  names its branch head (the Coordinator's docs commit included) and its expected record and acceptance moves.
+  names its branch head (the Coordinator's docs commit included) and its expected record and acceptance moves. A unit that changes
+  runtime code or code generation also names its O2 kernel A/B against the newest dev (DECISIONS Q24).
 - **Moves.** A unit moves acceptance when a program it changes goes from rejected to accepted or back; it moves records when only
   the records of programs that stay rejected change.
 - **Size.** At most five units that move records or acceptance, and at most one unit that moves acceptance per area (Front, Middle,
@@ -255,7 +257,8 @@ A window merges queued units onto dev, verifies them once and lands them togethe
   next window, in order of readiness.
 - **Run.** The Coordinator merges the units onto dev, builds the solution with warnings as errors and runs the heavy set once: the
   default Session with the diagnostic snapshot against the shared base and every native fixture (a fixture whose inputs match the
-  base's passed result within 24 hours is reused, VERIFICATION), the milestones, the CLI harnesses and a semantic write. The
+  base's passed result within 24 hours is reused, VERIFICATION), the milestones, the CLI harnesses (`test-cli` only when the
+  window changes the command line's paths, DECISIONS Q24) and a semantic write. The
   window's opening line names each unit's expected moves; any other snapshot difference fails the window.
 - **Failure.** A failing unit leaves the window and the window runs again. When a failure names no unit, the units are split in
   halves until it does.
