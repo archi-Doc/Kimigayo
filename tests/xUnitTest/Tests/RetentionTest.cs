@@ -1382,8 +1382,7 @@ public sealed partial class RetentionTest
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => _ = Raw.readVolatile(p)\n", "readVolatile", "result {0 Content}")]
-    [InlineData("let p: raw/u64 = Raw.allocate(1)\nunsafe => _ = Raw.readVolatile(p)\n", "readVolatile", "")] // The owner's C-527 Q1 (a): T = u64 can carry no Loan or address, so its result keeps no read through p.
+    [InlineData("let p: raw/u64 = Raw.allocate(1)\nunsafe => _ = Raw.readVolatile(p)\n", "readVolatile", "")] // The owner's C-527 Q1 (a): T is PrimitiveInteger, which can carry no Loan or address, so the result keeps no read through p (it kept "result {0 Content}").
     [InlineData("let p: raw/u64 = Raw.allocate(1)\nunsafe => Raw.writeVolatile(p, 1)\n", "writeVolatile", "store 0: own {1 Value}, reached {}")]
     [InlineData(Pp + "var x = Pp.init(p: null)\nKimi.Intrinsics.replace(x@uniq, with: Pp.init(p: null))\n", "replace", "store 0: own {1 Value}, reached {}")]
     [InlineData(Pp + "var x = Pp.init(p: null)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: Pp.init(p: null))\n", "exchange", "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
