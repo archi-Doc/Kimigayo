@@ -1039,10 +1039,12 @@ public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
     internal int Problem { get; init; } = -1;
 }
 
-/// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>
-public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount)
+/// <summary>Summarizes the current pass. Provisional completion never certifies a final program; a Final pass is complete when it rejected
+/// no part: no node Unresolved or Invalid and no Resolved node with a published problem of its own (LimitedCount: a located limit beside
+/// its Resolved node, PLAN G254c, or a report's Defect, an Internal record).</summary>
+public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount, int LimitedCount = 0)
 {
-    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
+    public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0 && this.LimitedCount == 0;
 }
 
 /// <summary>A validated <c>#LibraryImport</c> declaration: the imported function's symbol, its external symbol, the supply kind
@@ -1061,17 +1063,13 @@ internal enum OriginJudgment : byte
     Unrepresentable,
 }
 
-// SPEC 10.5: why a single generic function reference's slots did not bind from its fixed expected call signature (its TypeMismatch_Kd
-// reads the declaration's own signature then): no binding fits structurally, a bound argument fails its Constraints, the bindings of one
-// slot differ only in their Origins, or a bound argument would hold an input Origin that is bound at each call; or (SlotVariables, any
-// candidate) a slot's distinct bindings would take slot variables, which a reference does not solve: the located Unsupported_Kd (G1128).
+// SPEC 10.5: whether a generic function reference's slots bound from its fixed expected call signature, the one fact its readers need:
+// Unbound (a single candidate's TypeMismatch_Kd then reads the declaration's own signature), or SlotVariables (any candidate): a slot's
+// distinct bindings would take slot variables, which a reference does not solve, the located Unsupported_Kd (G1128).
 internal enum ReferenceSlotFailure : byte
 {
     None,
-    Structure,
-    Constraint,
-    OriginConflict,
-    InputOrigin,
+    Unbound,
     SlotVariables,
 }
 

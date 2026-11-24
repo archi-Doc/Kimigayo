@@ -15,13 +15,18 @@ namespace Kimi.Compiler;
 // - Inputs: a formed Type and the open consultation frame's node (PLAN G651 U1): the walk's (BindNode's node, BindType's syntax); a
 //   judgment frame's use, the node a validation check's Language record names (a Constraint clause, then its owner; a constructed Type
 //   node; an environment's owner; an agreement's first path); a site frame's element, whose facts a pass publishes (a source state's
-//   declaration, an override's premises, the conformance PrepareAssociatedBindings resolves).
+//   declaration, an override's premises, the conformance PrepareAssociatedBindings resolves); a judgment's proof query's site frame,
+//   opened at its node by the outermost proof scope where none is open (BeginProof, OpenQuerySite; R7-C6 a). A frame is a site only
+//   while the pass produces its failures (RunSite).
 // - Outputs: the site's failure (BindingFailure.TypeHeightLimit, its first failure only); a refused node publishes no Type, so a node
-//   reading it rests on it (SPEC 23.1.2, 8.3.3 Limits) and a later failure of the same node is not recorded.
+//   reading it rests on it (SPEC 23.1.2, 8.3.3 Limits) and a later failure of the same node is not recorded; inside a capability work's
+//   evaluation, the proof's limit, the site's declaration's refusal (RefuseProof: one record a declaration and limit), so a verdict
+//   cached with it gives every later reader that record (R7-C6 a: the capability proof's limit; a proof keeps no growth bound of its own).
 // - Invariants: one compare per check, no table; Binding's walks recurse at most the limit plus a written layer's syntax depth
 //   (BU-112), inside the compile stack's margin (DECISIONS U-D2's entry). A refusal outside every consultation frame during the run
 //   is a broken contract: InternalInvariant_Kd at the project, never a silent null (a pass step no frame covers yet, until PLAN G651
-//   a2-a4 frame the step; a4 makes it a throw). After the run it is answered to the innermost after-run owner (PLAN G651 U2b R1): the
+//   a2-a4 frame the step; a4 makes it a throw), but inside a capability work, whose refusal is RefuseProof's at the work scope's
+//   declaration (R7-M38's no-frame rule). After the run it is answered to the innermost after-run owner (PLAN G651 U2b R1): the
 //   instance collector's answer frame (R7-T1; TyCtxt.OpenAnswer, CloseAnswer: every substitution the collector, Layout or a witness
 //   causes is inside it) or an after-run site (a MIR driver's body site and the node sites inside it; Binding's after-Check walk and the
 //   editor boundary, whose marks are dropped; TyCtxt.OpenBodySite, OpenSite). There a refusal is answered to the innermost formation
@@ -32,10 +37,10 @@ namespace Kimi.Compiler;
 //   innermost owner (AnswerSite): in the frame the collector's readers record it; in a site it marks the site, whose driver records
 //   each mark through MirReport's least-use table (R5-M171); with no owner it is a broken contract, thrown (R13.1; code generation
 //   opens none: it runs on an accepted program, whose Types the collector formed). A refusal the frame took that no formation owned is
-//   R7-T1's broken contract, which the collector's run throws after the frame's close. A consultation frame open after the run fails
-//   its node first (G881b N6; U2c). SubstituteType's family (SubstituteType, ContractType, StoredType, KeptType, StorageInstance, the
+//   R7-T1's broken contract, which the collector's run throws after the frame's close. After the run a consultation frame fails no
+//   node (RunSite; G881b N6). SubstituteType's family (SubstituteType, ContractType, StoredType, KeptType, StorageInstance, the
 //   identity judge, proof normalization, the relations' context-free fits) takes no site: its refusal reads the frame its caller holds
-//   open; the proof entries and openers name their judgment's site (QuerySite, PLAN G651 a1), where R7-C6 a's second commit opens the
+//   open; the proof entries and openers name their judgment's site (QuerySite, PLAN G651 a1), where the outermost proof scope opens the
 //   frame when none is open.
 // - Prohibitions: no check before a walk from its inputs' heights (it over-approximates); no other suppression than SPEC 23.1.2's rests.
 public sealed partial class Binding
@@ -74,6 +79,11 @@ public sealed partial class Binding
         /// <summary>A node site inside a body site: a read marks it at its subject.</summary>
         Node,
     }
+
+    // The run's site: the open consultation frame's node while the pass produces its failures; none after the pass, where a query fails
+    // no node (R7-M38; PLAN G651 U2). The one test of "a site to record at" for RefuseHeight and RefusedConformance (G651 U2c's predicate;
+    // R7-C6 a carries it where it lands first).
+    private Koto? RunSite => this.producing ? this.consultationNode : null;
 
     /// <summary>Opens the answer frame of the instance collector's run (TyCtxt.OpenAnswer, its only opener; R7-T1): a refusal of a Type
     /// higher than the limit inside it, with no consultation frame open, is answered, not recorded; it is the innermost after-run owner,
@@ -242,10 +252,22 @@ public sealed partial class Binding
 
     // A refusal of a Type higher than the limit, recorded at the current site, else answered to the open frame's innermost formation,
     // else during the run the site-less record (PLAN G651 a4's arm) and after it the innermost after-run owner's; null, the refused
-    // formation's image.
+    // formation's image. Inside a capability work's evaluation, in every pass state, the refusal is the proof's limit (L, DECISIONS
+    // BU-22): the site's declaration's refusal (RefuseProof: one record a declaration and limit, at the declaration's first refused site;
+    // with no frame open the work scope's declaration, R7-M38), on which a later refusal of the declaration and every reader of a verdict
+    // cached with it rest (SPEC 8.3.3 Limits, 23.1.2; O-321 (b); RestsOnRecoveryOrLimit): the engine's works are keyed by a scope, not a
+    // declaration, so a nested block's or Closure's work forms the Type again (R7-C6 a, F's C8 rulings 6 and 13). After the pass
+    // RefuseProof fails no node, so the work answers Unknown with no record, as the round bound's (a lint's, MIR's or the editor's
+    // question is no judgment). Every other frame, a validation pass's included, keeps its own record (BU-161; F's C2 ruling 257 (2)).
     private BoundType? RefuseHeight()
     {
-        if (this.consultationNode is { } site)
+        if (this.capabilityConsumer is { } work)
+        {
+            this.RefuseProof(this.RunSite is { } judged ? this.ConstraintScope(judged) : work.Scope, BindingFailure.TypeHeightLimit);
+            return null;
+        }
+
+        if (this.RunSite is { } site)
         {
             return this.Fail(site, BindingFailure.TypeHeightLimit);
         }
@@ -304,7 +326,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.consultationNode is not null)
+        if (this.RunSite is not null)
         {
             this.RefuseHeight();
         }

@@ -5,13 +5,16 @@
 // programs' TyCtxt (MirAnalysis's), whose instances' stored Types the paths read. Output:
 // the paths numbered in pre-order, so a subtree is the range [path, End), each with its step from its parent, and the path of each Place.
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and
-// argument; a constructor's _0 has a child per Field with a stored Type, the Fields it places (MirBuilder.Stored; SPEC 23.1.2), and its
-// base. A PairLayer step is transparent: it is the Place itself in the owner case, and the accesses of a reference case end before it
-// (MirInit). Deref and Index end a path: an access through them is an access of the prefix's path, and a Move through them has no Move
-// Path, except into a raw Place, a raw pointer's Deref however read or its TyCtxt.RawPart parts (an untracked Take; PLAN G672). Roots
-// whose events all lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and
-// numbered after the flow roots, so a head stores only the flow paths. A path admits one placement when its root is a let binding or it
-// lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
+// argument; a constructor's _0 has a child per Field it places (MirBuilder.Stored, by the one projection rule MirBody.SelectsPart: of no
+// Type where the Field's own slot failed; SPEC 6.3.5, 23.1.2) and its base. That relies on Binding's contract (DECISIONS BU-250): every
+// constructor write into an own Field whose slot failed is that Field Place, but an update's target, a derived write until PLAN G1340
+// that defines nothing, as A1's update of an Uninitialized typed Field defines nothing (PLAN G1114: the exit's record is the typed
+// twin's dependent second one). A PairLayer step is transparent: it is the Place itself in the owner case, and the accesses of a reference
+// case end before it (MirInit). Deref and Index end a path: an access through them is an access of the prefix's path, and a Move through
+// them has no Move Path, except into a raw Place, a raw pointer's Deref however read or its TyCtxt.RawPart parts (an untracked Take; PLAN
+// G672). Roots whose events all lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are
+// chain-local and numbered after the flow roots, so a head stores only the flow paths. A path admits one placement when its root is a let
+// binding or it lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
 // Each placing location's facts (SPEC 14.10.3; DECISIONS R4-M175), which A1 applies: an Assign's Never parts, the components of its
 // destination that its construction leaves unplaced, as their operand is the Never value, and its carries, the paths of a temp it takes
 // whose own state A1 copies onto the destination's counterpart on each path: the temp's tracked parts and, for a whole temp that may hold
@@ -139,7 +142,7 @@ internal sealed class MirMoveData(TyCtxt types)
             var self = body.Locals[0].Type!; // A constructor's object, its struct's Type (MirBuilder.Body), never of no Type.
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
-                if (AdtDef.FieldType(types, self, i) is not null)
+                if (MirBody.SelectsPart(types, self, MirProjectionKind.Field, i, out _))
                 {
                     var field = this.Child(0, MirProjectionKind.Field, i);
                     (this.once[field], this.named[field]) = (AdtDef.PlacedOnce(self, i), true);
