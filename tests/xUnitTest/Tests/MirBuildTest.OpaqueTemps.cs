@@ -12,14 +12,15 @@ namespace XunitTest;
 public sealed partial class MirBuildTest
 {
     // SPEC 23.1.2, 3.6, 13.5.6 (PLAN G247; DECISIONS R4-M149, amending R4-M109 (a) and L1): a lending rvalue over a Place rooted at an
-    // Opaque temp (the derived value of `w`, `h` or `b`, each use of which fails its Type's constraint: S2 is neither a Dictionary key nor
-    // Equatable) is its consumer's derived value, an Opaque whose site names the temp. The forms: a Borrow of a Field chain, in
-    // parentheses, of the rejected name itself, an address; an upcast's view; a runtime index's guard and its element's Borrow, also with
+    // Opaque temp (the derived value of `w`, `h` or `b`, each use of which rests on its unresolved Type: the key `Missing` names nothing,
+    // a local of no Type, PLAN G1073) is its consumer's derived value, an Opaque whose site names the temp. The forms: a Borrow of a
+    // Field chain, in parentheses, of the rejected name itself, an address; an upcast's view; a runtime index's guard and its element's
+    // Borrow, also with
     // a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback; a method's receiver;
     // a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a Place in the temp). A
-    // getter-only Property's update lends nothing: its read is a call over W<S2>, which reports W<S2>'s constraint at the read as
-    // `w.touch()` does at its call (PLAN G214; before, the getter took its own derived value of the receiver, DECISIONS R4-M109), so the
-    // update is that failed read's derived value, and nothing of it lends; since DECISIONS Z27 the update's site names its target's kept
+    // getter-only Property's update lends nothing: its read is a call whose receiver `w` rests on its unresolved Type (PLAN G214; before,
+    // the getter took its own derived value of the receiver, DECISIONS R4-M109), so the update is that failed read's derived value, and
+    // nothing of it lends; since DECISIONS Z27 the update's site names its target's kept
     // receiver, w's derived value in its Opaque temp, as an enclosing use (derived; fail-before: w's root, no derived value). The
     // valid twin (an i32 key) lends the local each time and holds no Opaque value or construction record (R5's guard that a complete
     // compilation never reaches Unlent); a literal's Borrow, valid in both, lends its materialized temporary (implementation review 1's
@@ -52,10 +53,10 @@ public sealed partial class MirBuildTest
     [InlineData("let p = (1)@ref", "Shared temp", "Shared temp")]
     public void AnOpaqueTempLendsNothing(string statement, string failed, string valid)
     {
-        foreach (var (key, expected) in new[] { ("S2", failed), ("i32", valid) })
+        foreach (var (key, expected) in new[] { ("Missing", failed), ("i32", valid) })
         {
             var c = Compile(RejectedRoots(key) + "    " + statement + "\npublic func main() => ()\n");
-            Assert.Equal(key == "S2", c.Binding.Issues.Any());
+            Assert.Equal(key == "Missing", c.Binding.Issues.Any());
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
@@ -70,7 +71,9 @@ public sealed partial class MirBuildTest
     }
 
     // A function `f<s/T>(value: s/T)` whose locals `w` (a struct), `h` (a Dictionary) and `b` (a struct of a pair-typed item) take a key
-    // Type: S2, neither a Dictionary key nor Equatable, so that each use of them fails its Type's constraint, or i32, the valid twin; `t`
+    // Type: `Missing`, which names nothing, so that each local's written Type is unresolved and each use of it rests (a local of no Type,
+    // MirLocal's own Opaque source; PLAN G1278: a written Type with a failed clause is judged only where it is written, so its locals'
+    // uses carry it and lend), or i32, the valid twin; `t`
     // is a valid string the independent-error rows move. Its statements follow (AnOpaqueTempLendsNothing, MirBorrowsTest's
     // AnOpaqueTempKeepsTheIndependentRecords).
     internal static string RejectedRoots(string key) => $$"""
@@ -79,9 +82,6 @@ public sealed partial class MirBuildTest
             protected init(size: i32) => self.size = size
         struct Square : Shape
             public init(size: i32) : base(size) => ()
-        struct S2
-            public var v: i32 = 0
-            public init() => ()
         struct In
             public var n: i32 = 0
             public init() => ()

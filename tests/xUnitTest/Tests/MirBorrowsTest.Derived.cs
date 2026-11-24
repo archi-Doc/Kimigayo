@@ -132,8 +132,8 @@ public sealed partial class MirBorrowsTest
     }
 
     // SPEC 23.1.2, 3.6 (PLAN G247; DECISIONS R4-M149): an Opaque temp is no storage, so a Borrow kept past its statement that would lend
-    // a Place in one (MirBuildTest.AnOpaqueTempLendsNothing; MirBuildTest.RejectedRoots: each use of `w` and `h` fails its Type's
-    // constraint) carries no Loan, and A5 reports no conflict derived from the failed root, while the records independent of it stay: a
+    // a Place in one (MirBuildTest.AnOpaqueTempLendsNothing; MirBuildTest.RejectedRoots: each use of `w` and `h` rests on its
+    // unresolved Type) carries no Loan, and A5 reports no conflict derived from the failed root, while the records independent of it stay: a
     // move in a runtime index, a range boundary, a key, a method's argument, an assigned value and an update's right operand (A1), and an
     // unrelated local's conflict (fail-before: a ComparisonLoanConflict_Kd at the root where a Borrow of it is kept). A conflict between two
     // uses Binding rejected goes with them (the twin's write while borrowed; R4-M149's lost class), and so does the temporary's conflict
@@ -154,10 +154,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("let p = 1@ref\n    let k = p@follow", "f: 1", "f: 1")]
     public void AnOpaqueTempKeepsTheIndependentRecords(string body, string failed, string valid)
     {
-        foreach (var (key, expected) in new[] { ("S2", failed), ("i32", valid) })
+        foreach (var (key, expected) in new[] { ("Missing", failed), ("i32", valid) })
         {
             var c = MirBuildTest.Compile(Prelude + MirBuildTest.RejectedRoots(key) + "    " + body + "\n");
-            Assert.Equal(key == "S2", c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd));
+            Assert.Equal(key == "Missing", c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.UnresolvedBinding_Kd));
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             new Stratum(c.Types).Run(program);
