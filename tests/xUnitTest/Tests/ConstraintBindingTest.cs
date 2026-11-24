@@ -181,11 +181,14 @@ public class ConstraintBindingTest
 
     // The owner's O-44: a conformance reads no signature's formation, so a declaration that fails after the bodies keeps its own record and fails
     // no conformance naming it. LateAssociated's goes through the binding's own formation (R7-V5's S3). DECISIONS Q13 for the removed records.
+    // PLAN G464 (SPEC 15.6.4 step 3, 8.2.3, 23.1.2; DECISIONS Q13, dependent): a call no longer forms its instantiated inputs, so a failed
+    // declaration named only in a call's input gives the call no record (LateClause, LateAfterItsReaders, LateThroughAClosedClause); one
+    // named in its result keeps its dependent record through the result's formation (LateWithUses, LateAssociated).
     [Theory]
-    [InlineData(LateClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateClauseValid, "clean")]
-    [InlineData(LateAfterItsReaders, "3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateThroughAClosedClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAfterItsReaders, "2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateThroughAClosedClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateWithUses, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateAssociated, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the user's record reads S's failed closed clause and rests (SPEC 23.1.2)
     public void ALateFailureStaysAtItsDeclaration(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
@@ -664,6 +667,18 @@ public class ConstraintBindingTest
     [InlineData("func g(x: ref/Box<S>) => ()", "UnsatisfiedConstraint_Kd 7:15 Box<S>")]
     public void ALayerFormingItsOperandsTypeIsThatOccurrence(string declaration, string records)
         => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n").Order(StringComparer.Ordinal)));
+
+    // PLAN G464 (SPEC 23.1.2, 8.3, 15.3.4; the Front's C-535 t1, t1f, t2, t3): the layers over a failed written occurrence rest on it
+    // (RestLayersOnType), and an outer occurrence's own failure, a borrow layer's relation and a nested result's relation stay
+    // independent records (t1, t1f: `Box<string> is i32` and `() -> Box<string> is i32` are Refuted at the outer Box too; t2: the
+    // Field's own record stays beside them); only a Field's record restating its written occurrence goes (t3, DECISIONS Q13, rule W).
+    [Theory]
+    [InlineData("func f(b: Box<Box<string>>) -> i32 => 0\n", "2*UnsatisfiedConstraint_Kd")] // t1
+    [InlineData("func f(b: Box<() -> Box<string>>) -> i32 => 0\n", "2*UnsatisfiedConstraint_Kd")] // t1f
+    [InlineData("struct H {q}\n    public let g: ref/(Box<string>, ref/i32 during q) during static\n", "1*UnprovenOriginRelation_Kd 2*UnsatisfiedConstraint_Kd")] // t2
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let g: () -> (Box<string>, Option<T during q>)\n", "1*UnprovenOriginRelation_Kd 1*UnsatisfiedConstraint_Kd")] // t3
+    public void ALayerOverAFailedOccurrenceKeepsTheIndependentRecords(string declaration, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("struct Box<T>\n    T is i32\n" + declaration));
 
     // SPEC 7.5: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]

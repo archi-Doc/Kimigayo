@@ -379,6 +379,7 @@ internal struct NodeColumns
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, a memo of a final fact of its syntax valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next ResetPass), released at the freeze (Binding.ElementAccess.cs).
     internal StampedColumn<(uint Publication, HirAdjust Take, bool Input), Binding.PassCounter> FormReads; // Work: the HIR publisher's (Binding.Hir.cs) publication in which its Error's form took a node, the take that read its whole Place (else default) and whether it was an invocation's input, a row of another publication absent, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
+    internal StampedColumn<bool, Binding.PassCounter> JudgedOccurrences; // Work: whether JudgeOccurrence judged a written Type occurrence in the running pass, its per-pass query's memo, released at the freeze (Binding.ConstraintValidation.cs).
     internal PagedColumn<Binding.Specialization?> SpecializationStorage; // Kept: a specialization's entry, its slot arrays reused by every pass (Binding.Specializations.cs).
     internal StampedColumn<Binding.EarlyRead, Binding.PassCounter> EarlyReads; // Pass: a use's lookup that saw a base clause not ready, read again by VerifyEarlyReads (Binding.BaseLayers.cs).
     internal PagedColumn<BoundType?> KnownBases; // Kept: a struct's base clause's final Type from a first run, emptied by a Bind not started from it, before each fill and by an edit (Binding.BaseLayers.cs).
@@ -461,6 +462,7 @@ internal struct NodeColumns
         this.LintCompletions.Grow(length);
         this.ReachedThroughBorrow.Grow(length);
         this.FormReads.Grow(length);
+        this.JudgedOccurrences.Grow(length);
         this.SpecializationStorage.Grow(length);
         this.KnownBases.Grow(length);
         this.EarlyReads.Grow(length);
@@ -520,6 +522,7 @@ internal struct NodeColumns
         this.LintCompletions.Release();
         this.ReachedThroughBorrow.Release();
         this.FormReads.Release();
+        this.JudgedOccurrences.Release();
         this.EarlyReads.Freeze(binding);
         this.ResolvedSlices.Release();
         this.Prerequisites.Release();
@@ -602,6 +605,7 @@ internal struct NodeColumns
             LintCompletions = this.LintCompletions.Renumbered(length),
             ReachedThroughBorrow = this.ReachedThroughBorrow.Renumbered(length),
             FormReads = this.FormReads.Renumbered(length),
+            JudgedOccurrences = this.JudgedOccurrences.Renumbered(length),
             SpecializationStorage = this.SpecializationStorage.Renumbered(length),
             KnownBases = this.KnownBases.Renumbered(length),
             EarlyReads = this.EarlyReads.Renumbered(length),

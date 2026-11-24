@@ -242,7 +242,7 @@ public sealed partial class Binding
     {
         for (var i = query.Obligations; i < this.obligations.Count; i++)
         {
-            this.obligationSet.Remove(this.obligations[i]);
+            this.obligationSet.Remove(new(this.obligations[i]));
         }
 
         this.obligations.RemoveRange(query.Obligations, this.obligations.Count - query.Obligations);

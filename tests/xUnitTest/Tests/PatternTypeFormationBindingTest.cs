@@ -10,6 +10,12 @@ namespace XunitTest;
 
 public class PatternTypeFormationBindingTest
 {
+    // PLAN G464 (SPEC 15.6.1, 15.3.4): a pattern's Type holding a Function Type is formed without the nested signature, whose input is
+    // its premise, so the plan is Proven (dev: UnprovenConstraint_Kd at each pattern and Unsupported_Kd at each arm of the Pending plan).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc host(s: ref/i32, o: Option<(Option<T during s>) -> i32>) -> i32\n    return match o\n        .Some(let f) => 0\n        .None => 1\n", "clean")] // c1p
+    public void ANestedSignatureInAPatternTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("Box<string>", "_")]
     [InlineData("raw/Box<string>", "_")]

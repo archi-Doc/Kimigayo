@@ -546,7 +546,7 @@ public partial class ResultPremiseTest
     [InlineData(ClauseType + ClauseResult + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", nameof(DiagnosticCode.UnprovenOriginContract_Kd) + "|func [] () => 5|the result's well-formedness requires the borrow a outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1a: a call keeps judging its Closure argument, recording at it (the owner's D-1, 「記録は引数に」)
     [InlineData(ClauseType + ClauseResult + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1s: and adds no call record
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => true)\n\n", Mismatch + "true|expected i32, found bool")] // b2in: an input's clause is that signature's premise (R4-M137), so the callee's declaration walk does not enter it and the Closure keeps its own TypeMismatch_Kd (G374, closed by G375's structural core, DECISIONS R4-M163)
-    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "k(func [] (b) => 0)|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes, and the selected call's instantiated input fails where it occurs (DECISIONS R4-M163, Q13); the Closure's parameter `b` carries that input's Type, so its restating record goes (G1278-A, Q13; F's G1278-3); the parenthesized input `(Box<Array<i32>>)` is the written Type it holds, one occurrence and one record (R7-V1c, SPEC 8.3.1, Q13)
+    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "Box<Array<i32>>|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes (DECISIONS R4-M163, Q13); the Closure's parameter `b` carries the expected input's Type, so its restating record goes (G1278-A, Q13; F's G1278-3); the selected call no longer forms its instantiated input, whose record restated the declaration's (PLAN G464, SPEC 15.6.4 step 3; Q13, dependent); the parenthesized input `(Box<Array<i32>>)` is the written Type it holds, one occurrence and one record (R7-V1c, SPEC 8.3.1, Q13)
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => 0)\n\n")] // b2valid: b2in's valid twin is accepted at the call (dev: UnprovenConstraint_Kd at the call; an acceptance move, DECISIONS R4-M163)
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    let g = k\n    _ = g\n    return 0\n\n")] // refvalid: and at a function reference (dev: UnprovenConstraint_Kd at `k`; an acceptance move, R4-M163)
     [InlineData("public struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\n\npublic contract C\n    func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32\n\npublic struct S\n    Self is C\n    public func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32 => 0\n\n")] // ctrvalid: and in contract matching (dev: UnprovenConstraint_Kd at the conformance; an acceptance move, R4-M163)
@@ -560,6 +560,9 @@ public partial class ResultPremiseTest
     [InlineData(FixedInput)] // lpfix
     [InlineData(ClauseType + "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n    origin q outlives static\n    return 0\n\n")] // t7 with the clause
     [InlineData(ClauseType + "struct H {q}\n    origin q outlives static\n    public let f: () -> Option<T during q>\n\n")] // a Field with the clause
+    [InlineData(ClauseType + "struct H {q}\n    public let f: (Option<T during q>) -> i32\n    public init(f: (Option<T during q>) -> i32) => self.f = f@move\n\n")] // c1f: a Field's nested input is that signature's premise (SPEC 15.3.2, 15.6.1; PLAN G464: dev's UnprovenConstraint_Kd at the Field, an acceptance move)
+    [InlineData(ClauseType + "struct H {q}\n    public let g: (Option<T during q>) -> Option<T during q>\n    public init(g: (Option<T during q>) -> Option<T during q>) => self.g = g@move\n\n")] // c1fr: and its nested result is judged under it (SPEC 15.3.4; PLAN G464, an acceptance move)
+    [InlineData(ClauseType + "struct H {q}\n    public let g: () -> Option<T during q>\n    public init(g: () -> Option<T during q>) => self.g = g@move\n\n", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven")] // c1fi: each written nested result keeps its record, the Field's and the init parameter's; the Field's UnprovenConstraint_Kd, which restated the first, goes (PLAN G464; DECISIONS Q13, rule W)
     [InlineData("struct S {q}\n    origin q outlives static\n    public let f: () -> Option<S during q>\n\n    public init(f: () -> Option<S during q>) => self.f = f@move\n\n")] // a Field returning its own Type
     [InlineData("func f(u0: ref/((ref/i32) -> i32)) -> ref/((ref/i32) -> i32) during u0\n    return u0\n\n")] // f_sig_res_ok: a borrow layer holding a Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1; none here)
     [InlineData("struct S {a}\n    public let call: ref/((ref/i32) -> i32) during a\n\n")] // f_fld_ok: as f_sig_res_ok in a Field
@@ -570,7 +573,8 @@ public partial class ResultPremiseTest
     }
 
     // The local annotations that dev already judged at their occurrence keep their records (ann2, loc), and a Field's Function Type result
-    // keeps the Field's formation record beside its own (the formation check also enters Function Types; a dependent record, DECISIONS Q13).
+    // keeps its own record where it is written; the Field's formation enters no Function Type (SPEC 15.6.1, 15.3.4; PLAN G464), so its
+    // UnprovenConstraint_Kd, which restated that record, goes (DECISIONS Q13, rule W).
     // ann2's two per-call relations are their nested signatures' declaration rows, Binding's records (R7-O3 U-O3; A5's located
     // Unsupported_Kd at each until then, F-a of H5's (e) list).
     [Fact]
@@ -586,7 +590,7 @@ public partial class ResultPremiseTest
             DiagnosticCorpus.Check(loc).Diagnostics.Select(x => $"{x.Code}|{Text(loc, x.Span)}|{x.Label}"));
         var field = ClauseType + "struct H {q}\n    public let f: () -> Option<T during q>\n\n" + Main;
         Assert.Equal(
-            [nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|let f: () -> Option<T during q>|", Unproven + "Option<T during q>|requires self.q outlives static, which is not proven"],
+            [Unproven + "Option<T during q>|requires self.q outlives static, which is not proven"],
             DiagnosticCorpus.Check(field).Diagnostics.Select(x => $"{x.Code}|{Text(field, x.Span)}|{x.Label}"));
     }
 

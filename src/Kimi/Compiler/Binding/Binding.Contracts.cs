@@ -10,6 +10,11 @@ public sealed partial class Binding
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
+
+    // SPEC 8.3.3 (R7-E3 E3e ruling 20): whether the pass's final conformance decision has begun (ValidateConformances' final reset;
+    // ResetContracts clears it). Before it a program path's Unknown waits on the bound bodies' validations (BodyBinding's second source,
+    // ResolveConformance), so an answer reading it is held pending; from it every answer is the verdict.
+    private bool conformancesDecided;
     private bool bindingConstraintTypes;
 
     /// <summary>Gets legacy unconditional definition metadata. Use ResolveConformance for use-site evidence.</summary>
@@ -147,6 +152,7 @@ public sealed partial class Binding
         this.dependence = int.MaxValue;
         this.heldObligations = 0;
         this.contractHeadersReady = false;
+        this.conformancesDecided = false;
         this.bindingConstraintTypes = false;
         this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view and step are the pass's.
 
@@ -500,6 +506,8 @@ public sealed partial class Binding
             // Body/header validation may invalidate an earlier declaration-side witness of the sources. The Kimi library's
             // declarations are valid and fixed (a malformed library fails the pass), so a library conformance proven before the
             // bodies stays proven, and only an unproven one is judged again: the sources' are the program part (ImplTable's store rule).
+            // From here a program path's answer is its verdict (conformancesDecided).
+            this.conformancesDecided = true;
             foreach (var identity in this.impls.Identities.Program)
             {
                 identity.IsVerified = false;

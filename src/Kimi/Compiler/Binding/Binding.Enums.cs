@@ -936,24 +936,6 @@ public sealed partial class Binding
         return this.ReplaceHolder(stored, null);
     }
 
-    // The formation an acquisition's completed plan judges (CompleteEnumAcquisitions): its Enum Type and each payload parameter Type, where
-    // the acquisition forms its Type (BoundEnumConstruction.FormsType, PLAN G1278); one that carries its Type judges nothing.
-    private ConstraintProof EnumFormation(Koto use, BoundEnumConstruction plan, BindingScope scope)
-    {
-        if (!plan.FormsType)
-        {
-            return ConstraintProof.Proven;
-        }
-
-        var formation = this.CheckTypeConstraints(plan.Type, scope, use);
-        for (var i = 0; i < plan.PayloadOperations.Length; i++)
-        {
-            formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope, use), true);
-        }
-
-        return formation;
-    }
-
     private void CompleteEnumAcquisitions()
     {
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
@@ -975,8 +957,11 @@ public sealed partial class Binding
                 continue;
             }
 
+            // SPEC 15.6.4 step 3 (PLAN G464): the construction forms its own Type; its instantiated payloads are its inputs, whose premises
+            // are RequireInputPremises' (BindEnumConstruction), as a call's. PLAN G1278: only an acquisition that forms its Type
+            // (BoundEnumConstruction.FormsType) judges it; one that carries it judges nothing.
             var scope = this.ConstraintScope(use);
-            var formation = this.EnumFormation(use, plan, scope);
+            var formation = plan.FormsType ? this.CheckTypeConstraints(plan.Type, scope, use) : ConstraintProof.Proven;
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
