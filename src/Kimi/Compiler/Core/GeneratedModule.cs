@@ -14,7 +14,11 @@ namespace Kimi.Compiler;
 /// per library (ModuleCodegen.Libraries, by reference).</param>
 /// <param name="Externals">The external functions the module declares, one per symbol in declaration order, each read for its
 /// <c>Symbol</c> and <c>DllImport</c> (ModuleCodegen.Externals, by reference).</param>
+/// <param name="RuntimeImports">The imports the module's runtime (a test build's: the test runtime) declares and no external names, each
+/// a kernel32 import in its dllimport form (ModuleCodegen.RuntimeImports, by reference; LinkAmbiguity, T's ruling 32): with
+/// <c>Externals</c>, every external the module declares, each once.</param>
 internal readonly record struct GeneratedModule(
     OutputKind OutputKind,
     IReadOnlyList<(string Library, string Kind)> Libraries,
-    IReadOnlyList<ExternalFunction> Externals);
+    IReadOnlyList<ExternalFunction> Externals,
+    IReadOnlyList<string> RuntimeImports);

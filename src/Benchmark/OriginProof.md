@@ -18,7 +18,7 @@ measurement control, never a language rule. A case reports its cold Binding and 
 reports timed the legacy ownership pass and its proof requests), the proof counters of
 `OriginProofMetrics` (Binding's top-level requests and premise closures, nested environments, nodes, edges and meet
 incidences with the largest environment, worklist insertions, edge activations and operand decrements, closures over their
-work bound, the time spent building and closing environments, edges per catalog rule and distinct normalized queries), the
+work bound, the time spent building and closing environments and edges per catalog rule), the
 outcome codes and, while one check stays below a second, the median of five warm checks after four warm-ups and one more warm
 check with the counters on, which reports the share of that check spent in environments and closures. The report records compiler and benchmark module identities,
 configuration and platform. The U0 baseline (`artifacts/benchmarks/g74-u0`) predates the closure and reports the previous

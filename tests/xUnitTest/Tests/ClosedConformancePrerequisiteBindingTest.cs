@@ -126,12 +126,15 @@ public class ClosedConformancePrerequisiteBindingTest
         }
     }
 
-    // The rounds' bound (BU-59): each round runs in the reverse of the previous round's order, so a chain of declarations whose closed
-    // clauses each rest on the next one's conformance settles in at most three rounds in either order, and the checks grow linearly.
+    // The rounds' bound (BU-59): a chain of declarations whose closed clauses each rest on the next one's conformance settles in a
+    // bounded number of rounds in every declaration order, so the checks grow linearly. The spiral order (R7-C2e2 e2-6, PLAN G838) turns
+    // the chain's direction at every link (X(n-1) in the middle, X(n-2) to its right, X(n-3) to the left, ...), so a round in either
+    // direction would settle one link only; the rounds after the first follow the reads (OrderPendingSources), so it settles in three.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void AChainOfClosedClausesSettlesInBoundedRounds(bool reverse)
+    [InlineData("forward")]
+    [InlineData("reverse")]
+    [InlineData("spiral")]
+    public void AChainOfClosedClausesSettlesInBoundedRounds(string order)
     {
         var shallow = Work(16);
         var deep = Work(64);
@@ -139,11 +142,23 @@ public class ClosedConformancePrerequisiteBindingTest
 
         int Work(int count)
         {
-            var declarations = Enumerable.Range(0, count).Select(i =>
+            var positions = Enumerable.Range(0, count).ToList();
+            if (order == "spiral")
+            {
+                positions = [count - 1];
+                for (var i = count - 2; i >= 0; i--)
+                {
+                    positions.Insert((count - i) % 2 == 0 ? positions.Count : 0, i);
+                }
+            }
+            else if (order == "reverse")
+            {
+                positions.Reverse();
+            }
+
+            var c = Bind("public contract R: Copy\npublic struct Pair<T>\n    Self is Copy when T is R\n    var first: T\n" + string.Concat(positions.Select(i =>
                 "public struct X" + i + "\n    " + (i == count - 1 ? "i32" : "Held" + (i + 1)) + " is Copy\n    Self is Copy\n    Self is R\n" +
-                "public struct Held" + i + "\n    Self is Copy\n    var first: Pair<X" + i + ">\n");
-            var c = Bind("public contract R: Copy\npublic struct Pair<T>\n    Self is Copy when T is R\n    var first: T\n" +
-                string.Concat(reverse ? declarations.Reverse() : declarations));
+                "public struct Held" + i + "\n    Self is Copy\n    var first: Pair<X" + i + ">\n")));
             Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
             return c.Binding.SourceCheckWork;
         }
@@ -153,7 +168,7 @@ public class ClosedConformancePrerequisiteBindingTest
     [Fact]
     public void WarmFinitePrerequisiteVerificationAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\npublic struct A\n    B is C\n    Self is C\npublic struct B\n    Self is C");
+        var c = MinimalEmissionTest.Analyze("public contract C\npublic struct A\n    B is C\n    Self is C\npublic struct B\n    D is C\n    Self is C\npublic struct D\n    Self is C");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
