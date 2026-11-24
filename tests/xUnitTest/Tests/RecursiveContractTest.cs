@@ -46,7 +46,9 @@ public sealed partial class RecursiveContractTest
 
     private const string KTwice = "group H\n    public func twice<T>(x: T.(K<i32>).X) -> (T.(K<i32>).X, T.(K<i32>).X)\n";
 
-    private const string MarkHolder = "struct Holder<T>\n    T is MT<i32>\n    public var tag: i32 = 0\n    public func probe(self: ref/Self, c: ref/T.(Tree).Child)\n";
+    // b1-r5's form (SPEC 6.1.1: a Container body does not see document-local functions, so the struct calls a group's function).
+    private const string MarkHolder = "group N\n    public func needMark<V, W>(v: ref/V)\n        V is Mark<W>\n        ()\n" +
+        "struct Holder<T>\n    T is MT<i32>\n    public var tag: i32 = 0\n    public func probe(self: ref/Self, c: ref/T.(Tree).Child)\n";
 
     private const string Swap = "contract P2<A, B>: Tree, Mark<A>\n    Self.(Tree).Child is P2<B, A>\n";
 
@@ -358,15 +360,15 @@ public sealed partial class RecursiveContractTest
     [InlineData("c2-5a", "x-args2-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
     [InlineData("c2-5a", "x-args3-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
     [InlineData("c2-5a", "x-argsrow2-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
-    [InlineData("c2-5a", "b-args-v", MarkArgs + MarkHolder + "        needMark<T.(Tree).Child, i32>(c)\n", "", Explicit = true)]
+    [InlineData("c2-5a", "b-args-v", MarkArgs + MarkHolder + "        N.needMark<T.(Tree).Child, i32>(c)\n", "", Explicit = true)]
     [InlineData("guard", "x-args1-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)")]
     [InlineData("guard", "x-args2-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i64>(c)")]
     [InlineData("guard", "x-args3-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i64>(c)")]
     [InlineData("guard", "x-argsrow2-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMT<T.(Tree).Child.(Tree).Child, i64>(c)")]
     [InlineData("guard", "x-args1-nmt", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMT<T.(Tree).Child, i64>(c)")]
     [InlineData("guard", "x-args-noclause-n", "contract Tree\n    associate Child is Tree\ncontract Mark<A>\ncontract MT<A>: Tree, Mark<A>\nfunc needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i32>(c)")]
-    [InlineData("c2-5a", "b-args-n", MarkArgs + MarkHolder + "        needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
-    [InlineData("c2-5a", "b-args-mixn", MarkArgs + MarkHolder + "        needMark<T.(Tree).Child, i32>(c)\n        needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "b-args-n", MarkArgs + MarkHolder + "        N.needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: N.needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
+    [InlineData("c2-5a", "b-args-mixn", MarkArgs + MarkHolder + "        N.needMark<T.(Tree).Child, i32>(c)\n        N.needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: N.needMark<T.(Tree).Child, i64>(c)", Explicit = true)]
     [InlineData("c2-5a", "x-swap0-v", MarkArgs + Swap + "func probe<T>(t: ref/T)\n    T is P2<i32, i64>\n    needMark<T, i32>(t)\n", "", Explicit = true)]
     [InlineData("c2-5a", "x-swap1-v", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child, i64>(c)\n", "", Explicit = true)]
     [InlineData("c2-5a", "x-swap2-v", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "", Explicit = true)]
