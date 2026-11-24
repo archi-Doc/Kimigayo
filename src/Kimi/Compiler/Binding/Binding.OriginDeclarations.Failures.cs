@@ -6,8 +6,8 @@ namespace Kimi.Compiler;
 
 // The failure scope of an Origin declaration (SPEC 15.3.3, 23.1.2; DECISIONS BU-62, BU-68, R4-M118; H11b-0 B1): a failed clause fails
 // itself, not its owner, and the part each dependent rests on.
-// - Responsibility: a clause that does not bind (FailOriginClause: a guessed operator or an unavailable operand), the first such clause,
-//   `Failure`, and each one's bound Origins (FailedClauses); the slots its bound Origins name (RestsOnFailedClause); `PendingFailure`'s
+// - Responsibility: a clause that does not bind (FailOriginClause: a guessed operator or an unavailable operand), each such clause
+//   with its bound Origins (FailedClauses, its one record); the slots its bound Origins name (RestsOnFailedClause); `PendingFailure`'s
 //   one writer (RestPendingOn: path a here, path c at the Type, alias target and Case payload sites) and its reader (UnboundCause); an
 //   end that rests on a failed part (Rests; a `let` region through its published value) and rule W's one per-conjunct split
 //   (HoldsResting; DECISIONS Q13, PLAN G739). A fixed-fixed relation only a failed clause's repair could prove is a body row A5 judges
@@ -18,10 +18,10 @@ namespace Kimi.Compiler;
 // - Outputs: the clause's InvalidOrigin failure or its dependence on the unavailable operand; the named slots left Unbound; the part an
 //   Unbound atom rests on, or none; whether a conjunct holds by a resting end. Its owner's state, slot and other clauses are untouched:
 //   the declaration completes as one without the failed clause.
-// - Invariants: `Failure` and `PendingFailure` hold the first failed clause or part, and these and `FailedClauses` are reset each pass;
+// - Invariants: `PendingFailure` holds the first failed clause or part, and it and `FailedClauses` are reset each pass;
 //   RestPendingOn changes no State, so a later bind in State 1 keeps the same pending atom; a failed clause supplies no equality,
-//   outlives edge, elision evidence, obligation or premise; a clause bound in the declaring body is bound there once a pass, before any
-//   reader in that body reads the declaration, and never where a slot rests on a failed clause.
+//   outlives edge, elision evidence, obligation or premise; a clause bound in the declaring body is bound there once a pass (the declaration's
+//   state 4), before any reader in that body reads the declaration, and never where a slot rests on a failed clause.
 // - Prohibitions: no proof or judgment of its own; no write to the owner's state or slot; no failure lookup per binder (R4-M118,
 //   BU-36: a part's failure is written at its failure site); no message text.
 public sealed partial class Binding
@@ -111,7 +111,7 @@ public sealed partial class Binding
     // does name are kept (FailedClauses), and the pending slots they name rest on it (RestPendingOn, RestsOnFailedClause).
     private void FailOriginClause(OriginDeclaration declaration, OriginRelationKoto clause, BoundOrigin? left, BoundOrigin? right)
     {
-        (declaration.Forming.FailedClauses ??= new(1)).Add((left, right));
+        (declaration.Forming.FailedClauses ??= new(1)).Add((clause, left, right));
         if (IsRecovery(clause, out _))
         {
             this.Fail(clause, BindingFailure.InvalidOrigin);
@@ -121,7 +121,6 @@ public sealed partial class Binding
             this.CompleteDependent(clause, left is null ? clause.Left : clause.Right);
         }
 
-        declaration.Forming.Failure ??= clause;
         RestPendingOn(declaration, clause);
     }
 
@@ -130,9 +129,10 @@ public sealed partial class Binding
     // local the body has not typed). The first demand of the header in a body (BindHeader: BindFunction's, a call's or a function item's)
     // binds each failed clause once more, as the header's (outside any body, so a name of a local that has not formed its region keeps
     // the limit): one that binds is one of the declaration's relations from then on, a premise of its body and an obligation of each
-    // call, and its operands rest no more, as a parameter's do when BindFunction binds it again; one that does not keeps its failure.
-    // Once a pass, so no reader in the body reads the declaration without a relation a later binding would add. A declaration with a slot
-    // resting on a failed clause keeps its failed clauses: that slot completed without them.
+    // call, and its operands rest no more, as a parameter's do when BindFunction binds it again, and it leaves FailedClauses; one that
+    // does not keeps its failure. Once a pass (the declaration's state 4), so no reader in the body reads the declaration without a
+    // relation a later binding would add. A declaration with a slot resting on a failed clause keeps its failed clauses: that slot
+    // completed without them.
     private void BindFailedClausesInBody(BindingSymbol symbol)
     {
         if (!this.formingBody.IsBody || !symbol.DeclaringBody.IsBody || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration))
@@ -141,12 +141,12 @@ public sealed partial class Binding
         }
 
         var forming = declaration.Forming;
-        if (forming.Failure is null || forming.BoundInBody)
+        if (forming.FailedClauses is not { Count: > 0 } failed || forming.State != 3)
         {
             return;
         }
 
-        forming.BoundInBody = true;
+        forming.State = 4;
         foreach (var pending in forming.Pending)
         {
             if (this.ResolveOrigin(pending.Origin, declaration).Kind == OriginKind.Unbound)
@@ -158,27 +158,23 @@ public sealed partial class Binding
         var saved = this.EnterBody(default);
         try
         {
-            forming.Failure = null;
-            var clauses = OriginClauses.Get(declaration.Owner);
-            for (var i = 0; i < clauses.Count; i++)
+            var kept = 0;
+            for (var i = 0; i < failed.Count; i++)
             {
-                var clause = clauses[i];
-                if (this.RecordedState(clause) == BindingState.Resolved)
-                {
-                    continue;
-                }
-
+                var clause = failed[i].Clause;
                 var a = IsRecovery(clause, out _) ? null : this.BindOrigin(clause.Left, forming.Scope!);
                 var b = a is null ? null : this.BindOrigin(clause.Right, forming.Scope!);
                 if (a is null || b is null)
                 {
-                    forming.Failure ??= clause;
+                    failed[kept++] = failed[i];
                     continue;
                 }
 
                 forming.Relations.Add(new(this.ResolveOrigin(a, declaration), this.ResolveOrigin(b, declaration), clause.IsEquality, clause));
                 clause.BindingState = BindingState.Resolved;
             }
+
+            failed.RemoveRange(kept, failed.Count - kept);
         }
         finally
         {
@@ -194,7 +190,7 @@ public sealed partial class Binding
     {
         if (declaration.Forming.FailedClauses is { } failed)
         {
-            foreach (var (left, right) in failed)
+            foreach (var (_, left, right) in failed)
             {
                 if ((left is not null && ContainsOrigin(this.ResolveOrigin(left, declaration), atom)) ||
                     (right is not null && ContainsOrigin(this.ResolveOrigin(right, declaration), atom)))
