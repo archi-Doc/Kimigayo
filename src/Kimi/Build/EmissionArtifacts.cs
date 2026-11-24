@@ -215,7 +215,8 @@ public static class EmissionArtifacts
     }
 
     // The published module, from the generation result: the IR file with its hash, the output kind with an Application's entry and
-    // subsystem, and the external functions it declares, which the native build's object inspection reads (SPEC 22.6).
+    // subsystem, and every external function it declares, its externals then its runtime's imports (dllimport), each once, which the
+    // native build's object inspection and dependency check read (SPEC 22.6; LinkAmbiguity, T's ruling 32).
     private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, GeneratedModule module)
     {
         var library = module.OutputKind == OutputKind.Library;
@@ -225,15 +226,26 @@ public static class EmissionArtifacts
         json.WriteString("entry", library ? null : TargetProfile.Windows.EntrySymbol);
         json.WriteString("subsystem", library ? null : TargetProfile.Windows.Subsystem);
         json.WriteStartArray("externalDeclarations");
-        for (var i = 0; i < module.Externals.Count; i++)
+        foreach (var external in module.Externals)
         {
-            json.WriteStartObject();
-            json.WriteString("symbol", module.Externals[i].Symbol);
-            json.WriteBoolean("dllimport", module.Externals[i].DllImport);
-            json.WriteEndObject();
+            WriteDeclaration(json, external.Symbol, external.DllImport);
+        }
+
+        foreach (var symbol in module.RuntimeImports)
+        {
+            WriteDeclaration(json, symbol, true);
         }
 
         json.WriteEndArray();
+    }
+
+    // One external declaration: its symbol and dllimport form.
+    private static void WriteDeclaration(Utf8JsonWriter json, string symbol, bool dllimport)
+    {
+        json.WriteStartObject();
+        json.WriteString("symbol", symbol);
+        json.WriteBoolean("dllimport", dllimport);
+        json.WriteEndObject();
     }
 
     // The libraries in Ordinal name order (SPEC 20.3.2): the compiler's supplies, each its row's entry (LinkManifest), and the foreign
