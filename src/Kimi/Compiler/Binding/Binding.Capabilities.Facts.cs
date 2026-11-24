@@ -87,8 +87,10 @@ public sealed partial class Binding
     // candidate in a body that reads it so; a region a body only names stays the region, e-ownf). Removed with PLAN G936's late solve.
     private bool SolvedStatic(BoundOrigin origin, Koto? function)
     {
+        // A call region its call completed has no recorded bound, so no source reaches `static` (BU-127: no bound, no answer); its meet
+        // outlives `static` only where each operand does, so the oracle's relations are not built for it (RP8, W-346).
         if (RegionOperand(origin) is not { Binder: { } binder } region || SlotRegion(region) || !ReferenceEquals(BodyOwner(binder), function) ||
-            !this.RegionBounded(region))
+            !this.RegionBounded(region) || this.CallRegionComplete(region))
         {
             return false;
         }

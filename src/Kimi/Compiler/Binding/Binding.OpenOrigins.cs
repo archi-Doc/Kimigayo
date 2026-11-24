@@ -32,6 +32,11 @@ public sealed partial class Binding
     // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
     private readonly PerCallOriginRows perCallOrigins;
 
+    // CallRegionComplete's variance answer per call region with the bound Type it read (RP8, W-346): a binder node keeps its Type once bound
+    // and the answer is a function of that Type and the region, so the walk runs once per region and Type; call regions are interned and
+    // never reset (OpenOriginRows), so a warm pass meets its keys again and allocates nothing.
+    private readonly Dictionary<BoundOrigin, (BoundType Result, bool Covariant)> callRegionVariance = new(ReferenceEqualityComparer.Instance);
+
     // The argument whose own per-call Origin alone would satisfy a slot of the selected callee, and that callee's first Type parameter
     // whose solution holds the argument's open region (-1 when none does, displayed as the Type argument).
     internal readonly record struct PerCallOriginFact(Koto Argument, FunctionKoto Selected, int Slot);
@@ -326,8 +331,20 @@ public sealed partial class Binding
     // recomputes (Binding.TypeMemo's invariant), and every walk of that table is an existence walk or one whose revisit repeats what it
     // adds, so the nesting changes no answer; no memo (the window's RP8 Bind reading decides whether one is needed).
     private bool CallRegionComplete(BoundOrigin region)
-        => IsCallRegion(region) && region.Binder is { BoundType: { } result } && this.Region(region) is not { Parents.Count: not 0 } &&
-            this.OccurrenceVariance(result, region, this) == OriginVariance.Covariant;
+    {
+        if (!IsCallRegion(region) || region.Binder is not { BoundType: { } result } || this.Region(region) is { Parents.Count: not 0 })
+        {
+            return false;
+        }
+
+        if (!this.callRegionVariance.TryGetValue(region, out var known) || !ReferenceEquals(known.Result, result))
+        {
+            known = (result, this.OccurrenceVariance(result, region, this) == OriginVariance.Covariant);
+            this.callRegionVariance[region] = known;
+        }
+
+        return known.Covariant;
+    }
 
     // SPEC 8.1.2, 10.8: the open region of a solve's node (a call, a function reference's use) for the outer Origin that an annotated
     // occurrence of pair slot `slot`'s original leaves to other evidence; keyed apart from argument evidence and from CallRegion.
