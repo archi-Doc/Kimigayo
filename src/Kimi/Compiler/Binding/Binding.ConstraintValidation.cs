@@ -791,9 +791,9 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Error)
         {
             var cause = diagnosticCause ?? this.TakeFailedCause().Use;
-            if (cause is not null && this.RecordedFailure(use) == BindingFailure.None)
+            if (cause is not null)
             {
-                this.Consulted(cause); // SPEC 23.1.2: the proof's evidence explains its outcome, never a record the use's own check owns.
+                this.ConsultedFor(use, cause);
             }
 
             this.FailConstraint(use, cause);

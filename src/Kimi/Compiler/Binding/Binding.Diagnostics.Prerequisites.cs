@@ -17,13 +17,15 @@ namespace Kimi.Compiler;
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
 // BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
 // RequireConstraintInFrame after it); a site frame (BeginConsultation(element) around a pass element that publishes facts and records
-// no proof, DropConsultation after it). The range rule (SPEC 23.1.2), one for both writers of a node's range, EndConsultation (a frame's
-// reads) and RecordRead (a check's one read outside any frame): a check's reads explain only a failure first written by that check, so
-// a failure first written inside a frame, its own proof's write at the use included, takes the frame's reads; a failure the node held
-// when the check began (an earlier check's record: a declaration's validation before the walk binds it, a call's obligation before its
-// Types' frame, a base rule's node an earlier check failed) keeps its own inputs and gains no read, since its failure did not read
-// them. Held is a snapshot taken when the check begins (BeginConsultation; RecordRead, which its check calls before it writes): no check
-// clears its frame's node inside the frame (ClearFailure resets a node before it is bound, or re-fails one outside any frame).
+// no proof, DropConsultation after it). A node's range has three writers: EndConsultation (a frame's reads), ConsultedFor (a check's one
+// read inside a frame) and RecordRead (a check's one read outside any frame). The range rule (SPEC 23.1.2) holds for a frame's reads:
+// a check's reads explain only a failure first written by that check, so a failure first written inside a frame, its own proof's write
+// at the use included, takes the frame's reads, never a later check's one read in it (the proof's named cause, which the outcome's check
+// reads: ConsultedFor); a failure the node held when the check began (an earlier check's record: a declaration's validation before the
+// walk binds it, a call's obligation before its Types' frame) keeps its own inputs and gains no read, since its failure did not read
+// them. Held is a snapshot taken when the check begins (BeginConsultation; ConsultedFor, which its check calls before it writes): no
+// check clears its frame's node inside the frame (ClearFailure resets a node before it is bound, or re-fails one outside any frame).
+// RecordRead writes its read whatever the node holds; a caller whose node an earlier check may have failed guards it (FailBaseRule).
 // This concern preserves the existing cause order and performs no diagnostic rendering.
 // A node of a module the running pass does not bind keeps its columns, the state its own pass left: the recorder writes such a node's
 // state and failure in the pass's entry for it (PassPart.ForeignFailures), and every read of a node's state or failure here and in the
@@ -447,14 +449,20 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2: a check run outside any frame records its one read as the node's prerequisite range, the range EndConsultation writes
-    // for a frame's reads, by the range rule (none for a node that holds a failure): CompleteDependent's cause and each Place it rests,
-    // RestOnRepeatedSet's set, a failed base rule's part.
+    // for a frame's reads: CompleteDependent's cause and each Place it rests, RestOnRepeatedSet's set, a failed base rule's part.
     private void RecordRead(Koto node, Koto read)
+    {
+        this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
+        this.prerequisiteStore.Add(read);
+    }
+
+    // SPEC 23.1.2: a check's one read inside the open frame, taken before the check writes its record at `node` (RequireConstraint's
+    // named cause, its outcome's read, after the proof): it joins the frame's reads by the range rule, none for a node that holds a failure.
+    private void ConsultedFor(Koto node, Koto read)
     {
         if (this.RecordedFailure(node) == BindingFailure.None)
         {
-            this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
-            this.prerequisiteStore.Add(read);
+            this.Consulted(read);
         }
     }
 
