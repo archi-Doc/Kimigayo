@@ -13,8 +13,11 @@ public class GenericCallFormationBindingTest
     // Function Type rests on it, as an explicit argument's call does (below): a reference's explicit Type argument (t5), a constructor's
     // (t6), a Case's (t6e) and a payload-less Case's (t10) Type-application qualifier, a member call's explicit Type argument (t7). Each
     // records only the written `Box<string>`'s UnsatisfiedConstraint_Kd (DECISIONS Q13, rule W: dev's restating UnsatisfiedConstraint_Kd
-    // or NoApplicableOverload_Kd at the use goes) and publishes no decision of its own.
+    // or NoApplicableOverload_Kd at the use goes) and publishes no decision of its own. Its readers rest too (ruling 18 P1): a value call
+    // of a resting call (d1) and a call whose argument is a reference awaiting it (f6) record no NoApplicableOverload_Kd.
     [Theory]
+    [InlineData("func inc(x: i32) -> i32 => x\nfunc make<U>() -> (i32) -> i32 => inc\nfunc host() -> i32\n    return make<() -> Box<string>>()(1)\n", "make<() -> Box<string>>()")] // d1
+    [InlineData("func ku2<U>(x: i32) -> i32 => x\nfunc apply(f: (i32) -> i32, x: i32) -> i32 => f(x)\nfunc host() -> i32\n    return apply(ku2<() -> Box<string>>, 1)\n", "ku2<() -> Box<string>>")] // f6
     [InlineData("func ku<U>(f: U) -> i32 => 0\nfunc host() -> i32\n    let g = ku<() -> Box<string>>\n    return 0\n", "ku<() -> Box<string>>")] // t5
     [InlineData("struct Holder<U>\n    public let u: i32\n    public init(u: i32) => self.u = u\nfunc host() -> i32\n    let h = Holder<() -> Box<string>>.init(u: 1)\n    return 0\n", "Holder<() -> Box<string>>.init(u: 1)")] // t6
     [InlineData("enum E<U>\n    C(i32)\n    N\nfunc host() -> i32\n    let e = E<() -> Box<string>>.C(1)\n    return 0\n", "E<() -> Box<string>>.C(1)")] // t6e
