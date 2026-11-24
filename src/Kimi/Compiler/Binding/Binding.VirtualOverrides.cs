@@ -222,7 +222,7 @@ public sealed partial class Binding
 
             var self = this.SelfType(typeSymbol);
             var baseType = AdtDef.Base(this.types, self);
-            if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && baseType is null))
+            if (structure.BindingState == BindingState.Invalid || AdtDef.BaseNotStored(this.types, self))
             {
                 this.CompleteDependent(function, structure);
                 continue;

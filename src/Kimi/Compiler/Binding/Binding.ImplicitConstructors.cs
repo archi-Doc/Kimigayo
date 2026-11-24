@@ -47,9 +47,10 @@ public sealed partial class Binding
     internal OmittedBaseSelection SelectOmittedBaseConstructor(FunctionKoto constructor)
     {
         var call = constructor.BaseInitializer!;
-        if (this.BaseConstructorGroup(constructor, out _) is not { } group)
+        if (this.BaseConstructorGroup(constructor, out var parent) is not { } group)
         {
-            return new(OmittedBaseOutcome.NoBaseConstructor);
+            // SPEC 23.1.2 (PLAN G651 a2, B5): a clause that gives the selection no base rests the selection on the struct's records.
+            return parent is null ? new(OmittedBaseOutcome.Dependent, Cause: constructor.BoundSymbol!.Scope.Owner) : new(OmittedBaseOutcome.NoBaseConstructor);
         }
 
         var candidates = FunctionGroup.Of(group);

@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Mir;
 // them writes and the keys past them, each past key with the class of its layer (PastLayer), a hidden layer (OwnLayer.Hidden) with neither, and
 // whether every part there is hidden (WhollyHidden: a value that adds no reach of its own);
 // whether W reads a holder at the key by the declared step (Declared: a part there is no layer the walked Type expression writes);
-// a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run; a call input's key (InputKey);
+// a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run; a call input's key and the result's (InputKey);
 // the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
 internal sealed partial class MirBorrows
 {
@@ -118,12 +118,13 @@ internal sealed partial class MirBorrows
         return key;
     }
 
-    // A call input's key, read by W and the pun rule alike (SPEC 15.6.4, 5.7 Calls, 8.2.3; PLAN G823): a called function's parameter key
-    // (TyCtxt.ParameterKey), at which OwnLayers marks Hidden the layers its own Type parameters' bindings hold; the root key of the input
-    // for any other callee (a value, an intrinsic).
+    // A call input's key, read by W and the pun rule alike (SPEC 15.6.4, 5.7 Calls, 8.2.3; PLAN G823), and the result's at the result slot
+    // (CallRetention.ResultOutput; PLAN G841 (3)): a called function's parameter key (TyCtxt.ParameterKey; at the result, the Type its
+    // declaration writes for the result, Binding's SignatureResult), at which OwnLayers marks Hidden the layers its own Type parameters'
+    // bindings hold; the root key of the input or result for any other callee (a value, an intrinsic).
     private PlaceKey InputKey(in MirTerminator call, int position, BoundType input)
         => call.Callee is { Kind: MirCalleeKind.Fn, Symbol: { Declaration: Parsing.FunctionKoto } function } && position < call.Count
-            ? types.ParameterKey(function, MirCallee.Slot(function, position), input) : PlaceKey.Root(input);
+            ? types.ParameterKey(function, position < 0 ? position : MirCallee.Slot(function, position), input) : PlaceKey.Root(input);
 
     // A key's facts, folded from TyCtxt.OwnLayers once per program version: whether a raw layer (or an abstract part) is at the Place's own
     // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive), and whether one does

@@ -251,7 +251,8 @@ internal sealed partial class MirBuilder
     // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner); else an Opaque in an Opaque temp
     // whose site names only the receiver's root, a part built already, never the node's syntax (R5-M63, R5-M84): the located Unsupported
     // of a Place whose Type stores no such Field or has none (a Place of a Type parameter an identity premise makes a struct, SPEC 8.2.3),
-    // or the value derived from the error of a part its instance does not store (Stored; SPEC 23.1.2) or of a receiver of no Type (a
+    // or the value derived from the error of a part its instance does not store (Stored, or a base part, AdtDef.BaseNotStored: FieldOwner's
+    // Index none; SPEC 23.1.2) or of a receiver of no Type (a
     // failed slot or a value derived from one, rule W, PLAN G1073: an accessor's `storage` through its failed self, Body). The temp holds
     // the node's known Type (KnownType, rule W: the builder's one reading of a node that may have no Type): none for a Field Place over a
     // failed slot (PLAN G1184) whose receiver Place this step cannot index, such as a Type parameter an identity premise makes the struct.
@@ -259,7 +260,7 @@ internal sealed partial class MirBuilder
     {
         var known = this.body.TypeOf(receiver);
         var owner = known is { } type ? AdtDef.FieldOwner(compilation.Types, type, field) : null;
-        if (owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place)
+        if (owner is { Index: { } index } found && this.Stored(receiver, found.Layer, found.Depth, index) is { } place)
         {
             return place;
         }

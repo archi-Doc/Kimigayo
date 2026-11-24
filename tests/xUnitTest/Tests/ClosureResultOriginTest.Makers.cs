@@ -110,6 +110,10 @@ public partial class ClosureResultOriginTest
     private const string RawStore = "struct Holder\n    var p: raw/i32\n    public init(p: raw/i32) => self.p = p\nfunc use() -> i32\n    var local: i32 = 1\n" +
         RawInput + "    let a = outer(local@ref)\n    let h = Holder.init(a())\n    local = 2\n    return 0\n" + MainUnit;
 
+    private const string RawStoreGeneric = "struct Holder<T>\n    var p: T\n    public init(p: T) => self.p = p@move\nfunc use() -> i32\n" +
+        "    var local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    let h = Holder<raw/i32>.init(a())\n    local = 2\n    return 0\n" +
+        MainUnit;
+
     private const string RawInRefStore = "struct Holder {s}\n    var p: ref/(raw/i32 during s) during s\n    public init(p: ref/(raw/i32 during s) during s) => self.p = p\n" +
         "func use() -> i32\n    var local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    let p = a()\n    let h = Holder.init(p@ref)\n    return 0\n" + MainUnit;
 
@@ -326,9 +330,13 @@ public partial class ClosureResultOriginTest
 
     // Raw-layer positions (problem-draft §4.5; SPEC 5.7, 15.6.5): an Origin a raw layer obtains by substituting the maker's input or
     // receiver belongs to what that Origin comes from, so returning or storing it fits a written Origin it outlives (a17, a18_ok) and is
-    // Refuted where it is a local's borrow (a17_bad, a17_static_bad, a18_bad, a20); with no Origin stated every Origin fits (a16, a18, a19,
+    // Refuted where it is a local's borrow (a17_bad, a17_static_bad, a18_bad, a20); with no Origin stated every Origin fits (a16, a18_gen, a19,
     // a21). Through a raw layer whose Origin is the maker's input a call stores what that Origin's borrow admits, and the storage retains as
     // the borrow would (SPEC 5.7 Calls): w1's `t` keeps lr's Loan while it is used (problem-check, rows to add: the soundness row).
+    // a18_gen stores the image through the Type argument raw/i32 the result's Type expression writes, bounded by its pointee i32;
+    // a18_raw_input_store, its filed form, stores it through a raw Field Holder states without an Origin, through which the constructor
+    // may store its argument, local's address with local's Loan, with its own pointer, used after every point, so `local = 2` conflicts
+    // (SPEC 5.7 Calls, 15.6.4, 15.6.2; G841c; the owner's O-528 (a)).
     // With `a` a `let` region (PLAN G492-a (ii)) the bad rows also report the Loan conflict at the local's (a20: the outer Closure's)
     // declaration, as their `var a` twins do: caused only by the Refuted relation (R4-M104), so SPEC 23.1.2 permits it; rule W does not
     // derive it through a raw layer, for `var` and `let` alike (the Middle's open issue; its consent on C-350).
@@ -345,7 +353,8 @@ public partial class ClosureResultOriginTest
         "func h() -> raw/i32 during static\n    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
         Conflict + " let local: i32 = 1; " + Unsatisfied + " return a()",
         Conflict + " let local: i32 = 1; " + Unsatisfied + " a()")]
-    [InlineData("a18_raw_input_store", RawStore, "", null)]
+    [InlineData("a18_raw_input_store", RawStore, Conflict + " local = 2", null)]
+    [InlineData("a18_gen", RawStoreGeneric, "", null)]
     [InlineData("a18_ok", RawOut + RawInput + "    let a = outer(q)\n    out@follow = a()\n" + MainUnit, "", null)]
     [InlineData(
         "a18_bad",
