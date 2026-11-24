@@ -1205,8 +1205,9 @@ public partial class CallableOriginForwardingTest
     // record (pk_first). By SPEC 15.6.1 a nested signature's inputs are its premises, proven at its calls, so the call need not prove
     // `T during s`; the plan check's UnprovenConstraint_Kd beside a Function value argument restates the clause (PLAN G464).
     // A Case construction is a call (PLAN G418 (2)): after a failed payload it still judges its Constraints over the solution it fixed,
-    // so its own UnprovenConstraint_Kd stays beside the payload's record (c_closure, c_first, the inner one of c_nested, an Origin the
-    // expected Type fixes in r4, r4v and c_expected, restating the annotation's relation as the no-failure twin r4n does), and a Refuted
+    // so its own UnprovenConstraint_Kd stays beside the payload's record where it infers an Origin (c_closure, c_first, the inner one of
+    // c_nested); where the expected Type fixes every Origin (r4, r4v, c_expected and the no-failure twin r4n) it carries that Type and
+    // its record, which restated the annotation's relation, goes (PLAN G1278, G1278-A, Q13; F's G1278-5 C3), and a Refuted
     // `X is Copy` is UnsatisfiedConstraint_Kd (c_constraint2). The construction still forms no result, so c_dep's TypeMismatch at `e`
     // stays lost (PLAN G495); a waiting callable's failure (r7) stops before the solution is fixed and judges no Constraint.
     [Theory]
@@ -1228,9 +1229,9 @@ public partial class CallableOriginForwardingTest
     [InlineData("c_constraint2", CaseW + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let w = W.C(\"text\", t, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnsatisfiedConstraint_Kd W.C(\"text\", t, func [] (g) => 5)")]
     // R7-O1 H (Q13 rule 3, the Middle's (iii)): the closure's contract record (T's well-formedness, `r outlives static`), as c_closure has
     // it, which the failed annotation fit's node hid.
-    [InlineData("r4", CaseE + CaseRHost + "    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd s")]
-    [InlineData("r4v", CaseE + "func host(s: ref/i32, r: ref/i32, h: (() -> Option<T during r>) -> i32) -> i32\n    let e: E during r = E.C(s, h@move)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, h@move); UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd Option<T during r>; UnprovenOriginRelation_Kd s")]
-    [InlineData("r4n", CaseE + CaseRHost + "    let e: E during r = E.N\n    return 0\n\n", "UnprovenConstraint_Kd E.N; UnprovenOriginRelation_Kd E during r")]
+    [InlineData("r4", CaseE + CaseRHost + "    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd s")]
+    [InlineData("r4v", CaseE + "func host(s: ref/i32, r: ref/i32, h: (() -> Option<T during r>) -> i32) -> i32\n    let e: E during r = E.C(s, h@move)\n    return 0\n\n", "UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd Option<T during r>; UnprovenOriginRelation_Kd s")]
+    [InlineData("r4n", CaseE + CaseRHost + "    let e: E during r = E.N\n    return 0\n\n", "UnprovenOriginRelation_Kd E during r")]
     [InlineData("r4b", CaseE + "func host(s: ref/i32, r: ref/i32 during static) -> i32\n    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginRelation_Kd s")]
     [InlineData("r4c", CaseE + "func host(s: ref/i32 during static, r: ref/i32 during static) -> i32\n    let e: E during r = E.D(func [] (g) => 5, s)\n    return 0\n\n", "")]
     [InlineData("c_value", CaseE + "func host(s: ref/i32, h: (() -> Option<T during s>) -> i32) -> i32\n    let e = E.C(s, h@move)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, h@move); UnprovenOriginRelation_Kd Option<T during s>")]
@@ -1239,7 +1240,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("c_dep", CaseE + NestedHost + "    let e = E.C(s, func [] (g) => 5)\n    let n: i32 = e\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5")]
     [InlineData("r7", "enum Holder<F>\n    F is Callable<() -> i32>\n    H(F)\n    N\n\nfunc host() -> i32\n    let h = Holder.H(func [] () => true)\n    return 0\n\n", "TypeMismatch_Kd true")]
     [InlineData("c_nested", CaseE + NestedHost + "    let o = Option.Some(E.C(s, func [] (g) => 5))\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5")]
-    [InlineData("c_expected", CaseE + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let e: E during t = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during t")]
+    [InlineData("c_expected", CaseE + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let e: E during t = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during t")]
     public void AFailedClosureContractKeepsTheCallsClauseRecords(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
