@@ -24,6 +24,9 @@ public sealed partial class Binding
     // step's own other checks, a self-read being no failed input; the context fails for every later check (DeclarationFailed).
     private Koto? validationStep;
 
+    // FailedWrittenType's child walk, made once (FailedWrittenChild).
+    private FailedWrittenChild? failedWrittenChild;
+
     // The change signal (invalidations) at the start of the latest walk of the pass's environments, -1 at the pass's start (ResetPass):
     // a walk that changed the binding moved the signal past it (ValidateConstraintEnvironments).
     private int environmentsJudged = -1;
@@ -686,22 +689,20 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11 and 13): a failed written Type that a use's published decision read before
-    // the written occurrences were judged (ValidateConstraintUses), as the part that Type rests on. One rule: the written Types a
-    // decision reads are the Type positions of its own syntax (TypeComponent, SPEC F.5), an invocation's through its callee (the callee
-    // itself when it is a written Type): a call's or a reference's explicit Type arguments, a constructor's, a Case's or a static member's
-    // Type-application qualifier; and a Property's written Type, its certificate's. A written Type layer is no decision (RestLayersOnType
-    // rests it), nor is an invocation's callee (its invocation decides). Check rests the node on it, as on a failed called declaration.
+    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11, 13 and 14): a failed written Type that a use's published decision read
+    // before the written occurrences were judged (ValidateConstraintUses), as the part that Type rests on. One rule: the written Types a
+    // decision reads are the written Type syntax under its own syntax (FailedWrittenChild: its children that are written Types), an
+    // invocation's through its callee (the callee itself when it is a written Type): a call's, a member call's or a reference's explicit
+    // Type arguments (SPEC F.5), a constructor's, a Case's or a static member's Type-application qualifier, a runtime test's target
+    // (Appendix F's NamedCoreType), and a Property's written Type, its certificate's. A written Type layer is no decision
+    // (RestLayersOnType rests it), nor is an invocation's callee (its invocation decides) or a declaration other than a Property (no use
+    // reads its decision before Check). Check rests the node on it, as on a failed called declaration.
     private Koto? FailedWrittenType(Koto node)
     {
-        if (this.RecordedState(node) != BindingState.Resolved || IsWrittenType(node) || node.Parent is InvocationKoto { Method: var callee } && ReferenceEquals(callee, node))
+        if (this.RecordedState(node) != BindingState.Resolved || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto ||
+            node.Parent is InvocationKoto { Method: var callee } && ReferenceEquals(callee, node))
         {
             return null;
-        }
-
-        if (node is PropertyKoto { TypeKoto: { } type })
-        {
-            return this.FailedPart(type);
         }
 
         var syntax = node is InvocationKoto invocation ? invocation.Method : node;
@@ -710,15 +711,10 @@ public sealed partial class Binding
             return this.FailedPart(syntax);
         }
 
-        for (var i = 0; i < syntax.TypeComponentCount; i++)
-        {
-            if (syntax.TypeComponent(i) is var part && IsWrittenType(part) && this.FailedPart(part) is { } failed)
-            {
-                return failed;
-            }
-        }
-
-        return null;
+        var children = this.failedWrittenChild ??= new(this);
+        children.Failed = null;
+        syntax.VisitChildren(children);
+        return children.Failed;
     }
 
     // A failed written Type node as the part a reader rests on: the part it rests on itself, or the node.
@@ -1110,6 +1106,21 @@ public sealed partial class Binding
             for (var i = 0; i < binding.pass.Count; i++)
             {
                 binding.pass[i].Syntax.Hir.Families.FormationCauses.Empty();
+            }
+        }
+    }
+
+    // FailedWrittenType's walk over one node's children (never deeper): the first written Type among them that failed, as the part
+    // it rests on (FailedPart). One instance per Binding, reset before each walk.
+    private sealed class FailedWrittenChild(Binding binding) : KotoVisitor
+    {
+        internal Koto? Failed { get; set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Failed is null && IsWrittenType(node))
+            {
+                this.Failed = binding.FailedPart(node);
             }
         }
     }

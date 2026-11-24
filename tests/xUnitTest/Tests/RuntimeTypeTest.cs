@@ -18,6 +18,20 @@ public class RuntimeTypeTest
     [InlineData("open struct Animal\nstruct Dog<U>: Animal\nfunc host(s: ref/i32, x: objref/Dog<i32>) -> bool => x is Animal\n", "clean")] // c1isd
     public void ANestedSignatureInATestedTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
+    // PLAN G464, E3e ruling 14 (SPEC 23.1.2, 8.3; Appendix F's NamedCoreType): a runtime test whose written target holds a failed
+    // occurrence inside a Function Type rests on it and records only the written `Box<string>`'s UnsatisfiedConstraint_Kd (t11; DECISIONS
+    // Q13, rule W: dev's restating UnsatisfiedConstraint_Kd at the test goes); its control is accepted (t11v).
+    [Theory]
+    [InlineData("D<() -> Box<string>>", "1*UnsatisfiedConstraint_Kd")] // t11
+    [InlineData("D<() -> Box<i32>>", "clean")] // t11v
+    public void AFailedOccurrenceInATestedTargetRestsTheTest(string target, string records)
+    {
+        var source = "struct Box<T>\n    T is i32\nopen struct Animal\nstruct D<U>: Animal\nfunc host(x: objref/Animal) -> bool => x is " + target + "\n";
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        var test = KotoTree.Walk(MinimalEmissionTest.Analyze(source).Kotonoha.RootKoto).OfType<IsKoto>().Last(); // Box's clause comes first.
+        Assert.Equal(records == "clean", test.StateOf() == BindingState.Resolved);
+    }
+
     [Theory]
     [InlineData("obj")]
     [InlineData("rc")]
