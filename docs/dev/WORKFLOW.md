@@ -44,10 +44,12 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 | **Major** | Every other change. | Design → design review where [Design](#design) step 5 requires one → implementation → review |
 
 - Work prototype first (DECISIONS R7-M3 RP13, Q23): iterate an implementation against the tests, then write the design from its
-  diff. The design cites the prototype's commit and states its measured facts (its size, the sites it touched, the test rows'
-  results); reviews read the diff with the design as its explanation. Being first decides no structure: the design still compares
-  the options ([Design](#design) step 3), a required design review (step 5) judges the design before the prototype is completed,
-  and a prototype settles no owner question.
+  diff. The design cites the prototype's commit, kept on a pushed `proto/…` branch until the unit lands, and states its measured
+  facts (its size, the sites it touched, the test rows' results); reviews read the diff with the design as its explanation. Being
+  first decides no structure: the design still compares the options ([Design](#design) step 3), a required design review (step 5)
+  judges the design before the prototype is completed, and a prototype settles no owner question. A unit whose plan row puts a
+  measurement first, or whose design depends on a measurement, measures before any prototype; its prototype starts once an option
+  is adopted.
 - Two candidates or any other special flow run only on the owner's instruction for that unit.
 
 ## Design
@@ -68,7 +70,8 @@ This document owns who plans, designs, reviews, implements and lands a change. P
      the DECISIONS entry or owner answer that settled it.
    The design is about 1,000 to 1,500 words of prose (DECISIONS Q23) and holds only its current text: a revision replaces text in
    place, the history stays in git and in the reviews' identified versions ([Repeated reviews](#repeated-reviews)), and a ruling
-   that decides something goes into the design's text or a DECISIONS draft, never into a revision, rulings or response log.
+   that changes the design goes into its text or a DECISIONS draft, never into a revision, rulings or response log. The planning
+   session's other rulings (on other sessions' rows, placements, applying an owner's answer) go in its notes, linked from the row.
 4. A change, Minor or Major, that moves acceptance ([Windows](#windows), Moves) or changes the code that decides a SPEC clause's
    condition, the forms it governs or its record gets a **coverage table**, on the base, before its first prototype:
    - a row per SPEC clause or table row the change decides, per form or position the rule governs, and per boundary where the rule

@@ -240,11 +240,16 @@ WORKFLOW "Sessions" owns this table where the two differ.
 - A review is one per unit; a fix after REVISE is the same reviewer's repeated review; two reviews sharing a cause or a third non-ACCEPT
   suspend the unit for the owner (Q11, Q14); record selection is the planning session's (Q13).
 - Prototype first (RP13); RP14's checks run before an A5-changing review; state files and handoffs (RP15).
-- A unit that moves A5's verdicts or acceptance runs the combined A5 oracle (§7.1; the window's G-O command) on its head merged with
-  the newest dev before its Ready line, and the line states the result: the differing programs, or none (revision 119, DECISIONS
-  Q23). The Middle's consent (RP17) then labels each differing program from SPEC, never from the change's output, builds at least
-  three adversarial invalid twins of its own and runs MIR codegen of the moved programs (§7.1); it no longer reads the change's
-  code. The oracle does not replace the twins: its corpus holds known forms only. An acceptance mover runs a whole-suite Session
+- A unit that moves A5's verdicts or acceptance runs the combined A5 oracle on its head merged with the newest dev before its Ready
+  line, and the line states the result: the differing programs, or none (revision 119, DECISIONS Q23). The runner is the Middle's
+  shared `artifacts/board/tools/a5-oracle-unit.sh <tag> <base> <head>`, the oracle the window's G-O runs (§7.1), gated on the window
+  lines like every heavy run and writing the comparison the Ready line quotes; until it is published, the Middle runs the oracle on
+  request. A refresh merge of the newest dev that is clean, with no hunk within 3 lines of the unit's (WORKFLOW "Windows", Q21),
+  keeps the result; otherwise the unit reruns the oracle before restating Ready. The Middle's consent (RP17) then labels each
+  differing program from SPEC, never from the change's output, builds at least three adversarial invalid twins of its own and runs
+  MIR codegen of the moved programs (§7.1). It no longer reads the change's code outside the Middle's area; a hunk in a file the
+  Middle's area owns (MIR, A4, A5) it still reads and runs as R7-M2's reviewer on its own hunks. The oracle does not replace the
+  twins: its corpus holds known forms only. An acceptance mover runs a whole-suite Session
   before its queue row. A newly invalid test or library program goes to the owner before its expectation changes. The window's G-O
   stays, one A5 oracle run for the units K plans into the same window (revision 75, the owner in the Middle's session, verbatim
   "Yes, adopt it"): their heads merged

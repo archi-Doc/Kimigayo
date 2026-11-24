@@ -497,19 +497,21 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rule 1 (short, fixed-form texts): a Major design keeps its required parts (the chain, the sites sharing the cause, the options
     with the reasons for rejecting the others, the deletions, expected size and speed, Owner, Exposure, Readings) in about 1,000
     to 1,500 words of prose; it names the coverage table's test rows by section instead of copying them, and holds only its
-    current text (a revision replaces text in place; the history is git and the reviews' identified versions). A board cell or log
-    line states its facts in about three or four lines and links files for detail.
+    current text (a revision replaces text in place; the history is git and the reviews' identified versions; the planning
+    session's rulings that change no design go in its notes). A board cell or log line states its facts in about three or four
+    lines and links files for detail.
   - Rule 2 (the oracle before Ready, a lighter consent, no duplicate reads): a unit that moves A5's verdicts or acceptance runs the
-    combined A5 oracle on its head merged with the newest dev before its Ready line, which states the result. The Middle's RP17
-    consent then labels each differing program from SPEC, builds at least three adversarial invalid twins of its own and runs MIR
-    codegen of the moved programs; it no longer reads the change's code. A fix after ACCEPT, as after REVISE, is only that
-    reviewer's repeated review; another session reads a delta only on files its area owns (R7-M2) or where the delta adds a
-    return, a rest point or a skipped binding on a path MIR reads, where the Middle runs the delta's rows and twins on a CLI of
-    the head.
-  - Rule 3 (prototype first, the design from its diff): the design cites the prototype's commit and its measured facts (size, the
-    sites it touched, the test rows' results); reviews read the diff with the design as its explanation. The options comparison
-    stays required, a required design review judges the design before the prototype is completed, and a prototype settles no
-    owner question.
+    combined A5 oracle (the Middle's shared runner) on its head merged with the newest dev before its Ready line, which states the
+    result; a clean refresh merge with no near hunk keeps it. The Middle's RP17 consent then labels each differing program from
+    SPEC, builds at least three adversarial invalid twins of its own and runs MIR codegen of the moved programs; it no longer reads
+    the change's code outside the Middle's area (its own area's hunks it still reads under R7-M2). A fix after ACCEPT, as after
+    REVISE, is only that reviewer's repeated review; another session reads a delta only on files its area owns (R7-M2) or where
+    the delta adds a return, a rest point or a skipped binding on a path MIR reads, where the Middle runs the delta's rows and
+    twins on a CLI of the head.
+  - Rule 3 (prototype first, the design from its diff): the design cites the prototype's commit, on a pushed `proto/` branch until
+    the unit lands, and its measured facts (size, the sites it touched, the test rows' results); reviews read the diff with the
+    design as its explanation. The options comparison stays required, a required design review judges the design before the
+    prototype is completed, and a prototype settles no owner question. A measurement-first unit measures before any prototype.
   - Kept: one independent reviewer per unit, the twins, the window's G-O (one oracle over a window's units, plan revision 75) and
     the MIR-side runs on a delta.
   - Reason (measured 2026-11-24): the last seven designs ran 2,900 to 6,900 words against WORKFLOW's "short design"; board rows had
@@ -522,6 +524,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: proposal 2A as written, the oracle replacing the consent (the corpus holds known forms only, so a new rule's unsound
     acceptance needs twins); 2B as a new rule (one review by one reviewer was already WORKFLOW's; only the ACCEPT case and a
     delta's readers are added); proposal 4, fewer waits (held by the owner).
+  - Views: F, M, B and T agreed (11-24 14:47-14:59), with the points above folded in.
   - Amends R7-M3's RP13 and the plan's RP17 consent (§3.3).
 
 ## Code rules (2026-10-12)
