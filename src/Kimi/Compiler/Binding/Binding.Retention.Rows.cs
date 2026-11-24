@@ -456,8 +456,9 @@ public sealed partial class Binding
     // "determined by the instantiated public contract"; the owner's O-353 (a)): a read or chain of reads through an input is retained
     // only by a storage that may retain an Origin inside the input's referent or pointee, or by a raw layer the call writes, so where no
     // value of `bound` can carry a Loan or an address (CanCarryLoan, SPEC 15.6's predicate) the storage keeps no Content or Chain row; an
-    // input's own value (Value: it is, or holds by value, that Type) it keeps whatever `bound` is, since that storage can hold a value of
-    // a part the input holds by value (15.6.4's argument sentence; the owner's O-359 (a)).
+    // input's own value (Value: it is, or holds by value, that Type) and a handed callable's fill it keeps whatever `bound` is: what the
+    // abstract slot can hold is the callee's terms' question (15.6.4's argument sentence; the owner's O-359 (a), O-360 (a); F's G935
+    // ruling 16 (2): mkConcWnBad), and whether it may retain a read the instantiated one (O-353 (a); F's C-527 ruling 1).
     // `excluded`, the input this storage is written through (its output), keeps nothing here: its own value never (15.6.4: a pointer is
     // never part of its own pointee), and what a read or chain of reads through it gives is that storage's own content.
     private void HiddenKinds(RetentionKind[] kinds, BoundType hidden, BoundType bound, int excluded)
@@ -515,23 +516,25 @@ public sealed partial class Binding
         return known!;
     }
 
-    // SPEC 15.6's predicate (HiddenKinds' bound): whether a value of a Type can carry a Loan or an address, that is, whether some part of
-    // it, through its own storage, its Type arguments and the storage its owning handles own (the entries that pass a walk on, Passes), is
-    // one that does not pass it on: a borrow, a raw layer, an erased callable's environment, an abstract part, or a part Binding did not
-    // bind (it may be any Type). A Function Item and a Scalar hold no entry; a concrete Closure carries what its environment holds (SPEC
-    // 15.8.2; Holdings' Closure row, as the hold walk and MirTypes.HoldsLoans read it). Fails closed: true past StorageBound and at
-    // Binding's Limit. Each Type is walked once per query (retentionCarried), so a recursive Type ends; its repeat adds nothing its first
-    // meeting lacks.
+    // SPEC 15.6's Type-level predicate (HiddenKinds' bound; F's C-527 ruling 1): whether a value of a Type can carry a Loan or an address,
+    // that is, whether some part of it, through its own storage, its Type arguments and the storage its owning handles own (Holdings'
+    // entries that pass a walk on, Passes), is a borrow, a raw pointer, a callable value other than a Function Item or a value of an
+    // abstract Type: an entry that does not pass on (a borrow or raw layer, an erased environment, an abstract part), a part Binding did
+    // not bind (it may be any Type), or a concrete Closure, whatever its environment holds (SPEC 15.6 names the callable value; what its
+    // environment holds is the hold walk's question). A Function Item and a Scalar hold no entry. It is a predicate of the Type, not a
+    // Loan fact: it decides no Loan, holder or write (MirTypes.HoldsLoans answers what a call may write past a value, another contract).
+    // Fails closed: true past StorageBound and at Binding's Limit. Each Type is walked once per query (retentionCarried), so a recursive
+    // Type ends; its repeat adds nothing its first meeting lacks.
     private bool CanCarryLoan(BoundType type)
     {
         this.retentionCarried.Clear();
         return this.MayCarry(type, 0);
     }
 
-    // CanCarryLoan's walk: a Type and, through the entries that pass on, its parts.
+    // CanCarryLoan's fold over Holdings: a Type and, through the entries that pass on, its parts.
     private bool MayCarry(BoundType? type, int depth)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null || type.Kind == BoundTypeKind.Closure || depth > StorageBound)
         {
             return true;
         }
