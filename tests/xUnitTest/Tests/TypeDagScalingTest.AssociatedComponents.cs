@@ -57,7 +57,9 @@ public partial class TypeDagScalingTest
     // 23.1.1-23.1.2): std9-ok whose least definition's declaration fails (R0's header `{h, h}`: DuplicateBinding_Kd; R0 holding
     // `var next: Option<R0>`: InvalidInlineLayout_Kd) still holds the component's one AnalysisLimit_Kd, written on every path of R0's
     // conformance check, its early exit included, and no other definition reports a Language record for its Resource failure; the twin
-    // fails R1's header instead.
+    // fails R1's header instead. C4 ruling 20: the header's own record is independent of the limit (its check reads the header or the
+    // layout, not the inference), so the rows read the header codes too: DuplicateBinding_Kd and InvalidInlineLayout_Kd
+    // at the declaration (an entry's third part names its site, else the definition's `Self is RC`).
     [Theory]
     [InlineData("std9-z1", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
     [InlineData("std9-z2", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R0")]
@@ -66,9 +68,9 @@ public partial class TypeDagScalingTest
     [InlineData("conf9-fe", "AnalysisLimit_Kd@struct R0 | AssociatedTypeInferenceFailed_Kd@struct R5")]
     [InlineData("nest9-ab", "AnalysisLimit_Kd@struct GA")]
     [InlineData("nest9-ba", "AnalysisLimit_Kd@struct GA")]
-    [InlineData("lim-dup", "AnalysisLimit_Kd@struct R0 {h, h}")]
-    [InlineData("lim-layout", "AnalysisLimit_Kd@struct R0")]
-    [InlineData("lim-dup-r1", "AnalysisLimit_Kd@struct R0")]
+    [InlineData("lim-dup", "AnalysisLimit_Kd@struct R0 {h, h} | DuplicateBinding_Kd@struct R0 {h, h}@struct")]
+    [InlineData("lim-layout", "AnalysisLimit_Kd@struct R0 | InvalidInlineLayout_Kd@struct R0@struct")]
+    [InlineData("lim-dup-r1", "AnalysisLimit_Kd@struct R0 | DuplicateBinding_Kd@struct R1 {h, h}@struct")]
     public void TheLimitRecordIsTheComponentsOneAndAStandingErrorStays(string form, string records)
     {
         var ok = Verification.AssociatedInferenceWorkloads.RingWithZ(true, "i32");
@@ -84,9 +86,10 @@ public partial class TypeDagScalingTest
             "conf9-fe" => Verification.AssociatedInferenceWorkloads.RingWithConflict(false),
             _ => Verification.AssociatedInferenceWorkloads.NestedRing(form == "nest9-ab"),
         };
-        var expected = records.Split(" | ").Select(x => x.Split('@')).Select(x => $"{x[0]}@{program.IndexOf("Self is RC", program.IndexOf(x[1] + "\n", StringComparison.Ordinal), StringComparison.Ordinal)}");
+        var expected = records.Split(" | ").Select(x => x.Split('@')).Select(x => $"{x[0]}@{program.IndexOf(x.Length > 2 ? x[2] : "Self is RC", program.IndexOf(x[1] + "\n", StringComparison.Ordinal), StringComparison.Ordinal)}");
         var actual = CompilationTestHelper.BindingErrors(MinimalEmissionTest.Analyze(program))
-            .Where(static x => x.Code is nameof(Kimi.DiagnosticCode.AnalysisLimit_Kd) or nameof(Kimi.DiagnosticCode.AssociatedTypeInferenceFailed_Kd)).Select(static x => $"{x.Code}@{x.Span.Start}");
+            .Where(static x => x.Code is nameof(Kimi.DiagnosticCode.AnalysisLimit_Kd) or nameof(Kimi.DiagnosticCode.AssociatedTypeInferenceFailed_Kd) or
+                nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd) or nameof(Kimi.DiagnosticCode.InvalidInlineLayout_Kd)).Select(static x => $"{x.Code}@{x.Span.Start}");
         Assert.Equal((form, string.Join(" | ", expected.Order(StringComparer.Ordinal))), (form, string.Join(" | ", actual.Order(StringComparer.Ordinal))));
     }
 
