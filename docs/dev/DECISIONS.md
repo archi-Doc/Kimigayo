@@ -16731,6 +16731,31 @@ resumed by R4-M86 (2026-10-20).
     comes with a stamp advance or the release of the columns its pass wrote (a refused library's StartPass pair excepted: nothing
     binds after it). The Front's C-403 N1: synthesizedOrder's listing is written by `SynthesizedCallRows.Add(call, consumer)`, the
     one site for the row and its listing.
+  - **R7-N5 B7** (the Back's batch, Q-758, D-1257; design `b7-design.md`, B's rulings 1-6; the Front's design review C-518, C1-C4,
+    N1-N3): the node-keyed tables the line regex could not see. The ratchet reads compiled field types:
+    `ArchitectureRulesTest.NodeKeyedTablesStayAtTheirSites` replaces "Node-keyed table members in Binding" and counts, by top-level
+    type, every field of a Kimi type outside `Kimi.Compiler.Parsing` that is a dictionary, set or weak table (or a constructed Kimi
+    generic type holding one) whose key's equality reaches a node: a Koto type or an interface one implements, `object`, or a Kimi
+    type, value tuple or Nullable that is a value type or has its own Equals, one of whose fields reaches one; a class with reference
+    equality and `SourceRef` are no node, and a BCL struct's internals never count. Sites at landing: `Binding=13;CodeContext=1;
+    DiagnosticOwner=3;HoverBuilder=5;ImplTable=1;MirBody=1;MirBuilder=1;TyCtxt=1` (PLAN G1342 names each outside site's owner and
+    removal condition, G1069 Hover's and Core's); one string with four owners, so whichever of two units lowering it lands second
+    takes the merged counts. `shapeJudgments` stays the pass's memo of judged parameter pairs, keyed by the pair's `SourceRef`s
+    (R7-M19's value identity; emptied at each pass's start, ResetParameterShapes, and no module is renumbered within a pass): a pair
+    reached again (its other correspondence ground, a refining Contract, each use of a gathered group) is judged once per pass, which
+    also keeps one shape contract per pair, both O(1) per reach (`ParameterShapeTest.EachParameterPairIsJudgedOncePerPass`: n(n - 1)
+    judgments per warm pass at every use count, n(n - 1) / 2 contracts, on n constructors and on a group gathered from n groups).
+    `OriginProofMetrics.queries` goes with `DistinctQueries`, `Enter`'s three parameters and the benchmark's `distinctQueries` (G74
+    U0's metric; no other reader). Owner: the pass's shape memo owns the pass's judgments and with them one shape contract per pair
+    (the contract list, which ShapeEvidence and InferenceMetrics read, is its output); the row enforces COMPILER_ARCHITECTURE's Syntax
+    identity rule. Exposure: none (no acceptance or record moves). Readings: SPEC 7.4 and 9.5.1 (corresponding parameters; a gathered
+    group checked at each use), 7.4.4 step 2 (a contract relies on correlations; one per pair is the evidence check's input), 23.1.2
+    (no record moves). Rejected: `shapeJudgments` deleted with a scan of the later function's contracts as the dedup (C-518 C2: cubic,
+    (n^3 - n)/6 steps for n constructors, O(n^3) per use of a gathered group), a NodeColumns pass column (a program pass judges
+    library pairs at a gathered use: a program store at library ids for a memo), a regex over key texts (a named key type hides a
+    node). `memberPaths` stays a site for B7c (C-518 B1: the scanned `MemberPaths` row was O(N^2) per warm Bind); Binding's other
+    newly visible tables (`inlineSummaries`, `collisionSubstitutions`, `obligationSet` and `PassPart.ObligationSet`, `valueInReads`,
+    `TyCtxt.retentions`, `ImplTable.paths`) are batch B8's (`valueInReads` B8a's).
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
