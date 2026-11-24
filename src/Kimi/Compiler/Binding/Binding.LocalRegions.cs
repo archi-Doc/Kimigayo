@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
@@ -252,7 +253,9 @@ public sealed partial class Binding
             this.valueInVersion = this.regionVersion;
         }
 
-        var key = (origin, SourceRef.Written(function));
+        var body = SourceRef.Written(function);
+        Debug.Assert(function is null || body != default, "A body ValueIn's memo keys is numbered: an unnumbered one would key as no body (SourceRef.Written's default).");
+        var key = (origin, body);
         if (!this.valueInReads.TryGetValue(key, out var read))
         {
             read = this.ReadValueIn(origin, function);

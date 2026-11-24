@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -160,7 +161,12 @@ public sealed partial class Binding
         internal ObligationKey(in BindingObligation obligation)
             : this(obligation.Kind, SourceRef.Written(obligation.Use), obligation.Deadline, obligation.Type, obligation.Longer, obligation.Shorter, obligation.Length, obligation.Equality, SourceRef.Written(obligation.Clause), obligation.WellFormed, obligation.Discharge, obligation.Condition, SourceRef.Written(obligation.FixedBy), SourceRef.Written(obligation.Site), obligation.Body, obligation.Compared)
         {
+            Debug.Assert(
+                Numbered(obligation.Use, this.Use) && Numbered(obligation.Clause, this.Clause) && Numbered(obligation.FixedBy, this.FixedBy) && Numbered(obligation.Site, this.Site),
+                "Every node an obligation key names is numbered: an unnumbered one would key as no node (SourceRef.Written's default).");
         }
+
+        private static bool Numbered(Koto? node, SourceRef id) => node is null || id != default;
     }
 
     // Whether an Origin relation has an end that ForeignDeclarationAtom classes foreign to the forming body, a meet by its operands as

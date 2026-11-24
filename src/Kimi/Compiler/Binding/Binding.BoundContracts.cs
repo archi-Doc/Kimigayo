@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -343,6 +344,7 @@ public sealed partial class Binding
     // nothing, so one scratch map serves every check (a warm bind allocates none).
     private bool MayUnify(BoundType left, BoundType right, FunctionKoto? leftBinder = null, FunctionKoto? rightBinder = null, bool shared = false)
     {
+        Debug.Assert(leftBinder is null || !ReferenceEquals(leftBinder, rightBinder), "MayUnify's two binders differ when both are set: a side names one function.");
         this.collisionSubstitutions.Clear();
         this.collisionLeft = leftBinder;
         this.collisionRight = rightBinder;
