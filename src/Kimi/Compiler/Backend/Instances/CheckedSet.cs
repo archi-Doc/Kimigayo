@@ -17,7 +17,7 @@ internal sealed class CheckedSet
     private int itemCount;
     private int targetCount;
 
-    /// <summary>Gets the program version collected (0: none).</summary>
+    /// <summary>Gets the program version collected (0: none; a stopped collector run's items, which only its next run reads).</summary>
     internal ulong Version { get; private set; }
 
     /// <summary>Gets the number of roots, the first items.</summary>
@@ -67,12 +67,16 @@ internal sealed class CheckedSet
         }
     }
 
-    internal void Clear(ulong version)
+    // Removes every item, keeping the storage: a set of no version until its version's collection ends (End).
+    internal void Clear()
     {
         this.lookup.Clear();
         this.generated.AsSpan(0, this.itemCount).Clear();
-        (this.itemCount, this.targetCount, this.RootCount, this.Version) = (0, 0, 0, version);
+        (this.itemCount, this.targetCount, this.RootCount, this.Version) = (0, 0, 0, 0);
     }
+
+    // The collection of a version ended: the set is that version's.
+    internal void End(ulong version) => this.Version = version;
 
     // A new item, whose key has none yet.
     internal int Add(in MonoItem entry)

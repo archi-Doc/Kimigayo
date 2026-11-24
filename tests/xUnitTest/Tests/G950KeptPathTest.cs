@@ -35,7 +35,7 @@ public sealed class G950KeptPathTest
     // The programs the class writes: Bad, row M4's (the focused re-review), whose record rests on a library callee's A4 summary, and
     // PLAN G951 U2-K's: X3 (MirBuildTest's) and swap at u8 and at 70 nested arrays; R7-T1's refused library instance (capacity91: a chain
     // of 19 distinct functions whose last makes an Array<Box^91<T>> at T = Box^8100<i32>, refused in Array.initCapacity, whose local
-    // uniq/Array<...> passes IMPL A.4's height) and its valid twin at u8.
+    // uniq/Array<...> passes IMPL A.4's height), its valid twin at u8 and capacity91 after X3's collector-first Stopwatch.start (C-536 C1).
     private static readonly Dictionary<string, string> Own = new(StringComparer.Ordinal)
     {
         ["bad"] = "let text: string = 1\n::Kimi.Console.writeLine(\"Hello, world!\")\n",
@@ -48,6 +48,7 @@ public sealed class G950KeptPathTest
         ["swap70"] = string.Format(Swap, string.Concat(Enumerable.Repeat("[1 of ", 70)) + "u8" + new string(']', 70)),
         ["capacity"] = "let a = Array<u8>.init(capacity: 1)\n",
         ["capacity91"] = InstanceCollectorTest.DeepSource("capacity91"),
+        ["capacity91x3"] = InstanceCollectorTest.DeepSource("capacity91") + MirBuildTest.StopwatchAction,
     };
 
     // g7's sequences: each tests/mir program after a warm rebind and after Provisional then Final; the design review's six edits into
@@ -341,6 +342,27 @@ public sealed class G950KeptPathTest
 
         var unstepped = CompilerThread.Run(c, static s => FreshPipeline(s).Program);
         Assert.False(unstepped.Drops.Holds(Assert.Single(unstepped.Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Decl?.Name == "initCapacity").Ordinal));
+    }
+
+    // C-536 C1 (DECISIONS R9-Bx's stated difference; B's ruling 7): a refused library instance a run reaches after the version's last stop
+    // ends built and not held, where the earlier rule's missed run had reached it before the step. capacity91 after X3 (capacity91 valid
+    // and rejected as row K1-K; X3 valid, SPEC 10.5.3 and 7.7.4): the first run stops before Stopwatch.start's body, which X3's adapter
+    // first demands, long before the chain's f19 requests Array.initCapacity; a later run builds and refuses it with no step after it, so
+    // the next version (warm) takes a new library segment and equals a fresh pipeline. Fail-before (957e3cf45's rule: the missed run went
+    // on to f19, so the step held initCapacity and the warm version kept the segment).
+    [Fact]
+    public void ARefusedLibraryInstanceAfterAStopEndsTheKeptSegment()
+    {
+        var c = Compile("capacity91x3");
+        _ = c.Analyze();
+        Assert.Equal(Refused, c.Problems.Select(static x => x.Code).Order());
+        var program = c.BuildMir();
+        var refused = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Decl?.Name == "initCapacity");
+        Assert.False(program.Drops.Holds(refused.Ordinal));
+        var segment = program.LibrarySegment;
+        var (own, fresh) = Next(c, "warm");
+        Assert.Equal(fresh, own);
+        Assert.Equal(segment + 1, c.BuildMir().LibrarySegment);
     }
 
     // Row B1-S (the review's B1; R-K2''): a library body its version built and no step stepped ends the kept segment. Hello over an

@@ -8,8 +8,8 @@
 // (Rounds below); and a library segment's rows, which their owner keeps as data (Keep, Kept) and replays at the step where it first added
 // them (Replay; PLAN G950), Cause values moved by the offset; the limit table's uses (MirReport.Limits.cs; DECISIONS R5-M171, PLAN G651
 // U2b R6), each a key (its record's code, an erased Type or none, a forming site, a MirDefKey declaration) with its subject and fallback
-// bit and its producer's round: the instance collector's held with its run's round and dropped with a missed run; a MIR body site's (Uses)
-// added at once in every round.
+// bit and its producer's round: the instance collector's held with its version's round; a MIR body site's (Uses) added at once in every
+// round.
 // Output: the limit table's records, one Collection-class ControlFlow record per key at its least use (SourceRef order), flushed at
 // each clean collector run's end (the round's least merged into the committed least, the flush, then Commit; a repeated clean run of a
 // version writes each key's row again) and, with no collector run, on the first read of Merged after a committed least changed; one
@@ -30,12 +30,15 @@
 // codes are never A5's. Members naming two requirements add the InternalInvariant_Kd merged problem at the subject, which, naming
 // Ownership.Internal, never disagrees again. Merged is computed on its first read after an Add or a Clear. Storage is pooled, so a warm
 // version allocates nothing.
-// Rounds (PLAN G951's round rule; the one commit of A4's rounds and the instance collector's runs): one round at a time, which Begin opens
-// for a body value (A4's obligations' NoBody, MirRecordClass.Collection) and Commit or Drop ends; any other order is a broken contract and
-// throws. While it is open, Add holds each problem of that body value with its facts (a row kept as data, Kept; R7-T1: the collector's
+// Rounds (PLAN G951's round rule, G337 U2; the one commit of A4's rounds and the instance collector's versions): one round at a time,
+// which Begin opens for a body value (A4's obligations' NoBody, MirRecordClass.Collection) and Commit or Drop ends; any other order is a
+// broken contract and throws. A4's round is one Solve; the collector's spans its version's runs, from the first run's Begin through the
+// stopped runs and the analyses' steps between them (MirAnalysis.Step, which opens none) to the Commit of the run that reaches its end.
+// While it is open, Add holds each problem of that body value with its facts (a row kept as data, Kept; R7-T1: the collector's
 // height record carries its limit), which no producer outside the round adds meanwhile; every other problem, such as a construction
-// record of a body a lookup builds during the round, is added at once. Commit adds the held problems in order as Add adds them; Drop
-// discards them, so a round that missed commits nothing; Clear closes a round. A kept row (Keep, Replay) was committed when it was kept
+// record of a body a lookup builds during the round or a step's problem, is added at once. Commit adds the held problems in order as Add
+// adds them; Drop discards them, so A4's round that missed commits nothing, nor a collector's version a run left open by a throw (its
+// next run drops it and starts the version again); Clear closes a round. A kept row (Keep, Replay) was committed when it was kept
 // and is replayed outside any round, so a round holds only its own version's problems.
 // Must not publish, decide acceptance, derive a requirement from a code, or keep a problem a rule of Add drops; flush the limit table
 // on a read of All or Records (MirAnalysis and A5's rule W read them while producers still run), take the collector's limit use outside
@@ -153,7 +156,8 @@ internal sealed partial class MirReport
         this.held.Clear(0);
     }
 
-    /// <summary>Ends a round that missed: drops the problems it held and its least uses.</summary>
+    /// <summary>Ends a round that missed (A4's) or that a throw left open (the collector's): drops the problems it held and its least
+    /// uses.</summary>
     internal void Drop()
     {
         this.End();
