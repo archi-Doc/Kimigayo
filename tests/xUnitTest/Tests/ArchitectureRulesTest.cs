@@ -216,7 +216,6 @@ public class ArchitectureRulesTest
         "Binding.ConditionalConformances.cs:DisjointConformanceFacts=1 key",
         "Binding.ConditionalConformances.cs:SameConformanceType=1 sufficient",
         "Binding.ConstraintValidation.Proofs.cs:UnprovenInputRead=1 sufficient",
-        "Binding.ConstraintValidation.StepFive.cs:CheckOperationTypeConstraints=1 unchanged",
         "Binding.ConstraintValidation.cs:SameTypeOperand=1 unchanged",
         "Binding.ConstraintValidation.cs:SemanticsPremise=1 declared",
         "Binding.Constraints.Model.cs:Equals=2 key",
