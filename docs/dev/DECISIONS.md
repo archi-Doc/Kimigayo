@@ -9972,6 +9972,8 @@ resumed by R4-M86 (2026-10-20).
     collector's `Unsupported_Kd` over Rejected storage, now visible on enum forms under sel, is G242's Dispatch part (BU, next; closed by
     BU-38).
 
+  - Extended by R7-M97 (PLAN G651 a2): a struct's base part follows the same rule; `AdtDef.BaseNotStored` is the one statement that
+    an instance does not store its base part, read by the storage readers (`AdtDef.FieldOwner`'s third answer, no stored slot).
 - **BU-38 A part Binding rejected passes through Binding's instantiation and Dispatch** (2026-10-25; amended by R5-M151; designs A and
   B, the design review's combination C (A's D1-D3 and D4 reworked with B's Bodyless site and R5's completeness guard), R5's conditions
   1-4; PLAN G242's Dispatch and EffectBounds sites, unit bu40) SPEC 23.1.2 lets a failure caused only by another go unreported and
@@ -12632,8 +12634,8 @@ resumed by R4-M86 (2026-10-20).
     R7-C2, with the compute (as the `activeRequirementContract` bullet).
   - The row has no reader inside verification, which is why `conformanceChecks` cannot change a kept Proven. A row reader inside verification
     would end this reason.
-  - A Proven stays read after a later failure, by calls and references. That failure keeps its own record; `ValidateConstraintUses` and
-    `CheckCallTypeConstraints` read no row. `RevalidateImplicitConstructors` reads it, so a record resting on a declaration that fails after the
+  - A Proven stays read after a later failure, by calls and references. That failure keeps its own record; `ValidateConstraintUses`,
+    `CheckCallObligation` and `CheckCallTypes` read no row. `RevalidateImplicitConstructors` reads it, so a record resting on a declaration that fails after the
     bodies goes, by rule W (Q13: w1's `Unsupported_Kd`). A program of that shape proving valid, or an independent record lost, reopens this.
   - The declaration walk hands no clause fact on while sigref1 stays open (PLAN G375).
   - Rejected: the row at contract matching (five dependent record moves at a reader R7-V5 deletes); settled verdicts (B1, B2); `declarationFailed`
@@ -13830,6 +13832,10 @@ resumed by R4-M86 (2026-10-20).
     scope (expanded facts under substitution not shown equal; the conditions still walk); composing only the Self and reaching the
     declaring scope by syntax (a consumer deciding by syntax); presizing `TyCtxt.types` or relaxing the row (moves the resize; the
     factor is never relaxed).
+  - Superseded in part by R7-M97 (PLAN G651 a2-2b, 2026-11-24): the Refused composition bullet's "one past H is refused at the
+    use's site": the heir's base clause that forms the Type is refused (IMPL 21.3.2's site, in the InheritedConformances query's
+    site frame) and a use reading the heir the limit made unavailable rests (SPEC 23.1.2); a use the owner's rule judges (a kept
+    premise-error context) still forms its own instance and is refused at its site.
 - **BU-149 An access word where none is taken is one parser rule, `Parser.RejectAccessWord` (PLAN G689)** (2026-11-10; Front,
   Parsing; Major, an acceptance mover (invalid programs newly rejected); design reviews 1-3 and the R3-1 re-check, implementation
   review ACCEPT; the owner's O-127 (a) and O-134 (a)) SPEC 6.1.1, 9.3, Appendix F.
@@ -14332,6 +14338,10 @@ resumed by R4-M86 (2026-10-20).
     reads the open frame; `sitelessHeightRefusal` is `[Transitional("G651 a4")]`, going with the last unframed step (a4) once U2b
     has removed the after-run path.
 
+  - Extended by R7-M97 (PLAN G651 a2): the InheritedConformances query's site frame at its declaration's base clause
+    (unconditional), `PrepareInheritedScopes`' site frame at each inherited path's Use (run once, after the registrations, before
+    `ValidateBaseDeclarations`), and the selected call's two verdicts (the obligation outside any frame, the call's own Types in the
+    use's frame).
 - **BU-168 A node-form pair layer's bare acquisition is one per-case plan; an omitted list reads "Copies in every case" (PLAN G748,
   G755's family part)** (2026-11-11; Front, Binding; Major; design reviews 1-2 REVISE, 3 ACCEPT, implementation review 1 REVISE, 2
   ACCEPT, the Middle's reviewer ACCEPT on the MIR hunks and RP17's A5 oracle (C-238); the owner's O-166 (a), narrowed by O-171 (a);
@@ -18271,6 +18281,8 @@ resumed by R4-M86 (2026-10-20).
     setter would stay derived while MIR checks every Field); a Field Place over a receiver of no Type (d3, d4: a failed `self`); a
     Binding term for the identity premise's receiver (`HirTables.IdentityPremise`: BU-72 publishes no fact for a nested parameter, so
     x1, x2, x3, x5 faulted; the builder's `Field` owns the limit, one rule); a receiver-free predicate over the Field's own struct.
+  - Amended by R7-M97 (PLAN G651 a2-2b): `FailedField` is false where `AdtDef.FieldOwner` names no stored slot (its third answer: a
+    layer whose base part the instance does not store); that use is no Field Place of no Type and stays an Error.
 - **BU-251 A match's own verdict is its result join; an Invalid position is a leaf; a Case stands only on read payloads** (Front,
   2026-11-24; Binding with one MIR hunk the Middle read on C-497; Q-732, D-1214; Major; D-1163 with G1076's early form, design
   `front\notes\restart11\d1163\design.md` Revision 1 and Revision 1a steps 1-3 without form L; F's rulings 1-9; the Front's design
@@ -22246,7 +22258,8 @@ structure is recorded here by the unit that first implements it.
     `InternalInvariant_Kd` otherwise) compares the requirement's instance signature with it, and code generation reads its item form
     beside `TypeOf`. Departure, approved by the owner (the owner's R5-M142): K package 4.3's "CheckedSet API for codegen" gains this
     query.
-  - The layer: `AdtDef.FieldOwner(type, field)`, the Field owner `(Layer, Depth, Index)?`, is the one walk over a struct's layers by
+  - The layer: `AdtDef.FieldOwner(type, field)`, the Field owner `(Layer, Depth, Index)?` (`Index` none where the walk ends at a layer whose base part the instance
+    does not store, R7-M97), is the one walk over a struct's layers by
     Field; `FindField`'s storage position and the MIR builder's Field Place (its Base steps) derive from it. The builder's inverse walk of
     the position (`MirBuilder.Places.cs`' `Stored`; `MirBuilder.Constructors.cs` only computed a position for it) answered the same
     question, so it is replaced and deleted. `HasDestructorOnPath` answers another question (the layers down to a member's declaring
@@ -25279,7 +25292,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     result and a computed or requirement Property's header (its result, reached through `HeaderGetter`) assume the result well formed
     (R3, `AddDefinitionResultPremises`: its borrow layers and its Types' own clauses), and each read, the getter's call (11.3), proves
     it for the instantiated result (15.6.4 step 3) as every call does: the call's `RequireResultPremises` and its step five
-    (`CheckCallTypeConstraints`, the formation proof of the result Types' own fixed-fixed clauses), every accessor call (get and set)
+    (`CheckCallObligation`) and the formation proof of the result Types' own fixed-fixed clauses
+    (`CheckCallTypes`), every accessor call (get and set)
     being a synthesized call in Binding's `nodes` (`AddSynthesizedCall`). Owner: `Binding.ResultPremises.cs`: one predicate
     `AssumedResult(definition)` (a named non-constructor function's result, a getter accessor's result), read by the R3 site and the
     use side (`CarriesResultPremises`), and one getter identity `Definition(function)` (the accessor syntax for its execution view).
@@ -27799,6 +27813,54 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Removal that follows: the view's row 1 Unclassed producer for these rows; `OriginAtomKind.Unclassed` and A5's arms go in O3-B c2
     once U2 and U3 are unreached (F's O3-1 (3)(b)). The Middle's trace on c1's head (C-512) still reaches them through other
     producers, so c2 is stopped until the Middle's Z9 remainder design decides per cause (PLAN G216 (b)).
+- **R7-M97 An inherited premise past H is refused at the heir's clause; a reader of a refused heir or of a base part not stored
+  rests; a selected call's verdict is two judgments (PLAN G651 a2)** (Front, 2026-11-24; R7-C8, G651 a2-1, a2-1b, a2-2a, a2-2b;
+  Major; Q-754, D-1251; design `front\notes\C8\design-g651-a2a4.md` Revision 2 to 2e; F's C8 rulings 15-21, 26, 31-33) SPEC 6.3.3,
+  8.2.3, 8.8.2, 10.1, 23.1.2; IMPL 21.3.2, A.4. Extends BU-161, R7-M93.
+  - **Rule.** During Binding's run a Type that an inherited path's premise or an inherited declared Self forms past H is refused at
+    the heir's base clause that forms it (IMPL 21.3.2's site), in either declaration order; a use reading the heir the limit made
+    unavailable rests on that record (SPEC 23.1.2). A use the owner's rule judges (a kept premise-error context, SPEC 8.2.3) still
+    forms its own instance and is refused at its own site.
+  - **Frames.** The InheritedConformances query computes in a site frame at its declaration's base clause, unconditionally (the
+    computation is its declaration's, never the demander's). `PrepareInheritedScopes` forms each inherited path's premises in a site
+    frame at the path's Use and runs once, at the end of the registrations (after `RegisterInheritedConformances`), before
+    `ValidateBaseDeclarations`, so a premise past H fails the heir's clause before the base rule reads it.
+  - **A failed base rule's read** (a2-1, a2-1b). `FailBaseRule` records the part it read as the node's prerequisite range through
+    `RecordRead(node, read)`, the one member for "a check run outside any frame records its one read" (it replaces three identical
+    direct writes), so an heir of an unavailable base derives, while `InvalidDeclarationCause` reads only the resting part, as before.
+  - **A base part not stored** (a2-2a, a2-2b). `AdtDef.BaseNotStored` is the one statement "the declaration writes a base clause and
+    the instance has no Base": a clause with a recorded failure (`Binding.Substitute` gives it no stored base part), a clause naming
+    no Type or not substituting, a part past H, an inline cycle. `PrepareVirtualOverrides`, `BaseCalls` and the storage readers read
+    it. A selection reads the clause's kept Type instead (`Binding.SelectionBase`: `BaseConstructorGroup`, `ConstructorType`) and
+    rests only where the clause gives no base (no Type, an inline cycle); `: base(..)` with no base clause stays its own error (SPEC
+    6.3.3).
+  - **FieldOwner's third answer.** A walk ending at a layer whose base part is not stored answers that layer with no stored slot:
+    `AdtDef.FieldOwner` returns `(Layer, Depth, Index)?` whose `Index` (`int?`, none there) is the one member naming the stored slot,
+    so no reader indexes a layer's Fields with a raw index. Its four readers read `{ Index: { } index }`: `FindField` (false), MIR's
+    `Field` (derived), the Backend's Storage shim (a broken contract) and `Binding.FailedField` (false: the use is no Field Place of
+    no Type and stays an Error).
+  - **The kept part.** `Binding.KeptPart(Koto, BoundType)` gives a declared Field's or base clause's kept part with its raw Origins
+    and AdtDef's view without them: the one formula that `Substitute`'s struct lines (the base and each Field) and `SelectionBase` read.
+  - **A selected call's two verdicts** (`Binding.Check.RequireCallVerdicts`). First the obligation (`CheckCallObligation`: the step-5
+    conjunction, or a non-function target's declaring Type and member conditions, the owner slots, an unresolved context) with its own
+    record outside any frame; then the call's own Types (`CheckCallTypes`) in the use's frame (`RequireConstraintInFrame`'s contract);
+    `EndCallProof` is their shared close. A Type naming a failed declaration that rests on a limit derives; an independent refutation
+    is never absorbed. The two replace `CheckCallTypeConstraints`.
+  - **Records moved (Q13).** Past H (IMPL 21.3.2; SPEC 23.1.2): the site-less `InternalInvariant_Kd` goes on every past-H row and
+    `TypeHeightLimit_Kd` is recorded at the heir's clause; TypeHeightLimitTest's `AUseThroughAnInheritedLayerPastTheLimitRestsOnItsClause`
+    (exactly one record, at L41's clause) and `APathWithPremisesPastTheLimitIsRecordedAtItsClause` (no record at the use for W 41,
+    W 44 and Option 41; ocown-191 keeps its use's own record); x-pisown-40t-I's refutation in L40's own member rests on the refused
+    L40. Within H (SPEC 23.1.2, rule W): InheritedConformanceTest `AClauseWithoutTheInheritedConformanceKeepsItsRecords` x3 and
+    UseLookupTest `ANestedTypeNamedBothWaysIsAmbiguous` lose `InvalidTypeFormation_Kd` at `base` (the clause names no Type); cycc-I
+    and gcyc-c-I lose the base calls' `InvalidTypeFormation_Kd` (the base is on the cycle); cycf-I loses MIR's `Unsupported_Kd` at
+    `v.n`; bnopen-gn-I's `InvalidConstraint_Kd` at `v.need(1)` becomes the independent `UnsatisfiedConstraint_Kd`; brec1-I and brec2-I
+    (a2-1) keep their syntax record alone. No acceptance change: every moved program is rejected before and after.
+  - **Rejected:** a no-partial-scope reader rule (the base part not stored answers it); a second premise formation; the member walk
+    stopping at a failed clause (it drops R7-N3b's and R7-N2c's independent records); resting the base call on the storage fact;
+    framing the whole call verdict (an independent refutation absorbed); the trial judging an invalid-context callee's own conjunction.
+  - **Open (PLAN G651 a2-2c, a3, a4).** The remaining frames of BindDeclarations' steps: Signature's, BindConstraint,
+    ResolveAssociated, CompleteProjections, SummarizeInlineStorage, PrepareVirtualOverrides, CompleteImplementationOrigins,
+    FillVTable, RecordIdentityPremiseError, PrepareSpecializations and SelectOmittedBaseConstructor's frame.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
