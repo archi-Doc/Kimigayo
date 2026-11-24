@@ -6,7 +6,8 @@
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the compiler's Tatara: linked into
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root, and whose dependency step
 // reads each staged library's facts through Tatara's inspect, kept per process by the staged hash (LinkInputs), and fails an ambiguous
-// native dependency (IMPL 20.4) as the build's input failure before the link (LinkAmbiguity); the built Application's run;
+// native dependency, or one inconsistent with its declared Kind (IMPL 20.4), as the build's input failure before the link
+// (LinkAmbiguity, Kind); the built Application's run;
 // toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
 // its supplies' bytes against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
 // toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is, a
