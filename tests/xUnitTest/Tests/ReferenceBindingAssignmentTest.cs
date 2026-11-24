@@ -15,13 +15,13 @@ public class ReferenceBindingAssignmentTest
     [InlineData("var values: Array<i32> = [1]\nfor var v in values\n    v += 1", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("var values: Array<i32> = [1]\nfor var v in values@uniq\n    v += 1", DiagnosticCode.ExclusiveBindingAssignment_Kd)]
     [InlineData("struct Num\n    Self is Addable<Num>\n    associate Addable<Num>.Output is Num\n    public init() => ()\n    public func added(self: ref/Self, right: ref/Num) -> Num => Num.init()\nvar items: Array<Num> = [Num.init()]\nfor v in items\n    v += Num.init()", DiagnosticCode.SharedBindingAssignment_Kd)]
-    [InlineData("var count: i32 = 1\nmatch count@uniq\n    var n => n = 5", DiagnosticCode.ExclusiveBindingAssignment_Kd)]
 
     // R7-E4 ruling 8: a typed value of the referent Type names the mode of a non-reassignable binding too, though an owner value fits
     // `ref/i32` by the temporary borrow (SPEC 10.2, 12.3.1), which only a reassignable binding could be rebound to.
     [InlineData("func f(items: ref/Array<i32>, n: i32) -> ()\n    for item in items\n        item = n\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("func f(o: ref/Option<i32>, n: i32) -> ()\n    match o\n        .Some(let v) => v = n\n        .None => ()\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     [InlineData("func f(items: ref/Array<i32>) -> ()\n    for item in items\n        item = items[0]\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
+    [InlineData("func f(items: ref/Array<i32>) -> ()\n    for item in items\n        item = true\npublic func main() => ()", DiagnosticCode.SharedBindingAssignment_Kd)]
     public void ValueAssignmentsNameTheBindingMode(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -42,8 +42,8 @@ public class ReferenceBindingAssignmentTest
 
     // R7-E4 ruling 9 (its review's C2): on a borrowed path a `var` binding is a reassignable reference too (SPEC 15.1.6), so a literal
     // assigned to it at `ref/i32` is a temporary borrowed for the assignment (SPEC 10.2 Temporaries), a rebind, not the mode's record;
-    // `uniq/i32` takes no temporary, so `match count@uniq` / `var n => n = 5` keeps ExclusiveBindingAssignment_Kd.
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0\npublic func main() => ()", null)]
+    // its uses after the assignment read a dead temporary, which A5 rejects (AReassignableBindingHasItsOwnRegionSlots' a3u, snu rows).
+    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield 0\n    .None => 0\npublic func main() => ()", null)]
     [InlineData("func f(items: ref/Array<i32>) -> ()\n    for var item in items\n        item = 5\npublic func main() => ()", null)]
     public void OwnedReferenceBindingsTakeALiteralAsABorrowedTemporary(string source, DiagnosticCode? limit)
     {
@@ -71,6 +71,16 @@ public class ReferenceBindingAssignmentTest
     [InlineData("esc-out", "func f() -> i32\n    let a = 1\n    var out = a@ref\n    match (a@ref, 2)\n        (var r, _)\n            let t = 3\n            r = t@ref\n            out = r\n    let v: i32 = out\n    return v\n", "ComparisonLoanConflict_Kd: let t = 3")]
     [InlineData("loop-inner-ok", "func f() -> i32\n    let a = 1\n    var i = 0\n    var total = 0\n    match (a@ref, 2)\n        (var r, _)\n            while i < 3\n                let t = i\n                r = t@ref\n                let v: i32 = r\n                total += v\n                i += 1\n            return total\n    return 0\n", "")]
     [InlineData("loop-inner-bad", "func f() -> i32\n    let a = 1\n    var i = 0\n    match (a@ref, 2)\n        (var r, _)\n            while i < 3\n                let t = i\n                r = t@ref\n                i += 1\n            let w: i32 = r\n            return w\n    return 0\n", "ComparisonLoanConflict_Kd: let t = i")]
+    // R7-E4 rulings 10 and 15: an `=` to a reassignable binding on a borrowed path is a rebind (SPEC 15.1.6). A literal at `ref/i32` is an
+    // owner temporary whose lifetime ends with the assignment (SPEC 10.2): accepted without a later use (a3, snv), its later use rejected
+    // at the assignment with the use related (a3u, snu); a value that fits neither the binding's Type nor, by a temporary, its referent is
+    // the value's mismatch (v2; and the `uniq` twin, which takes no temporary).
+    [InlineData("a3", "func f(items: ref/Array<i32>) -> ()\n    for var item in items\n        item = 5\n", "")]
+    [InlineData("a3u", "func f(items: ref/Array<i32>) -> i32\n    var total = 0\n    for var item in items\n        item = 5\n        let k: i32 = item\n        total += k\n    return total\n", "ComparisonLoanConflict_Kd: item = 5")]
+    [InlineData("snv", "func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield 0\n    .None => 0\n", "")]
+    [InlineData("snu", "func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0\n", "ComparisonLoanConflict_Kd: n = 2")]
+    [InlineData("v2", "func f(items: ref/Array<i32>) -> ()\n    for var item in items\n        item = true\n", "TypeMismatch_Kd: item = true")]
+    [InlineData("u19", "func f() -> ()\n    var count: i32 = 1\n    match count@uniq\n        var n => n = 5\n", "TypeMismatch_Kd: var n => n = 5")]
     public void AReassignableBindingHasItsOwnRegionSlots(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
 
