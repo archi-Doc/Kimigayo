@@ -2,10 +2,11 @@
 
 // The binding of a function definition: its header (BindHeader's function part, also bound lazily from a use), its signature, then its
 // parts (defaults, base initializer, body); and SPEC 7.2.3's parameter positions, by the default of its function a node lies in
-// (DefaultIndex) and the parameters in a default's scope (ParameterInScope, also a default template body's roots, RootOf): which
-// parameters a name there may select (ParameterVisible, the rule of every name lookup, a value's and a written Origin's), and that a
-// parameter read in the default of a later parameter names the slot its call prepared (InLaterDefault, read by the capture diagnostics
-// and the HIR tables, HirRes.PreparedParam).
+// (DefaultIndex, the one statement of it, also read by the index walk to enter a default template body) and the parameters in a
+// default's scope (ParameterInScope, also a default template body's roots, RootOf): which parameters a name there may select
+// (ParameterVisible, the rule of every name lookup, a value's and a written Origin's), and that a parameter read in the default of a
+// later parameter names the slot its call prepared (InLaterDefault, read by the capture diagnostics and the HIR tables,
+// HirRes.PreparedParam).
 
 using Kimi.Compiler.Parsing;
 
