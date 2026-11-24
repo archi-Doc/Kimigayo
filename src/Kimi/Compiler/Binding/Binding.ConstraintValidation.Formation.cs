@@ -281,4 +281,20 @@ public sealed partial class Binding
 
         return proof;
     }
+
+    // SPEC 23.1.2 (DECISIONS Q13 rule W): whether part `part` of a callee's declared signature (its input `part`; its result at the
+    // parameter count) failed where it is written: the signature's verdict and that part's declaration walk are both Refuted. A
+    // reference's comparison asks it where that part misfits (ContractFits, InferReferenceSlots): such a part is a wildcard, whose misfit
+    // fails no candidate. An Error verdict's part is none: the candidate's own read of that verdict rests on its
+    // cause (FunctionReferenceApplicability). The question is no proof: it runs in a scope of its own, opening no site frame (Nested),
+    // whose reads, an Error's cause among them, it drops; a Proven verdict is the kept query, so a valid callee's misfit walks nothing.
+    private bool RefutedSignaturePart(FunctionKoto function, int part)
+    {
+        var written = part < function.Parameters.Count ? function.Parameters[part].Type.BoundType : function.BoundSymbol?.Type;
+        this.BeginProof(QuerySite.Nested);
+        var refuted = written is not null && this.CheckSignatureTypeConstraints(function, QuerySite.Nested) == ConstraintProof.Refuted &&
+            this.CheckDeclaredTypeConstraints(written, this.scopes[function], QuerySite.Nested) == ConstraintProof.Refuted;
+        this.EndProof(ConstraintProof.Proven);
+        return refuted;
+    }
 }

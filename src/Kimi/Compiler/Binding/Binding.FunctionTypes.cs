@@ -478,6 +478,11 @@ public sealed partial class Binding
                 var walk = new RelationWalk(this, this, use, OriginPart.Contract);
                 if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
                 {
+                    if (Wildcard(i))
+                    {
+                        continue;
+                    }
+
                     this.contractFailure = walk.Failure.Within((byte)(i + 1));
                     BlameMisfit(Declared(i), walk.Failure);
                     return false;
@@ -524,6 +529,11 @@ public sealed partial class Binding
             var resultWalk = new RelationWalk(this, this, use, OriginPart.Contract);
             if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
             {
+                if (Wildcard(function.Parameters.Count))
+                {
+                    return true;
+                }
+
                 this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
                 BlameMisfit(Declared(function.Parameters.Count), resultWalk.Failure);
                 return false;
@@ -557,6 +567,11 @@ public sealed partial class Binding
                     _ = Read(member) is { } layer ? Substitute(layer) : null;
                 }
             }
+
+            // SPEC 23.1.2 (DECISIONS Q13 rule W): a written part that misfits and failed where it is written (RefutedSignaturePart) is a
+            // wildcard: its misfit fails nothing and it has no premises of its own; every other part is still compared, whatever its
+            // position. A Closure's signature is its own, judged where it is bound.
+            bool Wildcard(int i) => closure is null && this.RefutedSignaturePart(function, i);
 
             // The implementation's input `i`, or its result at i = the parameter count, as the definition declares it: a Closure's from its
             // signature, any other's written Type.
