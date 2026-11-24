@@ -16369,10 +16369,10 @@ resumed by R4-M86 (2026-10-20).
   - **R7-N5 B2a-1** (the Back's batch, Q-563; design `b2a-design.md` §4, B's rulings 1-6; the Front's C-403): six tables become pass
     families of `NodeColumns` (`StampedColumn<T, Binding.PassCounter>`), one accessor each, their Clears deleted:
     `inferredArrayLengths` and `arrayInferenceShapes` (written through `HirTables.Of`), `callInferenceFailures`,
-    `callableSelectionFailures`, `baseCallFailures` and `objectErasureFailures` (deleted by R7-E3 E3b-2) (failure facts stored through
-    the recorder, `SetRecordedFact`). The library writes none of them (six `NotStamps` rows). `receiverOperations` and `resultContexts`
-    are B2a-2's (released at the freeze, B's ruling 1); `noInitFailures` and `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet
-    67 -> 61.
+    `callableSelectionFailures`, `objectErasureFailures` (deleted by R7-E3 E3b-2) and `baseCallFailures` (deleted by R7-E3 E3c-2)
+    (failure facts stored through the recorder, `SetRecordedFact`). The library writes none of them (six `NotStamps` rows).
+    `receiverOperations` and `resultContexts` are B2a-2's (released at the freeze, B's ruling 1); `noInitFailures` and
+    `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet 67 -> 61.
   - **R7-N5 B2a-2** (the Back's batch, Q-577, D-936; design `b2a2-design.md` §1-§4, B's rulings 1-5 and B's ruling 6 on
     `b2a-design.md`; the Front's R1-R4 and C1-C7 on C-403, 2026-11-20): a family no reader after the freeze reads a library row of
     (its rows are its pass's working state: the binding steps, reports and HIR publication of the pass that wrote them) has no
@@ -26735,6 +26735,35 @@ R8-M* and R9-M* by the stage of the recording unit.
     subject and the Contract as evidence**. The pending judgment is the selection's deferral (`RecordSelection`): UnprovenConstraint_Kd
     with role 6 "argument" and role 7 shown as a related `declaration` (the slot's Type parameter), which the adapter reads by role
     (ruling 13, n1). Moves: M3 the erasure Note's text (from the fact) and the pending Note (gone); M4 the pending slot related.
+  - **E3c-2 (Q-742, D-1230).** The rest of E3c records through `Record`, with no new kind.
+    - **Records.** InvalidBaseCall_Kd records its cause as a `Reason` (one recorder, FailBaseCall), its Note rendered from it (B's
+      ruling 12; no M3). BoundMethodValue_Kd records its method as `Related` role 0 at the failure (FailBoundMethodValue;
+      RequirementItems' group takes the use's bound declaration, fact-less when none); its publication read goes.
+      NonExhaustiveMatch_Kd records its coverage reason as a `Reason` (the Case's declaration index plus one, packed above its
+      byte), its Note rendered from it. InvalidNumericLiteral_Kd's eight sites (Expressions, NumericConversions, Operators) and the
+      fact-less own sites (Names, FunctionReferences, ContractCalls, Patterns with 461, Expressions) record `Record(node, X, [])`;
+      ContractCalls' Property requirement through a Type records MissingName unresolved and its several identities the located
+      limit (`RecordLocated`). Names' unresolved explicit reference keeps dev's `Fail(reference, Unsupported, true)`, resting on the
+      name's own record. The guard, the floating-point literal (Expressions and Operators' signed twin) and the Case construction
+      mismatches record their sides; Enums 883 records them at the construction (`RecordTypeMismatch(use, use, ..)`, rulings 13-14:
+      the location stays). Patterns' Pattern Type check and recheck, FunctionReferences' Error without a held cause and Enums' late
+      Type formation (943) record through `RecordConstraint` (E3b-2's one recorder of the constraint family).
+    - **Deleted:** `baseCallFailures` (its NodeColumns column, accessor and arm; stated once in R7-N5 B2a-1's line), the
+      BoundMethodValue, coverage and literal publication arms (`LiteralConversionTarget` with the last), and
+      `ReferenceSlotFailure`'s four unread reasons and its `Slot` (the staged removal of the E3a-2 line).
+    - **Kept until R7-E5:** Signatures 224/225 and 289/292 (a member group's and a Contract requirement group's receiver shape
+      mismatch) keep plain `Fail`s (ruling 11: recording there adds a ReceiverShapeMismatch_Kd beside the declaration's
+      InvalidTypeFormation_Kd or ParameterShapeMismatch_Kd, a dependent record by SPEC 23.1.2; the delta's "B1 none" for Signatures is
+      corrected: the mismatch rests on the declaration's or requirement's own earlier failure); ResultPropagation.Parts' spelled read
+      of a held part's failure (a Transitional); the pairless mismatches (the construction's arguments check, the expected Type's
+      slots, two inference sites, the payload misfit; ResultPropagation's join conflict); InvalidTry's two sites with TryFailure's
+      read; Expressions 463's owner over its failed part. Their R7-E5 rows: PLAN G1141.
+    - **Handed over:** `ownedConversions` (its six writers and its arm) to R7-E4 (O-1 (a); E4's census sends any
+      non-Origin/acquisition/lint fact back to its family's unit, E3b's O-9 condition).
+    - **Moves (invalid programs only; no acceptance move).** M3 the literal Note (x2b-x2d); content (sides added, location kept) at
+      the TypeMismatch_Kd sites: guard (g1), construction (e1, e2a-e2c at 883), floating-point literal plain and signed (x1, x1b). No
+      move at Enums 883 beside TransferRequired_Kd: a kept acquisition beside a misfit takes FitsValueAt's condition arm, never 883,
+      so that pair is unreached.
   - Superseded in part by R7-M95 (R7-E4 E4a-1, 2026-11-24), for E4's sites: the Rule's "a site converts only where its record is the
     node's first failure ...; a dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5". E4's B1
     statement is by input: a check that reads none of the node's failed inputs records beside the node's earlier failure (SPEC
