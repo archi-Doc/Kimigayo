@@ -42,7 +42,7 @@ public sealed partial class Binding
     }
 
     // What one formation of a value call's callee acquisition gives (FormValueCallee): formed; formed, lending the callee's or the handle's
-    // Place, whose static root AcquireValueCallee judges in the call's mode (FailStaticBorrow); or the failure whose record it makes at the
+    // Place, whose static root AcquireValueCallee judges in the call's mode (JudgeSelectedInput); or the failure whose record it makes at the
     // call on its callee: a write, an object authority, a required transfer or a located limit. A BindingFailure cannot carry it:
     // AccessFailure's Unsupported is not RecordLocated's limit.
     private enum CalleeOutcome : byte
@@ -382,7 +382,7 @@ public sealed partial class Binding
     // its payload is read through the layer); any other handle or view as its payload (FormPayloadReceiver, whose limit is a handle below a
     // reference); owned only by the value read of a Copy closure; a Shared or Exclusive call borrows an owned callee Place as SPEC lends it
     // (LendsPlace), exclusively only where its lending point is exclusively writable, whose static root is the located limit until P42,
-    // final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC 23.1.2; FailStaticBorrow).
+    // final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC 23.1.2; JudgeSelectedInput).
     // False when the acquisition fails, its record made: the one place a callee's records are made, of the formation (FormValueCallee),
     // then the static root of the Place it lends, once, in the call's mode.
     private bool AcquireValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
@@ -406,10 +406,10 @@ public sealed partial class Binding
                 this.RecordLocated(call, call.Method.Span);
                 return false;
             case CalleeOutcome.LendsCallee:
-                _ = this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
+                _ = this.JudgeSelectedInput(call.Method, ArgumentOperationKind.Borrow, receiver, null, null);
                 return true;
             case CalleeOutcome.LendsHandle:
-                _ = this.FailStaticBorrow(receiverOperation.Source!, ArgumentOperationKind.PayloadProjection, receiver);
+                _ = this.JudgeSelectedInput(receiverOperation.Source!, ArgumentOperationKind.PayloadProjection, receiver, null, null);
                 return true;
             default: // Formed.
                 return true;
@@ -585,8 +585,9 @@ public sealed partial class Binding
                     continue;
                 }
 
-                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-                if (!this.FailStaticBorrow(at, operations[i].Kind, parameter.Semantics) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
+                // An input's located limits (JudgeSelectedInput): a Borrow of a static root fails it, its relations waiting for P42; a
+                // Shortened Reborrow is recorded beside it, its fit judged.
+                if (!this.JudgeSelectedInput(at, operations[i].Kind, parameter.Semantics, operations[i].SourceType, operations[i].AdaptedType) && !this.CheckTypeUse(instantiated[i], parameter, at, out var failure))
                 {
                     var erasure = instantiated[i] is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && parameter.Kind == BoundTypeKind.Function;
                     if (failure.Kind == ComparisonFailureKind.Shape && !erasure)
