@@ -27668,6 +27668,72 @@ R8-M* and R9-M* by the stage of the recording unit.
     reference binding's update (O-A2: Operators 181, 192, 280); E4a-3 G453/G486; E4b captures; E4c Origin formation; E4e Owned and
     Callable; E4d the Origin records, O-R), each listing the stores it deletes. E4's parts total about +296/-474 against the plan's
     +100/-500: E4a-3 (G453/G486, given to E4 by plan revision 69 (B)) and the per-part regression rows are the difference.
+  - **E4a-2 (Q-<n>, D-<n>; F's R7-E4 rulings 5-10 and 15-18). Acquisition, the Take, the written Borrow and the reference
+    binding's write record their facts; one form per requirement.**
+    - **The write row** (`RecordWrite`, ReportWrite at role 0) takes every sender of a denied write or written Borrow and of a
+      reference binding's write: the denied write (E4a-1), the object authority, the written Borrow's denial
+      (`BorrowFailure`/`AccessFailure` over the borrowed Place: Conversions.Raw, Conversions, ExplicitAdaptations, ObjectViews; the
+      design review's C1) and the reference binding's update or assignment (BindBinary's two arms and CheckDestination; O-A2, C2).
+      Role 0 "target" is the Place or binding that denies the access. Its codes: InvalidAssignment, SharedPathAccess,
+      Shared/ExclusiveBindingAssignment. An Unsupported row of the mappings (the written Borrow of a static root, a temporary's whole
+      Place) is the located limit through `RecordLocated` at the node: the written Borrow's conversion forms no value, so its node
+      fails (the slot is set). **A selected input's static root is G254c's** (`BorrowsStaticRoot` read by `JudgeSelectedInput`,
+      which replaced `FailStaticBorrow` in W-348): it fails the input with its own record, and G254c's `RecordLocatedLimit` (the bare
+      Reborrow rule's limit beside a Resolved source, setting no slot, so every other case's verdict stands, SPEC 8.15.2) is a
+      different limit: one leaves the node failed, the other Resolved.
+    - **The Take** (`FailTake`, C5 (b)): AccessFailure's take row (ExclusivePathTake, SharedPathAccess, InvalidAssignment),
+      numbered, the cases of the layers its path passes as its Reason, no role-0 target; its own Reason-keyed ReportProblem row
+      renders ReportTake at the node.
+    - **The acquisition** (`FailAcquisition`, numbered; its facts built once, `AcquisitionFacts`): the Place as `Related` role 0
+      "place"; a Reason, bit 0 the object handle of an exclusive borrow and above it a transfer's Take judgment (O-A1); for a
+      transfer of a Place whose Type has a pair layer, **a second Reason**, the mask of the cases its bare acquisition moves in (D1;
+      ruling 7). The judgments the adapter once made at publication (TakeJudgment's path walk, AcquisitionCases' BareAcquire per
+      case) are made at the failure; the adapter decodes the mask over the Place's resolved binders read from its scope
+      (`CaseFact`). **Representation change (ruling 7):** a problem may carry two Reason facts, in the order ProblemFact's invariant
+      states (the acquisition's packed Reason first, the moving cases second), read by that order. A call whose selection leaves
+      only an acquisition records through `RecordSelection`'s one guard (D2); a value call's arguments are acquired and recorded
+      each at its own parameter (C3: `f(a, b)` keeps the second TransferRequired_Kd). CodeOf's DefaultArgumentMove row reads
+      `PreparedRoot(node)` (only CheckTransfers records a transfer at a node that is its own Place).
+    - **The reference binding's code (rulings 8, 9, 15 and 16; the Front's triage row 7).** `ReferenceBindingAssignment(target,
+      operation)`, the rule's owner, decides it once from the binding and the operation: an update through a pattern or for binding
+      on a shared or exclusive path, and an `=` to one that is not reassignable, names the binding's mode
+      (Shared/ExclusiveBindingAssignment; a guard candidate's SharedPathAccess) whatever the value; an `=` to a reassignable one (on
+      a borrowed path a `var` binding is a reassignable reference, SPEC 15.1.6's last bullet) is a rebind, judged as any `=`: a
+      value that fits the binding's Type (a borrow, or an owner temporary at `ref/U`, SPEC 10.2) rebinds it, one that fits neither
+      is the value's TypeMismatch_Kd at the binding's Type. BindBinary's two arms and CheckDestination read that one decision.
+      Before, BindBinary named the mode by the value's form (a typed value only when it did not fit the binding's own Type; a
+      literal always). Ruling 15 supersedes ruling 9's reassignable clause ("names it only when the value does not fit its own
+      Type").
+    - **Store (PLAN G1083, ruling 4, C7):** the lints publish into `Compilation.StoreOf`'s store and locate their repair edits
+      there; the acquisition's repairs too (`TransferRepair`, the exclusive borrow's). No lint becomes a problem (O-L).
+    - **Deleted:** `takeLayers`, `acquisitionPlaces`, `PreparedMove`. Ratchet "Node-keyed table members in Binding" 9 -> 7.
+    - **Moves (Q13).** M1 vc2 (a value call's second bare argument; PLAN G421 (i)'s value-call half). **en2 does not move**
+      (CompletePayloads returns at the first payload's acquisition: G262 F2's acquisition half stays out of E4a-2). M2 (class 4,
+      record selection) rb4s, rb5m (`match ... let v`) and a4 (`item = items[0]`): InvalidAssignment_Kd ->
+      SharedBindingAssignment_Kd; v3 (`item = true` to an immutable slot): InvalidAssignment_Kd -> SharedBindingAssignment_Kd. M4
+      rb1-rb4 and their shared twins (the reference binding's record at the binding, not the operation), bw1 (the written Borrow's
+      record at the Place, with ReportWrite's evidence and Note). **Acceptance moves (rulings 10 and 15; SPEC 15.1.6's last bullet
+      "on a borrowed path a `var` binding is a reassignable reference" with 10.2's Temporaries, an owner value at `ref/U` one owner
+      temporary borrowed once, its lifetime never extended):** a `var` binding on a Shared path assigned a literal is a rebind: a3
+      (`for var item in items` / `item = 5`) and snv (`.Some(var n)` / `n = 2` / `yield 0`) move from SharedBindingAssignment_Kd to
+      accepted; a3u and snu (the same with a later use of the binding) move from SharedBindingAssignment_Kd at Binding to A5's
+      ComparisonLoanConflict_Kd at the assignment, the use related (the temporary dies with the assignment). **The rebind (rulings
+      16-18):** u19 (`match count@uniq` / `var n => n = 5`, a rebind whose literal fits `uniq/i32` by no temporary: at `uniq/U`
+      no temporary is borrowed, SPEC 10.2) moves from ExclusiveBindingAssignment_Kd to the value's TypeMismatch_Kd ("expected
+      uniq/i32"); its typed form, a value of the referent Type that fits not the binding's Type (dev's typed-value arm named the
+      mode), moves the same way: dr-a5 (`items: uniq/Array<i32>` / `for var item in items` / `item = n`: a bare owned Place never
+      fits `uniq/i32`) from ExclusiveBindingAssignment_Kd at `item = n` to the value's TypeMismatch_Kd at `n` ("expected uniq/i32,
+      found i32"); v2 (`for var item in items` / `item = true`) keeps dev's TypeMismatch_Kd ("expected ref/i32, found bool").
+      **A location move (ruling 18's N5):** the mode records' primary span narrows from the whole write to its destination, the
+      binding (`item++` -> `item`, `let n => n = 5` -> `n`), their code and message unchanged. The diagnostic snapshot and semantic
+      HIR+MIR: 0 differences against shared-base/965080f34 (the corpus holds none of these rows).
+    - **Not taken:** PLAN G502's false records at `item += 1` (`items: uniq/Array<raw/i32>`; row g502a: ExclusiveBindingAssignment_Kd
+      beside OperatorNotDefined_Kd and TypeMismatch_Kd, where the label expects the binding's record alone): E4a-2 keeps
+      BindBinary's binding of the right operand at the referent and its route; **G502 stays open in PLAN with the Front as owner**
+      (ruling 9's C4). BorrowFailure's shared InvalidAssignment arm: reached only where `LendsPlace` refuses a shared Borrow (a pair
+      layer's owner case `LendsOwner` refuses, or an rc/arc payload whose handle neither lends nor is a borrowable temporary); no
+      program reaching it was found (the implementer's reading, the review's c2 accepted on both CLIs); it records through
+      RecordWrite like the others.
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
