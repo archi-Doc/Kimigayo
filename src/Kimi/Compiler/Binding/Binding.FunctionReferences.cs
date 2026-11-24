@@ -104,7 +104,7 @@ public sealed partial class Binding
             ReferenceConstraintFailure? pending = null;
             var pendingProof = false;
             Koto? invalid = null;
-            FunctionKoto? error = null;
+            var error = false;
             var resting = false;
             this.failedCause = null;
             foreach (var candidate in group)
@@ -151,8 +151,8 @@ public sealed partial class Binding
 
                 if (state == CandidateApplicability.Error)
                 {
-                    error ??= function;
-                    invalid ??= this.InvalidDeclarationContextCause(function);
+                    error = true;
+                    invalid ??= this.InvalidDeclarationContextCause(function) ?? this.FailedSignaturePart(function);
                 }
 
                 if (state == CandidateApplicability.Applicable)
@@ -161,13 +161,10 @@ public sealed partial class Binding
                 }
             }
 
-            if (error is not null)
+            if (error)
             {
-                // SPEC 23.1.2 (rule W): an Error candidate's failed input, on whose record the reference rests: its failed declaration
-                // context, else the cause its proof read (the channel's), else its own signature verdict, which is not Proven
-                // (FunctionReferenceApplicability's first Error, before any trial), at its declaration, whatever the states of the
-                // written Types it restates when the reference binds (they are judged after the bodies, ValidateConstraintUses).
-                return this.CompleteDependent(use, invalid ?? this.TakeFailedCause().Use ?? error);
+                return (invalid ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(use, cause)
+                    : this.RecordConstraint(use, ConstraintProof.Error, []);
             }
 
             if (resting)
@@ -192,6 +189,19 @@ public sealed partial class Binding
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
             if (winner < 0)
             {
+                // SPEC 10.1, 23.1.2 (rule W): a candidate whose own declared signature failed (its SignatureVerdict not Proven, recorded
+                // where the signature is written) is judged as any other, as a call's is, and its proof holds that verdict
+                // (ReferenceArgumentProof), so it is never selected nor ambiguous: only when no candidate applies does the outcome rest on
+                // it, at its declaration, whatever the states of the written Types it restates when the reference binds (they are judged
+                // after the bodies, ValidateConstraintUses).
+                for (var i = 0; i < count && applicable == 0; i++)
+                {
+                    if (evaluated[i].Symbol!.Declaration is FunctionKoto failed && this.CheckSignatureTypeConstraints(failed, use) is ConstraintProof.Refuted or ConstraintProof.Error)
+                    {
+                        return this.CompleteDependent(use, failed);
+                    }
+                }
+
                 if (count == 1 && evaluated[0].ConstraintFailure is { } failure)
                 {
                     return this.FailClauseRecord(use, failure, unresolved: false);
@@ -782,15 +792,6 @@ public sealed partial class Binding
             (explicitReference is not null && explicitReference.TypeArguments.Count != function.GenericArguments.Count))
         {
             return CandidateApplicability.Inapplicable;
-        }
-
-        // SPEC 23.1.2 (rule W): a callee whose own declared signature failed (its SignatureVerdict not Proven, recorded where the
-        // signature is written) is a failed input, as a call's candidate in a failed declaration context is (CallSelection's Error): the
-        // reference rests on that declaration (BindFunctionReference's error arm), never reads the verdict as a fresh, fact-less
-        // inapplicability.
-        if (this.CheckSignatureTypeConstraints(function, use) is ConstraintProof.Refuted or ConstraintProof.Error)
-        {
-            return CandidateApplicability.Error;
         }
 
         var generic = function.GenericArguments.Count;
