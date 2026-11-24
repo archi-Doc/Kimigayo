@@ -602,8 +602,8 @@ public sealed partial class Binding
     // SPEC 23.1.2 (rule W): an owner whose check read a failed part and fails only because of it is Invalid resting on that part, with no
     // failure of its own, so it is derived and records nothing. That holds only where the part's own record publishes: an attribute's
     // target on its rejected attribute (InvalidateAttributeTarget), whose record is direct, since an attribute carries no frame or part
-    // another check writes, and a layer of written Type syntax on the written occurrence it holds (RestLayersOnType, R7-V1c; PLAN G464),
-    // whose record ValidateConstraintUses writes at that node. The state change is a change signal (Invalidated; before the pass's first environment walk it moves none).
+    // another check writes, and a layer of a written Type that forms its operand's Type (a wrapper, parentheses, `owner/`) on the Type
+    // node it is (RestLayersOnType, R7-V1c), whose record ValidateConstraintUses writes at that node. The state change is a change signal (Invalidated; before the pass's first environment walk it moves none).
     private void RestOnPart(Koto owner, Koto part)
     {
         this.Invalidated();

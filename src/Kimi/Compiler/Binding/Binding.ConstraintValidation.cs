@@ -184,27 +184,6 @@ public sealed partial class Binding
         _ => BindingFailure.Internal,
     };
 
-    // The layer of written Type syntax holding `node` as one of its Type components (a Type-syntax node, an Origin application or a Type
-    // application), or null at the outermost written Type node, whose parent reads it as a Type (a declaration, a call's explicit Type
-    // argument list, a qualifier). RestLayersOnType walks it.
-    private static Koto? TypeLayerOver(Koto node)
-    {
-        if (node.Parent is not { } layer || !IsWrittenType(layer))
-        {
-            return null;
-        }
-
-        for (var i = 0; i < layer.TypeComponentCount; i++)
-        {
-            if (ReferenceEquals(layer.TypeComponent(i), node))
-            {
-                return layer;
-            }
-        }
-
-        return null;
-    }
-
     // Whether a node is written Type syntax: a Type-syntax node, an Origin application or a Type application (a GenericsKoto bound to a
     // Type's declaration; one bound to a function is a reference or a callee).
     private static bool IsWrittenType(Koto node) => node is TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type };
@@ -591,7 +570,7 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(use, result, mode, frame);
                 if (result != ConstraintProof.Proven)
                 {
-                    this.RestLayersOnType(written);
+                    this.RestLayersOnType(node, written);
                 }
 
                 if (node.BindingState == BindingState.Invalid)
@@ -661,18 +640,15 @@ public sealed partial class Binding
         => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
             !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) ? type : null;
 
-    // SPEC 23.1.2 (rule W; PLAN G464): the layers of written Type syntax over a written occurrence's Type node `written`, up to the
-    // outermost written Type node, are Types formed from it: a layer forming its operand's Type (R7-V1c) and one forming another Type
-    // from it (a Function, Tuple, array, Optional or pair layer, an Origin or Type application) alike. When the occurrence's judgment
-    // leaves it failed or unproven, each layer with no failure of its own rests on it (RestOnPart) or takes its unproven state, so a
-    // reader of a written Type reads a failed Type: a declaration's, and a decision that read it before this judgment, which rests on it
-    // at Check (FailedWrittenType). The state read is this judgment's, Binding's Contract verdict, never an Origin row of A5.
-    private void RestLayersOnType(Koto written)
+    // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
+    // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its
+    // unproven state, so a reader of the declaration's written Type reads a failed Type.
+    private void RestLayersOnType(Koto judged, Koto written)
     {
         var state = this.RecordedState(written);
-        for (var layer = written; state != BindingState.Resolved && TypeLayerOver(layer) is { } outer;)
+        for (var layer = written; state != BindingState.Resolved && !ReferenceEquals(layer, judged);)
         {
-            layer = outer;
+            layer = layer.Parent!;
             if (this.RecordedState(layer) == BindingState.Invalid)
             {
                 continue;
@@ -689,14 +665,17 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11, 13 and 14): a failed written Type that a use's published decision read
+    // SPEC 23.1.2 (rule W; PLAN G464, O-8 (a), E3e rulings 11, 13 to 15): a failed written Type that a use's published decision read
     // before the written occurrences were judged (ValidateConstraintUses), as the part that Type rests on. One rule: the written Types a
-    // decision reads are the written Type syntax under its own syntax (FailedWrittenChild: its children that are written Types), an
-    // invocation's through its callee (the callee itself when it is a written Type): a call's, a member call's or a reference's explicit
-    // Type arguments (SPEC F.5), a constructor's, a Case's or a static member's Type-application qualifier, a runtime test's target
-    // (Appendix F's NamedCoreType), and a Property's written Type, its certificate's. A written Type layer is no decision
-    // (RestLayersOnType rests it), nor is an invocation's callee (its invocation decides) or a declaration other than a Property (no use
-    // reads its decision before Check). Check rests the node on it, as on a failed called declaration.
+    // decision reads are the written Type syntax under its own syntax (FailedWrittenChild: its children that are written Types, and
+    // their written Type components at any depth, FailedPart), an invocation's through its callee (the callee itself when it is a
+    // written Type): a call's, a member call's or a reference's explicit Type arguments (SPEC F.5), a constructor's, a Case's or a static
+    // member's Type-application qualifier, a runtime test's target (Appendix F's NamedCoreType), and a Property's written Type, its
+    // certificate's. The reader finds the failed occurrence under the layers that hold it, so no layer takes a state
+    // the occurrence's judgment did not give it (RestLayersOnType) and a declaration's written Type, read by its other readers (a stored
+    // Type's Owned proof), keeps them. A written Type node is no decision (its reader decides), nor is an invocation's callee (its
+    // invocation decides) or a declaration other than a Property (no use reads its decision before Check). Check rests the node on it,
+    // as on a failed called declaration.
     private Koto? FailedWrittenType(Koto node)
     {
         if (this.RecordedState(node) != BindingState.Resolved || IsWrittenType(node) || node is DeclarationKoto and not PropertyKoto ||
@@ -717,8 +696,25 @@ public sealed partial class Binding
         return children.Failed;
     }
 
-    // A failed written Type node as the part a reader rests on: the part it rests on itself, or the node.
-    private Koto? FailedPart(Koto type) => this.RecordedState(type) == BindingState.Invalid ? this.UnresolvedPart(type) ?? type : null;
+    // The failed node of the written Type syntax `type` heads, itself or one of its written Type components at any depth, as the part a
+    // reader rests on: the part it rests on itself, or the node.
+    private Koto? FailedPart(Koto type)
+    {
+        if (this.RecordedState(type) == BindingState.Invalid)
+        {
+            return this.UnresolvedPart(type) ?? type;
+        }
+
+        for (var i = 0; i < type.TypeComponentCount; i++)
+        {
+            if (type.TypeComponent(i) is var component && IsWrittenType(component) && this.FailedPart(component) is { } failed)
+            {
+                return failed;
+            }
+        }
+
+        return null;
+    }
 
     // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
     // keeps an unproven target role of the same occurrence as a separate record; every final check recomputes the causes. The role is
@@ -1111,8 +1107,8 @@ public sealed partial class Binding
         }
     }
 
-    // FailedWrittenType's walk over one node's children (never deeper): the first written Type among them that failed, as the part
-    // it rests on (FailedPart). One instance per Binding, reset before each walk.
+    // FailedWrittenType's walk over one node's children: the first written Type among them that failed or holds a failed written Type
+    // component, as the part it rests on (FailedPart). One instance per Binding, reset before each walk.
     private sealed class FailedWrittenChild(Binding binding) : KotoVisitor
     {
         internal Koto? Failed { get; set; }
