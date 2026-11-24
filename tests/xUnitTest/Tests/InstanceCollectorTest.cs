@@ -907,9 +907,10 @@ public sealed partial class InstanceCollectorTest
     // R7-T1 (R1.2), DECISIONS R5-M151, BU-38: the collector's one reading of a substitution's cause at a site (Formed) makes the instance
     // for Formed and refuses the request otherwise. Incomplete, a substitution that does not complete, is a broken contract, which the
     // collector's one record path keeps only where TyCtxt.BindingComplete holds: in an incomplete compilation it may rest on a part Binding
-    // rejected, a dependent without a record; no source reaches it in a complete one, so it is read directly here. HeightLimit records
-    // nothing at once: its TypeHeightLimit_Kd is made at the run's end (AHeightPastTheLimitIsAResourceRecordAtItsFormingSite). Layout's
-    // Rejected row maps a part Binding rejected to the same broken contract.
+    // rejected, a dependent without a record; no source reaches it in a complete one, so it is read directly here. HeightLimit is a use in
+    // MirReport's limit table, made in the collector's run alone, its TypeHeightLimit_Kd at the run's end
+    // (AHeightPastTheLimitIsAResourceRecordAtItsFormingSite): read here, outside a run, it is a broken contract that throws (PLAN G651 U2b,
+    // B's ruling 16; before, the use was dropped silently). Layout's Rejected row maps a part Binding rejected to the same broken contract.
     [Theory]
     [InlineData(false, "")]
     [InlineData(true, "InternalInvariant_Kd")]
@@ -923,8 +924,9 @@ public sealed partial class InstanceCollectorTest
         Assert.NotEqual(0, set.Items.Length);
         var collected = program.Records(MirRecordClass.Collection).Count();
         var site = SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "main"));
-        var causes = new[] { TyCtxt.Formation.Formed, TyCtxt.Formation.Incomplete, TyCtxt.Formation.HeightLimit };
-        Assert.Equal([true, false, false], causes.Select(x => collector.Formed(x, 0, site, site)));
+        var causes = new[] { TyCtxt.Formation.Formed, TyCtxt.Formation.Incomplete };
+        Assert.Equal([true, false], causes.Select(x => collector.Formed(x, 0, site, site)));
+        Assert.Throws<InvalidOperationException>(() => collector.Formed(TyCtxt.Formation.HeightLimit, 0, site, site));
         Assert.Equal(records, string.Join(' ', program.Records(MirRecordClass.Collection).Skip(collected).Select(static x => x.Code)));
         Assert.Equal(DiagnosticCode.InternalInvariant_Kd, collector.RecordOf(Layout.Outcome.Rejected));
     }
@@ -969,13 +971,13 @@ public sealed partial class InstanceCollectorTest
         Assert.All(records, static x => Assert.StartsWith("let ", x.Text, StringComparison.Ordinal));
     }
 
-    // R7-T1 (N1; PLAN G651): only the collector's run answers a requesting site's height refusal after Binding's run (TyCtxt.Answered),
-    // to the formation owning it (an instance's stored Types are answered in every frame after the run, PLAN G651 U2a:
-    // AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame). On chain20, f19's call composed with f19's instance
-    // (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In the collector's answer frame,
-    // TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the
-    // frame records Binding's site-less broken contract at its close; outside the frame Answered owns nothing either
-    // (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
+    // R7-T1 (N1; PLAN G651 U2b R1-R3): after Binding's run a requesting site's height refusal is answered to the formation owning it
+    // (TyCtxt.Answered) under the innermost after-run owner, which the read of it answers to. On chain20, f19's call composed with f19's
+    // instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing. In a body site, Answered
+    // gives HeightLimit and marks the site once at its subject as a fallback, with no record. In the collector's answer frame, Answered
+    // gives HeightLimit again without a record, while TyCtxt.Compose, which owns no refusal, gives Incomplete and the frame's close reports
+    // it with no record (R7-T1's broken contract, which the collector's run throws after the close); outside every owner Answered's
+    // formation still owns the refusal and its read throws (R13.1): never a silent null and no record.
     [Fact]
     public void OnlyTheCollectorsRunAnswersASitesAfterRunHeightRefusal()
     {
@@ -988,34 +990,51 @@ public sealed partial class InstanceCollectorTest
         var f19 = set.Items.ToArray().Single(x => x.BodyOrdinal >= 0 && program.Body(x.BodyOrdinal).Key.Decl?.Name == "f19");
         var call = program.Body(f19.BodyOrdinal).Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x is { Kind: MirTerminatorKind.Call, Callee.Subst: not null });
         Assert.Empty(TestDiagnostics.Of(c));
+        var subject = program.Body(f19.BodyOrdinal).Source;
+        var site = c.Types.OpenBodySite(subject);
+        var sited = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
+        Assert.Equal(new[] { new SiteMark(null, subject, true) }, c.Types.CloseBodySite(site).ToArray());
+        Assert.Equal(((Subst?)null, TyCtxt.Formation.HeightLimit), (sited.Subst, sited.Cause));
+        Assert.Empty(TestDiagnostics.Of(c));
         var frame = c.Types.OpenAnswer();
         var answered = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.HeightLimit), (answered.Subst, answered.Cause));
         var composed = c.Types.Compose(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (composed.Subst, composed.Cause));
         Assert.Empty(TestDiagnostics.Of(c));
-        c.Types.CloseAnswer(frame);
-        Assert.Equal([nameof(DiagnosticCode.InternalInvariant_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
-        var outside = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
-        Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (outside.Subst, outside.Cause));
+        Assert.True(c.Types.CloseAnswer(frame));
+        Assert.Empty(TestDiagnostics.Of(c));
+        Assert.Throws<InvalidOperationException>(() => c.Types.Answered(call.Callee.Subst!, f19.Representative!));
+        Assert.Empty(TestDiagnostics.Of(c));
     }
 
-    // PLAN G651 U2a (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's run
-    // outside the collector's answer frame (main's MIR reads D<W^8000<i32>>, main's p40 lifted 40 times, its Field W^250<T> forming
-    // 8,250), publishes the refusal as its HeightLimit in every frame, so Layout records TypeHeightLimit_Kd at each least use (count's
+    // PLAN G651 U2a, U2b (IMPL A.4, 21.3.2; R7-T1): an instance whose stored Type passes IMPL A.4's height, first formed after Binding's
+    // run outside the collector's answer frame (main's MIR reads D<W^8000<i32>>, main's p40 lifted 40 times, its Field W^250<T> forming
+    // 8,250), publishes the refusal as its HeightLimit under every owner, so Layout records TypeHeightLimit_Kd at each least use (count's
     // parameter, noneD's result, the call forming the instance), never Rejected's located InternalInvariant_Kd; its Field behind raw
-    // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. G651's
-    // site-less InternalInvariant_Kd at the project stays beside it until U2b gives the after-run readers a site. The default's copy
+    // (raw192: raw/W^192<T>, 8,193) the same; at exactly H (raw191: 8,192) the instance forms and the program is accepted. The MIR
+    // readers' reads mark their sites (U2b), whose uses merge with Layout's in each declaration: no site-less record. The default's copy
     // (copy250, f-stored), built since PLAN G396 (3)'s B3, records the same at its least uses, the copy's `.None` at its operation in the
     // template (before B3 it was B3's Unsupported_Kd at the omitting call). In a Closure literal's body (clo250) the same records (beside
-    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1).
+    // A4's own limit at the lifted locals, which only its row leaves out). The Front's f-stored and f-stored-direct (C-485 B1). In a
+    // generic body never instantiated (open250, U2a's f-open) the builder's read of the refused instance is one record in that declaration,
+    // one per declaration that reads it (opentwo250, the Middle's f-open-2d); behind a handle (obj250, U2a's f-obj) A4's payload walk forms
+    // D past the height at `let o`, its record beside the handle key's own limit (ruling 25's rows). The Front's lint-g (openlint250: the
+    // statement a discarded Case construction `Option.Some(noneD(p40))`, SPEC 17.5.3: a call argument, no warning) and lint-gc
+    // (openlintc250: W and D derived Copy, SPEC 3.5.2, so the lint walk's Copy proof may read D's stored Field first): one record in g at
+    // its least use, the construction (every read of D past the height is the builder's), never Rejected's InternalInvariant_Kd (R8 Rev 2).
     // Fail-before: dev gives InternalInvariant_Kd at each use.
     [Theory]
-    [InlineData("stored250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
-    [InlineData("raw192", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("stored250", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>|TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("raw192", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>|TypeHeightLimit_Kd@noneD(p40)")]
     [InlineData("raw191", "")]
-    [InlineData("copy250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>>.None InternalInvariant_Kd@-")]
-    [InlineData("clo250", "TypeHeightLimit_Kd@U TypeHeightLimit_Kd@Option<D<T>> TypeHeightLimit_Kd@noneD(p40) InternalInvariant_Kd@-")]
+    [InlineData("copy250", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>.None")]
+    [InlineData("clo250", "TypeHeightLimit_Kd@U|TypeHeightLimit_Kd@Option<D<T>>|TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("open250", "TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("opentwo250", "TypeHeightLimit_Kd@noneD(p40)|TypeHeightLimit_Kd@noneD(p40)")]
+    [InlineData("obj250", "GenerationResourceLimit_Kd@let o = noneO(p40)|TypeHeightLimit_Kd@let o = noneO(p40)")]
+    [InlineData("openlint250", "TypeHeightLimit_Kd@Option.Some(noneD(p40))")]
+    [InlineData("openlintc250", "TypeHeightLimit_Kd@Option.Some(noneD(p40))")]
     public void AStoredTypeFirstFormedAfterTheRunIsItsInstancesHeightLimitInEveryFrame(string shape, string records)
     {
         var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
@@ -1025,11 +1044,29 @@ public sealed partial class InstanceCollectorTest
             "copy" => "taked(p40)",
             "stored" => "taked(p40, count(noneD(p40)))", // The copy's written twin.
             "clo" => "let c = func () -> i32 => count(noneD(p40))\n    _ = c()",
+            "obj" => "let o = noneO(p40)",
+            "openlint" or "openlintc" => "Option.Some(noneD(p40))",
             _ => "_ = count(noneD(p40))",
         };
-        var c = MinimalEmissionTest.Check(Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement));
+        var source = Lifted(name == "raw" ? $"raw/{Nest("W", n, "T")}" : Nest("W", n, "T"), statement);
+        if (name == "openlintc")
+        {
+            source = source.Replace("struct W<T>\n", "struct W<T>\n    Self is Copy when T is Copy\n", StringComparison.Ordinal)
+                .Replace("struct D<T>\n", "struct D<T>\n    Self is Copy when T is Copy\n", StringComparison.Ordinal);
+        }
+
+        if (name.StartsWith("open", StringComparison.Ordinal))
+        {
+            // The lifts and the statement in a generic function never instantiated (twice for opentwo), main empty.
+            var start = source.IndexOf("public func main() -> ()\n    let p0: raw/i32 = null\n", StringComparison.Ordinal);
+            var lifts = source[(start + "public func main() -> ()\n    let p0: raw/i32 = null\n".Length)..];
+            source = source[..start] + "func g<U>(p0: raw/U) -> ()\n" + lifts + (name == "opentwo" ? "func g2<U>(p0: raw/U) -> ()\n" + lifts : string.Empty) +
+                "public func main() -> ()\n    return\n";
+        }
+
+        var c = MinimalEmissionTest.Check(name == "obj" ? source.Replace("public func main", "func noneO<T>(p: raw/T) -> Option<obj/D<T>> => .None\npublic func main", StringComparison.Ordinal) : source);
         var seen = TestDiagnostics.Of(c).Where(x => name != "clo" || x.Code != nameof(DiagnosticCode.OwnershipDepthLimit_Kd)); // A4's own, clo250's alone.
-        Assert.Equal(records.Split(' ', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
+        Assert.Equal(records.Split('|', StringSplitOptions.RemoveEmptyEntries), seen.Select(static x => $"{x.Code}@{x.Text ?? "-"}"));
 
         // W^8000<i32> by 40 lifts of 200 levels, each within the height and within its frame.
         static string Lifted(string stored, string statement)
@@ -1121,7 +1158,9 @@ public sealed partial class InstanceCollectorTest
     // R7-C3 b's SelectConformance), so both clause orders record one TypeHeightLimit_Kd at the call (names90, namesSwap90; F's C3b ruling
     // (A), C-481) and at Box^80, within the height, both accept (names80, namesSwap80); w == w over W<Box^90<T>>, Equatable when T is
     // Eqv<Box^8<T>>, forms that conditional conformance's premise past the height (8,198) with its operands within (8,192): one
-    // TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80) (c4's fail-before of names90, namesSwap90, premise90 and
+    // TypeHeightLimit_Kd at the call (premise90), none at Box^80 (premise80); the same comparison in a second declaration h2 (PLAN G651 U2b
+    // R8 Rev 2's Witness twin: the resolution the builder's Witnessed and the collector read) is that declaration's own record, one per
+    // forming site and declaration (premiseTwo90; DECISIONS R5-M171, SPEC 23.1.2) (c4's fail-before of names90, namesSwap90, premise90 and
     // premise80: Dispatch's storage gate, Unsupported_Kd at the call; without the resolution's formation, names' record is
     // the frame's site-less InternalInvariant_Kd). Through a requirement Item (namesItem: `let f = U.get`) the record at `f` is the Item's own Type
     // formation's (In, through TyCtxt.Answered, before Callee's Witness), on dev too: a control, no fail-before of Callee's reading. A
@@ -1136,6 +1175,7 @@ public sealed partial class InstanceCollectorTest
     [InlineData("namesSwap90", "TypeHeightLimit_Kd U.get()")]
     [InlineData("premise90", "TypeHeightLimit_Kd w == w")]
     [InlineData("premise80", "")]
+    [InlineData("premiseTwo90", "TypeHeightLimit_Kd w == w|TypeHeightLimit_Kd w == w")]
     [InlineData("prop90", "GenerationResourceLimit_Kd x.n")]
     [InlineData("prop91", "TypeHeightLimit_Kd x")]
     public void AWitnessResolutionIsTheCallsFormation(string shape, string records)
@@ -2979,6 +3019,7 @@ public sealed partial class InstanceCollectorTest
             "namesSwap" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<i32>", "C<Box<Box<T>>>", Get)),
             "namesItem" => Chain(last, $"\n    return g<S<{Nest("Box", n, "T")}>>() - 1\n", Names("C<Box<Box<T>>>", "C<i32>", "    let f = U.get\n    return f()\n")),
             "premise" => Chain(last, $" => if h<{Nest("Box", n, "T")}>() => 0 else => 1\n", Premise()),
+            "premiseTwo" => Chain(last, $"\n    _ = h2<{Nest("Box", n, "T")}>()\n    return if h<{Nest("Box", n, "T")}>() => 0 else => 1\n", PremiseTwo()),
             "prop" => Chain(last, $"\n    return g<Ph<{Nest("Box", n, "T")}>>(Ph<{Nest("Box", n, "T")}>.init()) - 1\n", HasN),
             "nest" => Chain(last, $"\n    func inner() -> i32\n        let y: Option<raw/{Nest("Box", n, "T")}> = .None\n        return 0\n    return inner()\n"),
             "cap" => Chain(last, $"\n    let h = H<{Nest("Box", n, "T")}>.init()\n    return h.run()\n", H),
@@ -3010,6 +3051,9 @@ public sealed partial class InstanceCollectorTest
             => $"    Self is Eqv<{Nest("Box", 8, "Self")}>\ncontract Eqv<X>\nstruct W<T>\n    Self is Equatable when T is Eqv<{Nest("Box", 8, "T")}>\n" +
                 "        public func equals(self: ref/Self, other: ref/Self) -> bool => false\n    public init() => ()\n" +
                 $"func h<T>() -> bool\n    T is Eqv<{Nest("Box", 8, "T")}>\n    let w = W<T>.init()\n    return not (w == w)\n";
+
+        // Premise's declarations and h's twin h2, the same comparison in a second declaration.
+        static string PremiseTwo() => Premise() + Premise()[Premise().IndexOf("func h<", StringComparison.Ordinal)..].Replace("func h<", "func h2<", StringComparison.Ordinal);
 
         // A generic struct's Field and a generic enum's Case payload over Box^n of the parameter, behind raw (R7-T1: an instance's stored
         // Types).

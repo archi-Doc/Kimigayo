@@ -122,6 +122,8 @@ public partial class OriginPremiseCatalogTest
     // until the uses of a compared Type read the region (x1, and x1m with a meet; PLAN G492-a (ii), O-400 (b)). Where both operands are
     // `let` locals over a body local (`(x and z)`, `x = y@ref`; opc5) and `q` is fixed, the region reading is the value reading (a `let`
     // region outlives nothing its value does not): the Borrow of `y` cannot outlive `q`, the comparison's own record (SPEC 15.6.5).
+    // Two requests of one comparison (g7's clauses, PLAN G1082, the Front's C-519 T1): `p outlives z` holds by R5 from its own shorter
+    // end, and `p outlives q`, between fixed Origins, does not: a request's R5 never serves the next one in the shared environment.
     [Theory]
     [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.Unsupported_Kd))]
     [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.Unsupported_Kd))]
@@ -137,6 +139,7 @@ public partial class OriginPremiseCatalogTest
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Outer + "    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during q) -> ref/i64 during p\n        return v\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during p) during q, ref/i64 during p) -> ref/i64 during q = g\n    return 0\n", null)]
+    [InlineData("func g7(u: ref/i64 during d, w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives d\n    origin c outlives b\n    return w@follow\n" + Outer + "    let f: (ref/i64 during z, ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g7\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     public void LocalPlaceIsNoPremiseOfANestedSignatureOrBody(string body, string? code)
         => Assert.Equal(code is null ? [] : [code], Check(body + Main).Codes);
 
