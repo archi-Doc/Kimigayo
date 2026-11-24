@@ -3763,6 +3763,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Unsupported_Kd at a returned Closure's call until F1's representation unit); D-13's receiver well-formedness premise is built (G270).
   - Superseded in part by R7-M66 (D-944): §2.5's pending list (a pending relation is a row like any other) and 2c-3's "CallResult
     becomes Unbound at a call" (a value call publishes its Closure's call result atom as it is).
+  - Superseded in part by R4-M246 (Z4-M, 2026-11-25): departure (iii), PD13's located `Unsupported_Kd`: a by-case Closure call
+    acquires its callee in each case as the case admits (a case branch), and the hold's condition is `MirValidator`'s row (4).
 - **R4-M127 A default's copy is decided before it is written** (2026-10-25; PLAN G245's unit U1) SPEC 7.2.3, 23.1.1, 23.1.2.
   - Cause: `MirBuilder.Inline` wrote a copy before it knew whether the call's substitution instantiates it. A null `TyCtxt.Apply` or
     `Compose` kept the template's own Type or callee substitution (`applied ?? type`, `composed ?? Subst`), then a trailing
@@ -4767,6 +4769,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reference" no longer holds; an abstract part writes by provenance (W's named step), and these rows arise from the `@uniq` capture's
     exclusive Loan. The verdicts stand on S1′: f7h1, f7h2, f7n1 and f7n2 keep their records, and selfPair, selfPairChild and
     methodAbstract are unchanged (`RuleGsSelfStoreReachesAClosureReceiver`).
+  - Superseded in part by R4-M246 (Z4-M, 2026-11-25): the PD13 bullet (no view is held: `Record` is deleted, every rejection goes
+    through `AddProblem`, a by-case call acquires per case, and the hold's condition is `MirValidator`'s row (4), a broken contract),
+    the Rule's "R the strongest receiver" (R is the receiver the callee's Type admits, `TyCtxt.ClosureReceiverIn`) and the Env
+    bullet's "is shared by a body's views" (the memo key holds R).
 - **R4-M149 An Opaque temp is no storage (PLAN G247)** (2026-10-27; unit G247: design 2's option A over design 1's (C); amends R4-M109
   (a) and L1) SPEC 23.1.2, 3.4, 3.6, 13.5.6.
   - Cause: where a consumer needs a Place for an Opaque value, the builder holds the value in a temp (`Value` for a node published
@@ -5128,6 +5134,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amended by R4-M237 (2026-11-23, Z25): A4's Deep also covers an instance past Binding's storage bound (`TyCtxt.ReadableInstance`'s
     null), so the open item A4's null-instance Limit closes for that bound; the null's other cause (`Formation.Incomplete`) stays an
     unseparated remainder (PLAN G651 U2).
+  - Superseded in part by R4-M246 (Z4-M, 2026-11-25): the readers bullet's "and PD13's hold (`Record`)" and the Record bullet's
+    "(never held: a limit record, as a located `Unsupported_Kd` is)". No view is held: `Record` is deleted, every rejection is
+    recorded through `AddProblem`, and `MirBorrows.Limit` records each limit failure once.
 - **R4-M154 Retention per storage (WK, PLAN G276 with G279): a call keeps an argument's own value only in storage that can hold it, and
   the callables its contract hands its body retain as erased callees** (superseded in part by BU-66: rule 2 at an abstract part and
   rule 3 without a Type gate; by R4-M219, the A5 value redesign's U3c: Revision 8's Place-Type key for the record of an element
@@ -8335,6 +8344,87 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Scaling:** one memoized key per call with a result; the walk is bounded by the result Type's layer count (C4's row
     `AResultAndInputLayersWorkStaysLinearInCallsAndLayers`: N calls with a by-value Tuple of K two-layer raw elements and a
     composing result with a raw Field, work linear in N and in K).
+- **R4-M246 Z4-M: a by-case Closure call is a case branch; PD13's view hold is deleted; a call's contract is read in the view's case (PLAN G13 (b), G396 (3) M1)** (2026-11-25;
+  the Middle; R7 plan Z4, Z23's commit 4; Q-774, D-1275; Major; design `middle\notes\z4f-design.md` Revision 1 (R1.2) with
+  `middle\notes\z23-design.md` §4.2, §5 row (4) and §6, the Front's review C-487; its Binding half BU-248; the repeated review's C4 and
+  the Middle's rulings of 2026-11-25 on Failure B, the erasure reader, 2b, 2c, 2e and the merge's `RetentionKey`, `middle\notes\z4m-c4.md`)
+  SPEC 7.7.3, 8.14, 8.15.2, 15.1.5, 15.6.4, 15.6.7, 15.8.2.
+  - **Rule.** A Value call whose Closure receiver is by case (`HirTables.CaseDecider`: BU-248's `CallPlan.CaseDecider`) owns a
+    frame of R7-M59's case branch. Where the decision of its Closure Type decider (`MirCases.Decision`) splits the views of the side
+    being built, `MirBuilder.Calls.Call` opens a CaseSwitch on the decider before the callee and assembles the call on each side into
+    the one destination: the exclusive side acquires the callee by `ReceiverOperation` (the column's take), the shared side by
+    `SharedReceiver` (the callee's plan-row take, R4-M145). A call whose decision the side's views already fix takes that side's
+    acquisition with no frame (`h1(h2(...))` on one binder: one branch). The call pushes no take owner; `MirBuilder.Cases`' `Turn`
+    and `Close` end a frame's sides for the take and the call alike; the CaseSwitch takes the statement start (`Open` before `Info`).
+  - **The case rule.** `MirCases.Branch` (and so `Decision`) gains the Closure row: a Closure Type decider takes the exclusive side
+    where its case receiver (`TyCtxt.ClosureReceiverIn` of its case Type) is Exclusive; any other decider by `MirTypes.IsExclusive`.
+  - **The call's contract in the view's case** (the repeated review's C4): every Type a call passes to its contract is read in the
+    view's case after its substitution (A5's reader `MirBorrows.CallRows.Retaining`; a Value call: its callee and declared signature;
+    a direct call: its instance's inputs, result and bounds, keyed by its substitution's case, `TyCtxt.CaseSubst`; C4's receiver from
+    the callee's case Type, keyed), never through a cased substitution: a pair slot holds its binder's whole Type, and a case form
+    placed there is judged by Binding's substitution under the caller's premises, not the case (`DirectTarget` -> `FormsUnder`, BU-240,
+    PLAN G886). So an input of a pair layer is by value in the owner case and the call writes nothing through it there (SPEC 7.7.3,
+    8.14, 15.6.4). `TyCtxt.Retains(callee, subst, definition, ReadOnlySpan<PairCase> cases)` takes the cases as data, as `CaseType`
+    does (A5 passes its view, `MirCases.View`; MirValidator, `MirBorrows.Storing` and `MirBorrows.Destructions` pass `[]`):
+    `InstanceRetention` instantiates with the case-free Subst, then reads the result, every input (a `drop`'s destruction receiver) and
+    each bound's signature by `CaseType`; `Binding.Retains` keeps the case-free Subst (its target, Instantiation's Origins and the
+    declaring Type's clauses). `TyCtxt.CaseSubst` (new, beside `TyCtxt.CaseType`, the same owner) is the case key of a call's
+    substitution, never substituted through: the call interned with its Self, declaring Type and Types read by `CaseType` (a null slot
+    kept), its lengths, Origins and inputs the call's; the call itself without a case or a pair layer, Intern's own where no Type
+    changes, with no allocation; the memo key's Types slot, one entry per distinct case reading. A Closure call's contract
+    (`TyCtxt.Retains` over a Value callee) has at input 0 `R/Env during ρ` with R the receiver the callee's Type admits
+    (`TyCtxt.ClosureReceiverIn`), which `Binding.ClosureReceiver` takes as an input, and its memo key holds R (null for any other
+    contract): a by-case call's Shared side reads its environment and writes none of it (SPEC 15.8.2: only an Exclusive call retains
+    into `var` bindings and captured exclusive references' referents; 15.6.4; `Binding.RetentionInput`: a shared receiver's Content is
+    not writable and lies past a shared layer). `TyCtxt.Retains` stays one rule over the Types it is given; every reader of a Closure's
+    contract, Binding's erasure included (`Binding.ReceiverIndependence`, read by applicability's `ErasedArgumentEnvironment`, which has
+    no view and reads the Types as stated), takes the receiver the Closure's Type admits. The body is still checked once against the
+    strongest receiver (`BoundClosure.Receiver`), which the MIR body's receiver local keeps; the key is shared by the views whose case
+    admits the same receiver. The twins D1, D1c, D2 (`middle\notes\z4m\c4\labels.md`), a direct generic call's `t/U` input fed a
+    pair-layer `s/T` argument, found the direct path's case-free Subst storing a Loan through it in the owner view; with the instance
+    read in the case their record is under s = uniq alone (`GenericCaseDiagnosticTest.ADirectCallReadsItsInstanceInTheCase`); the twins
+    2e-A, H1, H2 (`ACallInTheCaseKeepsItsInstanceFormed`: a direct call binding a pair slot, and a `Holder<s/T>` read and destroyed in
+    one case and in two) are valid and accepted, as on dev. (Since Q-768, BU-220: the memo key is `TyCtxt.RetentionKey`; Z4-M's case
+    key is its `Types` and the Closure receiver its last member, `Receiver`.)
+  - **View dependence (M-a).** A body with a CaseSwitch is view-dependent (`MirMoveData.ViewDependent` starts as
+    `MirBody.CaseSwitches > 0`): a Z4 side holds only case-free borrows of its callee, so A1 and A5 would otherwise analyse view 0
+    alone, and view 0's shared side would accept the uniq case's conflict (heldMove).
+  - **Validator row (4)** (`MirValidator.Types`' `Receivers`): a Value call whose callee operand's case Type is a reference to C, C
+    with the call receiver input, in a view whose case of C has a Shared or Exclusive receiver other than the reference's is
+    `MirViolation.Operation`, in the views reaching its block: `uniq/C` where the case admits a Shared receiver (PD13's condition,
+    `Overacquired`, moved: a broken builder contract, no longer a limit) and `ref/C` where it is Exclusive (`ref/F` supplies no
+    Exclusive call, SPEC 7.7.3; the half A5 relies on). The callee's Type is read through the Type tier's `TypeOf`, unknown for an
+    Opaque value's temp, so a call whose callee acquisition Binding failed (hm4's `ref/F` call) is not read; Owner receivers are not read.
+  - **Deleted:** PD13's hold (`MirBorrows.held`, `Overacquired`, `Plan`'s hold line, `Record`, whose callers call `AddProblem`);
+    every rejection is recorded through `AddProblem`.
+  - **Records (Q13):** PD13's `Unsupported_Kd` is gone. Where it was a body's only record (heldMove, heldMoveRef, a nested moved
+    entry) the uniq case's `CallActivationConflict_Kd` replaces it; exclusiveMoveRaw's view set narrows to the uniq view; a
+    conflict independent of the call (heldIndependent, heldBefore) is reported in every view. On PLAN G148 (2)'s pending valid rows
+    (a by-value use of a pair-layer capture in a `var` Closure, `ClosureReceiverClassificationTest`'s `PendingGxs`), PD13's limit
+    record is removed: the owner view, whose call is Shared, is analysed per case, its call's contract over the shared receiver, and has
+    no record; G148 (2)'s `ComparisonLoanConflict_Kd` at `let g` stays under `s = uniq` alone, as on dev (same code, location and case
+    note); no acceptance moves. The direct-path twins D1, D1c, D2 (invalid under s = uniq alone) report their
+    `ComparisonLoanConflict_Kd` at `let k` under s = uniq alone (on dev D1 and D2 reported it with no case note, D1c beside PD13's
+    `Unsupported_Kd`). No other valid program moves (36 probe rows, `middle\notes\z4m\`). Generated code: a by-case call's Copy-case
+    instances borrow the callee shared.
+  - **Supersedes** R4-M126 (iii) and R4-M148's PD13 bullet (the hold), R4-M153's PD13 hold (`Record`) among its readers, and R7-M59's
+    "PD13's hold ... stays until Z4"; R4-M148's Rule "R the strongest receiver" and its Env bullet's "is shared by a body's views" (the
+    call's receiver input bullet).
+  - **Remainder** (PLAN G13 (c)): R4-M128's limits and a call of a captured by-case Closure stay Exclusive in every case; no view is
+    held for them (`ClosureReceiverIn` is Exclusive in every view), and they move only the view sets of invalid programs. A
+    destruction's contract is still read over its case Type and then substituted (`MirBorrows.Destroyed` -> `Composing`,
+    MirBorrows.Destructions.cs:159 at 76df132a7), the order the call path rejects; H1 and H2 move nothing, and PLAN G1396
+    decides it.
+  - **Rejected:** keeping PD13 and fixing only the view-0 shortcut (the hold stays a producer, M1); the builder deriving the Shared
+    acquisition from the Exclusive one (a consumer deciding Binding's acquisition); a mode or bool parameter steering the call's
+    assembly (the side's region decides the callee operand); row (4) as a `caseSites` entry (a Call has no rvalue); for the owner view
+    of G148 (2)'s rows, keeping its Language record (a conservative Language error on a valid view, AGENTS Diagnostics, Q13) or a hold
+    for such views (PD13 back as a gate); the memo keyed by the receiver input Type (one walk per case Type, not per receiver); for the
+    direct path's case reading, widening `TyCtxt.InView` (a requirement call's substitution in a view, Self and reference given by its
+    caller, which MirEffects reads); for the direct path, the cased Subst substituted through (phase 2d's stop: the owner case's bare
+    target in a pair slot forms no Type under the caller's premises, BU-240, so `tests\mir\cases.kimi`'s valid `peek(x)` got a Limit)
+    and (P), a pair-slot branch in `CaseSubst` through `PairBinding` (`PairBinding` of `Form` is `Form`: it moves nothing); a new key
+    representation for the view (`CaseSubst` already tells views apart exactly where a Type changes).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -26444,7 +26534,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     side, an unconditional branch).
   - **Moves (Q13):** generated code of by-case selections (their ref and owner cases call `index`); e1 (an invalid program dev
     accepted) is newly `IncompatibleContractImplementation_Kd`.
-  - **Supersedes** BU-8's open "Mode is one per node", with BU-233. PD13's hold (R4-M126 (iii), R4-M148) stays until Z4.
+  - **Supersedes** BU-8's open "Mode is one per node", with BU-233. PD13's hold (R4-M126 (iii), R4-M148) stayed until Z4 (R4-M246, which adds the by-case Closure call as a frame owner and the
+Closure row of `MirCases.Branch`).
   - **Rejected:** a per-view callee with per-case local Types; keeping the exclusive call and having code generation call `index`
     (e1 shows A4 would read the wrong effects); an Adapt to a pair-layer receiver; a stored per-view mask; one body per view; one
     branch per body, or reuse keyed on Type identity; re-deciding the branch in a default copy; walking every body in Replay
