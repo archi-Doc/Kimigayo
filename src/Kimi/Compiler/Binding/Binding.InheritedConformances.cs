@@ -84,6 +84,22 @@ public sealed partial class Binding
             return true;
         }
 
+        // PLAN G651 a2 (F1, BU-161; IMPL 21.3.2): the computation is its declaration's, never the demander's (SPEC 23.1.2, as BaseLayers'
+        // clause read): it runs in a site frame at the base clause whatever frame the demander holds, so a Type past the limit formed here
+        // (the inherited declared Self) is refused at the clause that forms it, in either declaration order.
+        var frame = this.BeginConsultation(syntax);
+        try
+        {
+            return this.ComputeInheritedConformances(type, declaration, syntax);
+        }
+        finally
+        {
+            this.DropConsultation(frame);
+        }
+    }
+
+    private bool ComputeInheritedConformances(BindingSymbol type, StructKoto declaration, Koto syntax)
+    {
         // The clause is read by DirectBase, the one reading (R7-M9). A read that moved its not-ready count (a clause in progress or not
         // ready) stores nothing and is read again at the next demand, so no heir registers paths through a clause in progress; a read
         // naming no struct without moving it is final.
@@ -329,9 +345,12 @@ public sealed partial class Binding
     }
 
     // SPEC 8.8.2: each inherited path's conformance scope, the heir D and its premises P (Register copies the declared path's) at its
-    // declared Self (BoundConformancePath.DeclaredPath), one step per path; none where that Self was refused. Built once per pass after
-    // the pass's registrations (ImplTable resets each path, its scope included, at its first access in the pass) and before its readers,
-    // the inline layouts' heir nodes and VerifyInheritedConformance, which read it and never build it.
+    // declared Self (BoundConformancePath.DeclaredPath), one step per path; none where that Self was refused. Built once per pass at the
+    // end of the registrations (after RegisterInheritedConformances, every path registered and every premise bound; ImplTable resets each
+    // path, its scope included, at its first access in the pass), before ValidateBaseDeclarations, so a premise the limit refuses at a
+    // declared Self fails the heir's base clause before the one availability rule reads it (PLAN G651 a2, form M, C8 ruling 20); a refused
+    // path's scope is partial and read by no reader (an unavailable struct's paths rest first). Its readers, the inline layouts' heir nodes
+    // and VerifyInheritedConformance, read it and never build it.
     private void PrepareInheritedScopes()
     {
         foreach (var path in this.impls.InPass.Paths)
@@ -347,6 +366,9 @@ public sealed partial class Binding
                 continue;
             }
 
+            // PLAN G651 a2 (B1, BU-161): the premises are formed at the declared Self in a site frame at the path's Use, the heir's base
+            // clause, the conformance clause that forms them (IMPL 21.3.2); a premise past the limit fails that clause.
+            var frame = this.BeginConsultation(path.Use);
             var environment = path.Scope.Constraints ??= new();
             foreach (var clause in premises.Operands)
             {
@@ -357,6 +379,7 @@ public sealed partial class Binding
             }
 
             this.ExpandScopeContractPremises(path.Scope);
+            this.DropConsultation(frame);
         }
     }
 

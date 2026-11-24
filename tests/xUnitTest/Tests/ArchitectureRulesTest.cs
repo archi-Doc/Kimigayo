@@ -338,6 +338,7 @@ public class ArchitectureRulesTest
         "Binding.Operators.cs:NonNumericOperand=2 kind",
         "Binding.OriginDiagnostics.cs:IsExcludedInputOrigin=1 record",
         "Binding.OriginInheritance.cs:CompleteImplementationOrigins=2 formed",
+        "Binding.OriginPremises.cs:Environment=2 key", // PLAN G1082: a premise session environment's key, a comparison's required signature and each enclosing one.
         "Binding.OriginRequirements.cs:PairOrdinal=1 key",
         "Binding.OwnedConversions.cs:JudgeErasedOwned=2 key", // R7-O2 O2-N's N-B3a: an Owned obligation's Type against the use's published subject, which deferral is the use's last
         "Binding.PairCases.cs:CaseType=2 unchanged",

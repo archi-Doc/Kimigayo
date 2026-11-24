@@ -136,8 +136,9 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.PartsBase = declaration.BaseClause is { } clause ? this.KeptType(clause, type) : null;
-            instance.Base = this.WithoutRawOrigins(instance.PartsBase);
+            // DECISIONS BU-37 (PLAN G651 a2, R13.2): a base clause with a recorded failure gives no stored base part (AdtDef.BaseNotStored).
+            (instance.PartsBase, instance.Base) = declaration.BaseClause is { } clause && this.RecordedState(clause) != BindingState.Invalid
+                ? this.KeptPart(clause, type) : default;
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)
             {
@@ -146,8 +147,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < count; i++)
             {
-                instance.Parts[i] = this.KeptType(adt!.Fields[i], type);
-                instance.Fields[i] = this.WithoutRawOrigins(instance.Parts[i]);
+                (instance.Parts[i], instance.Fields[i]) = this.KeptPart(adt!.Fields[i], type);
             }
 
             return;
@@ -164,6 +164,23 @@ public sealed partial class Binding
             instance.Parts[i] = cases[i] is { } selected ? this.PayloadTuple(selected, type) : null;
             instance.Cases[i] = this.WithoutRawOrigins(instance.Parts[i]);
         }
+    }
+
+    // SPEC 6.3.3 (G651 a2-2): the base a constructor's selection reads: the base clause under the struct's Self as Substitute forms Base
+    // (KeptPart's view), also where the instance does not store it, so an independent selection failure stays judged, as LookupMember's
+    // base step reads a failed clause (R7-N3b, R7-N2c); none where the clause names no Type or the struct lies on an inline cycle
+    // (AdtDef.Base's reading), which no selection reads past.
+    private BoundType? SelectionBase(StructKoto declaration)
+        => declaration.BaseClause is { } clause && declaration.BoundSymbol!.Adt is not { InlineCycle: true }
+            ? this.KeptPart(clause, this.SelfType(declaration.BoundSymbol!)).View : null;
+
+    // A declared Field's or base clause's two stored forms under an instance (AdtDef.InstanceStorage): its kept part with the raw Origins
+    // it gives (KeptType: Parts, PartsBase) and AdtDef's view of it without them (WithoutRawOrigins: Fields, Base). The one formula
+    // Substitute's struct lines and SelectionBase read.
+    private (BoundType? Part, BoundType? View) KeptPart(Koto syntax, BoundType owner)
+    {
+        var part = this.KeptType(syntax, owner);
+        return (part, this.WithoutRawOrigins(part));
     }
 
     // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
