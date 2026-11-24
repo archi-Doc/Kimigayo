@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 //   call's solve) deciding whether a part at `ref/U` is such a temporary, and of which Type: U, the part's expected Type there
 //   (ExpectedTypeOf).
 // - Inputs: the part, the position's Type and the part's scope (a join's survey).
-// - Outputs: Materialization, U, or null where the part is no such temporary.
+// - Outputs: Materialization, U, or null where the part is no such temporary; TemporaryBorrow, the Type of its one shared borrow.
 // - Invariants: a value is an owner value of a literal form: a Tuple literal with elements, an array literal or fill, a mixed range or
 //   a Dictionary literal (IsAggregateArgument), an untyped literal or a literal-only expression (12.3); or a value join, an unbound
 //   selection, `do` or `loop` with such a source at any depth (its survey's Literal or Value) or one its call classifies by its
@@ -29,6 +29,13 @@ public sealed partial class Binding
     // step 2's "nor a Semantics parameter"). An owned handle and `raw/T` are owner values.
     private static bool OwnerResult(BoundType result)
         => !result.IsPairLayer && (result is not { Kind: BoundTypeKind.Semantics } || !(IsBorrow(result.Semantics) || result.Semantics == SemanticsKind.Parameter));
+
+    // SPEC 10.2 row 2, 3.6, 14.9.2 step 3: the shared borrow of the owner temporary of `temporary` (U) that `part` is, at the part's own
+    // Place Origin (the temporary lives for its position, never extended): the adapted Type of the argument operation that borrows it,
+    // a literal's (FitLiteral) or an aggregate's or a value join's (FitComposite), which the selected call's fit relates to its
+    // parameter (JudgeCallFit) and HIR publishes as the Borrow.
+    private BoundType TemporaryBorrow(Koto part, BoundType temporary)
+        => this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [temporary], origin: this.PlaceOrigin(part));
 
     // The Type U of the owner temporary that `part` at `type` is (the contract above); null at any other Type or part.
     private BoundType? Materialization(Koto part, BoundType? type, BindingScope scope)

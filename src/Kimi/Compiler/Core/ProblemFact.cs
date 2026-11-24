@@ -31,7 +31,10 @@
 // 7.4), neither side of a mismatch (R7-E2), and an Instance fact (R7-E2 E2-5b) as its Value an index in BindingReport's kept sides, a
 // Type its location does not determine, read by its site: at the preceding Related fact's own site, the instance that party is (a related
 // Contract's or associated declaration's declaring instance, or a construction's constructed Type), and at a member declaration of that
-// party, the Type that instance binds the member to; a kind that names no value has -1; a problem has at most one fact of each kind but
+// party, the Type that instance binds the member to, and a Checked fact (AF-3b) a candidate party's argument part checked against its
+// expected Type whose own resolution there failed (SPEC 10.5.1) and as its Value that Type's index in BindingReport's kept sides times
+// two, plus one where the resolution is ambiguous (else none applies), packed and unpacked by BindingReport only (KeepChecked, Checked),
+// at most one per party, after its Reason; a kind that names no value has -1; a problem has at most one fact of each kind but
 // its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order its site
 // records them, and its Count and Instance facts, in their row's order; a selection's record is the subject's facts, then per party its
 // Related (role 3 or 5) and that party's entries up to the next party Related, in the order its adapter renders them, read by position,
@@ -48,7 +51,7 @@ namespace Kimi.Compiler;
 /// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), a problem this one is caused only by (rule W,
 /// R4-M132), or, for Binding, the syntax that shows a mismatch with one of its two sides, the subject with its located part, a failed operator's
 /// operand, judged Type or proposition, a further Origin record (R7-E1), a related location, a stated count, a closed reason, the Type two
-/// parameter shapes overlap at or the Type a related party stands for (R7-E2).</summary>
+/// parameter shapes overlap at, the Type a related party stands for (R7-E2) or a candidate's checked part with its expected Type (AF-3b).</summary>
 internal enum ProblemFactKind : byte
 {
     Anchor,
@@ -78,6 +81,7 @@ internal enum ProblemFactKind : byte
     Reason, // Binding: the subject, a row of the closed enumeration its requirement names, or its code's packed rows (Value; text the adapter's).
     Key, // Binding: the conflicting parameter, the Type at which its matching key overlaps an earlier one's (Value, a kept side's index; SPEC 7.4).
     Instance, // Binding: at the preceding Related fact's site, the instance that party is; at a member declaration of that party, the Type that instance binds the member to (Value, a kept side's index; SPEC 8.4.3, 8.9.2).
+    Checked, // Binding: at a candidate party, the argument part checked against its expected Type whose own resolution there failed (Value, that Type's kept side index times two, plus one where the resolution is ambiguous, else none applies: BindingReport.KeepChecked, Checked; SPEC 10.5.1).
 }
 
 /// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>

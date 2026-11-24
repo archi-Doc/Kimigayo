@@ -2,7 +2,9 @@
 
 namespace Kimi.Compiler;
 
-internal readonly record struct CallInferenceMetrics(long Mappings, long Comparisons, long CandidateChecks, long Correlations, long FixedChecks, long FixedReuses, int Contracts, int ContractCapacity, int DependencyCapacity, int SlotWordCapacity);
+// Queries: the parts checked against an expected Type that started a query (SPEC 10.5.1; a memo hit is no query), which a query's own
+// counters do not hold (EndSelectionQuery restores them).
+internal readonly record struct CallInferenceMetrics(long Mappings, long Comparisons, long CandidateChecks, long Correlations, long FixedChecks, long FixedReuses, int Contracts, int ContractCapacity, int DependencyCapacity, int SlotWordCapacity, long Queries);
 
 public sealed partial class Binding
 {
@@ -13,6 +15,7 @@ public sealed partial class Binding
     private long inferenceFixedChecks;
     private long inferenceFixedReuses;
     private long evidenceNameReads;
+    private long inferenceQueries;
 
     internal bool MeasureCallInference { get; set; }
 
@@ -26,12 +29,13 @@ public sealed partial class Binding
     /// scaling check reads.</summary>
     internal long OpenMarkedWork => this.openMarkedFormations;
 
-    internal CallInferenceMetrics InferenceMetrics => new(this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks, this.inferenceCorrelations, this.inferenceFixedChecks, this.inferenceFixedReuses, this.shapeContracts.Count, this.shapeContracts.Capacity, this.shapeDependencies.Capacity, this.slotWordScratch.RetainedCapacity);
+    internal CallInferenceMetrics InferenceMetrics => new(this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks, this.inferenceCorrelations, this.inferenceFixedChecks, this.inferenceFixedReuses, this.shapeContracts.Count, this.shapeContracts.Capacity, this.shapeDependencies.Capacity, this.slotWordScratch.RetainedCapacity, this.inferenceQueries);
 
     private void ResetInferenceMetrics()
     {
         this.inferenceMappings = this.inferenceComparisons = this.inferenceCandidateChecks = 0;
         this.inferenceCorrelations = this.inferenceFixedChecks = this.inferenceFixedReuses = 0;
         this.evidenceNameReads = 0;
+        this.inferenceQueries = 0;
     }
 }

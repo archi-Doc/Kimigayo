@@ -515,10 +515,7 @@ public sealed partial class Binding
                 return binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
             }
 
-            var rows = binding.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
-            var fits = binding.ErasureSignatureFits(actual, type, node, binding.comparisonRows, out _);
-            binding.DropComparisonRows(rows);
-            return fits;
+            return binding.ErasureSignatureFits(actual, type, node);
         }
 
         // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot
