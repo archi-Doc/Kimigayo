@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 //   owner-case operand (WritablePlace), and what a part's owner grants it or lends it (WritableOwner, LendsOwner: the one reading
 //   of SPEC 15.1.5's writable roots for a part, a writable temporary's included, WritableTemporary, whose whole Temporary Place no
 //   lowering writes yet, IsTemporaryPlace); whether a receiver can be
-//   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5; its denial, ExclusiveAcquisitionDenial); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
+//   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5; its denial,
+//   ExclusiveAcquisitionDenial); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
 //   borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace and, for a handle, LendsHandle, with the static root), with the
 //   one diagnostic for a written Borrow it may not (BorrowFailure), the one lending verdict of an owned input, written or implicit
 //   (OwnedLending), and whether an implicit Borrow lends a static root (BorrowsStaticRoot);
@@ -655,8 +656,10 @@ public sealed partial class Binding
     // (AdaptInput, AdaptObjectBorrow). A written Borrow outside a Receiver Expression is lent as Binding lends its Place
     // (BorrowablePlace), an implicit one, a receiver's included, as SPEC does (LendsPlace), otherwise a Temporary Value as
     // BorrowableTemporary admits it (spelled when written or a receiver). None: lent as is; ExclusiveBorrowRequired: an implicit exclusive
-    // borrow outside a receiver, lent only when spelled; null: nothing is lent (a written Borrow, whose own check records it, or a
-    // Temporary Value).
+    // borrow outside a receiver, lent only when spelled; an implicit exclusive acquisition of a Place the rule denies fails as its
+    // written twin does (SPEC 7.3.3: writing the operation means the same; AccessFailure), except that outside a receiver a limit
+    // (Unsupported: the spelled form is valid and meets the limit) leaves the missing spelling as the error; null: nothing is lent (a
+    // written Borrow, whose own check records it, or a Temporary Value).
     private BindingFailure? OwnedLending(Koto source, BindingScope scope, bool exclusive, bool explicitBorrow, bool receiver, bool fixedExpectation)
     {
         var written = explicitBorrow && !receiver;
@@ -665,7 +668,18 @@ public sealed partial class Binding
             return exclusive && !explicitBorrow && !receiver ? BindingFailure.ExclusiveBorrowRequired : BindingFailure.None;
         }
 
-        return this.BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) ? BindingFailure.None : null;
+        if (this.BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation))
+        {
+            return BindingFailure.None;
+        }
+
+        if (!exclusive || explicitBorrow || !this.IsBarePlace(source))
+        {
+            return null;
+        }
+
+        var denial = this.AccessFailure(source, out _);
+        return denial == BindingFailure.Unsupported && !receiver ? BindingFailure.ExclusiveBorrowRequired : denial;
     }
 
     // SPEC 15.6.2, 15.6.4: the one diagnostic for a written Borrow of a Place Binding does not lend (BorrowablePlace): one that SPEC

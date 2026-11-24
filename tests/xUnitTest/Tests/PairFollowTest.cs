@@ -606,7 +606,7 @@ public class PairFollowTest
     [Theory]
     [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("func pick<s/T>(c: ref/Collection<s/T>, i: isize) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let n = c[i]\n    return n.load()", DiagnosticCode.TransferRequired_Kd)]
-    [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)", DiagnosticCode.InvalidAssignment_Kd)]
     public void PairPositionsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);

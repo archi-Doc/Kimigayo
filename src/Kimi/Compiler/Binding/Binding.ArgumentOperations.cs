@@ -140,10 +140,11 @@ public sealed partial class Binding
     // Set while an input is adapted (AdaptInput's out-channel): the reason an otherwise fitting bare Place was not applicable, which a
     // candidate trial takes into its row (EvaluatedCandidate.Acquisition), so a call without applicable candidates names the required
     // spelling (SPEC 15.1.5), the Place that needs it and, for an exclusive borrow, whether the Place is an object handle (@objuniq)
-    // (SPEC 23.1.3). Only a deferring caller writes it (RequireAcquisition): a trial's receiver and arguments, ValueCalls and Enums,
-    // which read it, and ResultPremises, whose writes the enclosing trial takes as its candidate's acquisition; Structs and
-    // ShapeEvidence save and restore it. A caller that does not defer refuses the input and records its own failure, so it never
-    // leaves the channel set for an enclosing trial (a closure body bound per candidate).
+    // (SPEC 23.1.3), or the access the lending rule denies an implicit exclusive acquisition of it (OwnedLending,
+    // ExclusiveAcquisitionDenial; SPEC 7.3.3, 15.6.2), or a limit located at it. Only a deferring caller writes it (RequireAcquisition):
+    // a trial's receiver and arguments, ValueCalls and Enums, which read it, and ResultPremises, whose writes the enclosing trial takes as
+    // its candidate's acquisition; Structs and ShapeEvidence save and restore it. A caller that does not defer refuses the input and
+    // records its own failure, so it never leaves the channel set for an enclosing trial (a closure body bound per candidate).
     private AcquisitionFailure? acquisitionFailure;
 
     private bool RequireAcquisition(Koto source, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
@@ -443,12 +444,15 @@ public sealed partial class Binding
 
             if (!explicitBorrow && !projected && (target == SemanticsKind.Ref || (receiver && target == SemanticsKind.Uniq && BelowLayer(actualReferent) is not null)) &&
                 this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared &&
-                (target == SemanticsKind.Uniq ? layers > 1 && this.ExclusivelyAcquirable(source) : layers > 1 || actual.Semantics == SemanticsKind.Uniq))
+                (target == SemanticsKind.Uniq
+                    ? layers > 1 && (this.ExclusiveAcquisitionDenial(source) is not { } layered || this.RequireAcquisition(source, layered, false, fixedExpectation, deferAcquisition))
+                    : layers > 1 || actual.Semantics == SemanticsKind.Uniq))
             {
                 // SPEC 10.2, 7.3.3, 15.6.3: safe value-reference layers ending in the parameter's referent yield one reference to it,
                 // contained in the layers and, unless one is shared, in those that reach the source: shared at a fixed ref/U (10.2's row);
                 // exclusive for a Receiver Expression below several layers whose path and layers grant it (7.3.3's p@follow@uniq on the
-                // path of 3.4.3; ExclusivelyAcquirable, the mode ReceiverThroughLayers' recorded read takes). One stored uniq layer at
+                // path of 3.4.3; ExclusivelyAcquirable, the mode ReceiverThroughLayers' recorded read takes), and otherwise denied as that
+                // written twin is, with its Type formed as lent for the fit (ExclusiveAcquisitionDenial). One stored uniq layer at
                 // uniq/U is the Reborrow below (PLAN G147 (2) (c)). The walk's Origin is the shared mode's fallback alone: the exclusive
                 // mode dereferences a concrete uniq top layer, so ReferentOrigin answers there.
                 adapted = this.types.Reference(target, pattern.Components[0], this.ReferentOrigin(source, actual, layers) ?? shared.Origin);
@@ -459,9 +463,17 @@ public sealed partial class Binding
 
             if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || this.ReachedThroughShared(source)))
             {
+                if (receiver && !explicitBorrow)
+                {
+                    // SPEC 7.3.3, 15.6.2: a receiver whose referent a shared layer reaches (its own `ref` layer, or its path) is denied as its
+                    // written twin `p@follow@uniq` is; its Type is formed as lent, for the fit.
+                    adapted = this.types.Reference(target, actualReferent, actual.Origin);
+                    return this.ExclusiveAcquisitionDenial(source) is { } denied && this.RequireAcquisition(source, denied, false, fixedExpectation, deferAcquisition);
+                }
+
                 // SPEC 3.5.1: a stored uniq reached through a shared path has no Reborrow, so its bare acquisition needs the Move a bare
                 // Place never makes (TransferRequired, DECISIONS BU-45), deferred as every bare acquisition's; a written one is its own.
-                return actual.Semantics == SemanticsKind.Uniq && !explicitBorrow && !receiver &&
+                return actual.Semantics == SemanticsKind.Uniq && !explicitBorrow &&
                     this.RequireAcquisition(source, BindingFailure.TransferRequired, @object: false, fixedExpectation, deferAcquisition);
             }
 
@@ -486,7 +498,8 @@ public sealed partial class Binding
             // TryAdaptationSelector), borrows that slot like a stored value, whatever each admitted case stores. A written
             // Borrow is lent as Binding lends it, an implicit one (a receiver's too) as SPEC does (BorrowablePlace).
             // SPEC 15.1.5 lending rule (OwnedLending): an owned Place is lent exclusively by @uniq at every position other than a
-            // Receiver Expression, whatever its access path; a receiver is acquired implicitly (SPEC 7.3).
+            // Receiver Expression, whatever its access path; a receiver is acquired implicitly (SPEC 7.3), and a denied implicit
+            // acquisition fails as written (SPEC 7.3.3).
             var lending = judged ? this.OwnedLending(source, scope, target == SemanticsKind.Uniq, explicitBorrow, receiver, fixedExpectation) : BindingFailure.None;
             if (lending is not { } verdict ? !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal)
                 : verdict != BindingFailure.None && !this.RequireAcquisition(source, verdict, false, fixedExpectation, deferAcquisition))
@@ -564,7 +577,7 @@ public sealed partial class Binding
             this.OwnedLending(source, scope, exclusive, explicitOwner, receiver, fixedExpectation) is { } lending)
         {
             // SPEC 13.5.5, 13.5.6: a handle lends its object from a Place or a Temporary Value (OwnedLending); an owned handle is lent
-            // exclusively by @objuniq except as a receiver (SPEC 15.1.5, 7.3).
+            // exclusively by @objuniq except as a receiver, and a denied implicit acquisition fails as written (SPEC 15.1.5, 7.3).
             if (lending != BindingFailure.None &&
                 !this.RequireAcquisition(source, lending, true, fixedExpectation, deferAcquisition))
             {
