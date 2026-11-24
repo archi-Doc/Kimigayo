@@ -143,11 +143,23 @@ public sealed partial class Binding
         // foreign to it (a nested signature's per-call Origin): that signature's declaration row (SPEC 15.3.4; R7-O3 U-O3), stamped with
         // the declaration judge's frame, where it bounds no local region (BoundableIn), for JudgeDeclarationRows to judge at its use.
         obligation = obligation with { Body = this.formingBody.IsBody && this.ForeignEnd(obligation) ? ExecutableBody.Declarations : this.formingBody };
-        if (this.obligationSet.Add(obligation))
+        if (this.obligationSet.Add(new(obligation)))
         {
             this.obligations.Add(obligation);
             this.originStateVersion++;
             this.RecordLocalRegionBound(obligation);
+        }
+    }
+
+    // The obligation list's dedup key (R7-N5 B8, the Front's C-521 form (d); DECISIONS BU-220): the obligation with each node it names
+    // as its SourceRef (B7's per-pass memo form), equal exactly when the obligations are, since every such node is numbered when its
+    // obligation forms (the probe: none without an id). The set is its pass part's, emptied each pass (ResetPass), so no key outlives a
+    // numbering, and a library pass's set keys no library node.
+    internal readonly record struct ObligationKey(BindingObligationKind Kind, SourceRef Use, BindingDeadline Deadline, BoundType? Type, BoundOrigin? Longer, BoundOrigin? Shorter, BoundLength? Length, bool Equality, SourceRef Clause, bool WellFormed, OriginDischarge Discharge, ulong Condition, SourceRef FixedBy, SourceRef Site, ExecutableBody Body, bool Compared)
+    {
+        internal ObligationKey(in BindingObligation obligation)
+            : this(obligation.Kind, SourceRef.Written(obligation.Use), obligation.Deadline, obligation.Type, obligation.Longer, obligation.Shorter, obligation.Length, obligation.Equality, SourceRef.Written(obligation.Clause), obligation.WellFormed, obligation.Discharge, obligation.Condition, SourceRef.Written(obligation.FixedBy), SourceRef.Written(obligation.Site), obligation.Body, obligation.Compared)
+        {
         }
     }
 

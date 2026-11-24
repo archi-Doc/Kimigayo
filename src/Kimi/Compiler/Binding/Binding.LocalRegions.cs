@@ -48,8 +48,9 @@ public sealed partial class Binding
     private readonly HashSet<BoundOrigin> reachSeen = new(ReferenceEqualityComparer.Instance);
 
     // ValueIn's reads once no body is being bound, per (Origin, body) and region-graph version (valueInVersion; stale at each run's start,
-    // BeginRun): a DAG of regions is read in turn, so an unmemoized reading is exponential in its depth; reused.
-    private readonly Dictionary<(BoundOrigin Origin, Koto? Body), BoundOrigin> valueInReads = new();
+    // BeginRun): a DAG of regions is read in turn, so an unmemoized reading is exponential in its depth; reused. The body is keyed by its
+    // SourceRef (R7-N5 B8; DECISIONS BU-220: one run's memo, within one numbering; a module's top-level statements have no symbol).
+    private readonly Dictionary<(BoundOrigin Origin, SourceRef Body), BoundOrigin> valueInReads = new();
 
     // The running pass's part of the rows (PassPart.Regions), which its steps write and reset; the driver hands it over (EnterPass),
     // Binding's own between Binds.
@@ -251,10 +252,11 @@ public sealed partial class Binding
             this.valueInVersion = this.regionVersion;
         }
 
-        if (!this.valueInReads.TryGetValue((origin, function), out var read))
+        var key = (origin, SourceRef.Written(function));
+        if (!this.valueInReads.TryGetValue(key, out var read))
         {
             read = this.ReadValueIn(origin, function);
-            this.valueInReads[(origin, function)] = read;
+            this.valueInReads[key] = read;
         }
 
         return read;

@@ -382,7 +382,7 @@ public sealed partial class Binding
 
         internal List<BindingObligation> Obligations { get; } = new();
 
-        internal HashSet<BindingObligation> ObligationSet { get; } = new();
+        internal HashSet<ObligationKey> ObligationSet { get; } = new();
 
         internal List<LibraryImport> Imports { get; } = new();
 

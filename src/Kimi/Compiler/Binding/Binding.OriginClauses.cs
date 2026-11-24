@@ -203,7 +203,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                this.obligationSet.Remove(obligation);
+                this.obligationSet.Remove(new(obligation));
                 if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
                 {
                     continue;
