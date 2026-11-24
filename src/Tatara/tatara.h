@@ -70,17 +70,18 @@ __declspec(dllexport) int32_t TATARA_CALL tatara_link(const TataraText* argument
 // kind 0: the message (every operation; the tools' standard output and error, empty when they print nothing). Inspect, per member
 // in archive order (an object is one member), kinds 1, 2, 5 and 6 one block per member, each ended by an empty line: 1 the undefined
 // symbols, 2 the defined external symbols, one "<llvm-nm's letter> <name>\n" per symbol in llvm-nm's order; 4 the member's form, one
-// letter and "\n" per member: o a relocatable object, i a COFF short import member, s a linked image; 5 the names of kind 2 whose
-// section admits copies, "<name>\n" each in kind 2's order (COFF: an IMAGE_SCN_LNK_COMDAT section selecting any, same size, exact match
-// or largest; ELF: a section of an SHT_GROUP with GRP_COMDAT); 6 a COFF member's .drectve references in their order, split as
-// lld-link splits it: "I <name>\n" per /include: and "A <from>=<to>\n" per /alternatename: (either prefix, any case; one missing a
-// name is skipped; every other option is LLD's; ELF: none). 7 the archive's symbol index, "<member> <name>\n" per entry in its order,
-// <member> the position (from 0) of the member it names; empty for an object or an archive without an index. Optimize and emit: 3
-// the output, set by a successful call only. Another kind, or a kind the operation does not set: an empty text.
+// letter and "\n" per member: o a relocatable object, i a COFF short import member, s a linked image; 5 the names of kind 2 that
+// admit copies, "<name>\n" each in kind 2's order (COFF: in an IMAGE_SCN_LNK_COMDAT section selecting any, same size, exact match or
+// largest; ELF: in a section of an SHT_GROUP with GRP_COMDAT; bitcode: in a comdat selecting any, exact match, largest or same size, as
+// its IR symbol table states); 6 a COFF member's .drectve references (a bitcode member's: its COFF linker options') in their order,
+// split as lld-link splits it: "I <name>\n" per /include: and "A <from>=<to>\n" per /alternatename: (the prefixes /, -, /? and -?, any
+// case; one missing a name is skipped; every other option is LLD's; ELF: none). 7 the archive's symbol index, "<member> <name>\n" per
+// entry in its order, <member> the position (from 0) of the member it names; empty for an object or an archive without an index.
+// Optimize and emit: 3 the output, set by a successful call only. Another kind, or a kind the operation does not set: an empty text.
 __declspec(dllexport) TataraText TATARA_CALL tatara_text(const TataraResult* result, int32_t kind);
-// Inspect, kind 1 (a library the object, or an archive's member, names for the link): COFF, 1 when a .drectve section contains
-// DEFAULTLIB in any case; ELF, 1 when an SHT_LLVM_DEPENDENT_LIBRARIES (.deplibs) section exists. Kind 2: 1 for an archive. Otherwise
-// 0. Another kind: -1 (kind 0 too: unused since PLAN G1271's removal, never reused).
+// Inspect, kind 1 (a library the object, or an archive's member, names for the link): COFF, 1 when a .drectve section (a bitcode
+// member's COFF linker options) contains DEFAULTLIB in any case; ELF, 1 when an SHT_LLVM_DEPENDENT_LIBRARIES (.deplibs) section
+// exists. Kind 2: 1 for an archive. Otherwise 0. Another kind: -1 (kind 0 too: unused since PLAN G1271's removal, never reused).
 __declspec(dllexport) int32_t TATARA_CALL tatara_flag(const TataraResult* result, int32_t kind);
 __declspec(dllexport) void TATARA_CALL tatara_release(TataraResult* result);
 

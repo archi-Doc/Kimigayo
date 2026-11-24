@@ -6,9 +6,12 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/BinaryFormat/ELF.h"
+#include "llvm/IR/Comdat.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/COFFImportFile.h"
@@ -268,7 +271,7 @@ bool copySections(const ObjectFile& file, StringRef name, DenseSet<uint64_t>& in
 }
 
 // Whether a defined symbol of an object lies in one of its copy sections (copySections).
-Expected<bool> isCopy(const ObjectFile& file, const SymbolRef& symbol, const DenseSet<uint64_t>& copies)
+Expected<bool> isCopySection(const ObjectFile& file, const SymbolRef& symbol, const DenseSet<uint64_t>& copies)
 {
     if (copies.empty()) {
         return false;
@@ -282,13 +285,18 @@ Expected<bool> isCopy(const ObjectFile& file, const SymbolRef& symbol, const Den
     return *section != file.section_end() && copies.contains((*section)->getIndex());
 }
 
-// The value of a .drectve token naming the option (its "/" or "-" form, any case, as LLD's directive parser and option table match
-// it), or nothing.
+// The value of a .drectve token naming the option, or nothing: the option after one of LLD's four prefixes, "/", "-", "/?" and "-?"
+// (its COFF option table's), in any case, as LLD's directive parser and option table match it (T's ruling 32).
 std::optional<StringRef> optionValue(StringRef token, StringRef option)
 {
-    bool named = token.size() > option.size() && (token[0] == '/' || token[0] == '-')
-        && token.substr(1, option.size()).equals_insensitive(option);
-    return named ? std::optional<StringRef>(token.substr(option.size() + 1)) : std::nullopt;
+    if (!token.consume_front("/") && !token.consume_front("-")) {
+        return std::nullopt;
+    }
+
+    token.consume_front("?");
+    return token.size() >= option.size() && token.take_front(option.size()).equals_insensitive(option)
+        ? std::optional<StringRef>(token.drop_front(option.size()))
+        : std::nullopt;
 }
 
 // Whether a name can be listed: the texts are lines and an empty line ends a member's block (tatara.h; kind 5's lines are bare
@@ -352,9 +360,12 @@ void write(Symbols& symbols, std::string& text)
     text += '\n';
 }
 
+// Whether a defined symbol, by its symbol and listed name, is a copy (tatara.h's text kind 5), as its member's format reads it.
+using CopyTest = function_ref<Expected<bool>(const BasicSymbolRef&, StringRef)>;
+
 // A member's symbols into its blocks of kinds 1, 2 and 5 (the copies among kind 2's, in its order). False with llvm-nm's message when a
 // symbol cannot be read.
-bool readSymbols(const SymbolicFile& file, const DenseSet<uint64_t>& copies, StringRef name, TataraResult& outcome, raw_ostream& message)
+bool readSymbols(const SymbolicFile& file, CopyTest isCopy, StringRef name, TataraResult& outcome, raw_ostream& message)
 {
     const auto* object = dyn_cast<ObjectFile>(&file);
     Symbols undefined;
@@ -387,7 +398,7 @@ bool readSymbols(const SymbolicFile& file, const DenseSet<uint64_t>& copies, Str
         }
 
         char kind = object ? letter(*object, SymbolRef(symbol), *flags, symbolName) : memberLetter(file, *flags);
-        Expected<bool> copy = object && !reference ? isCopy(*object, SymbolRef(symbol), copies) : Expected<bool>(false);
+        Expected<bool> copy = reference ? Expected<bool>(false) : isCopy(symbol, symbolName);
         if (!copy) {
             message << "llvm-nm: error: " << name << ": " << toString(copy.takeError()) << "\n";
             return false;
@@ -454,9 +465,35 @@ bool isBrokenImport(const SymbolicFile& file)
         || !data.drop_front(header).contains('\0'));
 }
 
+// A bitcode member's copies and linker options as LLD's LTO input reads them, from its IR symbol table (irsymtab; T's ruling 32): the
+// names it defines in a comdat selecting any, exact match, largest or same size (no deduplicate is an ordinary definition, as COFF's
+// no duplicates), and its COFF linker options, the text lld-link reads as the member's .drectve: DEFAULTLIB in any case (flag kind 1)
+// and its references (kind 6, readDirectives). False with llvm-nm's message when the table cannot be read.
+bool readBitcode(const IRObjectFile& file, StringRef name, StringSet<>& copies, TataraResult& outcome, raw_ostream& message)
+{
+    Expected<IRSymtabFile> symtab = readIRSymtab(file.getMemoryBufferRef());
+    if (!symtab) {
+        message << "llvm-nm: error: " << name << ": " << toString(symtab.takeError()) << "\n";
+        return false;
+    }
+
+    std::vector<std::pair<StringRef, Comdat::SelectionKind>> comdats = symtab->TheReader.getComdatTable();
+    for (const irsymtab::Reader::SymbolRef& symbol : symtab->TheReader.symbols()) {
+        int comdat = symbol.getComdatIndex();
+        if (!symbol.isUndefined() && comdat >= 0 && comdats[comdat].second != Comdat::NoDeduplicate) {
+            copies.insert(symbol.getName());
+        }
+    }
+
+    StringRef options = symtab->TheReader.getCOFFLinkerOpts();
+    outcome.hasDefaultLibrary |= options.contains_insensitive("DEFAULTLIB");
+    return readDirectives(options, name, outcome.directives, message);
+}
+
 // One member (an object is one): its block of each per-member text (kinds 1, 2, 4, 5 and 6) and its flag. name: the input's path, or
-// "<path>(<member>)" for an archive's member, as llvm-nm names it in a message. False with the tool's message; a broken short import
-// member with LLD's.
+// "<path>(<member>)" for an archive's member, as llvm-nm names it in a message. Its copies by format: an object's symbols in its copy
+// sections, a bitcode member's in its copy comdats (readBitcode), a short import member's none. False with the tool's message; a broken
+// short import member with LLD's.
 bool readMember(const SymbolicFile& file, StringRef name, TataraResult& outcome, raw_ostream& message)
 {
     if (isBrokenImport(file)) {
@@ -465,10 +502,16 @@ bool readMember(const SymbolicFile& file, StringRef name, TataraResult& outcome,
     }
 
     const auto* object = dyn_cast<ObjectFile>(&file);
+    const auto* bitcode = dyn_cast<IRObjectFile>(&file);
     outcome.forms += isa<COFFImportFile>(&file) ? 'i' : object && !object->isRelocatableObject() ? 's' : 'o';
     outcome.forms += '\n';
-    DenseSet<uint64_t> copies;
-    bool read = (!object || copySections(*object, name, copies, message)) && readSymbols(file, copies, name, outcome, message)
+    DenseSet<uint64_t> sections;
+    StringSet<> names;
+    auto isCopy = [&](const BasicSymbolRef& symbol, StringRef symbolName) -> Expected<bool> {
+        return object ? isCopySection(*object, SymbolRef(symbol), sections) : Expected<bool>(names.contains(symbolName));
+    };
+    bool read = (!object || copySections(*object, name, sections, message))
+        && (!bitcode || readBitcode(*bitcode, name, names, outcome, message)) && readSymbols(file, isCopy, name, outcome, message)
         && (!object || readSections(*object, name, outcome, message));
     outcome.directives += '\n';
     return read;

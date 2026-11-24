@@ -177,8 +177,9 @@ public sealed class TataraExecutorTest : IDisposable
 
     // Tatara's inspect reads archives (LinkAmbiguity phase A, design §2 "Tatara's read"): per member in archive order its symbols, its
     // form (o, i, s), its definitions in sections that admit copies and its .drectve's references, and the archive's index naming each
-    // entry's member (Describe); an object or a DLL is one member of no archive; a bitcode member is read as lld-link links it (P4).
-    // llvm-lib writes its members in reverse command-line order (as lib.exe does; its /list reverses them back), so its index, naming
+    // entry's member (Describe); an object or a DLL is one member of no archive; a bitcode member is read as lld-link links it (P4), its
+    // copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32); a directive's option takes each of
+    // LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32). llvm-lib writes its members in reverse command-line order (as lib.exe does; its /list reverses them back), so its index, naming
     // the command line's last definer (P5), names the first in member order. A malformed archive fails with LLVM's text and Tatara runs
     // again; a thin archive fails. Libraries: the compiler's committed ones, or the pinned clang's objects archived by llvm-lib.
     [Theory]
@@ -190,6 +191,8 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData("comdat")]
     [InlineData("directives")]
     [InlineData("bitcode")]
+    [InlineData("bitcodefacts")]
+    [InlineData("prefixes")]
     [InlineData("index")]
     [InlineData("malformed")]
     [InlineData("thin")]
@@ -208,6 +211,14 @@ public sealed class TataraExecutorTest : IDisposable
             #pragma comment(linker, "/alternatename:bad")
             int directives(void) { return 0; }
             """;
+        const string BitcodeFacts = """
+            #pragma comment(linker, "/include:f")
+            #pragma comment(linker, "/alternatename:a=b")
+            extern "C" __declspec(selectany) int g = 1;
+            extern "C" int plain = 2;
+            inline int twice(int x) { return x * 2; }
+            extern "C" int (*pointer)(int) = twice;
+            """;
         await (row switch
         {
             "kernel32" => Expect(Kernel32Facts(), Task.FromResult(Kernel32)),
@@ -222,6 +233,12 @@ public sealed class TataraExecutorTest : IDisposable
                 "archive\no T:directives include:f alternatename:a=b include:g alternatename:c=d\nindex 0:directives",
                 this.Library("directives.lib", ["-fms-extensions"], ("directives.c", Directives))),
             "bitcode" => Expect("archive\no T:bc_add\nindex 0:bc_add", this.Library("bitcode.lib", ["-fno-autolink", "-flto"], ("bitcode.c", "int bc_add(int a, int b) { return a + b; }\n"))),
+            "bitcodefacts" => Expect(
+                "archive\no W:?twice@@YAHH@Z W:g D:plain D:pointer comdat:?twice@@YAHH@Z comdat:g include:f alternatename:a=b\nindex 0:?twice@@YAHH@Z 0:g 0:plain 0:pointer",
+                this.Library("bitcodefacts.lib", ["-fms-extensions", "-flto"], ("bitcodefacts.cpp", BitcodeFacts))),
+            "prefixes" => Expect(
+                "archive\no T:prefixes include:f alternatename:a=b\nindex 0:prefixes",
+                this.Library("prefixes.lib", ["-fms-extensions"], ("prefixes.c", "#pragma comment(linker, \"/?include:f -?ALTERNATENAME:a=b /??include:x\")\nint prefixes(void) { return 0; }\n"))),
             "index" => this.InspectsTheIndex(),
             "malformed" => this.FailsOnAMalformedArchive(),
             "thin" => this.FailsOnAThinArchive(),
