@@ -51,6 +51,10 @@ public sealed partial class RecursiveContractTest
     private const string G866FunctionForms = "contract Conv<X>\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nstruct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\n";
     private const string G866MeetsAndPairs = "contract Conv<X>\ncontract D<U>\nfunc needConv<V, X>(v: ref/V)\n    V is Conv<X>\n    ()\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nstruct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\n";
     private const string G866FunctionPremises = "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\n";
+    private const string G563Tree = "contract Tree\n    associate Child is Tree\n";
+    private const string G563Mg = G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is MG<Option<A>>\n";
+    private const string G563Mf = G563Tree + "contract MF<A>: Tree\n    Self.(Tree).Child is MF<A>\n";
+    private const string G563MgRecord = "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A> <- Self.(Tree).Child is MG<Option<A>>";
 
     [Theory]
     [InlineData("r3-nconvq", G866Judges + "func g<W>(x: ref/LeafC)\n    needNotConv<LeafC, W>(x)\n", "UnprovenConstraint_Kd: needNotConv<LeafC, W>(x)")]
@@ -474,12 +478,50 @@ public sealed partial class RecursiveContractTest
     public void AJudgmentReadsTheTypesIdentityClass(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [c2-4a]", program.Contains("func main()", StringComparison.Ordinal) ? program : program + "()", records);
 
+    // G563-C (SPEC 8.3.3 Expanding recursion; F's ruling G563C-1; labels from SPEC before any run, artifacts/units/g563c/labels.md
+    // groups X, V and N): each Contract reference in what `Self is K` supplies to Self or a projection of Self passes each parameter of K
+    // to each parameter of the referenced Contract whose argument contains it (a projection's subject and Contract arguments included),
+    // flat where the argument is the parameter. A cycle of passes with an expanding one is an InvalidConstraint_Kd at each Contract with
+    // a parameter in its strongly connected set (Q3 (a): n.scc's F too), related to the Contract's own forming clauses (Q2 (a); a forming
+    // base relates nothing: n.parent's P2). Arguments are read in K's view (Q1 (a): v.norm-flat, v.norm-const); a reference in a
+    // function's or a generic method's premise passes nothing (v.method, v.use-only, v.use-mutual); a use or a refiner of an erroneous
+    // Contract rests on its record (m.r-expand-q, n.refiner: dependent records allowed, SPEC 23.1.2). x.mg-decl and m.r-expand-q are the
+    // Middle's RP17 B1 forms (c2-5a, C-562); g563-assoc is PLAN G563's form; SPEC's Stream waits (ARowAwaitsItsUnit, Q4 (a)).
+    [Theory]
+    [InlineData("x.mg-decl", G563Mg, G563MgRecord)]
+    [InlineData("m.r-expand-q", G563Mg + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MG<i32>\n    needMark<T.(Tree).Child, Option<i32>>(c)\n", G563MgRecord + " | ...")]
+    [InlineData("g563-assoc", "contract D<U>\n    associate M\n    associate N is D<Self.(D<U>).M>\n", "InvalidConstraint_Kd: contract D<U> <- associate N is D<Self.(D<U>).M>")]
+    [InlineData("spec-nested", "contract Nested<A>\n    associate Inner is Nested<Option<A>>\n", "InvalidConstraint_Kd: contract Nested<A> <- associate Inner is Nested<Option<A>>")]
+    [InlineData("spec-window", "contract Window\n    Self.(Window).Next.(Window).Head is Option<Self.(Window).Head>\n    associate Next is Window\n    associate Head\n", "")]
+    [InlineData("spec-tree-node", G563Tree + "struct Node\n    Self is Tree\n    associate Tree.Child is Node\n", "*: Self is Tree | ...")]
+    [InlineData("v.mg-flat", G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is MG<A>\n", "")]
+    [InlineData("v.const", G563Tree + "contract MC<A>: Tree\n    Self.(Tree).Child is MC<i32>\n", "")]
+    [InlineData("v.swap", G563Tree + "contract SW<A, B>: Tree\n    Self.(Tree).Child is SW<B, A>\n", "")]
+    [InlineData("v.acyclic", G563Tree + "contract Leaf<A>\ncontract UP<A>: Tree\n    Self.(Tree).Child is Leaf<Option<A>>\n", "")]
+    [InlineData("v.norm-flat", G563Tree + "contract KN<A>: Tree\n    associate X\n    Self.(KN<A>).X is A\n    Self.(Tree).Child is KN<Self.(KN<A>).X>\n", "")]
+    [InlineData("v.norm-const", G563Tree + "contract KN<A>: Tree\n    associate X\n    Self.(KN<A>).X is i32\n    Self.(Tree).Child is KN<Self.(KN<A>).X>\n", "")]
+    [InlineData("v.method", G563Tree + "contract Mark<A>\ncontract MW<A>: Tree, Mark<A>\n    Self.(Tree).Child is MW<A>\n    func put<U>(self: ref/Self, u: ref/U) -> i32\n        U is MW<Option<A>>\n", "")]
+    [InlineData("v.use-only", G563Mf + "func probe<T>(t: ref/T) -> i32\n    T is MF<Option<i32>>\n    return 0\n", "")]
+    [InlineData("v.use-mutual", G563Mf + "func probe<T, U>(t: ref/T, u: ref/U) -> i32\n    T is MF<Option<U>>\n    U is MF<Option<T>>\n    return 0\n", "")]
+    [InlineData("v.assoc-flat", "contract D<U>\n    associate N is D<U>\n", "")]
+    [InlineData("n.two", G563Tree + "contract P<A>: Tree\n    Self.(Tree).Child is Q<Option<A>>\ncontract Q<B>: Tree\n    Self.(Tree).Child is P<B>\n", "InvalidConstraint_Kd: contract P<A>: Tree <- Self.(Tree).Child is Q<Option<A>> | InvalidConstraint_Kd: contract Q<B>: Tree <- Self.(Tree).Child is P<B>")]
+    [InlineData("n.parent", G563Tree + "contract Q2<B>: Tree\n    Self.(Tree).Child is P2<B>\ncontract P2<A>: Q2<Option<A>>\n", "InvalidConstraint_Kd: contract P2<A>: Q2<Option<A>> | InvalidConstraint_Kd: contract Q2<B>: Tree <- Self.(Tree).Child is P2<B>")]
+    [InlineData("n.swap-grow", G563Tree + "contract SX<A, B>: Tree\n    Self.(Tree).Child is SX<B, Option<A>>\n", "InvalidConstraint_Kd: contract SX<A, B>: Tree <- Self.(Tree).Child is SX<B, Option<A>>")]
+    [InlineData("n.proj-arg", G563Tree + "contract Holder\n    associate Item is Holder\ncontract MP<A>: Tree\n    A is Holder\n    Self.(Tree).Child is MP<A.(Holder).Item>\n", "InvalidConstraint_Kd: contract MP<A>: Tree <- Self.(Tree).Child is MP<A.(Holder).Item>")]
+    [InlineData("n.refiner", G563Mg + "contract Sub: MG<i32>\n", G563MgRecord + " | ...")]
+    [InlineData("n.scc", G563Tree + "contract E<A>: Tree\n    Self.(Tree).Child is E<Option<A>>\n    Self.(Tree).Child is F<A>\ncontract F<B>: Tree\n    Self.(Tree).Child is E<B>\n", "InvalidConstraint_Kd: contract E<A>: Tree <- Self.(Tree).Child is E<Option<A>>; Self.(Tree).Child is F<A> | InvalidConstraint_Kd: contract F<B>: Tree <- Self.(Tree).Child is E<B>")]
+    [InlineData("n.qual", "contract DQ<U>\n    associate M\n    Self.(DQ<Option<U>>).M is i32\n", "*: * | ...")]
+    public void AnExpandingContractCycleIsItsContractsError(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [G563-C]", program + "()\n", records);
+
     // SPEC's expectation for rows a later unit decides, Explicit until then (c2-4's rows name their unit); k-prem2bx (valid: under `s is obj`, `r is obj` the pair row gives `s/Leaf` and `r/Leaf` one head, so Decomposition makes
     // them one Type and `return y@move` fits; value fits read no two-binder pair identity, TypeMismatch_Kd on dev too: the open issue
     // the docs request's 38' names); t17-pos-obj (valid: `s/Leaf` under `s is obj` and `obj/Leaf` are one Type, so `L is Conv<..>` proves
-    // `needConv`; a pair application at a Function position is never Same, rejected on dev too: the docs request's 40').
+    // `needConv`; a pair application at a Function position is never Same, rejected on dev too: the docs request's 40'); spec-stream
+    // (SPEC 8.3.3's Unbounded Types in a Contract's own premises, Head growing along a projection path: PLAN G563, F's G563C-1 Q4 (a)).
     [Theory(Explicit = true)]
     [InlineData("k-prem2bx", TwoBinderValue + "", "")]
+    [InlineData("spec-stream", "contract Stream\n    Self.(Stream).Head is Option<Self.(Stream).Next.(Stream).Head>\n    associate Next is Stream\n    associate Head\n", "*: Self.(Stream).Head is Option<Self.(Stream).Next.(Stream).Head>")]
     [InlineData("r3-outer", "contract Mark\ncontract Mark2\ncontract SubMark: Mark\ncontract Conv<X>\ncontract HolderM\n    associate Item is Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\nfunc needCopy<V>(v: ref/V)\n    V is Copy\n    ()\nfunc needNotCopy<V>(v: ref/V)\n    V is not Copy\n    ()\nfunc useCall<F>(f: ref/F)\n    F is Callable<(i32) -> i32>\n    ()\nstruct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    Self is Mark\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct LeafC\n    Self is Conv<i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Box<A>\n    public var a: A\nstruct S<U>\n    U is Mark\n    public var n: i32\n    public func m<T>(self)\n        T is Option<U>\n        T is Option<Leaf>\n        ()\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "InvalidConstraint_Kd: public func m<T>(self) | ...")] // PLAN G851's named limit (Q1 (a): the struct's premise is validated in its own view)
     [InlineData("cyc-3u", "contract C\n    associate X\nfunc f<T>(x: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    let y: Option<T.(C).X> = x@move\n    return 0\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "InvalidConstraint_Kd: T is Option<T.(C).X> | InvalidConstraint_Kd: func f<T>(x: T) -> i32")] // c2-4a's open item (PLAN, class 4, ruling 130): the use adds no InvalidConstraint_Kd; its TypeMismatch_Kd, kept after c2-4b, rests under C3-1's one Failed state (the row lists the two InvalidConstraint_Kd only; an
     // erroneous class's Types stay as written: ClassForm's contract)

@@ -1082,7 +1082,8 @@ public sealed partial class Binding
     // `self` and the shape make it (InstantiatedContract: the declaration's Self is `self`, the shape's arguments keep theirs; G180), each
     // first as itself (Premise null: its own facts, an ancestor's `self is A` and the arithmetic premises, AddContractPremises'), then each
     // of its clause constraints that is not closed (DependentConstraint with the Contract's Self) as `self`, `scope` and that reference
-    // make it (ContractConstraint, not normalized), evaluated when reached. Read by AddContractPremises and Enumerate's walk.
+    // make it (ContractConstraint, not normalized), evaluated when reached. Read by AddContractPremises, Enumerate's walk and SPEC
+    // 8.3.3's expanding recursion (CheckExpandingRecursion, Binding.Contracts.Expansion).
     private ref struct ContractSupply(Binding binding, BoundContract shape, BoundType self, BindingScope scope)
     {
         private int ancestor = -1;
