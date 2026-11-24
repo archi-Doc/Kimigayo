@@ -11,8 +11,8 @@
 // bit and its producer's round: the instance collector's held with its version's round; a MIR body site's (Uses) added at once in every
 // round.
 // Output: the limit table's records, one Collection-class ControlFlow record per key at its least use (SourceRef order), flushed at
-// each clean collector run's end (the round's least merged into the committed least, the flush, then Commit; a repeated clean run of a
-// version writes each key's row again) and, with no collector run, on the first read of Merged after a committed least changed; one
+// the end of each collector version's last run (the round's least merged into the committed least, the flush, then Commit; a repeated
+// last run of a version writes each key's row again) and, with no collector run, on the first read of Merged after a committed least changed; one
 // problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
 // D18: an Origin problem's relation, the default for other problems) with the views that have it merged, in insertion order (bodies in
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and

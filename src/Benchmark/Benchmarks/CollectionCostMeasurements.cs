@@ -23,7 +23,7 @@ namespace Benchmark;
 // with the Type context's memos warm; warm, the compilation's Layout again; each of the last two one clean run over the stepped program. Layout's first
 // computations are freshLayout - warm and the Type context's first queries cold - freshLayout, both per operation inside one compilation;
 // when coldRuns > 1 (one more than its stops, PLAN G337 U2), cold's timed runs include the library bodies their lookups build on demand, so cold -
-// freshLayout (firstQueriesMedianMilliseconds) holds that work too (PLAN G951 U2: a changed workload across the switch).
+// freshLayout (firstQueriesMedianMilliseconds) holds that work too (PLAN G951 U2, and G337 U2's one replay per item: each a changed workload across its switch).
 // `--collection-cost-check` times nothing: it requires the three collections to equal each other and the compilation's own checked set
 // (its Analyze's) element by element (the items' keys in admission order, the records' codes and locations: a program's collection records,
 // MirProgram.Records, which the later collections over one program must leave as the cold one made them), the comparison to fail on a
@@ -162,7 +162,7 @@ internal static class CollectionCostMeasurements
                 bytes[v] += GC.GetAllocatedBytesForCurrentThread() - allocated;
             }
 
-            Require(cold is null || collector.RunCount == 1, $"The {Variants[v]} collection took {collector.RunCount} runs, not one clean run.");
+            Require(cold is null || collector.RunCount == 1, $"The {Variants[v]} collection took {collector.RunCount} runs, not one run without a stop.");
             runs = cold is null ? collector.RunCount : runs;
             records = cold is null ? [.. program.Records(MirRecordClass.Collection)] : records;
             cold ??= set;

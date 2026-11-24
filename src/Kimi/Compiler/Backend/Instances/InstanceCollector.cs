@@ -7,7 +7,7 @@
 // a run stops before a body it does not hold, Round below), as code generation reads them; every A2 entry it reads is the
 // version's, since its runs follow the version's library step and MirProgram cleared the program store where the version started
 // (PLAN G951 U2-K-b, F18); the root range (Source.Module below it,
-// not a mode); TyCtxt (Instantiates, Erase,
+// not a mode), every body of it built before the version's first run (the collector's range within the builder's); TyCtxt (Instantiates, Erase,
 // Answered, Apply, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
 // an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
@@ -80,15 +80,15 @@
 // A refused edge is dropped and collection continues.
 // Round (PLAN G951, G337 U2; DECISIONS R9-Bx): a version's runs replay its FIFO once. Its first run starts the set: it clears the set and
 // the admission state (counts, refused, glueKeys, declaring), opens the version's round in the report (MirReport.Begin with
-// MirRecordClass.Collection, the one commit A4's rounds share; a record made outside it is added at once), templates the bodies, judges
-// A3b in the root loop, adds the roots and lays out the imports. Every run then templates the bodies built since (a stopped run's lookups'
-// and the step's) and replays the items from the one the version's last run stopped before, in FIFO order, and stops before a body item
+// MirRecordClass.Collection, the one commit A4's rounds share; a record made outside it is added at once), judges A3b in the root loop,
+// adds the roots and lays out the imports. Every run then templates the bodies built since the version's last walk (all of them at its
+// first run; a stopped run's lookups' and the step's) and replays the items from the one the version's last run stopped before, in FIFO order, and stops before a body item
 // whose body A2's table does not hold (one a lookup built since the last step): its set keeps every item admitted and every target made
 // and holds no version (CheckedSet.Version 0, which no reader reads), and the admission state and the round stay open. Its driver
 // (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it again; the run that reaches the FIFO's end flushes the
 // least uses (MirReport.FlushLimits), commits the round and stamps the set with the version. A run replays only stepped bodies, whose
 // facts are the eager build's, so the version's runs equal the one run over a program whose bodies were all built before: its items in
-// their order, targets and records, and its Work (each item, site and declaring step once); Work, RunCount (one more than the stops) and
+// their order, targets and records, and its Work (each item, site and declaring step once); Work, RunCount (one more than the stops where no run threw) and
 // Templated sum the runs of the version of the latest run. Every run of a version takes its first run's root range (another is a broken
 // contract). A run that throws leaves nothing to resume: the version's next run drops the round it left open and starts the version
 // again, never resuming over a partially replayed item. A body a lookup built and the collector then refused (no item's) may end
@@ -157,7 +157,8 @@ internal sealed partial class InstanceCollector
     /// items admission reads (at most the window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
-    /// <summary>Gets the runs of the latest run's version, each but the last stopped (Round; PLAN G337 U2): one more than the stops.</summary>
+    /// <summary>Gets the runs of the latest run's version, each but the last stopped or thrown (Round; PLAN G337 U2): one more than the
+    /// stops where no run threw.</summary>
     internal int RunCount { get; private set; }
 
     /// <summary>Gets the bodies the runs of the latest run's version templated, each once, a body with a finding (an empty template)
@@ -250,22 +251,26 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // One run of a version (Run), inside the collector's answer frame (Round): the version's first run (first < 0) starts it; every run
+    // One run of a version (Run), inside the collector's answer frame (Round): after a run that threw (Faulted) it drops the round that
+    // run left open; the version's first run (first < 0) starts it; every run templates the bodies built since the version's last walk,
     // replays from its first item and stops before a body A2's table does not hold. The item it stopped before, or -1 at the FIFO's end.
     private int Collect(MirProgram program, int rootModules, CheckedSet set, int first)
     {
+        if (first == Faulted)
+        {
+            program.Problems.Drop();
+        }
+
         if (first < 0)
         {
-            this.Start(program, rootModules, set, first == Faulted);
+            this.Start(program, rootModules, set);
         }
-        else if (rootModules == this.rootModules)
-        {
-            this.Templates(program); // The bodies built since the stopped run's walk: its lookups' and the step's.
-        }
-        else
+        else if (rootModules != this.rootModules)
         {
             throw new InvalidOperationException("A resumed collector run has another root range (InternalInvariant).");
         }
+
+        this.Templates(program); // At the first run every body; else the bodies a stopped run's lookups and the step built.
 
         for (var item = Math.Max(first, 0); item < set.Items.Length; item++)
         {
@@ -283,9 +288,9 @@ internal sealed partial class InstanceCollector
         return -1;
     }
 
-    // The version's first run's start (Round): the set and the admission state cleared, the round opened (after dropping the one a run
-    // that threw left open), the templates, A3b and the roots in the root loop, then the imports' layouts.
-    private void Start(MirProgram program, int rootModules, CheckedSet set, bool faulted)
+    // The version's first run's start (Round): the set and the admission state cleared, the round opened, A3b and the roots in the root
+    // loop (neither reads a template), then the imports' layouts.
+    private void Start(MirProgram program, int rootModules, CheckedSet set)
     {
         set.Clear();
         this.counts.Clear();
@@ -293,13 +298,7 @@ internal sealed partial class InstanceCollector
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
         (this.program, this.rootModules) = (program, rootModules);
-        if (faulted)
-        {
-            program.Problems.Drop();
-        }
-
         program.Problems.Begin((int)MirRecordClass.Collection);
-        this.Templates(program);
         foreach (var body in program.Bodies)
         {
             this.CheckStatic(body); // A3b, judged once per version (PLAN G950, G337 U2), in body order: a static's declaration row first.
