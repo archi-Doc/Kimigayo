@@ -101,9 +101,10 @@ public sealed partial class Binding
         return Complete(fill, type);
     }
 
-    // As for Tuple literals, retain the acquired element Type until the enclosing
-    // declaration has inferred omitted Origins. Replacing it with the expectation
-    // here would erase the very evidence needed by InferLocalOrigins.
+    // SPEC 4.3.1, 12.3.1: the expected element Type is every element's expected Type, so each element is checked against it by the fit's
+    // structural part on the Type its adaptation gave (BindNode; FitsStructuralPartAt) and a misfit is recorded at that element. The
+    // Origin part is the enclosing position's fit's: as for Tuple literals, the literal keeps the Origins its fitting elements meet at until
+    // the enclosing declaration has inferred omitted Origins, the evidence InferLocalOrigins reads, which the expectation itself would erase.
     private BoundType? BindContextualArrayLiteral(ArrayLiteralKoto literal, BindingScope scope, BoundType expected)
     {
         BoundType? element = null;
@@ -114,6 +115,11 @@ public sealed partial class Binding
             var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
             if (actual is null)
             {
+                complete = false;
+            }
+            else if (!this.FitsStructuralPartAt(actual, expected.Components[0], literal.Elements[i]))
+            {
+                this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, expected.Components[0], ComparisonFailure.Shape);
                 complete = false;
             }
             else if (!ReferenceEquals(actual, BoundType.Never))

@@ -993,7 +993,7 @@ public sealed partial class Binding
     // scope), a parameter as ParameterVisible says, any other binding of the scope always. The one visibility rule of a value lookup
     // (ValueStage) and of a literal's capture test (CanCapture, Binding.Captures).
     private bool VisibleAt(BindingSymbol candidate, Koto use)
-        => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && this.ParameterVisible(candidate);
+        => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && ParameterVisible(candidate, use);
 
     private ResolvedPath SelectedPath(in TypeCandidates candidates, Koto use, int step)
     {

@@ -3,6 +3,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Kimi;
+using Kimi.Build;
 using Kimi.Command;
 using Kimi.Compiler;
 using Microsoft.Extensions.DependencyInjection;
@@ -88,6 +89,24 @@ public sealed class TataraCommandNativeTest : IDisposable
         Assert.NotNull(JsonNode.Parse(File.ReadAllText(Path.Combine(this.directory, "A", "bin", TargetProfile.Windows.Target, "A.link.build.json")))!["tools"]!["tatara"]);
     }
 
+    // A malformed program library fails its line, in the dependency step's read (Tatara's inspect returns 1, LinkAmbiguity design §5.1),
+    // and Tatara runs again: the session's next line builds. Fail-before (this row alone in its process): LLD's fatal() ended the session
+    // and A was not built.
+    [Fact]
+    public async Task AMalformedLibraryFailsOnlyItsLine()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Write(this.directory);
+        WriteF(this.directory, "malformed.lib", "!<arch>\nnot a library member\n"u8.ToArray());
+        var (code, text) = await Session(this.directory, [("build F/F.kimiproj", null), ("build A/A.kimiproj", null)]);
+        Assert.True(code == 1, text);
+        Assert.Contains("Tatara failed: inspect", text, StringComparison.Ordinal);
+        Assert.Contains("truncated or malformed archive", text, StringComparison.Ordinal);
+        Assert.Contains("Exit code: 1", text, StringComparison.Ordinal);
+        Assert.Equal(1, TataraCommandTest.Count(text, "Built: "));
+        Assert.DoesNotContain("Tatara cannot run again", text, StringComparison.Ordinal);
+    }
+
     // The fatal row in a child test process of its own, its folder this row's (Fatal); the child loads the tatara.dll beside its
     // Kimi.dll, as this process does.
     [Fact]
@@ -106,6 +125,16 @@ public sealed class TataraCommandNativeTest : IDisposable
             File.Copy(Path.Combine(Repository.Root, "docs", "examples", "Hello", source), Path.Combine(folder, name + ".kimi"));
             File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"");
         }
+    }
+
+    // F: a program calling its import f of codec, a static library whose input is native/<library> with these bytes.
+    private static void WriteF(string root, string library, byte[] bytes)
+    {
+        var folder = Path.Combine(root, "F");
+        Directory.CreateDirectory(Path.Combine(folder, "native"));
+        File.WriteAllBytes(Path.Combine(folder, "native", library), bytes);
+        File.WriteAllText(Path.Combine(folder, "F.kimi"), "group Native\n    #LibraryImport(\"codec\", \"f\")\n    public unsafe func f() -> i32\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.f()\n");
+        File.WriteAllText(Path.Combine(folder, "F.kimiproj"), $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"\nNativeLibraries=\n  \"{TargetProfile.Windows.Target}\"=\n    codec={{ Kind=\"static\" Input=\"native/{library}\" }}");
     }
 
     // Before the fourth line A fails (an unresolved name); before the fifth it is fixed.
@@ -164,8 +193,10 @@ public sealed class TataraCommandNativeTest : IDisposable
         }));
 
     // The fatal row, run by AFatalErrorEndsTheSessionOfItsProcess in a child test process of its own: a line whose link hits LLD's
-    // fatal() (a malformed static library) ends the session with 1 and its one sentence; the next line does not run. Its folder is its
-    // parent's (named by Folder, removed by the parent).
+    // fatal() ends the session with 1 and its one sentence; the next line does not run. Its static library is an object the dependency
+    // step reads (a whole file defining f) and LLD fatals on: its .drectve's /merge:bad (LinkAmbiguity design §5.1 (a), P-F1), emitted
+    // here by Tatara from IR with the Windows row's values, no tool (a malformed archive now fails its line in the read:
+    // AMalformedLibraryFailsOnlyItsLine). Its folder is its parent's (named by Folder, removed by the parent).
     public sealed class Fatal
     {
         internal const string Folder = "KIMI_TATARA_SESSION_FATAL_FOLDER";
@@ -175,15 +206,15 @@ public sealed class TataraCommandNativeTest : IDisposable
         {
             var directory = Environment.GetEnvironmentVariable(Folder)!;
             Write(directory);
-            var folder = Path.Combine(directory, "F");
-            Directory.CreateDirectory(Path.Combine(folder, "native"));
-            File.WriteAllText(Path.Combine(folder, "native", "malformed.lib"), "!<arch>\nnot a library member\n");
-            File.WriteAllText(Path.Combine(folder, "F.kimi"), "group Native\n    #LibraryImport(\"codec\", \"f\")\n    public unsafe func f() -> i32\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.f()\n");
-            File.WriteAllText(Path.Combine(folder, "F.kimiproj"), $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"\nNativeLibraries=\n  \"{TargetProfile.Windows.Target}\"=\n    codec={{ Kind=\"static\" Input=\"native/malformed.lib\" }}");
+            var ir = Path.Combine(directory, "fatal.ll");
+            File.WriteAllText(ir, $"target triple = \"{TargetProfile.Windows.Target}\"\n\ndefine i32 @f() {{\n  ret i32 0\n}}\n\n!llvm.linker.options = !{{!0}}\n!0 = !{{!\"/merge:bad\"}}\n");
+            var row = TargetProfile.Windows;
+            var context = new TataraContext((_, _) => { }, TestContext.Current.CancellationToken, row.Target, row.Cpu, row.Features, row.RelocationModel, row.CodeModel);
+            WriteF(directory, "fatal.lib", Tatara.Instance.Emit(context, ir, Path.Combine(directory, "fatal.obj"), 0));
             var (code, text) = await Session(directory, [("build F/F.kimiproj", null), ("build A/A.kimiproj", null)]);
             Assert.True(code == 1, text);
             Assert.Contains("Tatara cannot run again in this process (", text, StringComparison.Ordinal);
-            Assert.Contains("truncated or malformed archive", text, StringComparison.Ordinal);
+            Assert.Contains("/merge: invalid argument", text, StringComparison.Ordinal);
             Assert.DoesNotContain("Project: A", text, StringComparison.Ordinal);
         }
     }

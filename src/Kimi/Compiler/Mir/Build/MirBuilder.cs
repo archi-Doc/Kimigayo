@@ -19,6 +19,7 @@
 // A body's expansions, a default's template copy and a defer body's copy, consult one body budget where a copy would begin (Refuses).
 // Must not read Binding internals, infer from parents or let consumers rebuild missing facts.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -311,12 +312,47 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
     // The program pass (G191) of each body built since the last, in build order, each once: the root build's after its walk, a demanded
     // body's after it is built; a lookup in a pass may demand a body, which joins the queue (MirValidator.Program.cs).
+    // Each named body is a body site (PLAN G651 U2b R5 Rev 2, D-C2): the program pass runs outside Body; a body it demands opens its own.
     private void Name()
     {
         while (this.named < this.program.Bodies.Length)
         {
-            this.validator.Validate(this.program, this.program.Bodies[this.named++]);
+            var body = this.program.Bodies[this.named++];
+            var site = compilation.Types.OpenBodySite(body.Source);
+            ReadOnlySpan<SiteMark> marks;
+            try
+            {
+                this.validator.Validate(this.program, body);
+            }
+            finally
+            {
+                marks = compilation.Types.CloseBodySite(site);
+            }
+
+            this.program.Problems.Uses(compilation.Types, marks, body.Key);
         }
+    }
+
+    // A body (BuildBody) as the body site every build path passes through (PLAN G651 U2b R5): a lookup's body, a default template's and a
+    // body a collector round builds alike, so eager and lazy builds give equal marks, each a use of the body's declaration at its close
+    // (MirReport.Uses); a nested body's site takes its own marks.
+    // Not inlined, a measured compiler-speed need (PLAN G651 U2b ruling 32 (2); slot T-348, cost\attr.md §6): inlined, its try/finally
+    // sat in Library's walk loop, which builds no body on the pipeline's inputs, and cost that walk about 10 us a compilation.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType? result, Koto value)
+    {
+        var site = compilation.Types.OpenBodySite(SourceRef.Of(key.Kind == MirBodyKind.DefaultTemplate ? value : declaration));
+        ReadOnlySpan<SiteMark> marks;
+        try
+        {
+            this.BuildBody(key, declaration, function, result, value);
+        }
+        finally
+        {
+            marks = compilation.Types.CloseBodySite(site);
+        }
+
+        this.program.Problems.Uses(compilation.Types, marks, key);
     }
 
     // A body: _0 of the result Type, the arguments with the receiver first (an owned one dropped when the body is left, SPEC 16.2.1), a
@@ -332,7 +368,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // result Type (TyCtxt.SignatureSite); a Closure's environment, a constructor's or destructor's self, an accessor's arguments, a
     // default template's _0 (the parameter's value) and a result without a written Type are located at their declaration. A slot whose
     // Type Binding failed, its result, a parameter or a template's p_i of a failed parameter, is a local of no Type (MirLocal, PLAN G1073).
-    private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType? result, Koto value)
+    private void BuildBody(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType? result, Koto value)
     {
         var template = key.Kind == MirBodyKind.DefaultTemplate;
         var source = SourceRef.Of(template ? value : declaration);
@@ -475,7 +511,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     }
 
     // An argument local located at a syntax node, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
-    private int Argument(BoundType? type, string? name, Koto source, int parameters, MirLocalRole role = MirLocalRole.None)
+    private int ArgumentAt(BoundType? type, string? name, Koto source, int parameters, MirLocalRole role)
     {
         var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(source, local: true), Name: name, Role: role));
         this.Created(local, parameters);

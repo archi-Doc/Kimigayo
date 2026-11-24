@@ -58,9 +58,10 @@ public sealed partial class Binding
     // The Copy and Sealed queries under a scope's premises, such as a definition's effect premises (EffectPremises), from `site`
     // (QuerySite): during the pass a judgment's query runs in its caller's consultation frame, or in a site frame at its node where none
     // is open (BeginProof), so what its proof forms past the height limit is refused at that site (Binding.TypeHeight). MIR's query is
-    // QuerySite.AfterPass: after the pass a capability work's height refusal fails no node, so the work answers Unknown with no record,
-    // as the round bound's (RefuseProof, R7-M38; a lint's, MIR's or the editor's question is no judgment); the instance collector's own
-    // formations keep R7-T1's answer. PLAN G651 U2 gives the after-run queries their outcome.
+    // QuerySite.AfterPass: after the pass a capability work's evaluation is the innermost after-run owner of a height refusal in it
+    // (OpenCapabilityOwner; PLAN G651 U2b, C8 ruling 30), which fails no node: the work answers Unknown with no record, as the round
+    // bound's (R7-M38; a lint's, MIR's or the editor's question is no judgment); a formation opened inside it owns its own refusal, which
+    // its readers outside the work answer to their own owners, and the instance collector's own formations keep R7-T1's answer.
     internal ConstraintProof ProveCopy(BoundType type, BindingScope scope, QuerySite site)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Copy)), scope, site);
 
@@ -351,6 +352,7 @@ public sealed partial class Binding
 
         this.BeginProof(site);
         this.BeginClearParts(); // A chain of works over shared parts walks each part once (OperandContexts; R7-C6 a).
+        var parent = this.OpenCapabilityOwner(); // After the run, the works' height refusals are theirs (C8 ruling 30).
         try
         {
             do
@@ -366,6 +368,7 @@ public sealed partial class Binding
             this.assuming = false;
             this.capabilityEvaluated.Clear();
             this.EndClearParts();
+            this.Restore(parent);
         }
 
         this.ScopeReads = default;

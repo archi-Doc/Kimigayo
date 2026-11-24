@@ -7,9 +7,10 @@
 //   (AcquireValueCallPart): the evidence parts first (AcquireValueCallArguments), then, the per-call inputs solved from them, the waiting
 //   parts at their instantiated parameters (PLAN G494); the substitution, and the result (ValueCallResult). P9: a Closure's result
 //   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage), the image of the Closure binder's reserved atom
-//   built only where the result names it (CallAtomsOf, PerCallImages); its call result atom, which names a Refuted relation A5 judges in
-//   the Closure's body (P8), is published as it is, never an Unbound atom resting on no Binding failure (R4-M118; R7-O1 H) but a
-//   deferred result slot's atom Final proved, which the intakes complete (CompletedOrigin, R7-O2 O2-F); a Closure value
+//   built only where the result names it (CallAtomsOf, PerCallImages); its call result atom, P8's per-call result Origin (SPEC 15.8.2),
+//   always takes this call's own call result region in the calling body (CallResultRegion, B1; superseding R7-M66's "published as it
+//   is"). P9 makes no Unbound image (R4-M118): an Unbound atom a result names is a deferred result slot's atom Final proved, which the
+//   intakes complete (CompletedOrigin, R7-O2 O2-F). A Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
 //   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
 //   Unsupported_Kd.
@@ -39,6 +40,7 @@ public sealed partial class Binding
         None = 0,
         Receiver = 1,
         Foreign = 2,
+        Result = 4,
     }
 
     // What one formation of a value call's callee acquisition gives (FormValueCallee): formed; formed, lending the callee's or the handle's
@@ -143,6 +145,7 @@ public sealed partial class Binding
         return node.Kind != OriginKind.Projection ? CallAtoms.None : node.Slot switch
         {
             ClosureValueSlot => CallAtoms.Receiver,
+            CallResultSlot => CallAtoms.Result,
             _ => CallAtoms.None,
         };
     }
@@ -489,9 +492,17 @@ public sealed partial class Binding
             return this.Record(call, BindingFailure.NoApplicableCandidate, []);
         }
 
-        // The callee's failure is the call's own record, which reads no argument: an argument judged after it would become its
-        // prerequisite (SPEC 23.1.2), so the arguments are then bound on their own, outside the call's consultation (CompleteUnselected).
-        if (!this.AcquireValueCallee(call, scope, receiver, out var receiverOperation))
+        // SPEC 7.7.3, 10.1.1, 23.1.2: the callee's acquisition and the argument match (MapValueCallArguments) are independent requirements
+        // of the call, neither reading an argument part, so the match is judged whatever the acquisition gave, its record beside the
+        // callee's, which keeps the node's slot. The parts are then bound on their own, outside the call's consultation (CompleteUnselected),
+        // none a prerequisite of either record.
+        var acquired = this.AcquireValueCallee(call, scope, receiver, out var receiverOperation);
+        if (!MapValueCallArguments(call, signature).Valid)
+        {
+            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
+        }
+
+        if (!acquired)
         {
             return null;
         }
@@ -512,13 +523,6 @@ public sealed partial class Binding
 
         var parameters = signature.Components[0];
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
-        // SPEC 10.1.1 (MapValueCallArguments): the arguments are matched before any part; the record reads no part, so the parts are then
-        // bound on their own (CompleteUnselected) and none is its prerequisite.
-        if (!MapValueCallArguments(call, signature).Valid)
-        {
-            return this.Record(call, BindingFailure.NoApplicableCandidate, []);
-        }
-
         // A per-call input is one bound by the callee's own binder; an input written over a fixed Origin of the calling body is fitted
         // as written.
         var ownBinder = CalleeBinder(call.Method.BoundType, signature);
@@ -759,8 +763,9 @@ public sealed partial class Binding
     // SPEC 15.6.4, 15.8.2 (DECISIONS R4-M152): a value call's result. Fresh input Origins and fixed shared capture results retain their
     // complete call contracts; a result over the per-call inputs takes the arguments' Origins, as an ordinary call's does; one written
     // over a fixed Origin of the calling body stays as written. A Closure's result naming its call receiver ρ takes the receiver
-    // acquisition's Origin, the image built only where the result names it, and its call result atom stays as published (P8: its
-    // relation is A5's record in the Closure's body); one naming another Closure's atom is F1's located limit.
+    // acquisition's Origin, and one naming its call result atom (P8's per-call result Origin, SPEC 15.8.2) takes this call's own call
+    // result region in the calling body (CallResultRegion, B1; the region of a callee Origin no evidence supplies, 15.6.4, BU-104), each
+    // image built only where the result names its atom; one naming another Closure's atom is F1's located limit.
     private BoundType? ValueCallResult(
         InvocationKoto call,
         BoundType signature,
@@ -783,7 +788,8 @@ public sealed partial class Binding
         }
 
         var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, acquisition) : null;
-        var images = new PerCallImages(inputs, image, null);
+        var resultImage = (atoms & CallAtoms.Result) != 0 ? this.CallResultRegion(call) : null;
+        var images = new PerCallImages(inputs, image, resultImage);
         return this.LacksImage(result, ownBinder, origins, images)
             ? this.Fail(call, BindingFailure.Unsupported) : this.SubstituteStoredOrigins(result, ownBinder, origins, images);
     }
