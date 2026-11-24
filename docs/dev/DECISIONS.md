@@ -32150,7 +32150,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `__kimi_pages` `ptr (i64 bytes)`, null or a page-aligned readable and writable run of at least `bytes` at or above
     `UnmappedBound`; `__kimi_release_pages` `i64 (ptr, i64 bytes)`, -1 or the OS error; windows-x64 over `VirtualAlloc(null, bytes,
     MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)` and `VirtualFree(p, 0, MEM_RELEASE)` with `GetLastError`).
-  - **Algorithm:** (amended by T-M44: one spare run) single-threaded; three internal globals (14 list heads, the current region's next and end); a 16-byte header (word
+  - **Algorithm:** single-threaded; three internal globals (14 list heads, the current region's next and end); a 16-byte header (word
     0 the class k or a large run's byte length, word 1 the free-list link) before the payload; `size = n + 16`; size ≤ 262,144: blocks
     of 2^k bytes, k = max(5, 64 − ctlz(size − 1)), 5..18 (32 B .. 256 KiB), popped LIFO from the class's list, else carved by bump
     from the current 1 MiB region, a new region mapped when the rest is too small (the rest abandoned); release pushes on the class's
@@ -32680,20 +32680,3 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   native build's dependency step, lands with G1329's phase B (removal condition of that temporary state: phase B lands). Phase B's
   full entry supersedes this one. Rejected: LLD's private COFF directive parser declared in Tatara (a mirror of an internal ABI), a
   second managed reader of archives, keeping `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact).
-- **T-M44 Kimi's allocator keeps one spare run** (Tatara, 2026-11-24; PLAN G1311; the owner's O-508 (a) and O-518 (a); Q-749,
-  D-1245; Major; design `artifacts\handoff\tatara\units\G1311\design.md` Revision 0; implementation review C-515: the Back, the
-  Middle). Amends T-M27's Algorithm and IMPL 21.4.3.
-  - **The rule:** a released large run of at most 1 MiB (the region size) is kept as the spare, replacing the previous spare, which
-    goes to the layer. A large block whose run has the spare's length takes it without the layer. A run above 1 MiB goes to the
-    layer at its release, as before. Retained after release: at most one run of at most 1 MiB. A refused release reports at the
-    release that hands a run to the layer (the run itself above 1 MiB, or the spare it replaces).
-  - **The run path out of line:** two template-internal `noinline` routines (`__kimi_heap_take_run`, `__kimi_heap_return_run`), so
-    the inlined allocation and release sites keep the small path only. Each routine has one call site, so the inliner would fold it
-    into every site, measured +4-5% on the small path (PartS); one call is small beside a large block, whose payload exceeds 256 KiB.
-  - **A double release of a run of at most 1 MiB** (unsafe code only) is no longer detected as `KIMI_E_FREE`: the second release
-    keeps the run again and hands its first keep to the layer, so the spare names unmapped pages and a later run of that length
-    faults. SPEC 22.5.2's `KIMI_E_FREE` is a detected release failure; a small block's double release was never detected.
-  - **Measured (design 2):** W3's gap was the large path's page faults (97.5% of its excess; the two system calls 2.5%); the strings
-    part ran 2.9x faster than the process heap.
-  - **Rejected:** blocks above 256 KiB from regions (decision 23); a list of runs (speculative; a G1306 candidate); an unbounded or
-    larger spare (memory); decommit or reset (the faults remain).
