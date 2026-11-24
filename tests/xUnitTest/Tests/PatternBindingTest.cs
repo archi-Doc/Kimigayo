@@ -649,7 +649,7 @@ public class PatternBindingTest
     [Theory]
     [InlineData("owner or ref", PatternAcquisition.Move)]
     [InlineData("owner or uniq", PatternAcquisition.Move)]
-    public void AnOwnedPairPartCopiesWhereEveryCaseCopies(string admitted, PatternAcquisition acquisition)
+    public void AnOwnedPairPartOfATemporarySubjectMoves(string admitted, PatternAcquisition acquisition)
     {
         var c = Parse($"func f<s/T>(x: s/T) -> ()\n    s is {admitted}\n    T is Copy\n    match ((x@move, 1), 2)\n        (let value, _) => ()\n");
         Assert.True(c.Bind().IsComplete, Describe(c));

@@ -394,9 +394,9 @@ public sealed partial class HirFormsTest
             "b Name Failed Unset", "t.5 Error Temporary Unset", "(z) Group Failed Unset",
         ];
         Assert.Equal(expected, rows);
-        var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
+        var items = Reachable(c.Kotonoha).Where(static x => x.ToString() is "let v" or "e" or "p" or "j" or "o" or "u" && HirTables.Op(x) == HirOp.Syntax)
             .Select(static x => $"{x} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["j Move", "o Move", "u Move"], items);
+        Assert.Equal(["let v Move", "e Move", "p Move", "j Move", "o Move", "u Move"], items);
     }
 
     // SPEC 12, 13.4, 14, 23.1.2 (DECISIONS Z16, the one Keeps rule; Z15 2g-D's B5 rows): a node Binding rejected or left unresolved keeps,

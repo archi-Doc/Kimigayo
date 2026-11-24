@@ -515,6 +515,9 @@ public class IntrinsicCapabilityTest
     // record at its clause (SPEC 3.5.2: its stored Types must be Copy), and a function reading the Type keeps its own (one a
     // declaration, in either order).
     [InlineData("C6", "s-opt-V", GrowingCopy + Endless + "func f(x: G<W<i32>>) -> Option<G<W<i32>>>\n    return .Some(x@move)\n", "")]
+    // SPEC 3.5 (B1; F's C8 ruling 29 C2): a moved payload needs no Copy, so a construction over a moved payload whose Type's Copy opt-in
+    // failed keeps no Language record of its own; the opt-in keeps its record (dev added InvalidConstraint_Kd at the construction).
+    [InlineData("C6", "e-move-bad-I", "struct V2\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc f(b: V2) -> Option<V2>\n    return .Some(b@move)\n", "UnsatisfiedConstraint_Kd: Self is Copy")]
     [InlineData("C6", "r-epay-V", GrowingCopy + Endless + "enum E\n    A(G<W<i32>>)\n    B\nfunc mk(x: G<W<i32>>) -> E\n    return .A(x@move)\n", "")]
     [InlineData("C6", "r-scopy-R", GrowingCopy + Endless + CopyOptIn, "Resource: Self is Copy")]
     [InlineData("C6", "r-ecopy-R", GrowingCopy + Endless + "enum E\n    Self is Copy\n    A(G<W<i32>>)\n", "Resource: Self is Copy")]
@@ -553,6 +556,17 @@ public class IntrinsicCapabilityTest
     [InlineData("C6", "n4-sel-R", GrowingCopy + Endless + "func h<T>(x: ref/T) -> ()\n    T is Copy\n    return\nfunc caller(p: ref/G<W<i32>>) -> ()\n    h(p)\n    return\n", "Resource: h(p)")]
     public void AProofGrowingWithoutEndIsAResourceFailure(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 15.3.5, 8.3.3 (F's C8 ruling 29 C5; the deleted guard's Owned control): G<W<i32>> is Owned though its Copy grows without
+    // end: Owned's structure reads no Copy premise, so the endless projection is never formed for it.
+    [Fact]
+    public void AnEndlessCopyGrowthLeavesOwnedProven()
+    {
+        var c = CompilationTestHelper.ParseSuccess(GrowingCopy + Endless + "func inspect(x: G<W<i32>>) => ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var f = Function(c, "inspect");
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
+    }
 
     // SPEC 8.3.3 Limits, IMPL A.4 (R7-C6 a): a growth that ends at the limit's edge. W1 to W20 wrap their argument in 400 Option layers
     // a level, W21 in `last`, W22's Out is i32: G's Copy forms G<W22<Option^(8,000 + last)<i32>>>, under the height limit at 100 (Proven)

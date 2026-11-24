@@ -657,7 +657,7 @@ public sealed partial class Binding
     // SPEC 15.1.6, 3.5.2: the one acquisition rule of a Pattern binding, a match arm's or a for loop's item (SPEC 14.6.2;
     // CompleteIterationAcquisitions): a binding reached through a reference layer borrows its Place; a part of an owned Subject or
     // iteration item (OwnedPart: `match o@move`, a temporary Subject, every loop item) is transferred with its responsibility ("Payload
-    // Copy capability changes no binding Type"), so it Moves and no Copy is asked (R7-C6 a, F's C8 ruling 9 D2: a query is asked only
+    // Copy capability changes no binding Type"), so it Moves and no Copy is asked (R7-C6 a, F's C8 ruling 24: a query is asked only
     // where a judgment needs its answer). The one binding left with Owned access, a whole-Subject binding of a Subject borrowed in place
     // or of a reference-typed temporary, has a reference layer's Type, whose Copy its Semantics decides (SPEC 3.5.2): Copied for `ref/`,
     // `objref/` and raw, Moved (the Reborrow) for `uniq/` and `objuniq/`; its Pattern Type passed ValidatePatternType's recheck, so any

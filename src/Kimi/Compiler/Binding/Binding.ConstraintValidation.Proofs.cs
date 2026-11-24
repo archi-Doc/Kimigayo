@@ -584,7 +584,9 @@ public sealed partial class Binding
         {
         }
 
-        // The declaration's refusal of `reached`: each limit a declaration reaches is its own record (SPEC 23.1.2: independent).
+        // The declaration's refusal of `reached`: each limit a declaration reaches is its own record (SPEC 23.1.2: independent). Its one
+        // `other` slot covers exactly the two limits RefuseProof serves (PremiseClosureLimit, TypeHeightLimit); a third limit needs a
+        // slot of its own (F's C8 ruling 29, note).
         internal Refusal Of(BindingFailure reached) => reached == limit ? this : (this.other ??= new(binding, reached));
 
         // A request of the declaration refused at `site` (RefuseProof).
