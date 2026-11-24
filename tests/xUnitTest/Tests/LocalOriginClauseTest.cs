@@ -24,8 +24,8 @@ public partial class LocalOriginClauseTest
     // PLAN G1369's rows: a Type with one slot its Field reads, and a Container alias whose clause equates its set's slot with `static`.
     private const string CursorType = "struct Cursor {at}\n    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n";
 
-    private const string AliasOuter = "struct Outer<T> {source}\n    public group Helpers\n        public func keep(value: ref/i32 during source) -> ref/i32 during source => value\n" +
-        "alias H => (Outer<i32>.Helpers{h})\n    origin h.source == static\n";
+    private const string AliasOuter = "alias H => (Outer<i32>.Helpers{h})\n    origin h.source == static\n" +
+        "struct Outer<T> {source}\n    public group Helpers\n        public func keep(value: ref/i32 during source) -> ref/i32 during source => value\n";
 
     private const string Holder = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\n";
 
