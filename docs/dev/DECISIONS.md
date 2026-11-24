@@ -9402,7 +9402,8 @@ resumed by R4-M86 (2026-10-20).
       own Reborrow (G254a's name; null where no exclusive case Reborrows it, as `BareReborrowLayer` gave, and only where a reach
       shortens the target: an unshortened target is Same-Semantics, read only by overload ranking, d-rw-par accepted) and sets
       `limit`, with no record at the use: a known class-1 defect, PLAN G254c. O-515 (a)'s support reduction and O-516 (a)'s
-      receiver rule are withdrawn with R3's recording (`RecordBareReborrowLimit` is not landed).
+      receiver rule are withdrawn with R3's recording (`RecordBareReborrowLimit` is not landed). Superseded by the G254c amendment
+      below.
     - A departure from the owner question note's §8 (`artifacts\handoff\2026-11-16-pause\middle\notes\g254b-owner-question.md`):
       §8 had the limit set only where the reach shortens the target; it is set whatever the reach (a fact of the Type and plan).
       Reason: G721's row (1) (BU-184) evaluates the rule with a `static` reach, `Meet(b, static)` is `b`, so a reach-dependent
@@ -9428,6 +9429,25 @@ resumed by R4-M86 (2026-10-20).
       accepted (the known defect); the valid o1u-loc, u-arg, rw-loc, rw-arg, o1u-dis, mix-loc, sb2-loc, j-u-loc, pr-get
       accepted; o1u-rt, u-arg2, two-pay-u, e-pay-nc with dev's records. Evidence: commits e335edc45, 73f1da74b, 081d64aef,
       ddd85a9c1.
+  - Amended (2026-11-24; PLAN G254, unit G254c, Q-744, D-1233; the owner's O-520 (c)): R3 is the selected input's located limit.
+    Supersedes the G254b amendment's R3 sub-bullet ("... sets `limit`, with no record at the use: a known class-1 defect, PLAN
+    G254c. O-515 (a)'s support reduction and O-516 (a)'s receiver rule are withdrawn ...").
+    - `ReborrowedType`'s limit is `ReborrowLimit` (None, Possible, Shortened): Possible where the Type and plan allow no one Type
+      (whatever the reach; G721's row (1), BU-184, reads `!= None`, as G254b's reach-free bool), Shortened where this reach shortens
+      the owner case's target beside an invariant case. In the Shortened case the rule returns the Type with the layer's own Reborrow
+      (not null), so `owner or raw` takes the Reborrow branch (class Exact to Same-Semantics Reborrow).
+    - `JudgeSelectedInput(source, kind, mode, read, supplied)` (`Binding.ArgumentOperations`, the owner of the selected input
+      operation) is the one judgment of a final input's located limits, at FailStaticBorrow's 6 points (ExpectedAdaptation's selected
+      destination, JudgeCallFit, a Case payload's fixed fit (Enums), the value call's callee, handle and parts): a Borrow of a static
+      root fails the input (`BorrowsStaticRoot`, PlaceAuthority's predicate; PlaceAuthority reports no diagnostic now); otherwise a
+      Reborrow whose supplied Type is a pair layer and whose rule, asked again on the Type the operation adapted (contracted as
+      AdaptInput contracts it), says Shortened is recorded beside its Resolved Place (`BareReborrowLimit`, `Binding.BareAcquisition`;
+      the recorder is BU-125's G254c line). Only this rule supplies a pair layer's Reborrow, so there is no census of producers and
+      no positional receiver test: O-516 (a)'s receiver rule holds by Type (an accessor's receiver supplies its acquired reference; a
+      method's `uniq/Self`). An accessor's value input is no such point while BindPropertyCall's Origin-bearing input limit stands
+      (PLAN G1355).
+    - O-515 (a)'s approved support reduction returns: a valid program whose use is such a Reborrow is `Unsupported_Kd` at the use.
+    - Removes FailStaticBorrow (PlaceAuthority's one reporter) and G254b's unlanded `RecordBareReborrowLimit` design.
 - **BU-28** (2026-10-23; designs A and B, B with A's staging, display row and test owner; the owner's answer below; PLAN G227 (G65's
   remainder), unit bu29, 2a0-3b's prerequisite by the owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures
   are fixed. They are the atoms an enclosing body formed that the environment bindings' Types name (a moved or copied value's regions,
@@ -12967,6 +12987,17 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-129 (R7-E1d): the first failure, but a resting `InvalidOrigin` of the node's own clause yields.
   - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): BU-129's amendment above; no owner holds its clause's resting
     `InvalidOrigin` any more.
+  - Amended (2026-11-24; PLAN G254, unit G254c, BU-27's G254c amendment): the recorder. A problem that sets no slot is a further
+    Origin record (R7-O1 B4), a report's Defect, or a selected input's located limit (`RecordLocatedLimit`, at condition >= 1
+    through `BindingReport.Condition`, so a second report of the same input is the same key, and the node's own later first failure
+    keeps condition 0). Supersedes the recorder contract's sentence "a node without a failure has no linked problem" with "... no
+    linked problem but one that sets no slot". Invariant: a located limit is recorded only at an input whose operation is final
+    (judged once per pass; a candidate trial records nothing: SelectAt's contract, every probe `recordPair: false`), so it leaves
+    only with the pass's reset or a trial's snapshot, never through `ClearFailure`. In a Final pass a node without a failure
+    publishes its non-Origin problems in the summary (`CollectIssue`) and is counted in `BindingResult.LimitedCount`; `IsComplete`
+    requires `LimitedCount == 0`, so "complete" still means "rejected no part" (BU-38, BU-102, DIAGNOSTICS rule 8 unchanged), and
+    rule 4 is unchanged (a limit sets no state). Before G254c a Defect at a node without a failure was published nowhere; it now is,
+    and it makes the Bind incomplete.
 - **BU-126 R7-E1c Several problems at one node** (2026-11-08; plan §5.1 E1; design §1 row 3; DIAGNOSTICS rule 4). A node's records beyond its first are problems of `BindingReport`, one channel: `furtherOriginRecords` with its lists, `CountStates`' role issue and `operatorOperands` go. The pass summary's walk (`CollectProblems`) makes each problem of a failed node but its slot's own an issue with its own code and condition, whichever way the slot stands. An Origin record beyond the first stays out of `Binding.Issues`, whose one row per relation node the test MIR side compares, and is published with the node's first record, as before (temporary until E5, when `Binding.Issues` is the problem list). `ReportProblem` answers from a problem's facts before any table of the node's first failure can, since those tables explain that failure only. `FailOperator`'s fields are rows: `Operand` and `Terminal` (kept Types) and `Constraint` (a kept interned proposition, written for an Unknown or Refuted proof, the failure telling which), with no second path. An Origin record beyond the first is one `OriginRecord` fact, an index in the report's kept records, numbered after the chain's conditions and published under the requirement of the node's first record: temporary until E4's relation fact, which takes both phases' records. A second report of a linked key must equal the first in code and facts, a Type by identity (DIAGNOSTICS 4.3); a differing one is `InternalInvariant_Kd` at its subject, as `MirReport.Add`'s. An import's records (G155): each Type without a C counterpart is `InvalidImportSignature_Kd` with its ordinal among them as the condition, a Type outside the table the located `Unsupported_Kd` beside them, and the symbol table's conflicts stand beside a failed supply; the dependency module's limit stays a `Fail` (BU-92). A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type: `OperatorApplicabilityOf`'s failure is the node's other problem. Rejected: a `Detail` fact (boxes per warm pass, measured), two `FailOperator` paths, a dedupe index beside the chain (`Unlink` would have to keep it; the walk costs what the list's `Contains` cost), the route through `CompleteBinary` (its mismatch would need `RecordTypeMismatch`'s guard lifted for one path; E3 lifts it for the family).
 - **BU-127 A local region at a fixed longer end is A5's** (2026-11-08; PLAN G572, U1 round 2 and U3's rows; Major; RP17 consent C-131; the owner's O-57 (a), verbatim 「両方とも(a)でお願いします。」, O-59 (a) 「すべて (a)」, O-61 (a) 「O-61 a」, O-63 (a) 「(a) もう 1 回設計」 and O-77 (a) 「a」) SPEC 15.3.6, 15.4.4, 15.6.1, 15.6.5.
   - Cause. A local region is an inference variable, solved over all its bounds (15.3.6). In a Closure's body an enclosing region is fixed
@@ -14616,7 +14647,8 @@ resumed by R4-M86 (2026-10-20).
   - Amended (2026-11-24; PLAN G254, unit G254b, its commit 3 and the owner's O-520 (c) revision): G721's interim row (1) holds a
     pair layer other than the original `s/T` whose complete plan Reborrows in some admitted case where the bare Reborrow rule
     (BU-27's G254b amendment) names no layer (a family: `OuterOrigin` has no family row; removal PLAN G254's family limit) or has
-    its limit (R3's domain; removal PLAN G254c). Every other such layer is captured as its initialization would be.
+    its limit (R3's domain, `ReborrowLimit != None`; removal PLAN G1355). Every other such layer is captured as its initialization
+    would be.
     ConditionalCaptureTest's theory is split: `ACapturedPairLayerIsAcquiredAsItsInitializationWouldBe` and
     `AReborrowingFamilyOrPremiseMadePairLayerIsUnsupportedUntilTheFamilyRowOrG170`. Moves by SPEC reason: accepted (SPEC 7.7.2:
     an entry initializes as its initialization would): rows 1-4, the two `p@s` rows, PairFollowTest row 29, o1-cl-loc, n-o1-v,
