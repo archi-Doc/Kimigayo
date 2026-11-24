@@ -523,7 +523,7 @@
     Description="the runtime symbol import matches the reserved supply"
 
   + Name="Binding.ConflictingImportSupply"
-    Description="the imports of one symbol agree on their supply"
+    Description="the imports of one symbol agree on their providing library"
 
   + Name="Binding.DirectCallFunctionValue"
     Description="the function that supports direct calls only is not used as a value"

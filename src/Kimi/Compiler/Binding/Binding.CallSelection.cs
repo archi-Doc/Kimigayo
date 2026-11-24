@@ -328,6 +328,7 @@ public sealed partial class Binding
         evaluation.Operations = this.argumentOperationScratch.Rent(candidateCount * evaluation.OperationStride);
         evaluation.Rows = this.rowScratch.Rent(candidateCount * argumentCount);
         evaluation.ChildSlices = this.indexScratch.Rent(candidateCount * 2);
+        evaluation.Inferences = this.inferenceScratch.Rent(candidateCount);
         evaluation.ChildBase = this.childRows.Count;
         evaluation.PositionBase = this.positionOperations.Count;
         return evaluation;
@@ -336,6 +337,7 @@ public sealed partial class Binding
     // Returns what RentEvaluation rented and the candidate rows, and ends the evaluation's retained rows (R3) and element positions.
     private void ReturnEvaluation(in CallEvaluation evaluation)
     {
+        this.ReturnInferences(evaluation.Inferences, evaluation.FrameCount);
         this.argumentOperationScratch.Return(evaluation.Operations, clearArray: true);
         this.rowScratch.Return(evaluation.Rows, clearArray: true);
         this.indexScratch.Return(evaluation.ChildSlices);
@@ -360,7 +362,6 @@ public sealed partial class Binding
     // the caller acts on the outcome.
     private (CallSelection Kind, int Winner) SelectAt(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
-        this.BeginResolution();
         this.acquisitionFailure = null;
         this.failedCause = null;
         this.activeRequirementContract = null;
@@ -716,7 +717,8 @@ public sealed partial class Binding
     // evaluation (EvaluateCallCandidate) writes its mapping (MapCallArguments); the evaluation, the defaults' re-check, the waiting
     // re-trial and the selected call's judgments solve into the candidate's own Origin strides (Solution), and CallType marks its input
     // Origins Static there; the fixed re-check solves into its own scratch and copies the selected candidate's back
-    // (ValidateFixedConstruction).
+    // (ValidateFixedConstruction). Each candidate's Origin solve state (Inferences, SlotSolution.Kept) is its own, null until a run uses
+    // it, kept across all of these and returned clean with the evaluation (PLAN G1078).
     private struct CallEvaluation
     {
         internal InvocationKoto Call;
@@ -737,6 +739,7 @@ public sealed partial class Binding
         internal BoundArgumentOperation[] Operations;
         internal PositionRow[] Rows;
         internal int[] ChildSlices;
+        internal OriginInference?[] Inferences;
         internal bool[] CompletedWaiting;
         internal BoundType?[] WaitingContexts;
         internal int ChildBase;

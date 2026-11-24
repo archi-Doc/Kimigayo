@@ -179,6 +179,7 @@ public class ArchitectureRulesTest
         "Binding.AssociatedTypes.cs:ResolveAssociated=1 declared",
         "Binding.Attributes.cs:HasNoCCounterpart=1 kind",
         "Binding.Attributes.cs:ImportAbi=1 kind",
+        "Binding.BareAcquisition.cs:ReborrowedType=1 unchanged",
         "Binding.BoundContracts.cs:BoundContractReference=2 declared",
         "Binding.BoundContracts.cs:SubstituteRequirementContract=1 unchanged",
         "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",
@@ -509,7 +510,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. None is left: R7-E3 E3b-1 records the unbound slot as a related location (UnboundSlotFact.Note went).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 11)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 10)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 0)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
