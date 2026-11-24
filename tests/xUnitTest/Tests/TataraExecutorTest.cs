@@ -46,9 +46,19 @@ public sealed class TataraExecutorTest : IDisposable
 
     // The tool control's two formats. The archive's ld.lld.exe and llvm-readelf.exe are the toolchain's lld-link.exe and llvm-readobj.exe
     // (equal SHA-256); -flavor gnu and --elf-output-style=GNU select what those names select.
-    private static readonly ToolTarget Coff = new(Context, ["--unwind", "--coff-directives"], CoffFlags, "lld-link", [], LinkArguments);
+    private static readonly ToolTarget Coff = new(Context, ["--coff-directives"], CoffLibrary, "lld-link", [], LinkArguments);
 
-    private static readonly ToolTarget Elf = new(LinuxContext, ["--elf-output-style=GNU", "--sections"], ElfFlags, "ld.lld", ["-flavor", "gnu"], ElfLinkArguments);
+    private static readonly ToolTarget Elf = new(LinuxContext, ["--elf-output-style=GNU", "--sections"], ElfLibrary, "ld.lld", ["-flavor", "gnu"], ElfLinkArguments);
+
+    // The archive rows' C members (LinkAmbiguity design §5, probes P5): m1 calls helper, which m2 defines, and m3 too, calling other.
+    private static readonly (string Name, string Source) M1 = ("m1.c", "int helper(void);\nint codec_add(int a, int b) { return a + b + helper(); }\n");
+
+    private static readonly (string Name, string Source) M2 = ("m2.c", "int helper(void) { return 2; }\n");
+
+    private static readonly (string Name, string Source) M3 = ("m3.c", "int other(void);\nint helper(void) { return other(); }\n");
+
+    // The archive rows' compile options but the directive row's: -fno-autolink drops #pragma comment(linker) (LinkAmbiguity's P8).
+    private static readonly string[] NoAutolink = ["-fno-autolink"];
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-" + Guid.NewGuid().ToString("N"));
 
@@ -128,9 +138,9 @@ public sealed class TataraExecutorTest : IDisposable
         await Run([.. probes.SelectMany(ir => Levels.Select(level => new Row(ir, level, [])))], row => this.CompareWithTools(row, Elf));
     }
 
-    // Tatara's ELF side (Tatara B7b1): the probe's Linux object at O0 and O2 has _start defined, nothing undefined, unwind information
-    // and no dependent library (the variant naming one has it); ld.lld -static links a static executable (§6.1's checks), which
-    // llvm-readobj reads alike. Another format stays an inspection failure.
+    // Tatara's ELF side (Tatara B7b1): the probe's Linux object at O0 and O2 is one member, a relocatable object (form o, no archive),
+    // with _start defined, nothing undefined and no dependent library (the variant naming one has it); ld.lld -static links a static
+    // executable (§6.1's checks), which llvm-readobj reads alike. Another format stays an inspection failure.
     [Fact]
     public async Task TataraInspectsAndLinksAnElf()
     {
@@ -142,9 +152,10 @@ public sealed class TataraExecutorTest : IDisposable
             var (obj, exe) = (Path.Combine(this.directory, "probe." + level + ".o"), Path.Combine(this.directory, "probe." + level));
             File.WriteAllBytes(obj, tatara.Emit(LinuxContext, probe, obj, level[1] - '0'));
             var facts = tatara.Inspect(LinuxContext, obj);
-            Assert.Empty(facts.Undefined);
-            Assert.Equal([new ObjectSymbol("_start", 'T')], facts.DefinedExternal);
-            Assert.True(facts.HasUnwind && !facts.HasDefaultLibrary, level);
+            var member = Assert.Single(facts.Members);
+            Assert.Empty(member.Undefined);
+            Assert.Equal([new ObjectSymbol("_start", 'T')], member.DefinedExternal);
+            Assert.True(member.Form == 'o' && !facts.IsArchive && !facts.HasDefaultLibrary, level);
             tatara.Link(LinuxContext, ["ld.lld", .. ElfLinkArguments(obj, exe, [])]);
             var elf = ElfFile.Read(exe);
             elf.AssertStatic("_start");
@@ -162,6 +173,85 @@ public sealed class TataraExecutorTest : IDisposable
         var macho = Path.Combine(this.directory, "probe.macho.o");
         File.WriteAllBytes(macho, tatara.Emit(Context with { Triple = "x86_64-apple-macosx" }, probe, macho, 0));
         Assert.Contains("not a COFF or ELF object", Assert.Throws<IOException>(() => tatara.Inspect(Context, macho)).Message, StringComparison.Ordinal);
+    }
+
+    // Tatara's inspect reads archives (LinkAmbiguity phase A, design §2 "Tatara's read"): per member in archive order its symbols, its
+    // form (o, i, s), its definitions in sections that admit copies and its .drectve's references, and the archive's index naming each
+    // entry's member (Describe); an object or a DLL is one member of no archive; a bitcode member is read as lld-link links it (P4), its
+    // copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32); a directive's option takes each of
+    // LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32). llvm-lib writes its members in reverse command-line order (as lib.exe does; its /list reverses them back), so its index, naming
+    // the command line's last definer (P5), names the first in member order. A malformed archive fails with LLVM's text and Tatara runs
+    // again; a thin archive fails. Libraries: the compiler's committed ones, or the pinned clang's objects archived by llvm-lib.
+    [Theory]
+    [InlineData("kernel32")]
+    [InlineData("backend")]
+    [InlineData("codec2")]
+    [InlineData("object")]
+    [InlineData("dll")]
+    [InlineData("comdat")]
+    [InlineData("directives")]
+    [InlineData("bitcode")]
+    [InlineData("bitcodefacts")]
+    [InlineData("prefixes")]
+    [InlineData("index")]
+    [InlineData("malformed")]
+    [InlineData("thin")]
+    [InlineData("resource")]
+    [InlineData("linebreak")]
+    [InlineData("truncated")]
+    [InlineData("unterminated")]
+    [InlineData("emptyname")]
+    public async Task TataraInspectsAnArchivesMembers(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        const string Directives = """
+            #pragma comment(linker, "/include:f")
+            #pragma comment(linker, "/alternatename:a=b")
+            #pragma comment(linker, "-INCLUDE:g /ALTERNATENAME:\"c=d\"")
+            #pragma comment(linker, "/alternatename:bad")
+            int directives(void) { return 0; }
+            """;
+        const string BitcodeFacts = """
+            #pragma comment(linker, "/include:f")
+            #pragma comment(linker, "/alternatename:a=b")
+            extern "C" __declspec(selectany) int g = 1;
+            extern "C" int plain = 2;
+            inline int twice(int x) { return x * 2; }
+            extern "C" int (*pointer)(int) = twice;
+            """;
+        await (row switch
+        {
+            "kernel32" => Expect(Kernel32Facts(), Task.FromResult(Kernel32)),
+            "backend" => Expect("archive\no T:__chkstk\nindex 0:__chkstk", Task.FromResult(Backend)),
+            "codec2" => Expect("archive\no T:helper\no U:helper T:codec_add\nindex 1:codec_add 0:helper", this.Library("codec.lib", NoAutolink, M1, M2)),
+            "object" => this.InspectsAnObject(),
+            "dll" => this.InspectsADll(),
+            "comdat" => Expect(
+                "archive\no T:?twice@@YAHH@Z D:pointer comdat:?twice@@YAHH@Z\no D:g D:plain comdat:g\nindex 0:?twice@@YAHH@Z 1:g 1:plain 0:pointer",
+                this.Library("comdat.lib", ["-fno-autolink", "-fms-extensions", "-fdata-sections"], ("selectany.c", "__declspec(selectany) int g = 1;\nint plain = 2;\n"), ("inline.cpp", "inline int twice(int x) { return x * 2; }\nextern \"C\" int (*pointer)(int) = twice;\n"))),
+            "directives" => Expect(
+                "archive\no T:directives include:f alternatename:a=b include:g alternatename:c=d\nindex 0:directives",
+                this.Library("directives.lib", ["-fms-extensions"], ("directives.c", Directives))),
+            "bitcode" => Expect("archive\no T:bc_add\nindex 0:bc_add", this.Library("bitcode.lib", ["-fno-autolink", "-flto"], ("bitcode.c", "int bc_add(int a, int b) { return a + b; }\n"))),
+            "bitcodefacts" => Expect(
+                "archive\no W:?twice@@YAHH@Z W:g D:plain D:pointer comdat:?twice@@YAHH@Z comdat:g include:f alternatename:a=b\nindex 0:?twice@@YAHH@Z 0:g 0:plain 0:pointer",
+                this.Library("bitcodefacts.lib", ["-fms-extensions", "-flto"], ("bitcodefacts.cpp", BitcodeFacts))),
+            "prefixes" => Expect(
+                "archive\no T:prefixes include:f alternatename:a=b\nindex 0:prefixes",
+                this.Library("prefixes.lib", ["-fms-extensions"], ("prefixes.c", "#pragma comment(linker, \"/?include:f -?ALTERNATENAME:a=b /??include:x\")\nint prefixes(void) { return 0; }\n"))),
+            "index" => this.InspectsTheIndex(),
+            "malformed" => this.FailsOnAMalformedArchive(),
+            "thin" => this.FailsOnAThinArchive(),
+
+            // Crafted members (C-533): a COFF resource; short import members whose name holds a line break, is empty (an empty line
+            // ends a block), ends inside their header (the magic alone), or has no NUL (LLD's "broken import library").
+            "resource" => this.FailsOnAMember("not a COFF or ELF object", [0, 0, 0, 0, 0x20, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0xFF, 0xFF, 0, 0, .. new byte[16]]),
+            "linebreak" => this.FailsOnAMember("a name holds a line break", ShortImport("a\nb\0KERNEL32.dll\0"u8)),
+            "emptyname" => this.FailsOnAMember("a name is empty", ShortImport("\0KERNEL32.dll\0"u8)),
+            "truncated" => this.FailsOnAMember("broken import library", [0, 0, 0xFF, 0xFF]),
+            "unterminated" => this.FailsOnAMember("broken import library", ShortImport("abc"u8)),
+            _ => throw new ArgumentOutOfRangeException(nameof(row)),
+        });
     }
 
     // The Tatara plan's B7b2a: the Linux row's libc-free modules (Hello, Hello ending in an Abort, design §5 row 14's allocator program and
@@ -182,7 +272,7 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var (obj, exe) = (Path.Combine(this.directory, name + "." + level + ".o"), Path.Combine(this.directory, name + "." + level));
             File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, ir, obj, level[1] - '0'));
-            Assert.Empty(Tatara.Instance.Inspect(LinuxContext, obj).Undefined);
+            Assert.Empty(Assert.Single(Tatara.Instance.Inspect(LinuxContext, obj).Members).Undefined);
             Tatara.Instance.Link(LinuxContext, ["ld.lld", "-e", TargetProfile.Linux.EntrySymbol, .. ElfLinkArguments(obj, exe, [])]);
             ElfFile.Read(exe).AssertStatic(TargetProfile.Linux.EntrySymbol);
         }
@@ -291,9 +381,9 @@ public sealed class TataraExecutorTest : IDisposable
 
             var obj = Path.Combine(work, $"memory.{level}.obj");
             File.WriteAllBytes(obj, Tatara.Instance.Emit(Context, ir, obj, level[1] - '0'));
-            var facts = Tatara.Instance.Inspect(Context, obj);
-            Assert.Empty(facts.Undefined);
-            Assert.Equal(TargetProfile.MemorySymbols, facts.DefinedExternal.Select(static x => x.Name).Order(StringComparer.Ordinal));
+            var member = Assert.Single(Tatara.Instance.Inspect(Context, obj).Members);
+            Assert.Empty(member.Undefined);
+            Assert.Equal(TargetProfile.MemorySymbols, member.DefinedExternal.Select(static x => x.Name).Order(StringComparer.Ordinal));
             var (failure, disassembly) = await Launch("llvm-objdump", work, "-d", obj);
             Assert.Equal(string.Empty, failure);
             Assert.DoesNotMatch(@"\scall", disassembly);
@@ -401,17 +491,13 @@ public sealed class TataraExecutorTest : IDisposable
     // ld.lld's arguments after its flavor: a static executable of the object and the libraries, no library a .deplibs section names.
     private static string[] ElfLinkArguments(string obj, string exe, string[] libraries) => ["-m", "elf_x86_64", "-static", "--no-dependent-libraries", obj, .. libraries, "-o", exe];
 
-    // llvm-readobj --unwind --coff-directives' two facts: a RuntimeFunction, and DEFAULTLIB in any case.
-    private static (bool Unwind, bool Library) CoffFlags(string listing)
-        => (listing.Contains("RuntimeFunction", StringComparison.Ordinal), listing.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase));
+    // llvm-readobj --coff-directives' default-library fact: DEFAULTLIB in any case.
+    private static bool CoffLibrary(string listing) => listing.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase);
 
-    // llvm-readelf --sections' two facts: a non-empty .eh_frame, and an SHT_LLVM_DEPENDENT_LIBRARIES section (a line's name, type,
-    // address, offset and size; the null section's line has no name and matches nothing).
-    private static (bool Unwind, bool Library) ElfFlags(string listing)
-    {
-        var sections = Regex.Matches(listing, @"(?m)^\s*\[\s*\d+\]\s+(\S+)\s+(\S+)\s+[0-9a-f]{16}\s+[0-9a-f]+\s+([0-9a-f]+)\s");
-        return (sections.Any(s => s.Groups[1].Value == ".eh_frame" && Convert.ToUInt64(s.Groups[3].Value, 16) != 0), sections.Any(s => s.Groups[2].Value == "LLVM_DEPENDENT_LIBRARIES"));
-    }
+    // llvm-readelf --sections' default-library fact: an SHT_LLVM_DEPENDENT_LIBRARIES section (a line's name and type; the null section's
+    // line has no name and matches nothing).
+    private static bool ElfLibrary(string listing)
+        => Regex.Matches(listing, @"(?m)^\s*\[\s*\d+\]\s+(\S+)\s+(\S+)\s+[0-9a-f]{16}\s").Any(s => s.Groups[2].Value == "LLVM_DEPENDENT_LIBRARIES");
 
     // Runs every row (in parallel for a corpus: the tools run concurrently, Tatara's calls are serialized by its lock) and decides it: a
     // row passes only when its verdict is "equal" (a cleanup's note beside it aside), so an equal failure fails too and a run that
@@ -524,15 +610,15 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // The tools' facts of an object, as the external build read them before Tatara: the two llvm-nm listings and the target's
-    // llvm-readobj listing with its two predicates.
+    // llvm-readobj listing with its default-library predicate.
     private static async Task<(string Failure, string Facts)> ToolFacts(string directory, string obj, ToolTarget target)
     {
         var undefined = await Launch("llvm-nm", directory, "--undefined-only", "--format=posix", obj);
         var defined = await Launch("llvm-nm", directory, "--defined-only", "--extern-only", "--format=posix", obj);
         var inspection = await Launch("llvm-readobj", directory, [.. target.Inspection, obj]);
         var failure = undefined.Failure + defined.Failure + inspection.Failure;
-        var (unwind, library) = target.Flags(inspection.Output);
-        return failure.Length != 0 ? (failure, string.Empty) : (string.Empty, Facts(new ObjectFacts(PosixSymbols(undefined.Output), PosixSymbols(defined.Output), unwind, library)));
+        var member = new ObjectMember('o', PosixSymbols(undefined.Output), PosixSymbols(defined.Output), [], []);
+        return failure.Length != 0 ? (failure, string.Empty) : (string.Empty, Facts(new ObjectFacts([member], [], IsArchive: false, target.DefaultLibrary(inspection.Output))));
     }
 
     // llvm-nm's --format=posix lines: the name, then the kind's letter, the value and the size, each after one space. The name is
@@ -557,8 +643,56 @@ public sealed class TataraExecutorTest : IDisposable
         return symbols;
     }
 
+    // An object's facts as the comparison prints them: its one member's symbols and its default-library flag.
     private static string Facts(ObjectFacts facts)
-        => string.Join(' ', facts.Undefined) + " | " + string.Join(' ', facts.DefinedExternal) + " | unwind " + facts.HasUnwind + ", default library " + facts.HasDefaultLibrary;
+    {
+        var member = Assert.Single(facts.Members);
+        return string.Join(' ', member.Undefined) + " | " + string.Join(' ', member.DefinedExternal) + " | default library " + facts.HasDefaultLibrary;
+    }
+
+    // An inspection as the archive rows compare it: "archive" or "object", then ", default library" when a member names one; a line per
+    // member: its form, "<letter>:<name>" per undefined and per defined symbol, "comdat:<name>" per definition that admits copies and
+    // "include:<name>" or "alternatename:<from>=<to>" per directive reference; then "index" and its "<member>:<name>" entries.
+    private static string Describe(ObjectFacts facts)
+    {
+        var lines = new List<string> { (facts.IsArchive ? "archive" : "object") + (facts.HasDefaultLibrary ? ", default library" : string.Empty) };
+        foreach (var member in facts.Members)
+        {
+            var parts = member.Undefined.Concat(member.DefinedExternal).Select(static s => s.Kind + ":" + s.Name)
+                .Concat(member.Comdats.Select(static name => "comdat:" + name))
+                .Concat(member.Directives.Select(static d => d.Kind == 'I' ? "include:" + d.Name : "alternatename:" + d.Name + "=" + d.Target));
+            lines.Add(member.Form + string.Concat(parts.Select(static part => " " + part)));
+        }
+
+        lines.Add("index" + string.Concat(facts.Index.Select(static entry => " " + entry.Member + ":" + entry.Name)));
+        return string.Join('\n', lines);
+    }
+
+    // A COFF short import member (IMAGE_FILE_IMPORT_HEADER: Sig2 0xFFFF, machine x64, the data's size, code imported by name), then the
+    // data: the symbol's name and the DLL's, each ended by a NUL.
+    private static byte[] ShortImport(ReadOnlySpan<byte> data)
+    {
+        var header = new byte[20];
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(2), 0xFFFF);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(6), 0x8664);
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), data.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(18), 4);
+        return [.. header, .. data];
+    }
+
+    // The row's input inspected and described (Describe).
+    private static async Task Expect(string expected, Task<string> input) => Assert.Equal(expected, Describe(Tatara.Instance.Inspect(Context, await input)));
+
+    // kernel32.lib as llvm-dlltool writes it: the import descriptor (referencing the other two), the null import descriptor and the null
+    // thunk data, objects whose symbols read I, then a short import member per export of kernel32.def in its order (code: T X and T
+    // __imp_X); its index names each definition's member, in name order.
+    private static string Kernel32Facts()
+    {
+        string[] exports = [.. File.ReadAllLines(Path.ChangeExtension(Kernel32, ".def")).Skip(2).Select(static x => x.Trim()).Where(static x => x.Length != 0)];
+        string[] members = ["o U:__NULL_IMPORT_DESCRIPTOR U:\u007fKERNEL32_NULL_THUNK_DATA I:__IMPORT_DESCRIPTOR_KERNEL32", "o I:__NULL_IMPORT_DESCRIPTOR", "o I:\u007fKERNEL32_NULL_THUNK_DATA", .. exports.Select(static x => $"i T:{x} T:__imp_{x}")];
+        var index = members.SelectMany(static (member, i) => member.Split(' ').Skip(1).Where(static part => part[0] != 'U').Select(part => (Member: i, Name: part[2..])));
+        return "archive\n" + string.Join('\n', members) + "\nindex" + string.Concat(index.OrderBy(static e => e.Name, StringComparer.Ordinal).Select(static e => $" {e.Member}:{e.Name}"));
+    }
 
     // The steps on the target, each run by the tools and by Tatara; a later step's input is that side's own product. The inspect step
     // writes each side's facts to inspected (tools, then Tatara). The tools' LLD is lld-link.exe with the target's flavor arguments; both
@@ -770,6 +904,89 @@ public sealed class TataraExecutorTest : IDisposable
         return await this.Generate("ffi-O2", source, "O2", supply: supply);
     }
 
+    // Each source written into the folder and compiled by the pinned clang (a .cpp name as C++) with the archive rows' line and the
+    // options, as "<stem>.obj".
+    private async Task Compile(string[] options, params (string Name, string Source)[] sources)
+    {
+        foreach (var (name, source) in sources)
+        {
+            File.WriteAllText(Path.Combine(this.directory, name), source);
+            Assert.Equal(string.Empty, await Tool("clang", this.directory, ["--target=" + Triple, "-O2", "-fno-builtin", "-fno-stack-protector", .. options, "-c", name, "-o", Path.ChangeExtension(name, ".obj")]));
+        }
+    }
+
+    // A static library of the compiled members, archived by llvm-lib in their order: its path.
+    private async Task<string> Library(string library, string[] options, params (string Name, string Source)[] members)
+    {
+        await this.Compile(options, members);
+        Assert.Equal(string.Empty, await Tool("llvm-lib", this.directory, ["/out:" + library, .. members.Select(static m => Path.ChangeExtension(m.Name, ".obj"))]));
+        return Path.Combine(this.directory, library);
+    }
+
+    // The Hello module's object is one member of no archive, a relocatable object with no copy, no directive reference and no index
+    // (its symbols are TataraEqualsTheTools').
+    private async Task InspectsAnObject()
+    {
+        var ir = ArtifactPaths.IrOf(Manifest(await this.Generate("hello", Hello, "O0")));
+        var obj = Path.Combine(this.directory, "hello.obj");
+        File.WriteAllBytes(obj, Tatara.Instance.Emit(Context, ir, obj, 0));
+        var facts = Tatara.Instance.Inspect(Context, obj);
+        var member = Assert.Single(facts.Members);
+        Assert.Equal(('o', false), (member.Form, facts.IsArchive));
+        Assert.Empty(member.Comdats);
+        Assert.Empty(member.Directives);
+        Assert.Empty(facts.Index);
+    }
+
+    // A DLL (lld-link /dll /noentry of a clang object) is one member of no archive, a linked image, whose symbols it does not list.
+    private async Task InspectsADll()
+    {
+        await this.Compile(NoAutolink, M2);
+        Assert.Equal(string.Empty, await Tool("lld-link", this.directory, "/dll", "/noentry", "/nodefaultlib", "/out:codec.dll", "m2.obj"));
+        await Expect("object\ns\nindex", Task.FromResult(Path.Combine(this.directory, "codec.dll")));
+    }
+
+    // The index names each entry's member by its position (P5's archives, llvm-lib's members in reverse command-line order): helper's is
+    // m3 for llvm-lib m1 m2 m3 and m2 for m1 m3 m2, each the first member, the command line's last definer.
+    private async Task InspectsTheIndex()
+    {
+        await Expect("archive\no U:other T:helper\no T:helper\no U:helper T:codec_add\nindex 2:codec_add 0:helper", this.Library("index1.lib", NoAutolink, M1, M2, M3));
+        await Expect("archive\no T:helper\no U:other T:helper\no U:helper T:codec_add\nindex 2:codec_add 0:helper", this.Library("index2.lib", NoAutolink, M1, M3, M2));
+    }
+
+    // A malformed archive fails with LLVM's text (return 1, LinkAmbiguity's P-F2), and Tatara runs again: an object inspects after it.
+    private async Task FailsOnAMalformedArchive()
+    {
+        var malformed = Path.Combine(this.directory, "malformed.lib");
+        File.WriteAllText(malformed, "!<arch>\nnot a library member\n");
+        var error = Assert.Throws<IOException>(() => Tatara.Instance.Inspect(Context, malformed));
+        Assert.StartsWith("Tatara failed: inspect\n", error.Message, StringComparison.Ordinal);
+        Assert.Contains("truncated or malformed archive", error.Message, StringComparison.Ordinal);
+        await this.Compile(NoAutolink, M2);
+        await Expect("object\no T:helper\nindex", Task.FromResult(Path.Combine(this.directory, "m2.obj")));
+    }
+
+    // An archive whose one member is the given bytes (written here: llvm-lib would read a crafted member itself; a GNU archive with no
+    // index) fails (1) with the text naming the member, and Tatara runs again (no call returned 2).
+    private Task FailsOnAMember(string text, byte[] member)
+    {
+        var library = Path.Combine(this.directory, "crafted.lib");
+        var header = Encoding.ASCII.GetBytes($"{"m.obj/",-16}{0,-12}{0,-6}{0,-6}{644,-8}{member.Length,-10}`\n");
+        File.WriteAllBytes(library, [.. "!<arch>\n"u8, .. header, .. member, .. member.Length % 2 == 0 ? [] : "\n"u8]);
+        var error = Assert.Throws<IOException>(() => Tatara.Instance.Inspect(Context, library));
+        Assert.Contains("crafted.lib(m.obj): " + text, error.Message, StringComparison.Ordinal);
+        Assert.Null(Tatara.FirstRefusal());
+        return Task.CompletedTask;
+    }
+
+    // A thin archive (llvm-lib /llvmlibthin) fails: its members are outside the file.
+    private async Task FailsOnAThinArchive()
+    {
+        await this.Compile(NoAutolink, M2);
+        Assert.Equal(string.Empty, await Tool("llvm-lib", this.directory, "/llvmlibthin", "/out:thin.lib", "m2.obj"));
+        Assert.Contains("thin archive", Assert.Throws<IOException>(() => Tatara.Instance.Inspect(Context, Path.Combine(this.directory, "thin.lib"))).Message, StringComparison.Ordinal);
+    }
+
     // The fatal rows, each run by AFatalErrorRefusesEveryLaterCallOfItsProcess in a child test process of its own: a return of 2 makes
     // the failing request and every later one the toolchain's failure naming the first cause, for the rest of the process. Each row's
     // folder is its parent's (named by Folder, removed by the parent).
@@ -827,11 +1044,11 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
-    // A format of the tool control comparison: Tatara's context, llvm-readobj's arguments for the object's two facts and their reading,
-    // LLD's flavor, the tool's arguments selecting it, and the link's arguments after the flavor for an object, an executable and the
-    // row's libraries.
+    // A format of the tool control comparison: Tatara's context, llvm-readobj's arguments for the object's default-library fact and its
+    // reading, LLD's flavor, the tool's arguments selecting it, and the link's arguments after the flavor for an object, an executable and
+    // the row's libraries.
     private sealed record ToolTarget(
-        TataraContext Context, string[] Inspection, Func<string, (bool Unwind, bool Library)> Flags, string Flavor, string[] ToolFlavor, Func<string, string, string[], string[]> Link);
+        TataraContext Context, string[] Inspection, Func<string, bool> DefaultLibrary, string Flavor, string[] ToolFlavor, Func<string, string, string[], string[]> Link);
 
     // A row of the tool control comparison: an IR, its level and the libraries both links take after the object, in the build's order (a
     // generated row's manifest's, the compiler's for another COFF row, none on ELF); named "<ir>|<level>" in a failure and in results.tsv.
