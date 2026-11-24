@@ -247,6 +247,22 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 8.13.1, 23.1.2, IMPL 21.3.2 (PLAN G651 a2-2c, its implementation review's B1): a specialization's restated input past the
+    // limit is refused at its written Type alone; the match reads the refused input and rests, so the original's input is not formed
+    // again at the specialization (one Type, one record). One layer less is accepted.
+    [Fact]
+    public void ASpecializationInputPastTheLimitIsRecordedOnceAtItsWrittenType()
+    {
+        const string form = "func g<T>(value: D12<T>.Item) -> i32 => 1\nspecialize func g<{0}>(value: D12<{0}>.Item) -> i32 => 2\n";
+        var (within, accepted) = this.Compile(Doubling(12) + form.Replace("{0}", "D12<i32>.Item", StringComparison.Ordinal) + Main);
+        Assert.Empty(within);
+        Assert.True(accepted);
+
+        var source = Doubling(12) + form.Replace("{0}", "(D12<i32>.Item, i32)", StringComparison.Ordinal) + Main;
+        var record = Assert.Single(this.Compile(source).Records);
+        AssertHeightRecord(record, source, "D12<(D12<i32>.Item, i32)>.Item", source.IndexOf("specialize", StringComparison.Ordinal));
+    }
+
     // PLAN G651 U1 (SPEC 23.1.2, 8.3.3 Limits): a validation pass forms its Types in a frame at the node its record names: a judgment's use
     // (a constructed Type node's Constraints, a Constraint environment's owner, a closed clause and its owner, an agreement's first path)
     // or a pass element that publishes facts (a source state's declaration, an override's premises). A Type past the limit formed there

@@ -17,8 +17,8 @@ namespace Kimi.Compiler;
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
 // BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
 // RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
-// frame (BeginConsultation(element) around a pass element that publishes facts and records no proof, DropConsultation after it; where
-// none is open, OpenQuerySite's at a judgment's proof query or at a pass element that forms Types outside a proof, PLAN G651 a1, a2).
+// frame (BeginConsultation(element) around a pass element whose reads explain no outcome, DropConsultation after it; where none is
+// open, OpenQuerySite's at a judgment's proof query or at a pass element that forms Types outside a proof, PLAN G651 a1, a2).
 // This concern preserves the existing cause order and performs no diagnostic rendering.
 // A node of a module the running pass does not bind keeps its columns, the state its own pass left: the recorder writes such a node's
 // state and failure in the pass's entry for it (PassPart.ForeignFailures), and every read of a node's state or failure here and in the
@@ -475,7 +475,7 @@ public sealed partial class Binding
     // with no consultation frame open, opened by the proof channel's outermost scope (BeginProof) and dropped at its close (EndProof), so
     // its reads explain nothing; null where it opens none: inside a frame the frame is the site, Nested and AfterPass name no node, and
     // after the pass no node is failed (Binding.TypeHeight, RefuseProof). PLAN G651 a2 (F2): also the frame of a pass step's element that
-    // forms Types outside a proof, opened by the member that forms them at the node its record names and closed after them.
+    // forms Types outside a proof, opened by the member or step element that forms them at the node its record names and closed after them.
     private (int Start, Koto? Node)? OpenQuerySite(QuerySite site)
         => this.producing && this.consultationNode is null && site.Node is { } node ? this.BeginConsultation(node) : null;
 

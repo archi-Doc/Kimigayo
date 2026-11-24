@@ -1015,7 +1015,7 @@ public sealed partial class Binding
             if (scope.Owner is ContractKoto contract)
             {
                 // SPEC 8.7.3: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does. Its frame is
-                // ExpandScopeContractPremises' (PLAN G651 a2).
+                // a separate one at the same element as ExpandScopeContractPremises' (the Contract, PLAN G651 a2).
                 var site = this.OpenQuerySite(contract);
                 this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
                 this.CloseQuerySite(site);

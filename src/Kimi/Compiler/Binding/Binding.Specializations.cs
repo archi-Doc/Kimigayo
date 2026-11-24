@@ -292,11 +292,14 @@ public sealed partial class Binding
                     continue; // An input-structure mismatch, not a missing target.
                 }
 
+                // A restated input that failed to bind is read first, so the match forms nothing over it and rests below (SPEC
+                // 23.1.2; PrepareVirtualOverrides' order): a Type the restated input's walk refused is never formed again from the
+                // original's input.
                 var equal = true;
                 for (var p = 0; p < restated.InputCount; p++)
                 {
-                    equal &= target.Input(p) is { } input &&
-                        this.SubstituteType(input, ordinary, arguments, lengths) is { } substituted && restated.Input(p) is { } actual &&
+                    equal &= restated.Input(p) is { } actual && target.Input(p) is { } input &&
+                        this.SubstituteType(input, ordinary, arguments, lengths) is { } substituted &&
                         SignatureEquals(substituted, actual, target.Binder, restated.Binder);
                 }
 
