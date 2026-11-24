@@ -43,18 +43,17 @@ public class GenericCallFormationBindingTest
             DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Span is { } span ? $"{x.Code} {source.Substring(span.Start, span.Length)}" : x.Code));
     }
 
-    // PLAN G464, E3e rulings 15 (b) and 17 (SPEC 23.1.2): a conversion's target is written Type syntax under its own syntax, so a
-    // conversion whose target failed, for any cause and at any depth of its written Type components, rests on it: it writes nothing and
-    // the Loans over it record nothing. Each `objref/Base` is MissingOriginBinding_Kd (a moved value supplies no Origin; DECISIONS Q13:
-    // dev's two ComparisonLoanConflict_Kd go; MirValidatorTest's R5-M72 row borrows instead); `UniqSlice<u8> during static` under `raw/`
-    // is InvalidOriginBinding_Kd (SPEC 15.5), so no whole write puts its raw Places over `q` (Q13: dev's ComparisonLoanConflict_Kd at
-    // `kk = 2` goes; MirBorrowsTest's uSliceBad3 row).
-    [Theory]
-    [InlineData("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\nfunc own(x: objref/Base) -> () => ()\nfunc probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n    own(if flag => a@move@objref/Base else => b@move@objref/Base)\n", "2*MissingOriginBinding_Kd")] // objref
-    [InlineData("func stash(slot: raw/(raw/u8), value: raw/u8) => ()\nfunc viaW(slot: raw/(UniqSlice<u8>)) => ()\nfunc host()\n    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var other: raw/u8 = null\n    var q: raw/(raw/u8) = other@raw\n    viaW(q@raw@raw/(UniqSlice<u8> during static))\n    stash(q, spare)\n    kk = 2\n", "2*InvalidOriginBinding_Kd")] // usb3m
-    public void AFailedConversionTargetRestsTheConversion(string source, string records)
+    // PLAN G464, E3e rulings 15 (b) and 18 (SPEC 23.1.2): a conversion's target is written Type syntax under its own syntax, so a
+    // conversion whose target has failed, for any cause, when the conversion is decided rests on it: here each `objref/Base` is
+    // MissingOriginBinding_Kd at its own binding (a moved value supplies no Origin), the conversion writes nothing and the Loans over it
+    // record nothing (DECISIONS Q13: dev's two ComparisonLoanConflict_Kd, dependent records, go; MirValidatorTest's R5-M72 row borrows
+    // instead). A target failing by a later check keeps dev's records (MirBorrowsTest's uSliceBad3; ruling 18, PLAN's open issue).
+    [Fact]
+    public void AFailedConversionTargetRestsTheConversion()
     {
-        Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        var source = "open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\nfunc own(x: objref/Base) -> () => ()\n" +
+            "func probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n    own(if flag => a@move@objref/Base else => b@move@objref/Base)\n";
+        Assert.Equal("2*MissingOriginBinding_Kd", DiagnosticCorpus.RecordProfile(source));
     }
 
     // PLAN G464, O-8 (a) (SPEC 23.1.2, 15.3.4, 8.3): an explicit Type argument whose written occurrence inside a Function Type failed
