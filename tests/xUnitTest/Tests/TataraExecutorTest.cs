@@ -72,7 +72,7 @@ public sealed class TataraExecutorTest : IDisposable
     // Both, in ToolchainIdentity.Supplies' order: a link manifest's libraries when the program names none of its own.
     private static string[] CompilerLibraries => [Kernel32, Backend];
 
-    public void Dispose() => Directory.Delete(this.directory, true);
+    public void Dispose() => TestFolder.Delete(this.directory);
 
     // The start check's comparison (no DLL): the expected ABI is the SHA-256 of src/Tatara/tatara.h, and a DLL of another ABI or LLVM
     // version is refused with both values and the remedy, which names no root (Tatara B6b1).
