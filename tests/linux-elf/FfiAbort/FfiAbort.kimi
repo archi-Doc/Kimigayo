@@ -1,0 +1,7 @@
+group Codec
+    #LibraryImport("codec", "codec_add")
+    public func add(a: i32, b: i16) -> i32
+public func main()
+    require Codec.add(40, -2) == 38 else => $abort("add")
+    Console.writeLine("ffi ok")
+    $abort("x")
