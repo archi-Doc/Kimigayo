@@ -34908,7 +34908,16 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   member defines an external symbol is a dependency-check line on every format (`LinkInput.Unindexed`, T's ruling 48); the pick is the
   first index entry on every format. A library input that is no library (ruling 54) is reported before the link on both formats:
   lld-link refuses a DLL and ld.lld's static link a shared object with an ordinary error, after which Tatara runs again (P-K4, P-K5b);
-  only COFF's bare import member reaches LLD's `fatal()` (PB3). Linux runs (B7b9, Q-798): the Linux programs are committed once under `tests/linux-elf`, and the test rows over the same programs read them there. `scripts/build-linux-elf.ps1` builds them and the natively verified milestones on Windows; a milestone's Linux expectation is its Windows build's run on the same runner, which must exit 0 with empty stderr. `scripts/run-linux-elf.ps1` runs the ELFs against `tests/linux-elf/expectations.json` on a Linux kernel (CI's `linux-elf` job on `ubuntu-latest`; WSL locally) and records the kernel. Three Kimi texts are structural copies, because a project takes every `.kimi` in its folder and has no Sources key: `FfiAbort.kimi:1-6` is `Ffi.kimi`, `HelloAbort.kimi:1` is `Hello.kimi` (each adds its `$abort("x")` line), and `tests/linux-elf/Hello/Hello.kimi` is `docs/examples/Hello/Hello.kimi`; the C texts are not copied (FfiAbort and WidenBa link the other folder's archive). The earlier sentence (WSL only, the programs kept as probe texts) is in dev ed439442c. Rejected: refusing a Linux manifest at the CLI until B7b8 (a
+  only COFF's bare import member reaches LLD's `fatal()` (PB3). Linux runs (B7b9, Q-798): the Linux programs are committed once
+  under `tests/linux-elf`, and the test rows over the same programs read them there. `scripts/build-linux-elf.ps1` builds them and
+  the natively verified milestones on Windows; a milestone's Linux expectation is its Windows build's run on the same runner,
+  which must exit 0 with empty stderr. `scripts/run-linux-elf.ps1` runs the ELFs against `tests/linux-elf/expectations.json` on a
+  Linux kernel (CI's `linux-elf` job on `ubuntu-latest`; WSL locally) and records the kernel. Three Kimi texts are structural
+  copies, because a project takes every `.kimi` in its folder and has no Sources key: `FfiAbort.kimi:1-6` is `Ffi.kimi`,
+  `HelloAbort.kimi:1` is `Hello.kimi` (each adds its `$abort("x")` line), and `tests/linux-elf/Hello/Hello.kimi` is
+  `docs/examples/Hello/Hello.kimi`; the C texts are not copied (FfiAbort and WidenBa link the other folder's archive). The earlier
+  sentence (WSL only, the programs kept as probe texts) is in dev ed439442c. Rejected: refusing a Linux manifest at the CLI until
+  B7b8 (a
   clause keyed on the row); a Format switch in the dependency check; a member-order reader for ELF picks; places as strings, which
   the ELF writer dropped when unknown; `--require-defined=<entry>` on the ELF line (a second, ELF-only judge of the entry).
   Measured cost, accepted by the owner under RQ8 (a) (W-362, dev 8262860a0; O-W362 「(a) 現状で着地」; T-W362c): alone against
