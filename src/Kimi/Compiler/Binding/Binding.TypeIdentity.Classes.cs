@@ -785,7 +785,7 @@ public sealed partial class Binding
         // Limits): the nodes a ground adds remember the binding (conforming declaration, associated Type) and the node it grounded;
         // a chain uses one binding at most PremiseClosureLimit times (each use is one round of the premises' closure, the limit
         // G881b's request rounds count), whatever the spelling of its Types (ground-dec2 and its directly spelled twin alike). A
-        // ground past it is not taken and its class is in state Limit, recorded once at the declaration as PremiseClosureLimit_Kd
+        // ground past it is not taken and its class is in state Limit, recorded once at the declaration as AnalysisLimit_Kd
         // (a Resource record); a growing expansion (`associate C.X is Option<G<Option<A>>.(C).X>`) and a descent deeper than the limit
         // (ground-deep) reach it alike. Finite: each binding is used a bounded number of times along any chain.
         // R7-C3 (B4; SPEC 8.2.3 Projections, 8.5.4): a family application that is a node of its own (a premise's side, `U.(L).Lent(b)`)

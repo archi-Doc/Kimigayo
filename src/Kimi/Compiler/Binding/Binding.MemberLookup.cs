@@ -220,7 +220,7 @@ public sealed partial class Binding
             // requirements: the Type path over the formed projection; construction (`.init`) is ConstructorMember's. A member missing
             // through a projection that stays one rests on the projection's use (SPEC 23.1.2; as ConstructorMember, DECISIONS BU-184):
             // an unsatisfied conformance is that use's record, a pending prerequisite here.
-            Complete(member.Left, projected);
+            this.PublishType(member.Left, projected);
             var selected = this.SelectMember(member, null, this.QualifierSelection(member, null, name, scope, projected), default, scope);
             if (selected is null && projected.Kind == BoundTypeKind.AssociatedProjection)
             {
@@ -393,7 +393,7 @@ public sealed partial class Binding
             }
 
             typeSelection = typeSelection with { DeclaringType = completeType };
-            Complete(member.Left, completeType);
+            this.PublishType(member.Left, completeType);
         }
 
         // The Type side's verdict is TypePathFailure's, which PickReading reads too; the value side's access is checked against its receiver.

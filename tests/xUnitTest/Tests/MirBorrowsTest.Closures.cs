@@ -9,7 +9,7 @@ namespace XunitTest;
 
 /// <summary>A5-F7's rule (SPEC 15.8.2, 7.7.2, 7.7.3, 15.6.4; docs/dev/DECISIONS.md R4-M126, R4-M148): a Closure call is a receiver call. Its
 /// contract's input 0 is its call receiver, the callee operand, a store into which takes W as any argument's does; its result follows the
-/// contract's rows; and a view whose case admits a Shared receiver while the call acquires an Exclusive one is held (PD13).</summary>
+/// contract's rows; and a call whose receiver is by case acquires its callee in each view as the view's case admits (PLAN G13).</summary>
 public sealed partial class MirBorrowsTest
 {
     // SPEC 15.8.2, 7.7.2: an Exclusive call may retain an argument in its `var` bindings and in what its captured exclusive references
@@ -588,15 +588,16 @@ public sealed partial class MirBorrowsTest
                 pb@follow = 2
             """));
 
-    // PD13 (SPEC 7.7.3; DECISIONS R4-M126 (iii), R4-M148): a call acquires a Closure in its strongest receiver, so where the view's case
-    // admits a Shared one (`value` Copies in the owner case and the raw case, Reborrows in the uniq case) every rejection of the view is the
-    // located Unsupported_Kd at its subject, the call's own conflict (heldBad, heldNested) and an independent one alike (heldIndependent,
-    // heldBefore), while the uniq view keeps its Language error. A body no view decides follows view 0, which stands for every view: the
-    // owner case held (heldMove, heldMoveRef: view 0 Shared), the uniq case not (exclusiveMoveRaw: view 0 Exclusive, its Language error for
-    // every view). A held view with no rejection is unchanged (caseOk), and a Shared Closure called through `u: uniq/Env` is acquired by a
-    // shared reference to its referent, so no view is held (sharedThroughUniqOk, sharedThroughUniqLiveOk).
+    // SPEC 7.7.3 (PLAN G13): a call whose Closure receiver is by case acquires its callee in each view as the view's case admits (a
+    // case branch, MirBuilder.Calls): exclusively where `value` Reborrows (the uniq case), shared where it Copies (the owner, ref and raw
+    // cases), so each view keeps its own Language error and no other: the call's own conflict in the uniq view (heldBad, heldNested,
+    // heldRowRaw, and the moved captures heldMove, heldMoveRef, exclusiveMoveRaw, whose case branch makes the body's views decide,
+    // MirMoveData), an independent conflict in every view (heldIndependent, heldBefore), a conflict with a live exclusive Loan in every
+    // view (ad1), and, with nested case branches on two binders, the inner call's conflict exactly where its binder is uniq (ad3: views
+    // 2 and 3). Two calls with nothing live are accepted (caseOk, ad3v), and a Shared Closure called through `u: uniq/Env` is acquired
+    // by a shared reference to its referent (sharedThroughUniqOk, sharedThroughUniqLiveOk).
     [Fact]
-    public void AViewWhoseCaseAdmitsLessThanTheCallAcquiresIsHeld()
+    public void EachViewAcquiresAClosureAsItsCaseAdmits()
     {
         var source = """
             func heldBad<s/T>(value: s/T) -> ()
@@ -685,6 +686,42 @@ public sealed partial class MirBorrowsTest
                     _ = local
                 h()
                 h()
+            func ad1<s/T>(value: s/T) -> ()
+                s is owner or uniq
+                T is Copy
+                var h = func [value] () -> ()
+                    let local = value
+                    _ = local
+                let m = h@uniq
+                h()
+                inspect(m)
+            func ad3<s/T, r/U>(a: s/T, b: r/U) -> ()
+                s is owner or uniq
+                r is owner or uniq
+                T is Copy
+                U is Copy
+                var h1 = func [a] () -> ()
+                    let la = a
+                    _ = la
+                var h2 = func [b] (x: ()) -> ()
+                    let lb = b
+                    _ = lb
+                let r1 = h1@ref
+                h2(h1())
+                inspect(r1)
+            func ad3v<s/T, r/U>(a: s/T, b: r/U) -> ()
+                s is owner or uniq
+                r is owner or uniq
+                T is Copy
+                U is Copy
+                var h1 = func [a] () -> ()
+                    let la = a
+                    _ = la
+                var h2 = func [b] (x: ()) -> ()
+                    let lb = b
+                    _ = lb
+                h2(h1())
+                h2(h1())
             func sharedThroughUniqOk() -> i32
                 var n: i32 = 1
                 var c = func [n] () -> i32 => n
@@ -701,12 +738,11 @@ public sealed partial class MirBorrowsTest
                 return a
             """;
         Assert.Equal(
-            ["exclusiveMoveRaw: h() CallActivationConflict_Kd views 3", "heldBad: h() CallActivationConflict_Kd views 2",
-                "heldBad: h() Unsupported_Kd views 1", "heldBefore: n = 2 ComparisonLoanConflict_Kd views 2",
-                "heldBefore: n = 2 Unsupported_Kd views 1", "heldIndependent: n = 2 ComparisonLoanConflict_Kd views 2",
-                "heldIndependent: n = 2 Unsupported_Kd views 1", "heldMove: h() Unsupported_Kd views 3", "heldMoveRef: h() Unsupported_Kd views 3",
-                "heldNested: outer() CallActivationConflict_Kd views 2", "heldNested: outer() Unsupported_Kd views 1",
-                "heldRowRaw: h() CallActivationConflict_Kd views 1", "heldRowRaw: h() Unsupported_Kd views 2"],
+            ["ad1: h ComparisonLoanConflict_Kd views 3", "ad3: h1() CallActivationConflict_Kd views 12",
+                "exclusiveMoveRaw: h() CallActivationConflict_Kd views 1", "heldBad: h() CallActivationConflict_Kd views 2",
+                "heldBefore: n = 2 ComparisonLoanConflict_Kd views 3", "heldIndependent: n = 2 ComparisonLoanConflict_Kd views 3",
+                "heldMove: h() CallActivationConflict_Kd views 2", "heldMoveRef: h() CallActivationConflict_Kd views 2",
+                "heldNested: outer() CallActivationConflict_Kd views 2", "heldRowRaw: h() CallActivationConflict_Kd views 1"],
             ViewProblems(source));
         var program = MirBuildTest.Compile(Prelude + source).BuildMir();
         var shared = Body(program, "sharedThroughUniqOk");
@@ -1123,7 +1159,7 @@ public sealed partial class MirBorrowsTest
 
     // V16 (DECISIONS R4-M148): A5 on a program version it checked before allocates nothing at Closure calls: the receiver's rows over the
     // memoized contract (its key the instance's environment; no A5 callee carries a closure context, R4-M148, R4-M152), a store into
-    // the receiver, PD13's hold and a Limit Closure.
+    // the receiver, a by-case call's case branch and a Limit Closure.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmClosureCallAllocatesNothing()
