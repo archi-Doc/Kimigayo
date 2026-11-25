@@ -626,11 +626,16 @@ public sealed partial class MirOriginsTest
             string.Join(", ", program.Problems.Facts(x.Index).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)} {f.Value}")))];
     }
 
-    // The problems of a program's own bodies with an Origin stratum's code, and their indices.
+    // The problems of a program's own bodies with an Origin stratum's code, and their indices; none of those bodies' problems is an
+    // InternalInvariant_Kd (a broken view), which no row expects and the code filter would hide.
     private static IEnumerable<(MirProblem Problem, int Index)> Found(MirProgram program)
-        => program.Problems.All.ToArray().Select((x, i) => (x, i))
+    {
+        var all = program.Problems.All.ToArray();
+        Assert.DoesNotContain(all, static x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Subject.Module == 0);
+        return all.Select((x, i) => (x, i))
             .Where(static x => !x.x.IsRecord && x.x.Subject.Module == 0 && x.x.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd
                 or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipStorageLimit_Kd);
+    }
 
     // A program's body judged by a stratum of its own, for its work and containment edges.
     private static (MirOrigins Origins, MirBody Body, Compilation C) Judged(string source, string name)
