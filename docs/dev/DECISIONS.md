@@ -25555,6 +25555,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a question or mode parameter on `PremiseRows` (discovery extending to a fixpoint is a new rule and a steering
     parameter), a per-reader identity predicate (c1''s B1/B3), a dedupe in the walk (refinement reads references).
   - Semantics and arithmetic readers follow in c2-3e and d (Callable and effect-bound readers: R7-M31).
+  - Superseded in part by R7-M116 (2026-11-26): the Alias column only pre-groups rows by the request's classes; the
+    candidate readers (`RequirementMember`'s dedup by `SameNormalizedRequirement`, `SearchAssociated`) identify references that are one
+    Type by J1 and the judge, so a completed binding identifies two references with no premise.
 - **R7-M31 `Enumerate`'s rows are every kind's with a reader, and carry their Source** (Front, 2026-11-14; R7-C2c2 c2-3b;
   design-c23b.md §11, review-c23b.md C1-C6 and N2, F's rulings 37, 38 and 40). SPEC 8.3.2, 8.10, 8.11.3, 8.11.4, 10.5.5.
   - A Contract row is one per reference. A constraint of another kind with a reader (`RowKind`, the one list the index and the
@@ -29398,6 +29401,7 @@ Closure row of `MirCases.Branch`).
     G1278-A moves the same two rows for its own cause, so the second lander states the merged counts). The binding *ScalingTest
     classes keep their shape. The wall-time check A/B (base vs head CLI, Hello, Milestone26, four class programs) shows no excess;
     the counts hold while the pinned Bind A/B at landing (RP8) reads within; BEYOND takes PLAN G1408's reduction.
+    R7-M116 raises (44, 94, 104) to (68, 118, 128) and 286 to 306.
   - Not in the rule: a positive identity clause at depth, read in neither polarity (nts2c-rev invalid and accepted; PLAN G1406); a
     Contract's own `Self` clause one link down and a
     conjunction clause at depth, valid and rejected in both polarities on dev too (PLAN G1407). A Semantics atom needs no row (8.3.4:
@@ -29703,6 +29707,52 @@ Closure row of `MirCases.Branch`).
     each Fn reader would test the declaration's syntax); deciding by `ConstructorAvailability` (an explicit constructor whose Body is
     missing would leave the rows unjudged, SPEC 23.1.2); skipping it in the instance roots (SPEC 8.15.3 checks every instantiation a
     checked body requires, whether or not it is reachable or generated).
+- **R7-M116 J1 reads every Type of a Contract proof the same way, and a candidate reader identifies references by J1** (Front,
+  2026-11-26; R7-C2c2 c2-5c; Q-799, D-1302; Major, an acceptance mover; an independent review ACCEPT WITH CONDITIONS (F's CC-36),
+  RP17: the Middle's C-581 CONSENT; F's CC-32 to CC-36) SPEC 8.2.3, 8.3.1, 8.3.2, 8.5.2, 8.6.1.
+  - **The rule.** A Contract proof's facts and its demanded reference are read completed, then formed (ContractType's (E) and
+    ProjectionSpecification, then ClassForm), wherever the reading can differ. (i) `IndexNormalized` files a Contract fact's reading
+    beside the fact when `ReadingCanDiffer`: a projection in one of its Types, or an identity premise in the view; the old gate
+    (`HasTypeIdentity(view.Premises)`) is gone, so a completed binding is a ground of identity with no unrelated premise (SPEC 8.2.3:
+    k4c rejected and k4c-w accepted only by a `W is i32` premise). (ii) `ProveConformance` reads the demanded reference by
+    `NormalizedContract` (Binding.Constraints, the member of NormalizeProofConstraint's Contract arm), so a qualifier's demand inside a
+    premise clause is read as the proof side reads it (k4m's clause record and its declaration record are one cause). One predicate:
+    J1's owner publishes `ReadingCanDiffer`, read by NormalizeProofConstraint's early return, `Supply`'s consult and `IndexNormalized`
+    (per environment and per fact) in place of three copies (F's CC-36 C4). Removed: the identity gate, ContractSolver's stale d09c
+    limit sentence (stale since c2-4), ProveConformance's copy of the reference intake, and one "Readers of a class's form" site.
+  - **The candidate reader.** RequirementMember's dedup (`Identified`) is `SameNormalizedRequirement` (the same symbol, then the
+    references are ReferenceEquals or `SameConformanceType`: J1's reading of the proposition, then the judge), the owner SearchAssociated
+    already reads through IsSelectionCandidate, NamesReference and SameConformanceType. A completed binding therefore identifies
+    `P<SrcI.(HasItem).Item>` with `P<i32>` with no premise and with or without identity classes (SPEC 8.2.3, 8.6.1). The Alias column
+    (`FormAliases`) only pre-groups rows by the request's classes; it decides nothing a reader does not read (ContractSolver may not
+    judge). The reader is a defect older than c2-5c that the rule exposes: ef2-w, sh1-w, sh1-pw and sh1-2 are rejected on dev.
+  - **Reason.** Two readings of one Contract proof existed (a gate on whether a reading is filed; a second copy of the reference
+    intake), so the verdict depended on an unrelated premise and on where a qualifier was written; the candidate reader judged by
+    unread Types, a third form of "one requirement through two references".
+  - **Cost** (measured at landing, not a decision): a view with no identity premise files readings at Theta(m(n+m)) outside a Kept
+    region (m projection-bearing Contract facts, n uses), the identity domain's shape; `TypeDagScalingTest`'s
+    `AViewWithoutAnIdentityPremiseFilesReadingsAsTheIdentityDomain` asserts it against the identity-premise twin; PLAN G1408 is its
+    staged reduction. Exact counts moved by the rule's own filing: `RecursiveContractTest.AnExtensionReopensTheViewsKeptEntryAsItsOwn`
+    (44, 94, 104) -> (68, 118, 128), `NormalizedConstraintProofBindingTest.AViewsIndexIsFormedAtEachSerialUntilComplete` 286 -> 306.
+    SameNormalizedRequirement compares by reference first; its proposition runs only when one requirement is reached through two
+    distinct references. RP8 is the landing window's timing slot; a BEYOND takes G1408's reduction.
+  - **Moves (Q13), rows of `TypeIdentityTest.ContractReferencesAreIdentifiedByTheirNormalizedForm` unless named a twin** (the
+    Middle's C-581, `artifacts/handoff/2026-11-16-pause/middle/notes/c581-rp17.md` section 4). Class 3: k4c, kq1, kq2, kq3, k4m (the
+    rule), ef2-w, sh1-w, sh1-pw, sh1-2 (the reader), dA-1, dA-3, cB-1, cB-1r, cB-2 (the review's rows). The 22 unlisted moves, class 3:
+    valid twins vt.r1-arg, vt.r1-view, vt.r1-or, vt.r2-arg, vt.r2-view, vt.r2-alias, vt.r2-dir, vt.r3-arg, vt.r3-view, vt.r3-alias,
+    vt.r3-sep, vt.r4-arg, vt.r4-view, vt.r4-alias, vt.r4-sep and run.sh1-2, run.cB-1, run.dA-3 (accepted; the run twins emit and run
+    exit 0); it.r4-alias (valid by SPEC 10.3, accepted; its twin vt.r4-alias-d likewise); it.r1-view, it.r2-view and it.r3-view (invalid,
+    still rejected; the base's record at their valid view `a` is gone). No class 1, no invalid program newly accepted, no code move
+    on programs both sides reject.
+  - **Staged removal** (temporary structure `FormAliases`, F's CC-35): without classes the kept representative of two J1-identical
+    references follows premise order (C-f3a; sh1-2's spelling). Reading `Spelling` in the readers' dedup would make `FormAliases`
+    removable; measured first (PLAN G1425).
+  - **Left out:** the premise clause's second `UnprovenConstraint_Kd` at its declaration (k4mu, k4ms, k4mc; PLAN G1424, pre-existing).
+  - **Rejected:** `FormAliases` by J1 reading (a normalization outside Reading; leaves sh1, sh1-w, ef3, ef3n); building classes when a
+    reading is filed (refuted by ef2-w, sh1-w, sh1-pw, which have classes and still no Alias); narrowing the domain (not one rule:
+    k4c and ef2 have one shape, sh1-2 files no reading); `Identified` comparing J1 readings by ReferenceEquals (a third form of the
+    meaning); reading every fact in every view; the per-fact term restated at each reader (a third copy of NormalizeProofConstraint's
+    early return, CC-36 C4). Supersedes in part R7-M110's counts and R7-M30's Alias-column sentence (below).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
