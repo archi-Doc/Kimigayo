@@ -356,7 +356,8 @@ public sealed partial class Binding
         // uses exactly the meet of the bounds (SPEC 15.2.2). Such a Type slot, bound without an invariant binding and fixed by no
         // explicit or declaring Type, takes its solution with the Origins at its covariant positions opened (OpenSlotOrigins); its
         // structure and Semantics stay the evidence's, so applicability and ranking are unchanged and no candidate is solved twice. Such
-        // an Origin parameter is published to the solve (OriginInference.WaitingNamed), which writes a covariant one as its evidence
+        // an Origin parameter or per-call input (SPEC 15.3.4) is published to the solve (OriginInference.WaitingNamed, by its CallRegion
+        // index: a parameter k at k, an input i at -1 - i, as OpenUnsolvedOrigins keys them), which writes a covariant one as its evidence
         // candidate met with the call's region (CallRegion). Either way the solution is `(E and region)`, SPEC 15.3.6's candidate
         // with the region for the bounds not known yet, and E is kept in the candidate's openings (OriginInference.Opened), which
         // start empty at its first solve. A candidate without a position without evidence (HasWaitingPosition, the rows
@@ -376,11 +377,12 @@ public sealed partial class Binding
                 opened.Opened.Clear();
             }
 
-            for (var k = 0; this.OriginInference is not null && k < this.OriginCount; k++)
+            var inputs = InputOriginCount(this.Binder);
+            for (var k = 0; this.OriginInference is not null && k < this.OriginCount + inputs; k++)
             {
                 if (waited.Opens(CallSlotCount(this.Binder) + k))
                 {
-                    this.OriginInference.WaitingNamed.Add(k);
+                    this.OriginInference.WaitingNamed.Add(k < this.OriginCount ? k : this.OriginCount - 1 - k);
                 }
             }
 
@@ -416,7 +418,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var count = CallSlotCount(this.Binder) + this.OriginCount;
+            var count = CallSlotCount(this.Binder) + this.OriginCount + InputOriginCount(this.Binder);
             var waiting = binding.RentSlotSet(count);
             var covariant = binding.RentSlotSet(count);
             var blocked = binding.RentSlotSet(count);

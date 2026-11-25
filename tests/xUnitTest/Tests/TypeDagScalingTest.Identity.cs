@@ -35,6 +35,22 @@ public partial class TypeDagScalingTest
     public void AnIdentityCycleIsFoundWithoutADepthBound(string shape)
         => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(IdentitySource(shape, 70)));
 
+    // G563-C (SPEC 8.3.3 Expanding recursion; F's G563C-1): a ring of n Contracts `Ci<A>: Tree` with `Self.(Tree).Child is Ci+1<A>` is
+    // flat and valid; closed by `C0<Option<A>>` instead, its one expanding pass puts every Contract on a growing set, each with its
+    // record. The pass graph has n nodes and n passes, walked with no depth bound (n past every closure limit); the rows assert the
+    // record profile at n and 2n, as the identity cycle's row above does, and time nothing.
+    [Theory]
+    [InlineData("flat", 70)]
+    [InlineData("flat", 140)]
+    [InlineData("expanding", 70)]
+    [InlineData("expanding", 140)]
+    public void AContractRingIsDecidedWithoutADepthBound(string shape, int n)
+    {
+        var last = shape == "expanding" ? "C0<Option<A>>" : "C0<A>";
+        var ring = string.Concat(Enumerable.Range(0, n).Select(i => $"contract C{i}<A>: Tree\n    Self.(Tree).Child is " + (i + 1 < n ? $"C{i + 1}<A>" : last) + "\n"));
+        Assert.Equal(shape == "expanding" ? $"{n}*InvalidConstraint_Kd" : "clean", DiagnosticCorpus.RecordProfile("contract Tree\n    associate Child is Tree\n" + ring));
+    }
+
     // R7-C3 (F's C2 rulings 250 (1), 252, 255; SPEC 8.2.3): the premise fixpoint fails a chain of n premises before the bodies, one more
     // each round (written last premise first, the worst order: n rounds), so each premise's projection reads its failed side when its
     // record is made: the premise error at the declaration and one record at each projection, never an Unknown judged before its premise

@@ -118,9 +118,6 @@ internal sealed class WorkspaceCheck
         this.openByDirectory = CheckInputs.GroupOpenPaths(start.Documents.Select(static x => x.Identity.Value));
     }
 
-    /// <summary>Gets the host target for implicit projects, or empty when the host has none.</summary>
-    public static string HostTarget { get; } = OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 ? TargetProfile.Windows.Target : string.Empty;
-
     /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4), each URI's list in display-range and result order.</summary>
     /// <param name="output">The check output.</param>
     /// <param name="sources">The source files the check read.</param>
@@ -701,7 +698,7 @@ internal sealed class WorkspaceCheck
                 var members = item.Members.ToArray();
                 var targets = item.Project.ProjectFile.Targets;
                 var productTargets = settings.AllTargets ? targets : settings.Target is { } target ? [target] :
-                    targets.Length == 1 ? [targets[0]] : targets.Contains(HostTarget, StringComparer.Ordinal) && HostTarget.Length != 0 ? [HostTarget] : [];
+                    targets.Length == 1 ? [targets[0]] : TargetProfile.Host is { } host && targets.Contains(host.Target, StringComparer.Ordinal) ? [host.Target] : [];
                 if (productTargets.Length == 0)
                 {
                     var key = new UnitKey(path, UnitKind.Product, string.Empty);
@@ -717,7 +714,7 @@ internal sealed class WorkspaceCheck
                     plans.Add(new(key, item, path, CheckMode.Product, members));
                 }
 
-                var testKey = new UnitKey(path, UnitKind.Test, productTargets.Contains(TargetProfile.Windows.Target, StringComparer.Ordinal) ? TargetProfile.Windows.Target : string.Empty);
+                var testKey = new UnitKey(path, UnitKind.Test, Array.Find(productTargets, static x => TargetProfile.Find(x) is not null) ?? string.Empty);
                 plans.Add(new(testKey, item, path, CheckMode.Test, members));
                 if (item.HasTestSources)
                 {
@@ -741,11 +738,11 @@ internal sealed class WorkspaceCheck
                 continue;
             }
 
-            var target = settings.Target ?? HostTarget;
+            var target = settings.Target ?? TargetProfile.Host?.Target ?? string.Empty;
             var product = new UnitKey(document, UnitKind.Product, target);
             required.Add(product);
             plans.Add(new(product, null, document, CheckMode.Product, [document]));
-            plans.Add(new(new(document, UnitKind.Test, target == TargetProfile.Windows.Target ? target : string.Empty), null, document, CheckMode.Test, [document]));
+            plans.Add(new(new(document, UnitKind.Test, TargetProfile.Find(target) is not null ? target : string.Empty), null, document, CheckMode.Test, [document]));
         }
 
         this.start.Post(new DerivationDone

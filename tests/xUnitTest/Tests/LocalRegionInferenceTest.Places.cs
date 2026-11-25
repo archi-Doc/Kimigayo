@@ -40,6 +40,13 @@ public partial class LocalRegionInferenceTest
         { "cl1", "func f(p: ref/i64, q: ref/i64) -> ref/i64 during p\n    let t = (p, q)\n    let g = func [t] () -> ref/i64 during p => t.0\n    return g()\n", string.Empty },
         { "cl1n", "func f(p: ref/i64, q: ref/i64) -> ref/i64 during p\n    let t = (p, q)\n    let g = func [t] () -> ref/i64 during p => t.1\n    return g()\n", "UnprovenOriginRelation_Kd@3:48" },
         { "cl2", "func f(p: ref/i64) -> ref/i64 during p\n    let t = (p, p)\n    let u = (t, t)\n    let g = func [u] () -> ref/i64 during p => u.1.0\n    return g()\n", string.Empty },
+
+        // PLAN G1379 (SPEC 4.3.1 Places, 15.3.6, 15.6.1 Errors): an array literal's place over local regions, its parts' rows constraining
+        // region inference: at an invariant position (e1, e1c; dev: InternalInvariant_Kd) and at a covariant one (e2u, e2c).
+        { "e1", "func f() -> i32\n    var x = 1\n    var y = 2\n    var m = x@ref\n    var n = y@ref\n    let arr = [m@uniq, n@uniq]\n    return 0\n", string.Empty },
+        { "e1c", "func f() -> i32\n    var x = 1\n    var y = 2\n    var m = x@ref\n    var n = y@ref\n    let arr: Array<uniq/ref/i32> = [m@uniq, n@uniq]\n    return 0\n", string.Empty },
+        { "e2u", "func f() -> i32\n    var x = 1\n    var y = 2\n    let arr = [x@ref, y@ref]\n    return 0\n", string.Empty },
+        { "e2c", "func f() -> i32\n    var x = 1\n    var y = 2\n    let arr: Array<ref/i32> = [x@ref, y@ref]\n    return 0\n", string.Empty },
     };
 
     // PLAN G922's known class 1 (not asserted as correct): a `var` capture's environment binding keeps the captured `let` local's Type,

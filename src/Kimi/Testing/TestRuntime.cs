@@ -49,12 +49,13 @@ internal static class TestRuntime
         _ => 3,
     };
 
-    /// <summary>Writes the entry of a test build (IMPL 21.4.2): the artifact's and the cases' identities and <c>__kimi_start</c>, which runs
+    /// <summary>Writes the entry of a test build (IMPL 21.4.2): the artifact's and the cases' identities and the row's entry, which runs
     /// the case the runner selects between its begin and completion frames, each case's call written by <paramref name="call"/>.</summary>
     /// <param name="output">The module's writer.</param>
     /// <param name="catalog">The test build's catalog.</param>
+    /// <param name="entry">The entry symbol of the module's target row (TargetProfile.EntrySymbol).</param>
     /// <param name="call">The writer of the call of a case, by its index in the catalog.</param>
-    internal static void WriteEntry(TextWriter output, TestCatalog catalog, Action<TextWriter, int> call)
+    internal static void WriteEntry(TextWriter output, TestCatalog catalog, string entry, Action<TextWriter, int> call)
     {
         output.Write("\n@__kimi_test_artifact = private constant [67 x i8] c\"");
         output.Write(catalog.ArtifactId);
@@ -69,7 +70,9 @@ internal static class TestRuntime
             output.Write("\"\n");
         }
 
-        output.Write("define void @__kimi_start() noreturn #0 {\nentry:\n  %case = call i64 @__kimi_test_begin()\n  switch i64 %case, label %invalid [\n");
+        output.Write("define void @");
+        output.Write(entry);
+        output.Write("() noreturn #0 {\nentry:\n  %case = call i64 @__kimi_test_begin()\n  switch i64 %case, label %invalid [\n");
         for (var i = 0; i < count; i++)
         {
             output.Write("    i64 ");
