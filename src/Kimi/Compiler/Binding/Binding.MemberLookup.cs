@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
+    private readonly Dictionary<(BoundMemberPath? Parent, SourceRef Base, BoundType Type), BoundMemberPath> memberPaths = new();
     private readonly MemberSelectionRows memberSelections;
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
@@ -16,6 +16,9 @@ public sealed partial class Binding
 
     /// <summary>Gets the layers LookupMember searched in the latest pass, read by the scaling tests.</summary>
     internal int MemberWalkWork => this.memberWalks;
+
+    /// <summary>Gets the number of interned member paths, read by the scaling and removal tests.</summary>
+    internal int MemberPathCount => this.memberPaths.Count;
 
     /// <summary>Gets the clauses UnreadIdentity read in the latest pass, read by the scaling tests.</summary>
     internal int UnreadIdentityWork => this.unreadIdentityWork;
@@ -68,7 +71,7 @@ public sealed partial class Binding
                 (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !this.TypeAccessCovers(type, symbol, symbol) ||
                 !this.ValidateBaseDeclaration(parent))
             {
-                this.Fail(syntax, BindingFailure.InvalidTypeFormation);
+                this.FailBaseRule(syntax, type?.Symbol?.Declaration as StructKoto);
                 valid = false;
             }
             else if (structure.BindingState != BindingState.Invalid && !this.ValidateInheritedNames(structure, type, scope))
@@ -82,10 +85,25 @@ public sealed partial class Binding
         this.inheritanceStates[symbol] = available ? (byte)2 : (byte)3;
         if (!valid)
         {
-            this.Fail(structure, BindingFailure.InvalidTypeFormation);
+            this.FailBaseRule(structure, structure.BaseClause);
         }
 
         return available;
+    }
+
+    // SPEC 23.1.2, DIAGNOSTICS 4.3 (G651 a2-1): a base rule's failure this check writes records the part it read (a clause its base
+    // declaration, a struct its base clause) as the check's one read (RecordRead), so publication derives it from that part's recovery or
+    // limit record (RestsOnRecoveryOrLimit); never as the node's resting part (AddPrerequisite), which InvalidDeclarationCause reads first,
+    // over a kept signature or premise-error context (G651 a2-1b, C8 ruling 21's B2). A node an earlier check failed keeps that check's
+    // record and gains no read: its failure did not read this one.
+    private void FailBaseRule(Koto node, Koto? read)
+    {
+        if (read is not null && this.RecordedFailure(node) == BindingFailure.None && this.IsUnresolvedPrerequisite(read))
+        {
+            this.RecordRead(node, read);
+        }
+
+        this.Fail(node, BindingFailure.InvalidTypeFormation);
     }
 
     // SPEC 9.5 (PLAN G602): a projection T.(C).X in a struct's base clause is an unresolvable dependency cycle when T is the struct or
@@ -581,14 +599,15 @@ public sealed partial class Binding
     private MemberSide MemberSideOf(MemberAccessKoto member)
         => this.memberSelections.SideOf(member) ?? throw new UnreachableException("A member access without a published side.");
 
+    // The member path of a base clause reached with a Type under a parent path, interned (DECISIONS BU-220: an interner stays a
+    // content-hash table): one object per key while no edit intervenes, so a warm rebind finds the paths of the Bind before it. The key
+    // names the clause by its value identity, which only a renumbering changes, and every edit, which a renumbering follows, empties the
+    // table (Invalidate): no key outlives its numbering and no removed clause stays reachable.
     private BoundMemberPath MemberPath(BoundMemberPath? parent, Koto syntax, BoundType type)
     {
-        var key = (parent, syntax, type);
-        if (!this.memberPaths.TryGetValue(key, out var path))
-        {
-            this.memberPaths.Add(key, path = new(parent, syntax, type));
-        }
-
+        ref var path = ref CollectionsMarshal.GetValueRefOrAddDefault(this.memberPaths, (parent, SourceRef.Of(syntax), type), out _);
+        path ??= new(parent, syntax, type);
+        Debug.Assert(ReferenceEquals(path.Declaration, syntax), "A member path's key outlived its numbering.");
         return path;
     }
 

@@ -23,11 +23,11 @@ public sealed partial class Binding
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
     // (R5-M39). The formation owns its height refusals inside the instance collector's answer frame (Binding.TypeHeight, R7-T1) and,
-    // after Binding's run, in every frame (PLAN G651 U2a): a stored Type past IMPL A.4's height leaves its part null and the instance's
-    // HeightLimit set, the cause every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit), so no record
-    // is made here inside the frame and none at a second reader; after the run outside the frame G651's site-less record is made beside
-    // it (U2b gives those readers a site). During the run the refusal is recorded at its site, or site-less in a pass not yet framed
-    // (a1-a4), and HeightLimit stays false.
+    // after Binding's run, under every after-run owner (PLAN G651 U2b): a stored Type past IMPL A.4's height leaves its part null and the
+    // instance's HeightLimit set, the cause every reader of the instance reads (Binding's storage walk a limit, Layout its HeightLimit),
+    // so no record is made here; each return of a refused instance outside a storage walk is a read answered to the innermost after-run
+    // owner (AnswerSite, R3.4), the walk's own reads answering through PrepareTypeStorage (R3.5). During the run the refusal is recorded
+    // at its site, or site-less in a pass not yet framed (a1-a4), and HeightLimit stays false.
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -40,7 +40,7 @@ public sealed partial class Binding
         {
             // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
             // refreshes it in this run) is never current, so the refreshed ADT forms it again.
-            var formation = this.OpenStorageFormation();
+            var formation = this.OpenFormation();
             try
             {
                 this.Substitute(type, adt, instance);
@@ -51,6 +51,11 @@ public sealed partial class Binding
             }
 
             instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
+        }
+
+        if (instance.HeightLimit && this.storageStack.Count == 0)
+        {
+            this.AnswerSite(type); // PLAN G651 U2b R3.4: a read of the refused instance, fresh or memoized, outside a storage walk.
         }
 
         return instance;
@@ -136,8 +141,9 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.PartsBase = declaration.BaseClause is { } clause ? this.KeptType(clause, type) : null;
-            instance.Base = this.WithoutRawOrigins(instance.PartsBase);
+            // DECISIONS BU-37 (PLAN G651 a2, R13.2): a base clause with a recorded failure gives no stored base part (AdtDef.BaseNotStored).
+            (instance.PartsBase, instance.Base) = declaration.BaseClause is { } clause && this.RecordedState(clause) != BindingState.Invalid
+                ? this.KeptPart(clause, type) : default;
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)
             {
@@ -146,8 +152,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < count; i++)
             {
-                instance.Parts[i] = this.KeptType(adt!.Fields[i], type);
-                instance.Fields[i] = this.WithoutRawOrigins(instance.Parts[i]);
+                (instance.Parts[i], instance.Fields[i]) = this.KeptPart(adt!.Fields[i], type);
             }
 
             return;
@@ -164,6 +169,23 @@ public sealed partial class Binding
             instance.Parts[i] = cases[i] is { } selected ? this.PayloadTuple(selected, type) : null;
             instance.Cases[i] = this.WithoutRawOrigins(instance.Parts[i]);
         }
+    }
+
+    // SPEC 6.3.3 (G651 a2-2): the base a constructor's selection reads: the base clause under the struct's Self as Substitute forms Base
+    // (KeptPart's view), also where the instance does not store it, so an independent selection failure stays judged, as LookupMember's
+    // base step reads a failed clause (R7-N3b, R7-N2c); none where the clause names no Type or the struct lies on an inline cycle
+    // (AdtDef.Base's reading), which no selection reads past.
+    private BoundType? SelectionBase(StructKoto declaration)
+        => declaration.BaseClause is { } clause && declaration.BoundSymbol!.Adt is not { InlineCycle: true }
+            ? this.KeptPart(clause, this.SelfType(declaration.BoundSymbol!)).View : null;
+
+    // A declared Field's or base clause's two stored forms under an instance (AdtDef.InstanceStorage): its kept part with the raw Origins
+    // it gives (KeptType: Parts, PartsBase) and AdtDef's view of it without them (WithoutRawOrigins: Fields, Base). The one formula
+    // Substitute's struct lines and SelectionBase read.
+    private (BoundType? Part, BoundType? View) KeptPart(Koto syntax, BoundType owner)
+    {
+        var part = this.KeptType(syntax, owner);
+        return (part, this.WithoutRawOrigins(part));
     }
 
     // The kept part of a declared Field, Case payload or base clause (Substitute; DECISIONS BU-46, BU-50): its written Type with its
@@ -771,8 +793,8 @@ public sealed partial class Binding
 
     // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152, R4-M159): its inputs, in parameter-slot
     // order, and its two reserved atoms', the call receiver ρ (a value call's receiver acquisition's Origin, built only where the result
-    // names ρ) and the call result (only Owned's closed signature images it, to static, DECISIONS BU-73; a value call publishes it as it
-    // is, R7-O1 H); a missing image keeps its atom.
+    // names ρ) and the call result (Owned's closed signature images it to static, DECISIONS BU-73; a value call to its own call result
+    // region, CallResultRegion, B1); a missing image keeps its atom.
     // A Closure Type's Origin arguments are the images of its definition's (DECISIONS R4-M159): `definition[i]` becomes `value[i]`.
     private readonly ref struct PerCallImages(
         ReadOnlySpan<BoundOrigin> inputs,

@@ -123,7 +123,7 @@ foreach ($mode in $modes) {
         }
         13 { "  call void @__kimi_free(ptr null, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         14 { "  %memory = call ptr @__kimi_alloc(i64 0, ptr @test_location, i64 13)`n  call void @__kimi_free(ptr %memory, ptr @test_location, i64 13)`n  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
-        17 { "  %memory = call ptr @__kimi_alloc(i64 300000, ptr @test_location, i64 13)`n  call void @__kimi_free(ptr %memory, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
+        17 { "  %memory = call ptr @__kimi_alloc(i64 1048576, ptr @test_location, i64 13)`n  call void @__kimi_free(ptr %memory, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         18 { "  %slot = alloca %kimi.string, align 8`n  store %kimi.string { ptr @__kimi_text, i64 13, i8 3 }, ptr %slot, align 8`n  call void @__kimi_destroy_string(ptr %slot, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         20 { "  %memory = call ptr @__kimi_alloc(i64 -1, ptr @test_location, i64 13)`n  call void @__kimi_exit(i32 0)`n  unreachable" }
         default {

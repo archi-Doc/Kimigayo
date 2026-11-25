@@ -114,6 +114,7 @@ internal sealed partial class MirBorrows
         for (var i = 0; i <= count; i++)
         {
             var location = this.Location(block, i);
+            var site = this.OpenAt(location);
             this.Work++;
             if (checks && this.copying && this.entering[location])
             {
@@ -134,6 +135,7 @@ internal sealed partial class MirBorrows
 
             this.Commit(state);
             this.End(state, this.ended[location]);
+            types.CloseSite(site);
         }
     }
 

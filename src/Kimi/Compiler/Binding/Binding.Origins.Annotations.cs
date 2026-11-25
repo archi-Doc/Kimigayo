@@ -358,6 +358,13 @@ public sealed partial class Binding
                 return true;
             }
 
+            // SPEC 7.2.3 with 15.3.4 (the owner's D-1236 (A)): a parameter the position may not name, a later one in its function's
+            // default, is no candidate, as for a value (ParameterVisible).
+            if (competing is not null && !ParameterVisible(competing, use))
+            {
+                continue;
+            }
+
             var count = InputCount(current.Owner);
             for (var i = 0; i < count; i++)
             {

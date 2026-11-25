@@ -46,7 +46,7 @@ public sealed partial class Binding
         var shared = this.BindViewCall(source, scope, core, key, range, false);
         if (!range && shared is not null)
         {
-            this.uniqIndexing[source] = new(true, null);
+            this.uniqIndexing[source] = new(true, null, null);
             if (this.ExclusivelyAcquirable(source.Left))
             {
                 this.BindViewCall(source, scope, core, key, false, true);

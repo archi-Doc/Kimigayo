@@ -136,7 +136,7 @@ public sealed partial class Binding
         {
             code = DiagnosticCode.InvalidTry_Kd;
         }
-        else if (failure == BindingFailure.TransferRequired && this.PreparedMove(node))
+        else if (failure == BindingFailure.TransferRequired && PreparedRoot(node))
         {
             code = DiagnosticCode.DefaultArgumentMove_Kd; // SPEC 7.2.3 (Q8-4, Q8-8): a default never moves a preceding argument.
         }
@@ -317,6 +317,9 @@ public sealed partial class Binding
             case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: an associated Type declaration, with its Instance.
                 this.ReportAssociatedAmbiguity(node, store, index, problem);
                 break;
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 8 }: // Role 8: a conformance an index key's selection weighed, with its Instance.
+                this.ReportKeyAmbiguity(node, store, index, problem);
+                break;
             case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 3 }:
                 // Role 3, "candidate": a declaration a selection considered and rejected or could not order (CandidateFacts).
                 this.ReportCandidates(node, store, index, problem);
@@ -384,9 +387,19 @@ public sealed partial class Binding
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;
-            case BindingFailure.InvalidAssignment or BindingFailure.SharedPathAccess when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 } target:
-                // Role 0, "target": the written target whose path denies the write (RecordWrite).
+            case BindingFailure.InvalidAssignment or BindingFailure.SharedPathAccess or BindingFailure.SharedBindingAssignment or BindingFailure.ExclusiveBindingAssignment
+                when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 } target:
+                // Role 0, "target" (RecordWrite): the Place or binding that denies the access: a write's target, an object handle the
+                // authority denies, a written Borrow's Place, or the reference binding an update or assignment names (SPEC 15.1.6).
                 this.ReportWrite(node, store, this.compilation.SyntaxOf(target.Site), problem.Requirement, problem.Code, problem.Condition);
+                break;
+            case BindingFailure.ExclusivePathTake or BindingFailure.SharedPathAccess or BindingFailure.InvalidAssignment when this.FactOf(index, ProblemFactKind.Reason) is { } layers:
+                // A denied Take (FailTake): its Reason the cases of the layers its path passes; no role-0 target, rendered at the node.
+                this.ReportTake(node, store, (SemanticsMask)layers.Value, problem.Requirement, problem.Code, problem.Condition);
+                break;
+            case BindingFailure.TransferRequired or BindingFailure.ExclusiveBorrowRequired when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                // Role 0, "place": the bare Place whose acquisition needs spelling (FailAcquisition), then its Reasons by position.
+                this.ReportAcquisition(node, store, index, problem);
                 break;
             case BindingFailure.Access when this.FactOf(index, ProblemFactKind.Related) is not null:
                 this.ReportInaccessible(node, store, index, problem);

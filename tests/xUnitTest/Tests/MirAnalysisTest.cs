@@ -348,6 +348,43 @@ public sealed class MirAnalysisTest
         Assert.Equal(0b111UL, replayed.All[2].Views);
     }
 
+    // PLAN G651 U2b R6 (the Middle's D-B1): a read of the report's All or Records never flushes its limit table, which flushes only at
+    // the clean collector run's end or, with no collector run, on the first Merged read, so MirAnalysis (All.Length) and A5's rule W
+    // (All) read it while producers still run: f-open, a generic body never instantiated whose MIR reads D<W^8000<U>> past IMPL A.4's
+    // height, read through All and Records after construction and after the analyses, has the records of the same program unread.
+    [Fact]
+    public void AReadOfAllOrRecordsNeverFlushesTheLimitTable()
+    {
+        Assert.Equal(CompilerThread.Run(false, Rows), CompilerThread.Run(true, Rows)); // The deep Types need the compiler thread's stack.
+
+        static string[] Rows(bool read)
+        {
+            var nest = string.Concat(Enumerable.Repeat("W<", 250)) + "T" + new string('>', 250);
+            var lifts = string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n"));
+            var c = MirBuildTest.Compile(
+                $"struct W<T>\n    public var v: T\nstruct D<T>\n    public var v: {nest}\n" +
+                $"func lift<T>(p: raw/T) -> raw/{string.Concat(Enumerable.Repeat("W<", 200))}T{new string('>', 200)} => null\n" +
+                "func count<U>(u: U) -> i32 => 0\nfunc noneD<T>(p: raw/T) -> Option<D<T>> => .None\n" +
+                $"func g<U>(p0: raw/U) -> ()\n{lifts}    _ = count(noneD(p40))\n    return\npublic func main() -> ()\n    return\n");
+            var program = new MirBuilder(c).Build(c.SourceModules.Length);
+            Read();
+            var analysis = new MirAnalysis(c.Types);
+            analysis.Run(program, c.SourceModules.Length);
+            Read();
+            Compilation.Collect(analysis, new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout), program, c.SourceModules.Length);
+            return [.. program.Problems.Merged.ToArray().Select(static x => $"{x.Code} {x.Subject} {x.Class}"),
+                .. TestDiagnostics.Of(c).Select(static x => $"{x.Code}@{x.Text ?? "-"}")];
+
+            void Read()
+            {
+                if (read)
+                {
+                    _ = (program.Problems.All.Length, program.Records(MirRecordClass.Construction).Count(), program.Records(MirRecordClass.Collection).Count());
+                }
+            }
+        }
+    }
+
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
     // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]

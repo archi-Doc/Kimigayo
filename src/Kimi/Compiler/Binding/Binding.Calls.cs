@@ -177,6 +177,15 @@ public sealed partial class Binding
             {
                 return this.CompleteDependent(call, failedClause);
             }
+
+            if (callee is InvocationKoto)
+            {
+                // SPEC 12.5.2, 23.1.2 (E3e ruling 18 Q3, P1): an invocation is called by its value; its symbol is its own call's
+                // target, no group of this call. Without a Type it rests the call (its failure is the call's prerequisite); with one that
+                // takes no call it is not callable: the rule of a callee whose symbol is no function's (below), taken before the arguments
+                // are prepared against a group, so they are bound on their own (CompleteUnselected).
+                return callableType is null ? Complete(call, null) : this.Record(call, BindingFailure.NotCallable, []);
+            }
         }
 
         var candidates = this.GroupOf(callee, group);
@@ -198,6 +207,9 @@ public sealed partial class Binding
 
         if (group.Kind != BindingSymbolKind.Function)
         {
+            // A callee whose symbol is no function's: without a Type it rests the call, with one that takes no call it is not callable,
+            // the rule of the invocation callee's exit (above); here the arguments were prepared in the call's frame, so a failed one is
+            // the call's prerequisite.
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Record(call, BindingFailure.NotCallable, []);
         }
 
@@ -574,7 +586,8 @@ public sealed partial class Binding
         var failure = acquisition?.Kind ?? BindingFailure.NoApplicableCandidate;
         if (failure != BindingFailure.NoApplicableCandidate && acquisition is { } absent)
         {
-            return this.FailAcquisition(call, failure, absent.Place, absent.Object, true);
+            this.AcquisitionFacts(this.candidateFacts, call, failure, absent.Place, absent.Object);
+            return this.RecordSelection(call, failure); // The selection's one guard (R7-E4 ruling 6, D2).
         }
 
         var argumentCount = call.ArgumentNodes.Count;

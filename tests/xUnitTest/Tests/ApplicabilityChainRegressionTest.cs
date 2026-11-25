@@ -525,7 +525,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("func takeG<T>(v: T, w: T) -> () => ()\nfunc f() -> ()\n    takeG<i32, i32>(undefinedName, 1)\n", "NoApplicableOverload_Kd takeG<i32, i32>(undefinedName, 1); UnresolvedBinding_Kd undefinedName")]
     [InlineData("func takeG<T>(v: T, w: T) -> () => ()\nfunc f() -> ()\n    takeG<3>(undefinedName, 1)\n", "NoApplicableOverload_Kd takeG<3>(undefinedName, 1); UnresolvedBinding_Kd undefinedName")]
     [InlineData("func pair<T, U>(v: T) -> () => ()\nfunc f() -> ()\n    pair<Undefined, 3>(5)\n", "NoApplicableOverload_Kd pair<Undefined, 3>(5); UnresolvedBinding_Kd Undefined")]
-    [InlineData("struct Item\n    public var value: i32\n    public init(value: i32) => self.value = value\nvar owner = Kimi.Intrinsics.makeRc(Item.init(1))\nvar other = Item.init(2)\nKimi.Intrinsics.exchange(owner@follow@uniq, other@uniq)\n", "NoApplicableOverload_Kd Kimi.Intrinsics.exchange(owner@follow@uniq, other@uniq); SharedPathAccess_Kd owner@follow@uniq")]
+    [InlineData("struct Item\n    public var value: i32\n    public init(value: i32) => self.value = value\nvar owner = Kimi.Intrinsics.makeRc(Item.init(1))\nvar other = Item.init(2)\nKimi.Intrinsics.exchange(owner@follow@uniq, other@uniq)\n", "NoApplicableOverload_Kd Kimi.Intrinsics.exchange(owner@follow@uniq, other@uniq); SharedPathAccess_Kd owner@follow")]
     [InlineData("func pair<T, U>(v: T) -> () => ()\nfunc f() -> ()\n    pair<3, Undefined>(5)\n", "NoApplicableOverload_Kd pair<3, Undefined>(5); UnresolvedBinding_Kd Undefined")]
     [InlineData("func takeD2(v: i32, w: i32 = 0) -> () => ()\nfunc f() -> ()\n    takeD2(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("func take(v: i32, w: i32) -> () => ()\nfunc take(v: bool) -> () => ()\nfunc f() -> ()\n    take(undefinedName)\n", "UnresolvedBinding_Kd undefinedName")]
@@ -656,13 +656,15 @@ public partial class ApplicabilityChainRegressionTest
     // PLAN G763 (R7-E3 E3b-1, D-1161): a rejected closure call with an omitted result (UnboundCallSlotTest's OmittedResult) records its
     // unbound slot as facts, no Note text formed at the check (G499 X1), so its warm rebind allocates nothing (SPEC 10.5, 10.8).
     [InlineData("func run<R, F>(action: ref/F) -> R\n    F is Callable<(i32) -> R>\n    return action(1)\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", "UnboundTypeArgument_Kd")]
-    public void WarmRejectedSelectionsReuseTheirCandidateFacts(string source, string? code)
+    // R7-C3 C3b-3 (TypeIdentityTest's x2): an ambiguous index key records the members its selection weighed through the same scratch (SPEC 4.7.1).
+    [InlineData("struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n()", "DuplicateBinding_Kd | DuplicateBinding_Kd | AmbiguousBinding_Kd")]
+    public void WarmRejectedSelectionsReuseTheirCandidateFacts(string source, string? codes)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var rejected = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
         Assert.True(rejected);
-        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+        Assert.Equal(codes?.Split(" | ") ?? [], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
 
     // PLAN G924 (the owner's O-408 (a); the review's N4): the own Types after selection, step by step (OwnTypeSteps: the literals'

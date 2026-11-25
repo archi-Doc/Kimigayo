@@ -315,7 +315,7 @@ public sealed partial class Binding
                             return RestOnSpecification(clause);
                         }
 
-                        if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
+                        if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && this.IsPathAssociated(conformance, identity))
                         {
                             var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
                             proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity), conformance.Use), true);
@@ -326,7 +326,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < container.Members.Count; i++)
             {
-                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
+                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && this.IsPathAssociated(conformance, identity) &&
                     this.SpecifiesContract(clause, conformance.Type, conformance.Contract, conformance.Use))
                 {
                     if (clause.BindingState == BindingState.Invalid)

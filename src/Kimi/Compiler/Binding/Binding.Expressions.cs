@@ -6,15 +6,29 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
-    // assigned to it names that mode and the spellings that bind or update a value instead. A binding whose stored Type
-    // is itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that
-    // grants Read only (SPEC 14.8.3).
-    private static BindingFailure? ReferenceBindingAssignment(Koto target)
-        => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
-            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } symbol } &&
-                (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
-            ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
+    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference. The one decision of a write's code there, from the
+    // binding, the target's Type and the operation (R7-E4 rulings 8, 9, 15), read alike by a plain write, the destination check and an
+    // update's route operand (BindBinary, CheckDestination, UpdateOperand): through a target whose Type has a safe layer, an update, and an
+    // `=` unless the binding is reassignable, names that mode and the spellings that bind or update a value instead, whatever the value's
+    // form; an `=` to a reassignable one (`var`: on a borrowed path a reassignable reference) is a rebind, judged as any `=`: its value fits
+    // the binding's Type (a borrow, or an owner temporary at `ref/U`, SPEC 10.2) or is the value's mismatch. A binding whose stored Type is
+    // itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that grants Read only (SPEC
+    // 14.8.3).
+    private static BindingFailure? ReferenceBindingAssignment(Koto target, BoundType? targetType, Koto operation)
+    {
+        if (targetType?.SafeReferent is null)
+        {
+            return null;
+        }
+
+        var (mode, symbol) = KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.PatternCandidate } candidate }
+            ? (BindingFailure.SharedPathAccess, candidate)
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } local } &&
+                (local.BindsReference || local.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
+            ? (type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment, local)
+            : (BindingFailure.None, (BindingSymbol?)null);
+        return symbol is null || (operation is BinaryKoto { Akind: KotoKind.Equals } && Reassignable(symbol)) ? null : mode;
+    }
 
     // SPEC 7.6, 22.6: the functions that support direct calls only: an unsafe function and a #LibraryImport function, the latter by
     // its Attribute whatever the Attribute's verdict. A requirement is never an import, so a requirement's Item is a value whatever
@@ -245,6 +259,16 @@ public sealed partial class Binding
         if (this.FormsBorrows)
         {
             this.OwnBorrows(node, this.borrows); // The node's own borrow facts (Binding.RawOrigins.Borrows).
+        }
+
+        // SPEC 23.1.2 (E3e Revision 2): a decision that read a written Type whose occurrence's judgment fails rests on it where it
+        // is made, so its readers, bound after it, rest by their own binding; a decision deferred without a Type too (ruling 18 P1: a
+        // reference awaiting its call is completed outside BindNode, PrepareArgument). A decision is a use, bound in an executable body
+        // (formingBody); a declaration's own syntax, bound with no body (a clause, a declared Property Type), asks nothing here: its
+        // occurrences are judged after the declaration checks they read (ValidateConstraintUses), a Property's at its certificate.
+        if (this.formingBody.IsBody && node.BindingFailure == BindingFailure.None && this.FailedWrittenType(node) is { } failedType)
+        {
+            type = this.CompleteDependent(node, failedType);
         }
 
         this.EndConsultation(node, parent);

@@ -8,6 +8,11 @@ namespace Kimi.Compiler;
 // SPEC 7.3 and 10.5-10.6: forms a function-group reference under a required Function Type.
 // Existing candidate inference and comparison select the reference and publish its binding or failure. Per-candidate slot facts
 // keep their existing reset/read lifetime; Function Type structure and shared contract comparison stay in Binding.FunctionTypes.
+// Rule W (SPEC 23.1.2, DECISIONS Q13): a parameter or result of a candidate's declared signature whose own written Type failed
+// (RefutedSignatureParts: its root, not a Type nested in it) is a wildcard of its comparison against S, and every other part and
+// clause is still judged; a candidate that fails nowhere else and whose signature is Refuted is FailedSignature
+// (FunctionReferenceApplicability, which reads that verdict last): never selected; a reference with no applicable candidate rests on
+// the first one. The wildcards are the reference's alone, the reader of that verdict: every other comparison takes none.
 public sealed partial class Binding
 {
     // SPEC 10.6: the last reference slot that only per-call Origins of S would satisfy, as (Type parameter, parameters of S as bits,
@@ -104,6 +109,7 @@ public sealed partial class Binding
             ReferenceConstraintFailure? pending = null;
             var pendingProof = false;
             Koto? invalid = null;
+            FunctionKoto? failedSignature = null;
             var error = false;
             var resting = false;
             this.failedCause = null;
@@ -155,6 +161,11 @@ public sealed partial class Binding
                     invalid ??= this.InvalidDeclarationContextCause(function) ?? this.FailedSignaturePart(function);
                 }
 
+                if (state == CandidateApplicability.FailedSignature)
+                {
+                    failedSignature ??= function;
+                }
+
                 if (state == CandidateApplicability.Applicable)
                 {
                     applicable++;
@@ -184,6 +195,14 @@ public sealed partial class Binding
             if (pendingProof)
             {
                 return pending is { } fact ? this.FailClauseRecord(use, fact, unresolved: false) : this.RecordConstraint(use, ConstraintProof.Unknown, []);
+            }
+
+            if (applicable == 0 && failedSignature is not null)
+            {
+                // SPEC 10.1, 23.1.2 (rule W): no candidate applies, and one failed only at its own failed signature (FailedSignature, never
+                // selected nor ambiguous): the reference rests on the first such, at its declaration, whatever the states of the written
+                // Types its verdict restates when the reference binds (they are judged after the bodies, ValidateConstraintUses).
+                return this.CompleteDependent(use, failedSignature);
             }
 
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
@@ -355,7 +374,8 @@ public sealed partial class Binding
                 state = this.SplitState(use, candidate, required, scope, unformedMark, state);
             }
 
-            if (state != CandidateApplicability.Inapplicable)
+            // One that fails only at its failed signature fits no parameter, as an inapplicable one: the call's trial judges it (PLAN G375).
+            if (state is not (CandidateApplicability.Inapplicable or CandidateApplicability.FailedSignature))
             {
                 return true; // One that rests on the split leaves its writes: the trial that fits this part rests on it too.
             }
@@ -368,7 +388,8 @@ public sealed partial class Binding
     // binding represents (a write since `mark`). A reference's binder is fixed before any evidence, so the same check is judged in
     // each combination of split cases (RestsOnSplitCases), whatever its own run gave: that run left its unformed parts unknown. A
     // candidate inapplicable in every combination is inapplicable by itself, its Language record the reference's (SPEC 23.1.2);
-    // one whose own check was an Error and is one in every combination keeps it; any other rests on the split: Pending.
+    // one whose own check was an Error, or failed only at its failed signature, and is so in every combination keeps it; any other rests
+    // on the split: Pending.
     private CandidateApplicability SplitState(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
     {
         if (!this.SplitStateRests(use, candidate, required, scope, mark, CandidateApplicability.Inapplicable))
@@ -376,7 +397,8 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        return state == CandidateApplicability.Error && !this.SplitStateRests(use, candidate, required, scope, mark, state) ? state : CandidateApplicability.Pending;
+        return state is CandidateApplicability.Error or CandidateApplicability.FailedSignature && !this.SplitStateRests(use, candidate, required, scope, mark, state)
+            ? state : CandidateApplicability.Pending;
     }
 
     private bool SplitStateRests(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability failing)
@@ -497,6 +519,7 @@ public sealed partial class Binding
         // writes them, so the signature is matched again while a pass that met an open application fixed something.
         var parameters = required.Components[0];
         var binder = new SolveBinder(function);
+        ulong? wildcards = null; // The parts that failed where written (RefutedSignatureParts), asked at the first misfit.
         bool open;
         int sourced;
         do
@@ -520,8 +543,11 @@ public sealed partial class Binding
                     return false;
                 }
 
+                // SPEC 23.1.2 (rule W): a part whose own written Type failed is a wildcard: its misfit fails nothing; the reference reads the
+                // candidate's verdict after its comparison (FunctionReferenceApplicability).
                 open |= this.HasOpenApplication(part, binder.SlotOwner, frame);
-                if (!this.InferReferencePart(part, last ? required.Components[1] : parameters.Components[i], binder, frame, commonOrigins))
+                if (!this.InferReferencePart(part, last ? required.Components[1] : parameters.Components[i], binder, frame, commonOrigins) &&
+                    !RefutedPart(wildcards ??= this.RefutedSignatureParts(function), i))
                 {
                     return false;
                 }
@@ -720,7 +746,9 @@ public sealed partial class Binding
         }
     }
 
-    // A substitution must be a valid complete Type, and the Constraints hold for it, as for a call (SPEC 8.1.3, 10.1 step 5).
+    // A substitution must be a valid complete Type, and the Constraints hold for it, as for a call (SPEC 8.1.3, 10.1 step 5). The callee's
+    // own declared signature is a judgment of its own (CheckSignatureTypeConstraints), which each reader reads beside this proof: a
+    // reference's candidate last (FunctionReferenceApplicability), an Item first (FunctionItems).
     private ConstraintProof ReferenceArgumentProof(FunctionKoto function, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? container, QuerySite site, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var count = function.GenericArguments.Count;
@@ -729,7 +757,6 @@ public sealed partial class Binding
         var held = this.HoldClause(null); // Each clause list's clause fact (G351a), for the reference's record and its trial's (G352).
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope, site), true);
         held = this.HoldClause(held);
-        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function, site), true);
         if (container is not null)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(container, scope, site), true);
@@ -802,9 +829,10 @@ public sealed partial class Binding
             else
             {
                 // SPEC 15.6.1: an Origin relation never changes a selection, so the reference's applicability takes the comparison's
-                // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction).
+                // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction). The candidate reads its
+                // signature's verdict below, so its parts that failed where written are wildcards of the comparison (rule W).
                 var rows = this.comparisonRows.Count;
-                var fits = this.ContractFits(use, symbol, function, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs);
+                var fits = this.ContractFits(use, symbol, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs, this.RefutedSignatureParts(function));
                 this.DropComparisonRows(rows);
                 if (!fits)
                 {
@@ -822,6 +850,16 @@ public sealed partial class Binding
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
             {
                 failure = ClauseFailure(this.TakeClauseFact(use), null); // The fact ReferenceArgumentProof left at the trial's verdict.
+            }
+
+            // SPEC 10.5.3, 23.1.2 (DECISIONS Q13 rule W): the declared signature, read last, once every part whose own Type did not fail
+            // fits S (one whose own Type failed is a wildcard there) and every clause holds. One Refuted where it is written is then the
+            // only failure, read from the failed input: FailedSignature, never selected; an Error is the candidate's Error. A clause
+            // refuted beside a failed signature fails the candidate first, so the reference keeps that clause's record, beside an Error
+            // verdict too (an independent record, where a proof combining both was Error and rested).
+            if (proof == ConstraintProof.Proven && (proof = this.CheckSignatureTypeConstraints(function, use)) == ConstraintProof.Refuted)
+            {
+                return CandidateApplicability.FailedSignature;
             }
 
             return proof switch

@@ -216,10 +216,10 @@ public sealed partial class Binding
 
     // A direct record's message argument, primary location and repairs (SPEC 23.1.3): a discard's, and an unused Unsafe Block's, which
     // is located at its keyword (SPEC 14.3).
-    private static (object? Argument, SourceSpan? Span, DiagnosticRepairFact[]? Repairs) LintFacts(Koto node, LintRow row) => row switch
+    private static (object? Argument, SourceSpan? Span, DiagnosticRepairFact[]? Repairs) LintFacts(Koto node, LintRow row, DiagnosticCollection? store) => row switch
     {
-        LintRow.DiscardedResult or LintRow.UnusedTrySuccess => (null, null, DiscardRepairs(node, row)),
-        LintRow.UnnecessaryUnsafeBlock => (null, new SourceSpan(node.Span.Start, Constants.UnsafeKeyword.Length), RemoveUnsafeRepairs((UnsafeBlockKoto)node)),
+        LintRow.DiscardedResult or LintRow.UnusedTrySuccess => (null, null, DiscardRepairs(node, row, store)),
+        LintRow.UnnecessaryUnsafeBlock => (null, new SourceSpan(node.Span.Start, Constants.UnsafeKeyword.Length), RemoveUnsafeRepairs((UnsafeBlockKoto)node, store)),
         LintRow.InvalidJumpTarget => (((JumpKoto)node).Keyword, null, null),
         LintRow.OverlappingLabel => (((LabeledKoto)node).Label, null, null),
         _ => default,
@@ -228,25 +228,25 @@ public sealed partial class Binding
     // SPEC 17.5.1, 23.1.3: a discarded Result or try success value that is a direct item of an indented body offers `_ = ` before it
     // and, for a Result whose error Type the enclosing function's failure return target takes (SPEC 17.3), `_ = try ` first; `_ =`
     // puts the expression in Value Context (SPEC 14.2.4) and changes no scope, so no condition is relevant.
-    private static DiagnosticRepairFact[]? DiscardRepairs(Koto node, LintRow row)
+    private static DiagnosticRepairFact[]? DiscardRepairs(Koto node, LintRow row, DiagnosticCollection? store)
     {
-        if (node.Parent is not CodeBlockKoto { IsExpressionBody: false })
+        if (store is null || node.Parent is not CodeBlockKoto { IsExpressionBody: false })
         {
             return null;
         }
 
         var start = new SourceSpan(node.Span.Start, 0);
-        var discard = new DiagnosticRepairFact(RepairKind.ExplicitDiscard, null, [node.Edit(start, "_ = ")], RepairConditionSet.None);
+        var discard = new DiagnosticRepairFact(RepairKind.ExplicitDiscard, null, [store.Edit(start, "_ = ", node.CodeContext.SourceDocument)], RepairConditionSet.None);
         return row == LintRow.DiscardedResult && FailureTargetFits(node)
-            ? [new(RepairKind.PropagateFailure, null, [node.Edit(start, "_ = try ")], RepairConditionSet.None), discard]
+            ? [new(RepairKind.PropagateFailure, null, [store.Edit(start, "_ = try ", node.CodeContext.SourceDocument)], RepairConditionSet.None), discard]
             : [discard];
     }
 
     // SPEC 14.3, 23.1.3: removing an unused Unsafe Block keeps its statements' meaning only when its Body, an independent scope (SPEC
     // 14.2.1), declares no Name and registers no defer (Structure); a statement of an indented body whose lines allow the edit offers it.
-    private static DiagnosticRepairFact[]? RemoveUnsafeRepairs(UnsafeBlockKoto block)
+    private static DiagnosticRepairFact[]? RemoveUnsafeRepairs(UnsafeBlockKoto block, DiagnosticCollection? store)
     {
-        if (block.Parent is not CodeBlockKoto { IsExpressionBody: false })
+        if (store is null || block.Parent is not CodeBlockKoto { IsExpressionBody: false })
         {
             return null;
         }
@@ -259,13 +259,13 @@ public sealed partial class Binding
             }
         }
 
-        return RemoveUnsafeEdits(block) is { } edits ? [new(RepairKind.RemoveUnsafe, null, edits, RepairConditionSet.Structure)] : null;
+        return RemoveUnsafeEdits(block, store) is { } edits ? [new(RepairKind.RemoveUnsafe, null, edits, RepairConditionSet.Structure)] : null;
     }
 
     // The edits that remove an Unsafe Block statement from an indented body: delete `unsafe => ` before an inline Body on the same
     // line, or delete the unsafe line and one indentation level of every line of an indented Body. No candidate when the unsafe line
     // holds other text, a Body line lacks a full level of space indentation, or a string literal spans lines (its content would change).
-    private static DiagnosticEditFact[]? RemoveUnsafeEdits(UnsafeBlockKoto block)
+    private static DiagnosticEditFact[]? RemoveUnsafeEdits(UnsafeBlockKoto block, DiagnosticCollection store)
     {
         if (block.CodeContext.SourceDocument is not { } document)
         {
@@ -286,7 +286,7 @@ public sealed partial class Binding
         {
             var bodyStart = body.Span.Start;
             return document.GetPosition(bodyStart).Line == line && text[keywordEnd..bodyStart].Trim().SequenceEqual("=>")
-                ? [block.Edit(SourceSpan.FromBounds(block.Span.Start, bodyStart), string.Empty)] : null;
+                ? [store.Edit(SourceSpan.FromBounds(block.Span.Start, bodyStart), string.Empty, document)] : null;
         }
 
         var lineEnd = lineStart + document.GetLineSpan(line).Length;
@@ -298,7 +298,7 @@ public sealed partial class Binding
 
         var edits = new List<DiagnosticEditFact>(lastLine - line + 1)
         {
-            block.Edit(SourceSpan.FromBounds(lineStart, document.LineStarts[line + 1]), string.Empty),
+            store.Edit(SourceSpan.FromBounds(lineStart, document.LineStarts[line + 1]), string.Empty, document),
         };
         for (var current = line + 1; current <= lastLine; current++)
         {
@@ -313,7 +313,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            edits.Add(block.Edit(new(document.LineStarts[current], Constants.IndentationSpaces), string.Empty));
+            edits.Add(store.Edit(new(document.LineStarts[current], Constants.IndentationSpaces), string.Empty, document));
         }
 
         return edits.ToArray();
@@ -392,9 +392,17 @@ public sealed partial class Binding
     {
         var walk = this.lintWalk ??= new(this);
         walk.Begin();
-        foreach (var module in this.compilation.SourceModules)
+        var site = this.OpenBodySite(default); // PLAN G651 U2b R5: the lint walk's after-run site, its marks dropped (lints precede MIR).
+        try
         {
-            walk.Visit(module.RootKoto);
+            foreach (var module in this.compilation.SourceModules)
+            {
+                walk.Visit(module.RootKoto);
+            }
+        }
+        finally
+        {
+            _ = this.CloseBodySite(site);
         }
     }
 
@@ -419,14 +427,15 @@ public sealed partial class Binding
                 LintGuess.Target when node is LabeledKoto or JumpKoto { Label: "" } && node.CodeContext.RecoveryCause(node) is { } syntax => [syntax],
                 _ => null,
             };
+            var store = this.compilation.StoreOf(node); // Core's store decision (PLAN G1083): never the node's own collection.
             if (causes is null)
             {
-                var (argument, span, repairs) = LintFacts(node, row);
-                node.Report(requirement, code, argument, condition: (ushort)row, span: span, repairs: repairs);
+                var (argument, span, repairs) = LintFacts(node, row, store);
+                node.ReportIn(store, requirement, code, argument, condition: (ushort)row, span: span, repairs: repairs);
             }
             else if (IsError(row))
             {
-                node.ReportDerived(requirement, causes, (ushort)row);
+                node.ReportDerivedIn(store, requirement, causes, (ushort)row);
             }
         }
     }

@@ -7,10 +7,12 @@ namespace Kimi.Compiler;
 // Value fits (SPEC 3.8, 10.2, 15.6.1; DECISIONS BU-4): whether a value of Type `actual` fits a position of Type `expected`.
 // - Responsibility: the entries a value position calls: FitsType and FitsTypeAt (a value at an expected Type, at a use whose premises and
 //   Origins the fit reads), FitsValueAt (a value at a position that a local region may reach), FitsStructurallyAt (the structural part
-//   of a fit, SPEC 15.6.1) and CheckTypeUse, the use-site fit whose differing Origin positions, once the structure holds, are rows of
-//   the body that A5 judges and reports at the value (AddOriginFit, FormBodyRelation; R7-O1: Binding judges no body relation), so
-//   only a non-position fact (a condition, a limit, a structural failure) fails it. Never fitting (SPEC 3.8) is decided here, at the root:
-//   a value of Type Never fits every position (NeverFits); below the root the Type relation decides.
+//   of a fit, SPEC 15.6.1), FitsStructuralPartAt (that part with every Origin equal: a pre-selection fit, and a contextual array
+//   literal's element against its expected element Type, SPEC 4.3.1) and CheckTypeUse, the use-site fit whose differing Origin
+//   positions, once the structure holds, are rows of the body that A5 judges and reports at the value (AddOriginFit, FormBodyRelation;
+//   R7-O1: Binding judges no body relation), so only a non-position fact (a condition, a limit, a structural failure) fails it. Never
+//   fitting (SPEC 3.8) is decided here, at the root: a value of Type Never fits every position (NeverFits); below the root the Type
+//   relation decides.
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
 // - Outputs: the verdict and, for FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
 //   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
@@ -73,7 +75,9 @@ public sealed partial class Binding
     // SPEC 10.1, 10.3, 10.4 step 2, 15.6.1: the one entry of every pre-selection fit (a candidate's result, argument, receiver, its
     // acquisition and adaptation): the structural part alone, every Origin binding equal inside Function Types too, so no Origin relation
     // and no implementation well-formedness (FailedSignatureWellFormedness) drops a candidate for another to win; the selected candidate's
-    // own fit judges them (DECISIONS R4-M155, landing review B1).
+    // own fit judges them (DECISIONS R4-M155, landing review B1). SPEC 4.3.1, 12.3.1: also a contextual array literal's element against the
+    // expected element Type (BindContextualArrayLiteral), whose Origin part, a Function's contract included, the enclosing position's fit
+    // judges once the local's omitted Origins are inferred; its failure is the element's Type mismatch.
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, this, use, OriginPart.Everywhere).Fits(actual, expected);
 
