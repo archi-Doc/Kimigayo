@@ -12827,6 +12827,9 @@ resumed by R4-M86 (2026-10-20).
     input premise was dropped at `KnownToInference` for an Origin no evidence names; the bare form passed only through
     `CompleteWaiting`'s re-run) and its experiment exp2. Supersedes BU-51's "an Origin that no supplied input and no clause names is a
     local region" for an Origin a default's premise bounds (15.3.6's candidate first); one that no premise bounds stays the region.
+    A premise bounds an Origin only where its bound reaches a fixed or finite Origin (z0's `b outlives a` names `a`, a region), and a
+    default's discovery runs only in a solve that has begun an inference (evidence with an Origin, a Signature leaf row, which begins
+    one, or a callee clause): inert, since without evidence the only fixed end left is `static` (M's U2-d review 2, Point 2).
     `PremiseSolved` is the first published "which position fixes this Origin" fact; U4's `Decided` column takes it over.
   - Removal conditions that remain: join arguments (U3); `PartContribution` (U6). A non-Result root row is the part's contribution at
     the last `Contribute`; property rows are Evidence where `PartContribution` may say Signature, inert because the input carries no
@@ -27814,18 +27817,33 @@ Closure row of `MirCases.Branch`).
     neither judged nor rested: by induction its Type rests on a site's record or a call's own, so its record only restated one
     (SPEC 9.7, 9.7.1, 8.6.3, 23.1.2). A declaration carries its written Type (F's Q-A (i)): a Function with a refuted result Type
     stays Resolved, as one with a refuted parameter Type was.
-    - **`FormedTypes`, the site fact (F's G1278-6, G1278-7).** A Kept family of `NodeColumns` in BU-220's published-column form: a
-      `PagedColumn<bool>` at the node's SyntaxId, kept across passes (a node bound in an earlier pass keeps it), with the family's
-      Grow, Renumbered, Retire and Move rows in `HirTables`; one accessor, `Binding.FormedTypeRows`. A row reads "this node forms
-      its Type". Owner: Binding's Type binding. Producers, each where it completes the node's Type: BindType's completion of a
-      written occurrence (whatever names it: a declaration, a `Self`, an alias, a Type parameter); the rooted name's operand;
-      `EnumQualifierType`, for a construction or Case qualifier that writes its own list or is its declaration's `Self`;
-      `ConstructionTargetType`, for a qualifier with no own parameters (its path forms the whole Type); `BindContractReference`,
-      the one path from a written Contract reference, at each node it completes (a root-name form's levels, the unwrapped node and
-      the reference; F's G1278-9); the Dictionary literal's binder (SPEC 12.4). A qualifier whose own arguments the expected Type
-      supplies and an inferred construction target (`inferredConstructionTargets`) have no row: the acquisition or the construction
-      forms that Type and judges it once. Reader: `ConstrainedType`, ValidateConstraintUses' site test, at the occurrence's Type node
-      (`OccurrenceTypeNode`). Removal: none; it is the canonical site fact.
+    - **`FormedTypes`, the site fact (F's G1278-6, G1278-7; amended by G396-F).** A Kept family of `NodeColumns` in BU-220's
+      published-column form: a `PagedColumn<bool>` at the node's SyntaxId, with the family's Grow, Renumbered, Retire and Move rows
+      in `HirTables`; one accessor, `Binding.FormedTypeRows`. It is a per-pass Kept column: `ResetPass` empties it over the running
+      pass's modules (`FormedTypeRows.Empty`) before Index and every binder of the pass, which write its rows again, so a row is its
+      node's in the latest pass over its module; a node of another pass's module (the frozen library's) keeps its row, and a
+      renumbering moves a row with its node. A row reads "this node forms its Type". Owner: Binding's Type binding. Producers, each
+      where it completes the node's Type: BindType's completion of a written occurrence (whatever names it: a declaration, a `Self`,
+      an alias, a Type parameter); the rooted name's operand; `EnumQualifierType`, for a construction or Case qualifier that writes
+      its own list or is its declaration's `Self`; `ConstructionTargetType`, for a qualifier with no own parameters (its path forms
+      the whole Type); `BindContractReference`, the one path from a written Contract reference, at each node it completes (a
+      root-name form's levels, the unwrapped node and the reference; F's G1278-9); the Dictionary literal's binder (SPEC 12.4). A
+      qualifier whose own arguments the expected Type supplies and an inferred construction target (`inferredConstructionTargets`)
+      have no row: the acquisition or the construction forms that Type and judges it once. Reader: `ConstrainedType`,
+      ValidateConstraintUses' site test, at the occurrence's Type node (`OccurrenceTypeNode`). Removal: none; it is the canonical
+      site fact.
+      - Amended by G396-F (Q-791, D-1294, 2026-11-25; PLAN G396; the Back's G1278-A implementation review N6; F's G396F-1; Minor).
+        The row was kept across passes because BindType returns early for a node bound in an earlier pass (G1278-6; R-b's
+        rejection). That holds only for a node of another pass's module: Index resets the base row of each node it walks
+        (`HirTables.Reset`), so in the running pass's modules every producer completes its node again, while a writer's decision
+        reads the resolved declaration (`ConstructionTargetType`'s own parameters, the binder a qualifier's symbol selects), which
+        an edit can change under an unchanged node. A row kept from an earlier pass then made that node a site again, a second
+        record in an edit session (`SyntaxEditInvalidationTest.AnEditedQualifierLeavesNoStaleFormationRow`). Chosen: the canonical
+        Kept reset, the in-place `Empty` over the running pass's modules that IndexedPatterns (`ResetMatches`), FormationCauses and
+        KnownBases use (`Binding.Pass.cs`' invariant), not a Pass `StampedColumn<bool, PassCounter>`: the three neighbours are
+        reset this way, and one form serves them. Within a pass no inferred construction target has a row, so `ConstrainedType`
+        no longer reads `inferredConstructionTargets` (its term went; G1278-A review N4); the family's other readers keep it. R-b's
+        other reason (a list cannot absorb `inferredConstructionTargets`) still holds.
     - **`BoundEnumConstruction.FormsType` (F-2).** Set by the Enum binder with the plan: the acquisition inferred an own slot or an
       Origin (a slot left null or open after `FixConstructionSlots`, an Origin left null, or an open Origin slot variable), so it
       forms its Type (SPEC 6.5.2). Readers: the construction's clause proof (BindEnumConstruction) and `CompleteEnumAcquisitions`'
