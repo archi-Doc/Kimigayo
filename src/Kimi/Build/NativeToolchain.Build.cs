@@ -584,11 +584,13 @@ internal static partial class NativeToolchain
         // and IMPL 21.2 resolve an import in the library it names (NamedProvider, provider-design.md §2 and §3). Each library's
         // facts are read once per process (LinkInputs, ReadInputFacts): a program's input's are Tatara's inspection of its staged copy, a
         // compiler supply file's its stored inspection (its catalog facts, read at adoption; SupplyFacts). The closure starts from the
-        // module's declared references, the manifest's external declarations in their referenced form and the fixed RuntimeReferences, the same
-        // at O0 and O2 (never the object's undefined symbols), and from the references of the library files the link loads whole
-        // (DependencyClosure); a symbol it references that two or more libraries define, a library input that is no library (no archive
+        // module's declared references, the manifest's external declarations in their referenced form, the fixed RuntimeReferences and
+        // the row's LoadConfigSymbol, the same at O0 and O2 (never the object's undefined symbols), and from the references of the
+        // library files the link loads whole (DependencyClosure; a loaded unit references its strong undefined symbols and the names its
+        // directives root, I); a symbol it references that two or more libraries define, a library input that is no library (no archive
         // and no object: a linked image or a bare import member, an unsupported native dependency whatever its Kind; T's rulings 24 and
-        // 54), a unit it loads that its library's Kind does not admit and a declared import that its named library does not define (P:
+        // 54), a library whose loaded unit carries /entry: or is LLVM bitcode (an unsupported native dependency; LinkRoots), a unit it
+        // loads that its library's Kind does not admit and a declared import that its named library does not define (P:
         // an input of that library the link loads whole, or its pick, defines the referenced form; NamedProvider, PLAN G1333), unless
         // the library has an input reported as no library or as an archive without an index, whose record P's would rest on (T's ruling
         // 61), fail the build before the link, every line in one failure: the native build's input failure, the record left incomplete.
@@ -613,6 +615,13 @@ internal static partial class NativeToolchain
             foreach (var symbol in RuntimeReferences(this.row))
             {
                 closure.Reference(symbol);
+            }
+
+            // The link's own root: lld-link loads a definition whenever an input defines it (LLD 22.1.8 Driver.cpp:2682-2685;
+            // LinkRoots, R-L); a name nothing defines joins nothing.
+            if (this.row.LoadConfigSymbol is { } root)
+            {
+                closure.Reference(root);
             }
 
             if (closure.Failures() is { Length: > 0 } lines)
@@ -679,8 +688,9 @@ internal static partial class NativeToolchain
     /// (<c>Facts</c>; ReadInputFacts); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, and whether that
     /// member's definition of it is a copy (text kind 5): one rule on every format, since lld-link loads the member the index names and an
     /// llvm-ar or GNU index lists definers in member order, the member ld.lld loads (T's ruling 48); <c>Whole</c>, an input that is no
-    /// archive and of form o, the only form either linker loads whole (lld-link refuses a short import file and a linked image given as
-    /// inputs, ld.lld's static link a shared object; the step reports each as no library before the link; T's rulings 53, 54 and 56);
+    /// archive and of form o or b (LLVM bitcode), the forms either linker loads whole (lld-link refuses a short import file and a linked
+    /// image given as inputs, ld.lld's static link a shared object; the step reports each as no library before the link; T's rulings 53,
+    /// 54 and 56);
     /// <c>Classes</c>, each member's class (Kind, kind-design.md §2);
     /// <c>Unindexed</c>, an archive whose index is empty while a member defines an external symbol, of which the step has no pick while a
     /// linker may still load members (T's rulings 48 and 51).</summary>
@@ -707,7 +717,7 @@ internal static partial class NativeToolchain
                 _ => x.DefinedExternal.Any(static s => s.Kind == 'I') ? LinkClass.Import : LinkClass.Code,
             });
             var unindexed = facts.IsArchive && facts.Index.Count == 0 && facts.Members.Any(static x => x.DefinedExternal.Count > 0);
-            return new(facts, picks, !facts.IsArchive && facts.Members[0].Form == 'o', [.. classes], unindexed);
+            return new(facts, picks, !facts.IsArchive && facts.Members[0].Form is 'o' or 'b', [.. classes], unindexed);
         }
     }
 
@@ -729,16 +739,19 @@ internal static partial class NativeToolchain
 
     // One build's dependency closure (LinkAmbiguity, design §2 "The closure"; DECISIONS T-M<n>), order-free across libraries: the units
     // are the files the link loads whole (the module's object, a whole library input) and the members it may load. A referenced symbol
-    // (a unit's strong undefined symbol, U; a weak one loads nothing; or its /include: directive) that no whole file defines joins each
-    // library's pick for it, one member per library, and two or more libraries picking it are an ambiguous dependency, the copies of one
-    // COMDAT symbol counting as one library. An /alternatename:A=B of a joined unit makes B referenced once the references are done when
-    // A is referenced and neither a whole file nor any library defines A (then the references resume). Each whole library input and
-    // each pick is judged against its library's Kind, which admits one class (Admits); an inconsistent pick still joins, so every other
-    // failure is found (Kind, kind-design.md §2 with its corrections 1-3). A library input that is no archive and not of form o is no
-    // library, whatever its Kind, and is reported before the link (T's rulings 24, 53 and 54). An archive without a symbol index that
-    // defines a symbol has a line of its own and no pick (T's ruling 48). Each declared import's named library must define its
-    // referenced form in an input the link loads whole or in its pick (P, Provide; NamedProvider), over every input staged under that
-    // name (T's ruling 62), unless one of them was reported as no library or as an archive without an index (T's ruling 61); P reads
+    // (a unit's strong undefined symbol, U; a weak one loads nothing; or a name it roots, I: /include:'s, /export:'s) that no whole file
+    // defines joins each library's pick for it, one member per library, and two or more libraries picking it are an ambiguous
+    // dependency, the copies of one COMDAT symbol counting as one library. An /alternatename:A=B of a joined unit makes B referenced once
+    // the references are done when A is referenced and neither a whole file nor any library defines A (then the references resume).
+    // Each whole library input and each pick is judged against its library's Kind, which admits one class (Admits); an inconsistent
+    // pick still joins, so every other failure is found (Kind, kind-design.md §2 with its corrections 1-3). A library input that is no
+    // archive and not of form o or b is no library, whatever its Kind, and is reported before the link (T's rulings 24, 53 and 54). An
+    // archive without a symbol index that defines a symbol has a line of its own and no pick (T's ruling 48). A joined unit of LLVM
+    // bitcode (b) or carrying /entry: (E) gives its library a line (B, E; LinkRoots R-E and design 2.4) and still joins; an /entry: name
+    // is IMPL 20.4's reference, but its records would rest on that failed directive, so it is not resolved (R-D). Each declared import's
+    // named library must define its referenced form in an input the link loads whole or in its pick (P, Provide; NamedProvider), over
+    // every input staged under that name (T's ruling 62), unless one of them was reported as no library or as an archive without an
+    // index (T's ruling 61); a B or E line judges a loaded unit, not the input, so P still judges its library (ruling 67a). P reads
     // neither the object nor the closure, so its verdict is the same at every level and in any order.
     private sealed class DependencyClosure
     {
@@ -749,11 +762,11 @@ internal static partial class NativeToolchain
         private readonly HashSet<(int Input, int Member)> joined = [];
         private readonly List<(string From, string To)> alternates = []; // The joined units' unused /alternatename: pairs.
         private readonly HashSet<string> failed = new(StringComparer.Ordinal); // The libraries with an input reported as no library or unindexed.
-        private readonly List<(string Library, string Head, string? Symbol)> libraryLines = []; // K's and the index's: head, symbols.
+        private readonly List<(string Library, string Head, string? Symbol)> libraryLines = []; // K's, the index's, E's and B's: head, symbols.
         private readonly List<(string Symbol, string Line)> symbols = []; // The ambiguous symbols' and P's lines.
 
         // The whole files: their definitions first, then their references; each whole library input judged (K). A library input that
-        // is no archive and not of form o is no library, IMPL 20.4's unsupported native dependency, whatever its Kind: one line before
+        // is no archive and not of form o or b is no library, IMPL 20.4's unsupported native dependency, whatever its Kind: one line before
         // the link, on both formats. For a linked image (s) that is T's ruling 24 (LLD refuses it with an ordinary error and Tatara runs
         // again: lld-link a DLL, "unknown file type"; ld.lld's static link a shared object, "attempted static link of dynamic object",
         // T's ruling 56); a bare import member (i, COFF's only) must never reach LLD, which refuses it with a fatal() that ends Tatara
@@ -811,9 +824,9 @@ internal static partial class NativeToolchain
             this.symbols.Add((symbol, $"Native function '{symbol}' is imported from {library}, which does not define '{form}'{clause}."));
         }
 
-        // The closure, then every line (design §3; Kind §3; NamedProvider §3): K's and the index's in Ordinal library order, each line's
-        // symbols in Ordinal order, then the ambiguous symbols' and P's in Ordinal symbol order (for one symbol the ambiguity line
-        // first), libraries in Ordinal order.
+        // The closure, then every line (design §3; Kind §3; NamedProvider §3; LinkRoots §3): the libraries' (K's, the index's, E's and
+        // B's) in Ordinal library order, each line's symbols in Ordinal order, then the ambiguous symbols' and P's in Ordinal symbol
+        // order (for one symbol the ambiguity line first), libraries in Ordinal order.
         internal string[] Failures()
         {
             do
@@ -905,7 +918,10 @@ internal static partial class NativeToolchain
             return names.Count == 0 ? string.Empty : $"{Names(names)} {(names.Count == 1 ? "defines" : "define")} '{symbol}'";
         }
 
-        // A unit joins once: its strong references and /include: names are referenced, its /alternatename: pairs kept.
+        // A unit joins once: its strong references and rooted names (I) are referenced, its /alternatename: pairs kept, and a bitcode
+        // unit or an /entry: gives its library's line (B, E: an unsupported native dependency; LinkRoots R-E and design 2.4). The unit
+        // still joins, so its own references are resolved; an /entry: name is not, since its records would rest on that failed
+        // directive (R-D).
         private void Join(int input, int member)
         {
             if (!this.joined.Add((input, member)))
@@ -913,7 +929,13 @@ internal static partial class NativeToolchain
                 return;
             }
 
+            var name = this.inputs[input].Name;
             var unit = this.inputs[input].Input.Facts.Members[member];
+            if (unit.Form == 'b')
+            {
+                this.libraryLines.Add((name, $"Native library '{name}' holds LLVM bitcode that the link would load, which is not supported", null));
+            }
+
             foreach (var symbol in unit.Undefined)
             {
                 if (symbol.Kind == 'U')
@@ -924,13 +946,19 @@ internal static partial class NativeToolchain
 
             foreach (var directive in unit.Directives)
             {
-                if (directive.Kind == 'I')
+                switch (directive.Kind)
                 {
-                    this.pending.Push(directive.Name);
-                }
-                else
-                {
-                    this.alternates.Add((directive.Name, directive.Target!));
+                    case 'I':
+                        this.pending.Push(directive.Name);
+                        break;
+                    case 'A':
+                        this.alternates.Add((directive.Name, directive.Target!));
+                        break;
+                    case 'E':
+                        this.libraryLines.Add((name, $"Native library '{name}' sets the entry point to '{directive.Name}' in a linker directive of an object that the link would load, which is not supported", null));
+                        break;
+                    default:
+                        throw new InvalidOperationException($"No directive kind '{directive.Kind}': Tatara publishes I, A and E.");
                 }
             }
         }

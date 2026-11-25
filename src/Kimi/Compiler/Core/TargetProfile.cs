@@ -6,11 +6,12 @@
 // the native build read.
 // Input: none. Output: the rows (Rows), the row of a triple (Find), and each row's columns: the triple, the profile name, data layout,
 // CPU, features and code generation settings, the module frame's extra function attributes (FunctionAttributes), the entry and a COFF
-// row's subsystem and float marker (null on a row without them), the platform layer (Layer: its template's resource name), the
-// reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)), the library kinds the row links (Kinds, IMPL 20.4;
-// the Tatara plan's B7b5), the supply a program's C library starts through (CRuntime, null for none; the Tatara plan's B7b2b), the
-// convention by which the row's imports extend their arguments (ArgumentExtension, IMPL 21.2's name, null for none), the extension of
-// a program library's input (InputExtension, IMPL 20.4) and the executable format, whose link writer the native build selects (Format,
+// row's subsystem, float marker and load configuration symbol (null on a row without them), the platform layer (Layer: its template's
+// resource name), the reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)), the library kinds the row
+// links (Kinds, IMPL 20.4; the Tatara plan's B7b5), the supply a program's C library starts through (CRuntime, null for none; the
+// Tatara plan's B7b2b), the convention by which the row's imports extend their arguments (ArgumentExtension, IMPL 21.2's name, null
+// for none), the extension of a program library's input (InputExtension, IMPL 20.4) and the executable format, whose link writer the
+// native build selects (Format,
 // IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's B7b7), the runtime's import declarations, and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines
 // (MemorySymbols), the C entry's symbol (MainSymbol), the reserved external names of every target (ReservedSymbols, IMPL 21.2) and
 // the reads over every row (B7b5): a reserved supply of a name (ReservedSupply; its name is reserved under every target key, IMPL 20.4),
@@ -83,6 +84,7 @@ internal sealed class TargetProfile
         EntrySymbol = "__kimi_start",
         Subsystem = "console",
         FloatMarker = "_fltused",
+        LoadConfigSymbol = "_load_config_used",
         Layer = "WindowsPlatform.ll.in",
         UnmappedBound = 65536,
         RuntimeDeclarations = WindowsRuntimeDeclarations,
@@ -122,6 +124,7 @@ internal sealed class TargetProfile
         EntrySymbol = "__kimi_start",
         Subsystem = null,
         FloatMarker = null,
+        LoadConfigSymbol = null,
         Layer = "LinuxPlatform.ll.in",
         UnmappedBound = 65536,
         RuntimeDeclarations = [],
@@ -172,6 +175,10 @@ internal sealed class TargetProfile
 
     internal required string? FloatMarker { get; init; }
 
+    /// <summary>Gets the symbol whose definition a COFF link makes the image's load configuration, which lld-link loads whenever an
+    /// input defines it (the dependency step's fixed root); null on a row without one.</summary>
+    internal required string? LoadConfigSymbol { get; init; }
+
     /// <summary>Gets the resource name of the row's platform layer template, which names the row's RuntimeLayer record in the Backend's
     /// RuntimeAbi (the layer's OS-error prefix and runtime definitions).</summary>
     internal required string Layer { get; init; }
@@ -204,8 +211,8 @@ internal sealed class TargetProfile
     internal required string InputExtension { get; init; }
 
     /// <summary>Gets the row's executable format (IMPL 20.3.2), "COFF" or "ELF", which the native build maps once to its link writer and
-    /// its executable's extension (any other value is a broken contract); a "COFF" row has a subsystem and a float marker, no other row
-    /// has.</summary>
+    /// its executable's extension (any other value is a broken contract); a "COFF" row has a subsystem, a float marker and a load
+    /// configuration symbol, no other row has.</summary>
     internal required string Format { get; init; }
 
     /// <summary>Gets the row of a target triple.</summary>

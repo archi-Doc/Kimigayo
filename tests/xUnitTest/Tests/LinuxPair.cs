@@ -54,8 +54,9 @@ internal static class LinuxPair
     /// <returns>The build.</returns>
     internal static Task Build(ArtifactPaths paths) => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
 
-    /// <summary>Builds directory/native/&lt;library&gt;.a: each member's C source compiled by the pinned clang for the Linux triple and
-    /// archived by the llvm-ar copy in command-line order, which its index keeps (an llvm-ar index lists definers in member order).</summary>
+    /// <summary>Builds directory/native/&lt;library&gt;.a: each member's C source compiled by the pinned clang for the Linux triple (a
+    /// member named *.bc with -flto: LLVM bitcode) and archived by the llvm-ar copy in command-line order, which its index keeps (an
+    /// llvm-ar index lists definers in member order).</summary>
     /// <param name="directory">The project's directory.</param>
     /// <param name="library">The archive's name.</param>
     /// <param name="operation">llvm-ar's operation: rcs (indexed), rcS (no index) or rcsT (thin).</param>
@@ -67,7 +68,7 @@ internal static class LinuxPair
         foreach (var (member, text) in members)
         {
             File.WriteAllText(Path.Combine(folder, member + ".c"), text);
-            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", folder, [.. Flags, member + ".c", "-o", member + ".o"]));
+            Assert.Equal(string.Empty, await TataraExecutorTest.Tool("clang", folder, [.. Flags, .. member.EndsWith(".bc", StringComparison.Ordinal) ? ["-flto"] : Array.Empty<string>(), member + ".c", "-o", member + ".o"]));
         }
 
         var archive = Path.Combine(directory, "native", library + ".a");

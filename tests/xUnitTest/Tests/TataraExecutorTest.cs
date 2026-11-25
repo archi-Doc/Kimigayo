@@ -176,11 +176,15 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // Tatara's inspect reads archives (LinkAmbiguity phase A, design §2 "Tatara's read"): per member in archive order its symbols, its
-    // form (o, i, s), its definitions in sections that admit copies and its .drectve's references, and the archive's index naming each
-    // entry's member (Describe); an object or a DLL is one member of no archive; a bitcode member is read as lld-link links it (P4), its
+    // form (o, i, s, or b: LLVM bitcode), its definitions in sections that admit copies and its .drectve's references (the names lld-link
+    // roots, /include:'s and /export:'s, the /entry: names and the /alternatename: pairs), and the archive's index naming each entry's
+    // member (Describe); an object or a DLL is one member of no archive; a bitcode member, of form b, is read as lld-link links it (P4), its
     // copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32: a nodeduplicate comdat's names are
     // ordinary definitions, and a DEFAULTLIB among its linker options is the default-library flag; C-533 N-2); a directive's option takes each of
-    // LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32). llvm-lib writes its members in reverse command-line order (as lib.exe does; its /list reverses them back), so its index, naming
+    // LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32), but /export: only "/" and "-" (LLD's fast path), whose name is the text
+    // before the first ',' and of "<x>=<y>" y, none for a forwarder; a directive naming no symbol, and every other option, LLD's other
+    // options spelling a symbol included, lists nothing (exports; LinkRoots design §2.1a). llvm-lib writes its members in reverse
+    // command-line order (as lib.exe does; its /list reverses them back), so its index, naming
     // the command line's last definer (P5), names the first in member order; an ELF archive from the llvm-ar copy keeps command-line order and
     // its index names definers in member order (B7b7, rulings 6 and 7a). A malformed archive fails with LLVM's text and Tatara runs
     // again; a thin archive fails. Libraries: the compiler's committed ones, or the pinned clang's objects archived by llvm-lib.
@@ -198,6 +202,7 @@ public sealed class TataraExecutorTest : IDisposable
     [InlineData("bitcodenodeduplicate")]
     [InlineData("bitcodedefaultlib")]
     [InlineData("prefixes")]
+    [InlineData("exports")]
     [InlineData("index")]
     [InlineData("malformed")]
     [InlineData("thin")]
@@ -224,6 +229,10 @@ public sealed class TataraExecutorTest : IDisposable
             inline int twice(int x) { return x * 2; }
             extern "C" int (*pointer)(int) = twice;
             """;
+        const string Exports = """
+            #pragma comment(linker, "/export:f /EXPORT:g,DATA -export:h=k /export:fw=other.fn /?export:q /export:,DATA /entry:e /?ENTRY:e2 /aligncomm:al,4 /exclude-symbols:ex /arm64xsameaddress:sa /guardsym:gs")
+            int exports(void) { return 0; }
+            """;
         await (row switch
         {
             "kernel32" => Expect(Kernel32Facts(), Task.FromResult(Kernel32)),
@@ -236,21 +245,24 @@ public sealed class TataraExecutorTest : IDisposable
                 "archive\no T:?twice@@YAHH@Z D:pointer comdat:?twice@@YAHH@Z\no D:g D:plain comdat:g\nindex 0:?twice@@YAHH@Z 1:g 1:plain 0:pointer",
                 this.Library("comdat.lib", ["-fno-autolink", "-fms-extensions", "-fdata-sections"], ("selectany.c", "__declspec(selectany) int g = 1;\nint plain = 2;\n"), ("inline.cpp", "inline int twice(int x) { return x * 2; }\nextern \"C\" int (*pointer)(int) = twice;\n"))),
             "directives" => Expect(
-                "archive\no T:directives include:f alternatename:a=b include:g alternatename:c=d\nindex 0:directives",
+                "archive\no T:directives root:f alternatename:a=b root:g alternatename:c=d\nindex 0:directives",
                 this.Library("directives.lib", ["-fms-extensions"], ("directives.c", Directives))),
-            "bitcode" => Expect("archive\no T:bc_add\nindex 0:bc_add", this.Library("bitcode.lib", ["-fno-autolink", "-flto"], ("bitcode.c", "int bc_add(int a, int b) { return a + b; }\n"))),
+            "bitcode" => Expect("archive\nb T:bc_add\nindex 0:bc_add", this.Library("bitcode.lib", ["-fno-autolink", "-flto"], ("bitcode.c", "int bc_add(int a, int b) { return a + b; }\n"))),
             "bitcodefacts" => Expect(
-                "archive\no W:?twice@@YAHH@Z W:g D:plain D:pointer comdat:?twice@@YAHH@Z comdat:g include:f alternatename:a=b\nindex 0:?twice@@YAHH@Z 0:g 0:plain 0:pointer",
+                "archive\nb W:?twice@@YAHH@Z W:g D:plain D:pointer comdat:?twice@@YAHH@Z comdat:g root:f alternatename:a=b\nindex 0:?twice@@YAHH@Z 0:g 0:plain 0:pointer",
                 this.Library("bitcodefacts.lib", ["-fms-extensions", "-flto"], ("bitcodefacts.cpp", BitcodeFacts))),
             "bitcodenodeduplicate" => Expect(
-                "archive\no D:a D:n comdat:a\nindex 0:a 0:n",
+                "archive\nb D:a D:n comdat:a\nindex 0:a 0:n",
                 this.Library("nodeduplicate.lib", ["-flto"], ("nodeduplicate.ll", "$n = comdat nodeduplicate\n@n = global i32 1, comdat\n$a = comdat any\n@a = global i32 2, comdat\n"))),
             "bitcodedefaultlib" => Expect(
-                "archive, default library\no T:dl\nindex 0:dl",
+                "archive, default library\nb T:dl\nindex 0:dl",
                 this.Library("defaultlib.lib", ["-flto"], ("defaultlib.c", "#pragma comment(lib, \"foo\")\nint dl(void) { return 0; }\n"))),
             "prefixes" => Expect(
-                "archive\no T:prefixes include:f alternatename:a=b\nindex 0:prefixes",
+                "archive\no T:prefixes root:f alternatename:a=b\nindex 0:prefixes",
                 this.Library("prefixes.lib", ["-fms-extensions"], ("prefixes.c", "#pragma comment(linker, \"/?include:f -?ALTERNATENAME:a=b /??include:x\")\nint prefixes(void) { return 0; }\n"))),
+            "exports" => Expect(
+                "archive\no T:d root:d\no T:exports root:f root:g root:k entry:e entry:e2\nindex 0:d 1:exports",
+                this.Library("exports.lib", ["-fms-extensions"], ("exports.c", Exports), ("dllexport.c", "__declspec(dllexport) int d(void) { return 0; }\n"))),
             "index" => this.InspectsTheIndex(),
             "malformed" => this.FailsOnAMalformedArchive(),
             "thin" => this.FailsOnAThinArchive(),
@@ -461,8 +473,8 @@ public sealed class TataraExecutorTest : IDisposable
 
     // An inspection as the archive rows compare it: "archive" or "object", then ", default library" when a member names one; a line per
     // member: its form, "<letter>:<name>" per undefined and per defined symbol, "comdat:<name>" per definition that admits copies and
-    // "include:<name>" or "alternatename:<from>=<to>" per directive reference; then "index" and its "<member>:<name>" entries.
-    // NativeToolchainTest's supply facts rows too (SupplyFacts).
+    // per directive reference "root:<name>" (a name lld-link roots, I), "entry:<name>" (/entry:'s, E) or "alternatename:<from>=<to>" (A);
+    // then "index" and its "<member>:<name>" entries. NativeToolchainTest's supply facts rows too (SupplyFacts).
     internal static string Describe(ObjectFacts facts)
     {
         var lines = new List<string> { (facts.IsArchive ? "archive" : "object") + (facts.HasDefaultLibrary ? ", default library" : string.Empty) };
@@ -470,7 +482,13 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var parts = member.Undefined.Concat(member.DefinedExternal).Select(static s => s.Kind + ":" + s.Name)
                 .Concat(member.Comdats.Select(static name => "comdat:" + name))
-                .Concat(member.Directives.Select(static d => d.Kind == 'I' ? "include:" + d.Name : "alternatename:" + d.Name + "=" + d.Target));
+                .Concat(member.Directives.Select(static d => d.Kind switch
+                {
+                    'I' => "root:" + d.Name,
+                    'A' => "alternatename:" + d.Name + "=" + d.Target,
+                    'E' => "entry:" + d.Name,
+                    _ => throw new InvalidOperationException($"Tatara publishes the directive kinds I, A and E, not '{d.Kind}'."),
+                }));
             lines.Add(member.Form + string.Concat(parts.Select(static part => " " + part)));
         }
 
