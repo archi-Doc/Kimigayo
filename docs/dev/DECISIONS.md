@@ -29353,6 +29353,183 @@ Closure row of `MirCases.Branch`).
     a reader per kind; restricting the reader's domain to restore the counts or the FAULT (CC-25: SPEC 8.3.2 refutes any `P` by
     `not P`, and the restriction moves A and B rows back); keeping C2 rulings 301/308 by a relevance rule for an unresolved Contract
     row in the Copy walk (a dependence decision beyond the unit, CC-27 (2)).
+- **R7-M111 A Contract reference's clauses are instantiated by one rule, the declaration's own reference included; its formation
+  judges only reference input conditions** (Front, 2026-11-25; R7-C2c2 c2-5a, Q-794; PLAN G837, G849 and G1260 closed, G402 restated,
+  G1418 opened; F's rulings CC-1 to CC-10; the independent design review's REVISE on F's run, revised by CC-10; Major, an acceptance
+  mover; commits f6e55673a, e98489598, d04836056, f4c7d60ec, 97265aabf, 596577d1c, 6b82f943c, 895c533eb, 0ad304304, f4cb50715, b281727a4, ae8743f6e). SPEC 8.3.1, 8.3.2 (Contract refinement), 8.4.1, 8.4.3, 6.1.4.
+  - Instantiation (Binding.BoundContracts, ContractTypes, Constraints.Substitution): `MT<A>` written in MT binds to MT's declaration
+    symbol (`BoundContractReference` collapses a declaration's SelfType to it), whose Type is the nominal `MT`. `InstantiatedContract`
+    returned it unchanged, so `T is MT<i32>` supplied `T.(Tree).Child is MT` with A free and no `Mark<i32>` below depth 0, and
+    `SubstituteConstraint` left it unsubstituted, so forming `R<i32>` queried `i32 is R` while the supply held `i32 is R<i32>`. Both
+    now read `ContractReferenceType` (BoundContractReference's inverse: a bound reference's Type, a declaration symbol's `SelfType`;
+    `ProjectionContract` reads it too) and bind or substitute it as any reference; `InstantiatedContract` binds it as R4-M166 binds
+    one, the declaration's Self first, then the reference's arguments.
+  - Formation (Binding.Constraints): a Contract clause is its conditions (8.3.1's requirement precedence splits `and`; `or` and `not`
+    are one condition each), each with one 6.1.4 role. `IsImplementationRequirement(condition)` (one of its Types, the Contract
+    reference's included, names the Contract's Self) and `ReferenceInputCondition(clause)` (the conditions that are not, conjoined;
+    none: the clause is skipped) replace `IsAssociatedConstraint` in `CheckConstraints`' Contract-binder skip, so forming `C<X>` (a
+    written occurrence's judgment, a Type's formation) judges only its reference input conditions: `Self.(K<A>).X is Copy` and
+    `Self.(Tree).Child is P2<B, A>` were judged with no conforming Self, Unknown at every premise `T is CK<i32>`, and `A is E and
+    D<Self>` keeps `A is E`'s judgment. An associated requirement stays one whole. The other `IsAssociatedConstraint` uses read the
+    `associate` form (declaration, specification, binding order, Origin owner, effect form, conditional members, documentation) and
+    keep it; closedness (ConstraintValidation's closed-clause test, SourceStates' `ClosedClause`) reads it with `IsSelfConstraint`
+    and `DependentConstraint` to decide 6.1.4's declaration-obligation role, without a clause's Contract arguments (PLAN G1418).
+    `DependentConstraint(contractSelf: true)` stays `ContractSupply`'s gate, "not closed" (8.3.2 supplies input conditions too:
+    `T is D<A>` supplies `A is E`).
+  - Interpretation (Binding.Constraints; the review's B3, F's CC-21): the proof's intake (`NormalizeProofConstraint`, J1's: the
+    request and every fact's reading) interprets a proposition's Contract arguments as its subject and required Type
+    (`NormalizeProofType`, then `ClassForm`; SPEC 8.2.3, 8.3.1), and an interned proposition's projection flag (the intake's early
+    exit and Supply's scan gate) covers the Contract reference's Type, so `U is MT<Src.(HasItem).Item>` and a supplied
+    `Src<U>.(HasItem).Item is R<Src<U>.(HasItem).Item>` meet `U is MT<i32>` and `U is R<U>`; dev's collapsed own reference matched
+    any `MT<X>` and hid the gap.
+  - Readings (F's CC-10): a function premise's own refinement supply proves its formation's reference input condition (F-1 (a), the
+    landed guard x-carried-v's reading: `T is R<U>` supplies `U is R<U>`); a premise whose supply is refuted on a concrete Type is
+    contradictory evidence at the function even when nothing queries it (F-2 (a); R7-M35, R7-M41: `T is C<S>` with `A is D<Self>`
+    and S without D).
+  - Moves (valid, accepted): x-args1..3-v, x-argsrow2-v, b-args-v, contractargs-i32, m2-v1, m2-v2, rq-v1 (the own reference);
+    x-swap0..2-v, b-cargs2-v, k-nonrec, k-nonrec-marker, contractargs-single, p05, cc-v1, sa-v2, pa-v1, tf-v1, tf-v2, or-v2, an-v2
+    (formation). Invalid, newly rejected (accepted before, the collapsed reference read as any `MT<X>`): gs-n1, gs-n3 (a generic
+    struct's conformance, the ancestor path too), rc-n1 (a requirement call). Invalid, a false or dependent record removed (Q13,
+    counted by code): `UnprovenConstraint_Kd` 9 (the premise of x-swap0..2-n, b-cargs-n2, p05-n1, p05-n3, pa-n1, pa-n2; b-args-mixn's
+    i32 call), `UnsatisfiedConstraint_Kd` 4 (the premise of sa-v1, or-v1, an-v1, invalid by F-2; sa-n1's `C<S>` in the conformance,
+    measured by the CLI runs, two records on line 7 on dev and one at the head, not by its row, which passes on both because the
+    test helper groups records by code and line), `InvalidConstraint_Kd` 1 (er-n1's premise, resting on its unresolved clause).
+    Record selection (Q13): the function's premise error no longer relates the premise on sa-v1, or-v1, an-v1 (the contradictory
+    fact is now a supplied one: a related location, DECISIONS Q4); cc-n1's record at `T is CK<i32>` is `InvalidConstraint_Kd`
+    (8.3.2's Error for the supplied, refuted `i32 is E`), not `UnprovenConstraint_Kd`. No valid program newly rejected (B3's
+    sr-alias-v and rc2-alias-v, rejected at 4f7526287, pass with the interpretation above); no invalid program newly accepted but
+    SPEC 8.3.3's expanding recursion (the Middle's x.mg-decl and m.r-expand-q), which dev rejected only through the formation
+    judgment this entry skips and G563-C's Contract-level rule, landing with it, rejects (F's CC-16); no new `InternalInvariant_Kd`;
+    an-n1, rf-n1 and sr-alias-n keep dev's records. B3's moves (by b281727a4's rows and twins against 4f7526287): sr-alias-v,
+    rc2-alias-v and gs2-alias-v (a generic struct's conformance, `T is MT<Src.(HasItem).Item>` with Item = i32) accepted;
+    sr-alias-n `InvalidConstraint_Kd` at the premise (rf-n1's form; 4f7526287: `UnsatisfiedConstraint_Kd`); gs2-alias-n gs-n1's single
+    record (4f7526287: two at `Self is MT<i32>`); TypeIdentityTest's C3 rows ef2, s5, pr1 and k1c (Contract arguments written as
+    completed projections; valid) fail on dev 62e531705 (`UnprovenConstraint_Kd`: ef2 two, the others one) and pass at the head, so
+    they are no longer Explicit (ae8743f6e). Their `Seq` spellings pr1s and s5s (c2-5c's guards; dev bc7428e3b rejects both at `return use(x)`, 54785cb01 accepts; F's CC-33) move by the same cause. Against dev 62e531705 (`rv/out2`, 76 twins): gs2-alias-v newly accepted (dev: two
+    `UnprovenConstraint_Kd` at `Self is MT<i32>`), gs2-alias-n keeps one of dev's two records (a dependent record removed, measured
+    by the CLI like sa-n1's: `UnprovenConstraint_Kd` 10 with it), sr-alias-v, rc2-alias-v and sr-alias-n keep dev's records; every
+    other twin keeps K4's records on both sides (`b3/out/cmp-k4.txt`). The review's K4 twins (against dev c18e1306a,
+    `rv/out2-k4/new/results.md`): valid, newly accepted (class 3; dev rejects each with `UnprovenConstraint_Kd` at the premise,
+    an2-gen-use-v with three records; G563C-6 B1 names them here and on the Q row): an2-rev-v, an2-nest-v,
+    an2-par-v, an2-proj-v, an2-gen-v, an2-gen-use-v, an2-alias-v (formation), im-v (an implementation's requirement premise under the
+    own reference); invalid, newly rejected: rc2-gen-n, rc2-alias-n (requirement calls, as rc-n1) and the Middle's r-gs2-n, r-put-n,
+    r-refine-n (CC-16). These moves are stated against the dev each run used (62e531705, or c18e1306a where named); the forms
+    re-run against dev bc7428e3b (kq1x, pr1s, s5s and G1260's) are stated against it. G563-C's record moves on the forms c2-5a
+    alone accepts are counted by code on R7-M112's moves line. Rows in RecursiveContractTest's
+    `APremiseSuppliesItsRefinementsByDemand` (cc-n1 and an-n1 pinned to the head's records with the premise).
+    PLAN G1260's forms (F's G563C-10; labelled from SPEC before the run, `g563c/p7/probes-g1260.txt`; against dev bc7428e3b, the
+    head 7 of 7 as labelled): valid, newly accepted (dev `UnprovenConstraint_Kd` at the Contract reference): e1t (`T is A<U, i32>`;
+    the identity A's Self clauses derive between P and Q is a supplied ground, not an input condition) and B's G1384 probes c7 and
+    c8; invalid, the reference's record removed: e1 (its second `InvalidConstraint_Kd`, at `A<U, U>`; the clause's premise error
+    stays), c2 (TypeIdentityTest mg5m) and c8i (`UnprovenConstraint_Kd` at the reference; the conformance's
+    `UnsatisfiedConstraint_Kd` stays): `InvalidConstraint_Kd` 1, `UnprovenConstraint_Kd` 2; invalid, newly rejected: kq1x (c2-5c's
+    label: `T is not Iter<i32>` against the supplied `Iter<i32>`, contradictory evidence, `InvalidConstraint_Kd` at the function).
+    Rows: RecursiveContractTest e1t and e1; TypeIdentityTest mg5m, mg5mv (c7), mg6 (c8), mg6m (c8i) and kq1x.
+  - Rejected: `DependentConstraint(contractSelf: true)` as the formation filter (it counts every parameter, so it would skip the
+    input condition `U is E` and accept `D<i32>`); a whole clause naming Self as one implementation requirement (an-n1 loses its
+    input condition's record while cc-n1 keeps it: one rule, two answers by form); the nominal declaration Type as the own
+    reference's written form; a clause for the own reference; the declaration's Self first for the clause's Types (R4-M166's
+    rejected option, below).
+  - Limit (PLAN G402): a clause's Types keep the reference-first order, so the valid cs1 stays rejected. Self first there lets the
+    expansion of a Contract's own associate premise supply that premise's reference input condition to its own formation (traced:
+    cs1bad's `Self.X.N is F<Self.X>` Proven from `G<Self.X.N, Self.X>`'s `Z is F<W>`; exp1's `Self.Y is E`), so cs1bad, exp1,
+    exp2 and exp2bad would lose their records (SPEC 8.3.3 Finality). Removed with R4-M166's availability gap.
+- **R7-M112 SPEC 8.3.3's expanding recursion is Binding.Contracts' check over a per-call pass graph** (Front, 2026-11-25; PLAN
+  G563-C, landing with R7-C2c2 c2-5a (CC-16: the Middle's RP17 B1 on c2-5a, C-562); Major, an acceptance mover; plan
+  `artifacts/units/g563c/plan.md` §3, labels `labels.md`; F's rulings G563C-1 (Q0 (a), Q1 (a), Q2 (a), Q3 (a), Q4 (a)), G563C-3,
+  G563C-5, G563C-6 (the independent implementation review's B2, C1-C7), G563C-8 and G563C-9 (every Contract reference in a
+  supplied premise, a projection's qualifier in any of its Types included), G563C-11 and G563C-12 (the Phase B review: h6 class 1;
+  an ancestor conformance's reference walked as a premise's)) SPEC 6.1.4, 8.2.3, 8.3.2, 8.3.3, 8.4.3, 23.1.2.
+  - **The rule.** Each Contract reference in what `Self is K` supplies to Self or a projection of Self ("an ancestor conformance or
+    a Constraint": an ancestor; a Contract premise among the operands of K's own or inherited clauses, each clause supplied whole
+    by 8.3.2's Contract-refinement row, whatever its connective: `and`, `or` and `not` alike, G563C-6; and each projection's qualifier
+    in an ancestor reference's arguments, G563C-12: `contract MQ<A>: Mark<A.(R2).W.(HasY<A.(R2).V>).Y>` refers to HasY, and in the
+    Types of such an operand about Self or a projection of Self, its subject, its required Type and its Contract reference's
+    arguments, G563C-8 and G563C-9: `Self.(MQ<A>).X is Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y` and
+    `Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y>` refer to HasY) passes each parameter of K to
+    each parameter of the referenced Contract whose argument contains it (the walk enters every component, a projection's subject and
+    Contract arguments included): flat where the argument is the parameter, expanding otherwise. Each supplied reference, an
+    ancestor's or a Contract premise's, passes through one member: its own arguments and the qualifiers in its Type, with the forming
+    premise where one forms it (an ancestor has none). A premise naming no Self is a
+    reference input condition (SPEC 6.1.4), not a supply, and passes nothing. Every strongly connected set of passes with an
+    expanding pass makes each Contract with a parameter in it erroneous: one `InvalidConstraint_Kd` at the Contract (R4-M115's code;
+    SPEC 8.3.3 "at each Contract on it", G563C-6 C7), decided from the declarations alone.
+  - **Owner and representation.** Binding.Contracts (`Binding.Contracts.Expansion.cs`, beside BuildContract's refinement cycle),
+    `CheckExpandingRecursion`, called once in `BindConstraints` after `Advance(AssociatedBindings)`, where its arguments'
+    normalization exists (SPEC 8.3.3: normalized under K's premises); its uses read the failure through the failed-context read, and
+    the states through `ValidateConformances`' publication. This replaces the plan's placement "after `ExpandContractPremises` and
+    before `PublishSourceStates`" (G563C-5): a completed projection's binding is admitted only from admission point 3 (`KeyedBinding`),
+    so before it `Src<A>.(HasItem).Item` stays as written. R7-M46's reason holds by two paths: every use and refiner reads the failed
+    Contract through `AvailableContractPremise`'s failed-context read (`InvalidDeclarationContext`, SPEC 23.1.2) at every read, before
+    any published state, and `ValidateConformances` publishes the states again after the check. The window: `PrepareAssociatedBindings`
+    forms its bindings before an expanding Contract fails; a binding formed through such a Contract's premise occurs only in a program
+    that carries the Contract's own record, so no acceptance moves, and the failed-context read rests every later read (dependent
+    records only; window twins g5-window, g5-window-v keep b5fc3d442's records). Its pass graph (a node per Contract parameter; a pass with its expanding flag and
+    forming premise) is call scratch in pooled fields, built and emptied in one call: never published, no IR form, no vocabulary entry.
+    Input: the pass's Contract shapes (a Contract never refers to a later layer's) and `ContractSupply` (its third reader; no second
+    enumeration). Linear in the supplied elements and their Types' parts (each once per element: a premise's subject, required Type
+    and reference Type, an ancestor's reference Type) and in the passes (an iterative Tarjan walk), and linear per argument in its
+    parts; a qualifier nested in a qualifier's argument walks the inner parts once per enclosing qualifier (bounded by the source;
+    G563C-11 N2).
+  - **Normalization (Q1 (a), G563C-3).** The Contract's parameters and each supplied reference are read in the Contract's view as a
+    proposition's Types are: `NormalizedForm`, J1's one reading (`NormalizeProofType`, a completed projection interpreted, SPEC 8.2.3,
+    then `ClassForm`), extracted from `NormalizeProofConstraint` by a behaviour-preserving commit and read by both; ClassForm's closed
+    reader list names the row (iv) through it (an intake of this judgment; not an exception). A second reading of a Contract argument
+    beside the proposition's would call `MA<Src<A>.(HasItem).Item>` expanding (the Middle's C-562 re-read B4): rejected.
+  - **Moves (Q13, against dev 62e531705, landing with c2-5a; the forms re-run against dev bc7428e3b are stated against it at the
+    bullet's end).** Newly
+    rejected, invalid, dev accepts: spec-nested, g563-assoc, n.parent and the Middle's it.assoc-alias-grow, it.second-assoc,
+    it.second-proj, it.ancestor and it.use-spec (one `InvalidConstraint_Kd` at each Contract of the set); and the Nested form of two
+    RecursiveContractTest programs (`AProjectionHasARecursiveBase`'s Seq row and `AWarmRebindAndItsQueriesAllocateNothing`: `contract
+    Seq<E>` with `associate Next is Seq<Option<E>>`), newly invalid, whose programs now read `associate Next is Seq<i32>` with their
+    assertions unchanged (b5fc3d442; the owner's answer 「G563-C a」, 10:40; C6). Dev rejects with other records, c2-5a accepts and
+    G563-C rejects at the Contract: x.mg-decl and m.r-expand-q (the RP17 B1 forms) and nine forms of B1's family, it.alias-grow,
+    it.and-premise, it.deep-proj, it.array, n.two, n.swap-grow, n.proj-arg, n.refiner and n.scc, so c2-5a and G563-C land in one
+    window; and G563-C's own twins r2-base, r2-clause-use, r2-refiner-gen, r2-refiner-rest, r2-requirement, r2b-and, g5-window and,
+    by G563C-6, r2b-or (dev `UnprovenConstraint_Kd` at the `or` clause; the previous head 30d523b4c and c2-5a accepted it). **Counted
+    by code (C1; dev 62e531705's records against G563-C's)** over these 19 programs: `UnprovenConstraint_Kd` 21 removed (the forming
+    clause's formation judgment, which c2-5a's skip removes, and the uses' unproven calls: rule W, each reads the failed Contract),
+    `InvalidConstraint_Kd` 12 removed (the uses' and refiners' records: `T is MG<i32>`, `contract Sub: MG<i32>`, n.two's and n.scc's
+    clause, r2-clause-use's `B is MG<i32>`, the refiners' bases, g5-window's five; rule W), `InvalidConstraint_Kd` 21 added (one at
+    each Contract of a growing set, independent). The 11 forms count the Middle's `check.tsv` (one record per code and line), the 8
+    twins the CLI's records (`p1/out/twins-dev.txt`, `twins-head.txt`; r2b-or's head record is confirmed by Phase 2's run). Valid,
+    newly accepted (class 3; dev rejects with one `UnprovenConstraint_Kd`, B1): v.norm-const (SPEC 8.2.3, 8.3.3: under KN's identity
+    premise the argument is i32, no pass), r2-base-v (MG's pass is flat, Base and its use clean) and r2-clause-use-v (UseMG's clause
+    names a valid recursive Contract), besides c2-5a's own. With c2-5a: vt.mutual-const, av.nested-alias-v and vt.alias-flat-second
+    (valid, newly accepted) and ai.rc2-gen-n, ai.rc2-recv-n and ai.gs2-self-n (invalid, dev accepts, now rejected). vt.alias-flat and
+    vt.alias-flat-assoc stay accepted. **Record site (C7):** the record sits at the Contract (SPEC 8.3.3 "at each Contract on it");
+    ContractSelfTest's h6 (the g563-assoc form) expects `InvalidConstraint_Kd: contract D<U> | ...` instead of the associate line,
+    a guard; it is class 1 (dev accepts it; G563C-11 C1). **The Middle's consent-2 twins** (against dev 90f6878e0, as the
+    Middle read them; Phase 2 counts them by code): vt2.alias-const, vt2.premise-in and vt3.or-alias valid, newly accepted (class 3;
+    dev a false `UnprovenConstraint_Kd`); the it2 rows and gr.r2b-or, gr.rv.not-grow, gr.rv.or-two, it3.or-in-and, it3.not-or and
+    it3.or-alias invalid, dev's `UnprovenConstraint_Kd` at the clause becoming `InvalidConstraint_Kd` at each Contract on the cycle
+    (30d523b4c accepted the six `or` / `not` forms: the Middle's B5, taken by G563C-6); vt3.not-or and vt3.or-in-and accepted on both.
+    **Against dev bc7428e3b** (the Phase B review's twins and B1's, G563C-11 C5, G563C-12): class 1, invalid newly rejected: h6,
+    p8.assoc-qual, p8.sq-inh3 (one `InvalidConstraint_Kd` at each Contract of the set) and p8.anc-qual (the MQ form above, with
+    HasY's `associate Y is MQ<B>`: one at MQ and one at HasY; MQ's projections `A.(R2)` and the use `MQ<B>` read MQ's premise `A is R2`,
+    which fails by reading MQ's own record: dependent records, rule W); class 3, valid newly accepted: rv.a-const and p8.sq-normq-flat
+    besides those named above and in R7-M111; with c2-5a, record moves on 57 invalid programs both sides reject, by code: `InvalidConstraint_Kd` +32,
+    `UnprovenConstraint_Kd` -62. No class 2. TypeIdentityTest's oi2 is accepted on both sides, a guard, no move (G563C-12 C7).
+  - **Related locations (Q2 (a)).** Each premise forming a pass inside a growing set fails in the view of the Contract whose supply holds
+    it (`FailPremise`), so the adapter's InvalidConstraint row relates the Contract's own forming clauses through the existing "premise"
+    role (`FailedPremiseClauses`). A forming ancestor reference is a base and is not related, nor is the clause of a forming
+    reference under an `or` or a `not` (its forming premise is an operand, no fact of the environment): PLAN G1419.
+  - **Which Contracts (Q3 (a)).** Each Contract with a parameter in such a set (SPEC's "Among Contracts that refer to one another").
+  - **Rejected:** a second walk of an ancestor reference's qualifiers beside the premise's, or a clause for the ancestor form
+    (G563C-12: one member for every supplied reference); the plan's reading that an `or`, a `not` or an identity premise supplies no conformance and passes nothing
+    (G563C-6, B2: SPEC 8.3.3 counts each reference in a supplied Constraint, and the Disjunction and Negation rows decide proof
+    results, not what is supplied; the reading would narrow the rule); leaving a projection's qualifier in a supplied premise's Type
+    unwalked (G563C-6's "Out of this ruling", superseded by G563C-8: the qualifier is a reference to its Contract, and dev bea55492d
+    rejects g6-ident-qual, so accepting it would be a Q13 regression); a second interpretation of a Contract argument (ClassForm alone, G563C-3); moving the publication after point 3
+    with the check before it (G563C-4's order, withdrawn by G563C-5: `PrepareAssociatedBindings` reads the published source states,
+    through `JoinMembers`/`SpecifiesContract` -> `ProveConstraint` and `ResolveAssociated` -> `IdentityProven` ->
+    `AvailableContractPremise` -> `ReadSourceState`, and keeps its results for the pass); a row of R7-M45's class graph (one view's identity classes; the growth runs through ever new subjects, so no view holds
+    the cycle, and a conformance is no edge there); placing it in RecursiveContracts (its contract keeps it out of Bind but the inline
+    layout); only the Contracts on a simple cycle through an expanding pass (NP-complete in general, directed two disjoint paths); the
+    arguments as written with `Unsupported_Kd` under an identity premise (Q1 (b)); a limit (8.3.3: never a limit); a new "reference"
+    related role now (Q2 (b), a catalog change: PLAN G1419); SPEC's `Stream` in this unit (Q4 (b): Unbounded Types along a projection
+    path, a second structure; PLAN G563); the record at the forming clause, as SPEC's example marks it (C7: the text puts it "at each
+    Contract on it"; the clause is a related location).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
