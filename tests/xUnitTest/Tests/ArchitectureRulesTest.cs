@@ -923,7 +923,7 @@ public class ArchitectureRulesTest
     // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
     // ProveConstraint, ResolveAssociated, NormalizeProof*, ClassForm, RequestCapability), and the two callees that can
     // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines, FirstRows, PremiseRows,
-    // PremiseCallable and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
+    // ExactAssumption and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
     // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row atom (RowAtom, c2-5b) and row merge (AddRow) are members.
     // R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from

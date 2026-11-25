@@ -275,7 +275,7 @@ public sealed partial class MirDropTest
             (program.Body(problem.Body).Key.Kind, c.SyntaxOf(problem.Subject).ToString().Split('\n')[0].Trim()));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, problem.Body));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, f.Ordinal));
-        Assert.Equal(["own", "copy"], [Owner(program, (problem.Code, problem.Subject, problem.Body)), Owner(program, (problem.Code, problem.Subject, f.Ordinal))]);
+        Assert.Equal(["own", "copy"], [Owner(program, problem.Body), Owner(program, f.Ordinal)]);
     }
 
     // SPEC 16.3.2, 15.1.3, 7.2.3 (DECISIONS R4-M69, Z20): A2's MovedPlace_Kd at a layer with its own drop incomplete at its destruction in a
@@ -509,6 +509,17 @@ public sealed partial class MirDropTest
         (int Body, int Rows, int Flags) Entry(int body) => table.Holds(body) ? (body, table.RowsOf(body).Length, table.FlagsOf(body)) : default;
     }
 
+    // Whose problem a marked body's mark (Mark) is: "own" where the report has the problem of its code and subject in the body, "copy" where
+    // it has that problem only in a default template (an inline copy's is its template's, R4-M69), else "none" (MirAnalysisTest reads it).
+    internal static string Owner(MirProgram program, int body)
+    {
+        var (code, subject) = Mark(program, body)!.Value;
+        var problems = program.Problems.All.ToArray();
+        return Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == (code, subject, body)) ? "own"
+            : Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject) && x.Body >= 0 && program.Body(x.Body).Key.Kind == MirBodyKind.DefaultTemplate)
+                ? "copy" : "none";
+    }
+
     private static (MirProgram Program, TyCtxt Types) Built(string source)
     {
         var c = MirBuildTest.Compile(source);
@@ -653,21 +664,12 @@ public sealed partial class MirDropTest
 
     private static string[] Incomplete(Compilation c, MirProgram program, string name)
         => [.. program.Bodies.ToArray().Where(x => x.Key.Decl?.Name == name).Select(x => Mark(program, x.Ordinal) is (var code, var subject)
-            ? $"{x.Key.Kind} {code} {c.SyntaxOf(subject).ToString().Split('\n')[0].Trim()} {Owner(program, (code, subject, x.Ordinal))}"
+            ? $"{x.Key.Kind} {code} {c.SyntaxOf(subject).ToString().Split('\n')[0].Trim()} {Owner(program, x.Ordinal)}"
             : $"{x.Key.Kind}")];
 
     // A body's mark (MirDropTable.Incomplete): its code and its subject located in the body; null for an exact body.
     private static (Kimi.DiagnosticCode Code, SourceRef Subject)? Mark(MirProgram program, int body)
         => program.Drops.Incomplete(body) is { } mark ? (mark.Code, program.Body(body).Subject(mark.Source)) : null;
-
-    // Whose problem a mark is: "own" where the report has the problem of the mark's code, subject and body, "copy" where it has only one of
-    // its code and subject (its template's), else "none".
-    private static string Owner(MirProgram program, (Kimi.DiagnosticCode Code, SourceRef Subject, int Body) mark)
-    {
-        var problems = program.Problems.All.ToArray();
-        return Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == mark) ? "own"
-            : Array.Exists(problems, x => (x.Code, x.Subject) == (mark.Code, mark.Subject)) ? "copy" : "none";
-    }
 
     // The nodes of a source's Binding issues, each ExclusivePathTake_Kd.
     private static string[] Takes(string source)

@@ -295,9 +295,9 @@ public sealed partial class Binding
         {
             // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, Reborrows an object view that lends its object in its mode
             // (LendsView), as the concrete @objref and @objuniq do (AdaptObjectBorrow), and otherwise borrows a Place that lends in its
-            // mode or a Temporary Value.
+            // mode or a Temporary Value (OwnedLending's written form).
             if (source.IsObjectBorrow && target.IsObjectBorrow ? !this.LendsView(conversion.Left, source, exclusive)
-                : !this.BorrowablePlace(conversion.Left, scope, exclusive) && !this.BorrowableTemporary(conversion.Left, exclusive, true, false))
+                : this.OwnedLending(conversion.Left, scope, exclusive, explicitBorrow: true, receiver: false, fixedExpectation: false) is null)
             {
                 var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
                 if (failure == BindingFailure.Unsupported)

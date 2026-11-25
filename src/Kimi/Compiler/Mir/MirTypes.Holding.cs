@@ -275,7 +275,8 @@ internal static partial class MirTypes
         // Binding's hold walk reads too) adds its Part's facts (Passed). `Abstract` writes by provenance in the value's own storage (SPEC
         // 15.6.4; DECISIONS R4-M170). Every other step is a part that may hold a Loan: its mode's fact (Met), and in the value's own storage
         // what lies past it (Past).
-        private Facts Entry(in Hold entry, BoundType layer, BoundType? written, BoundType? holder, int mode, int depth) => entry.PassesOn ? this.Passed(entry, mode, depth) : entry.Step switch
+        private Facts Entry(in Hold entry, BoundType layer, BoundType? written, BoundType? holder, int mode, int depth)
+            => entry.PassesOn ? this.Passed(entry, mode, depth) : entry.Step switch
         {
             HoldStep.Abstract => mode == Own ? new(true, MirOutcome.None, named: true) : Met(mode),
             <= HoldStep.Exclusive or HoldStep.Erased // The five steps a raw layer takes (HoldStep's first) and an erased environment.

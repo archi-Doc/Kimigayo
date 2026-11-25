@@ -15,13 +15,12 @@ public sealed partial class MirBuildTest
     // Opaque temp (the derived value of `w`, `h` or `b`, each use of which rests on its unresolved Type: the key `Missing` names nothing,
     // a local of no Type, PLAN G1073) is its consumer's derived value, an Opaque whose site names the temp. The forms: a Borrow of a
     // Field chain, in parentheses, of the rejected name itself, an address; an upcast's view; a runtime index's guard and its element's
-    // Borrow, also with
-    // a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback; a method's receiver;
-    // a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a Place in the temp). A
-    // getter-only Property's update lends nothing: its read is a call whose receiver `w` rests on its unresolved Type (PLAN G214; before,
-    // the getter took its own derived value of the receiver, DECISIONS R4-M109), so the update is that failed read's derived value, and
-    // nothing of it lends; since DECISIONS Z27 the update's site names its target's kept
-    // receiver, w's derived value in its Opaque temp, as an enclosing use (derived; fail-before: w's root, no derived value). The
+    // Borrow, also with a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback; a
+    // method's receiver; a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a
+    // Place in the temp). A getter-only Property's update lends nothing: its read is a call whose receiver `w` rests on its unresolved
+    // Type (PLAN G214; before, the getter took its own derived value of the receiver, DECISIONS R4-M109), so the update is that failed
+    // read's derived value, and nothing of it lends; since DECISIONS Z27 the update's site names its target's kept receiver, w's
+    // derived value in its Opaque temp, as an enclosing use (derived; fail-before: w's root, no derived value). The
     // valid twin (an i32 key) lends the local each time and holds no Opaque value or construction record (R5's guard that a complete
     // compilation never reaches Unlent); a literal's Borrow, valid in both, lends its materialized temporary (implementation review 1's
     // B1). Each row: f's lending rvalues and derived values in order, a lent root by name, `opaque` for a temp an Opaque is assigned to,

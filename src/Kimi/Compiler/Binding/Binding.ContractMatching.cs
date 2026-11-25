@@ -230,7 +230,7 @@ public sealed partial class Binding
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
                 {
                     var identity = shape.AssociatedTypes[i];
-                    if (this.SpecificationPart(conformance, identity, conformance.Use) is { } part)
+                    if (this.SpecificationPart(conformance, identity) is { } part)
                     {
                         // SPEC 23.1.2: an identity whose explicit specification did not bind is never inferred; its absence rests on
                         // that specification, while every other missing identity still reports.
@@ -245,7 +245,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.InferenceHole(conformance, identity, conformance.Use))
+                    if (this.InferenceHole(conformance, identity))
                     {
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem == InferenceProblem.Limit)
@@ -365,8 +365,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < container.Members.Count; i++)
             {
-                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && this.IsPathAssociated(conformance, identity) &&
-                    this.SpecifiesContract(clause, conformance.Type, conformance.Contract, conformance.Use))
+                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && this.IsPathAssociated(conformance, identity))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -502,7 +501,7 @@ public sealed partial class Binding
         for (var i = 0; i < shape.AssociatedTypes.Count; i++)
         {
             if (this.AssociatedBindingOf(conformance.RootPath, shape.AssociatedTypes[i]) is { Problem: InferenceProblem.Limit } binding &&
-                ReferenceEquals(binding.ProblemDetail, conformance.Use) && this.InferenceHole(conformance, shape.AssociatedTypes[i], conformance.Use))
+                ReferenceEquals(binding.ProblemDetail, conformance.Use) && this.InferenceHole(conformance, shape.AssociatedTypes[i]))
             {
                 return true;
             }
