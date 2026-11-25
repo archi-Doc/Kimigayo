@@ -123,8 +123,8 @@ public sealed partial class Binding
     //   identity premise in the view, else the table's (W7); a re-entered build (no table) answers the Type itself, Provisional, and
     //   keeps nothing.
     // - Readers (closed; ArchitectureRulesTest "Readers of a class's form"): the one intake of each judgment SPEC states over identical
-    //   Types. J1, a proposition's identity (8.3.1): NormalizeProofConstraint (subject, required Type, Contract reference) and the
-    //   Contract judge's entry ProveConformance (subject after MemberOf, Contract reference). J3, the Type relation at a use: the relation
+    //   Types. J1, a proposition's identity (8.3.1): NormalizedForm (NormalizeProofConstraint's subject, required Type, Contract
+    //   reference) and the Contract judge's entry ProveConformance (subject after MemberOf, Contract reference). J3, the Type relation at a use: the relation
     //   walk's root with a use (RelationWalk.Fits), CallableContractType, and a failed fit's record (RecordMismatch: its structure
     //   gate and Origin search read the pair the walk compared, F's C2 ruling 307 (2)). J4, a slot's bindings agree (10.8 Solving): Infer's
     //   bound-slot branch, in SlotFrame.View. (ii), a use's binding input: BindAndAdaptNode (the expected and the bound Type, BU-72),

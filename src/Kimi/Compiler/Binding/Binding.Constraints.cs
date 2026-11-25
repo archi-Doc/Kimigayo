@@ -745,25 +745,33 @@ public sealed partial class Binding
         // R7-C2c2 c2-4b (design R4.12b, J1): a proposition is identified by its normalized complete Types (SPEC 8.3.1), its Contract
         // reference's arguments included (R7-C2c2 c2-5a: a completed projection there is interpreted as in the subject, 8.2.3), each in
         // its class's form in the proposition's view, so request and facts meet here.
-        var subject = this.ClassForm(this.NormalizeProofType(constraint.Subject, scope, out completion), scope, out var formed);
-        completion = Meet(completion, formed);
+        var subject = this.NormalizedForm(constraint.Subject, scope, out completion);
         var required = constraint.RequiredType;
         if (required is not null)
         {
             var part = Completion.Provisional;
-            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.ClassForm(this.NormalizeProofType(required, scope, out part), scope, out formed);
-            completion = Meet(Meet(completion, part), formed);
+            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.NormalizedForm(required, scope, out part);
+            completion = Meet(completion, part);
         }
 
         var contract = constraint.Contract;
         if (contract is not null && IsBoundContractReference(contract))
         {
-            var reference = this.ClassForm(this.NormalizeProofType(contract.Type!, scope, out var part), scope, out formed);
-            completion = Meet(Meet(completion, part), formed);
+            var reference = this.NormalizedForm(contract.Type!, scope, out var part);
+            completion = Meet(completion, part);
             contract = ReferenceEquals(reference, contract.Type) ? contract : this.BoundContractReference(reference);
         }
 
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) && ReferenceEquals(contract, constraint.Contract) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
+    }
+
+    // J1's one reading of a proposition's Type (SPEC 8.3.1's normalized complete Types): normalized in the scope, a completed projection
+    // interpreted (8.2.3, NormalizeProofType), then its class's form in the scope's view (ClassForm); the meet of both Completions (W1).
+    private BoundType NormalizedForm(BoundType type, BindingScope scope, out Completion completion)
+    {
+        var form = this.ClassForm(this.NormalizeProofType(type, scope, out completion), scope, out var formed);
+        completion = Meet(completion, formed);
+        return form;
     }
 
     // A proof's Type with its parameter identities substituted and its projections' images formed in the scope (proofParts' query).
