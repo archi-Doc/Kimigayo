@@ -566,7 +566,8 @@ public sealed partial class MirBuildTest
 
     // SPEC 22.10.4, 14.10.3 (PLAN G410; DECISIONS R4-M62): a $tryWrite's writer is evaluated first; one of Type Never is the Never value,
     // which its status and writes take as it is, so its writes and embedded expressions are built in their order where only the checks
-    // continue, and A1 checks them as with a real writer, and its result, a call's, is placed. Each row: the parameters, the statements
+    // continue, and A1 checks them as with a real writer, and its result, a call's, is placed; the last row's real writer (`w`, a
+    // `uniq/Utf8Writer` parameter) has its writes built and checked the same way. Each row: the parameters, the statements
     // around the write (WRITE), its writer and literal, then A1's problems; the MIR layer observes the rule, the body's write calls and A1's
     // records (fail-before: the builder went to the result at the Never writer, building no write, so A1 reported nothing at b or u and
     // UninitializedPlace_Kd at r). Dev's located Unsupported_Kd at `<formatting>`, which G410's Binding half removes, is not compared.
@@ -577,7 +578,7 @@ public sealed partial class MirBuildTest
     [InlineData("", "let b = Box.init()\n    _ = WRITE\n    return 0", "do => return 7", "\\(b)", "")]
     [InlineData("", "let r = WRITE\n    match r\n        .Ok(_) => return 1\n        .Err(_) => return 2", "do => return 7", "\\(42)", "")]
     [InlineData("w: uniq/Utf8Writer", "let b = Box.init()\n    _ = WRITE\n    return 0", "w", "\\(b)x\\(b)", "")]
-    public void ANeverWritersWritesAreBuiltForTheChecks(string parameters, string statements, string writer, string literal, string problems)
+    public void ATryWritesWritesAreBuiltWithANeverOrARealWriter(string parameters, string statements, string writer, string literal, string problems)
     {
         var c = Compile("struct Box\n    Self is Utf8Format\n    public init() => ()\n" +
             "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(writer, \"v\")\n" +

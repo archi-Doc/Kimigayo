@@ -360,7 +360,8 @@ try {
     ($foreignManifest.externalDeclarations | Where-Object symbol -ceq 'read_total').symbol = 'missing_foreign_symbol' # The pair states its declarations.
     $foreignManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
     $output = Invoke-Kimi @('build', '--Manifest', $manifestPath) 1
-    if (-not $output.Contains('missing_foreign_symbol') -or -not $output.Contains('lld-link:')) { throw "Expected link failure: $output" }
+    if (-not $output.Contains("Native function 'missing_foreign_symbol' is imported from codec, which does not define 'missing_foreign_symbol'.") -or
+        $output.Contains('lld-link:')) { throw "Expected the dependency step's failure: $output" }
     if ((Get-FileHash -LiteralPath $previousExecutable).Hash -cne $previousHash) { throw 'A failed link replaced the previous executable' }
     $failedRecord = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($manifestPath, '.build.json')) -Raw | ConvertFrom-Json
     if ($failedRecord.status -cne 'incomplete') { throw 'A failed manifest build retained success' }

@@ -124,8 +124,7 @@ public sealed partial class Binding
 
     // SPEC 8.6.1: a conformance's Contract `candidate` is a candidate of the selection by `contract`'s declaration with `reference` (none: a
     // query by declaration) when it is of that declaration and, for a bound reference, its reference is `reference` as written or,
-    // instantiated for `receiver`, identical with it in `scope` (NamesReference, the judge's). The selection's one admission test, which
-    // SpecifiesContract reads for a path's Contracts.
+    // instantiated for `receiver`, identical with it in `scope` (NamesReference, the judge's). The selection's one admission test.
     private bool IsSelectionCandidate(BindingSymbol candidate, BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site)
         => ReferenceEquals(candidate.Declaration, contract.Declaration) && (reference is null || ReferenceEquals(candidate.Type, reference) ||
             (candidate.Type is { } formal && this.NamesReference(formal, receiver, reference, scope, site)));
@@ -579,9 +578,14 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[this.nodes[n]];
+            // PLAN G651 a2 (C1, BU-161; IMPL 21.3.2): the element's checks form the pairs and the members' signatures in a site frame at
+            // its owner where none is open (the agreement's proofs and the member loop's record name it), so a Type past the limit formed
+            // there is refused at the owner.
+            var site = this.OpenQuerySite(scope.Owner);
             this.ValidateAssociatedOverlapAgreement(scope); // SPEC 8.2.3's premise error is the identity classes' (Binding.TypeIdentity).
             if (scope.Owner is not ContractKoto contract || contract.BoundSymbol!.Contract is not { } shape)
             {
+                this.CloseQuerySite(site);
                 continue;
             }
 
@@ -671,6 +675,8 @@ public sealed partial class Binding
                     this.Fail(contract, BindingFailure.Access);
                 }
             }
+
+            this.CloseQuerySite(site);
         }
     }
 

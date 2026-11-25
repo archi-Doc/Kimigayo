@@ -359,11 +359,15 @@ public sealed partial class InstanceCollectorTest
                 },
                 {
                     "virtualClause", VirtualBase + Slot + "\n        T is Missing\n        return value@follow\n" + Create,
-                    "InvalidConstraint_Kd UnresolvedBinding_Kd TransferRequired_Kd", string.Empty // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the virtual's record over the override's unresolved `T is Missing` goes; with PLAN G1071 gate 1 (F's C2 ruling 308) the failed definition's body keeps TransferRequired_Kd at `value@follow`, an independent failure as in virtualBlock (ruling 301, SPEC 23.1.2)
+                    "InvalidConstraint_Kd UnresolvedBinding_Kd", string.Empty // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the virtual's record over the override's unresolved `T is Missing` goes. R7-C2c2 c2-5b2 (F's CC-27 (2), superseding C2 rulings 301/308 for this form; SPEC 8.3.3): TransferRequired_Kd at `value@follow` goes, a dependent (AGENTS rule W): the Copy proof's walk reads the failed premise `T is Missing` (reported), so its open answer rests; before, a walk kept past the limit answered it, depending on who asked first
+                },
+                {
+                    "vclause-nomiss", VirtualBase + Slot + "\n        return value@follow\n" + Create,
+                    "TransferRequired_Kd", string.Empty // R7-C2c2 c2-5b2 (F's CC-27 (2)): virtualClause's twin without `T is Missing`: `T is Owned` grants no Copy (SPEC 8.7.1), so the open answer is the independent TransferRequired_Kd at `value@follow` (5:16)
                 },
                 {
                     "virtualBlock", "contract Marker\n" + VirtualBase + "    Self is Marker when T is Missing\n    " + Slot + " => value@follow\n" + Create,
-                    "InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd TransferRequired_Kd", string.Empty // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the two `Self` records go (dependents); TransferRequired_Kd at `value@follow` is an independent failure dev's whole-environment rest hid (a gain, SPEC 23.1.2)
+                    "InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd", string.Empty // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the two `Self` records go (dependents). R7-C2c2 c2-5b2 (F's CC-27 (2), as virtualClause): TransferRequired_Kd at `value@follow` goes, a dependent of the failed premise `T is Missing` the Copy proof's walk reads
                 },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", string.Empty },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", string.Empty },

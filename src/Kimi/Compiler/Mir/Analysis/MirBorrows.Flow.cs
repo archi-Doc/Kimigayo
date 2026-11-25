@@ -36,7 +36,7 @@ internal sealed partial class MirBorrows
 
     // The entries of a location on the state: a statement's storage end, or its rvalue's value stored into its Place after the Moves it
     // makes; a Call's.
-    private void Plan(ulong[] state, int block, int index, bool checks)
+    private void Plan(ulong[] state, int block, int index)
     {
         (this.entryCount, this.planLocation, this.mustValue, this.mustKept, this.limit) = (0, this.Location(block, index), 0, 0, false);
         this.eStores[this.planLocation] = (0, 0);
@@ -51,11 +51,11 @@ internal sealed partial class MirBorrows
         {
             if (data.Terminator.Kind == MirTerminatorKind.Call)
             {
-                this.Call(state, data.Terminator, checks);
+                this.Call(state, data.Terminator);
             }
             else if (data.Terminator.Kind == MirTerminatorKind.Drop)
             {
-                this.Destroyed(state, data.Terminator, block, checks);
+                this.Destroyed(state, data.Terminator, block);
             }
 
             return;

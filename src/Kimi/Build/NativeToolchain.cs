@@ -5,21 +5,22 @@
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the compiler's Tatara: linked into
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root, and whose dependency step
-// reads each staged library's facts through Tatara's inspect, kept per process by the staged hash (LinkInputs), and fails an ambiguous
-// native dependency, or one inconsistent with its declared Kind (IMPL 20.4), as the build's input failure before the link
-// (LinkAmbiguity, Kind); the built Application's run;
+// reads each staged library's facts (a program's input: Tatara's inspection of its staged copy; a compiler supply file: its stored
+// inspection, its catalog facts read at adoption, which must name the staged hash; SupplyFacts), kept per process by the staged hash
+// (LinkInputs), and fails an ambiguous native dependency, or one inconsistent with its declared Kind (IMPL 20.4), as the build's input
+// failure before the link (LinkAmbiguity, Kind); the built Application's run;
 // toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
-// its supplies' bytes against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
-// toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is, a
-// staged copy that still has its catalog hash reused without copying the resource; ToolchainIdentity, with Kernel32Imports' DLL and
-// generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The development toolchain's tools and files are
-// checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
+// its supplies' bytes against the catalog and their stored facts against those bytes), which reads no directory and runs no tool, so
+// no code here launches an LLVM tool; the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded
+// and staged as a program's input is, a staged copy that still has its catalog hash reused without copying the resource;
+// ToolchainIdentity, with Kernel32Imports' DLL and generator names); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
+// development toolchain's tools and files are checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project,
 // Compilation.Diagnostics and Compilation.TargetTriple (its row), and its result Compilation.Generated (GeneratedModule: the output
-// kind, the required libraries, the external declarations, each an ExternalFunction read for its Symbol and DllImport, the runtime's
-// imports, symbols, and the module's entry; R9-B1, LinkAmbiguity, the Tatara plan's B7b7); the enum OutputKind, which project
+// kind, the required libraries, the external declarations, each an ExternalFunction read for its Symbol and Library, the runtime's
+// imports, each its Symbol and Library, and the module's entry; R9-B1, LinkAmbiguity, the Tatara plan's B7b7, NamedProvider); the enum OutputKind, which project
 // configuration states too (ProjectFile.OutputKind); the target table's rows (TargetProfile: a pair's row is its compilation's at
 // publication and its manifest's target's at the native build; a project's paths are windows-x64's until B7b8); CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
@@ -56,9 +57,10 @@
 // Tatara's failures (design A2 §5) are the toolchain's: a Tatara that does not load or does not match an InvalidDataException naming the
 // remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
 // "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
-// The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
-// toolchain verify states the catalog's invariant (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
-// toolchain's InvalidDataException.
+// The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault; a
+// malformed stored facts file (Tatara.Inspection.Read's InvalidOperationException) is one as well.
+// toolchain verify states the catalog's invariant (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256, or whose
+// stored facts name other bytes, is the toolchain's InvalidDataException.
 
 using System.ComponentModel;
 using System.Text;

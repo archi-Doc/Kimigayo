@@ -11,12 +11,13 @@
 // linux-x64 row's: c, musl 1.2.6's startup files and C library (Tatara B7b4), read from the embedded Linux record
 // (src/backend/linux-x64/profile.json, the resource Kimi.LinuxBackendProfile.json), whose files are listed in link order.
 // Input: the embedded records and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
-// self-check (P13). Invariants: the backend record matches the Windows row (its name; its library names a reserved supply, whose
-// symbols are its provided symbols) and pins a major.minor.patch LLVM version; the Linux record matches the Linux row (its name; its
-// library names a reserved supply, whose symbols are its provided symbols) and places each file start, library or end (ReadFile); the
-// supplies are the rows' reserved supplies in the rows' order, each row's in its order, else the type initializer throws
-// InvalidDataException; each resource's SHA-256 is its file's (NativeToolchainTest's catalog row; not checked at a start, stated by
-// toolchain verify).
+// self-check (P13), and each file's stored facts, the resource beside its own (SupplyFile.OpenFacts; SupplyFacts). Invariants: the
+// backend record matches the Windows row (its name; its library names a reserved supply, whose symbols are its provided symbols) and
+// pins a major.minor.patch LLVM version; the Linux record matches the Linux row (its name; its library names a reserved supply, whose
+// symbols are its provided symbols) and places each file start, library or end (ReadFile); the supplies are the rows' reserved supplies
+// in the rows' order, each row's in its order, else the type initializer throws InvalidDataException; each resource's SHA-256 is its
+// file's (NativeToolchainTest's catalog row; not checked at a start, stated by toolchain verify); a file's facts' first line is its
+// bytes' SHA-256 and their body Tatara's inspection of them (NativeToolchainTest's facts row; not checked at a start).
 // Must not be read by check (Binding, project configuration, LSP) or code generation: those read TargetProfile.
 
 using System.Text.Json;
@@ -145,7 +146,8 @@ public static class ToolchainIdentity
 internal sealed record CompilerSupply(TargetProfile Row, TargetSupply Supply, (string Name, string Value)[] Entry, SupplyFile[] Files);
 
 /// <summary>One embedded file of a compiler's supply: its catalog name, whose extension its staged copy keeps, its embedded resource,
-/// that resource's SHA-256, the catalog's, and its place on an ELF link line, which only the ELF link writer reads.</summary>
+/// that resource's SHA-256, the catalog's, and its place on an ELF link line, which only the ELF link writer reads; its stored facts,
+/// Tatara's inspection of its bytes read at adoption, are the resource of its resource's name and <c>.facts</c>.</summary>
 /// <param name="Name">The file's catalog name.</param>
 /// <param name="Resource">The embedded resource holding the file's bytes.</param>
 /// <param name="Sha256">The catalog's SHA-256 of those bytes.</param>
@@ -155,6 +157,10 @@ internal sealed record SupplyFile(string Name, string Resource, string Sha256, S
     /// <summary>Opens the file's bytes.</summary>
     /// <returns>The embedded resource's stream, which the caller disposes.</returns>
     internal Stream Open() => typeof(SupplyFile).Assembly.GetManifestResourceStream(this.Resource)!;
+
+    /// <summary>Opens the file's stored facts, in <c>Tatara.Inspection</c>'s stored form.</summary>
+    /// <returns>The embedded resource's stream, which the caller disposes.</returns>
+    internal Stream OpenFacts() => typeof(SupplyFile).Assembly.GetManifestResourceStream(this.Resource + ".facts")!;
 }
 
 /// <summary>A compiler's supply file's place on an ELF link line (design §3.11; the catalog's <c>start</c>, <c>library</c> and
