@@ -131,11 +131,12 @@ public class CaptureDiagnosticTest
 
     // SPEC 7.7.2, 23.1.1, 23.1.2 (PLAN G1129): a repeated name, or a parameter that repeats an entry, is its own record beside another
     // entry's located limit, in either order of the entries (the limit took the Closure's one slot first and hid the repeat). The limit
-    // is x's interim row (2) (PremiseTarget, F ruling 32; a pair-layer Parameter is captured and reaches none).
+    // is x's interim row (2) (PremiseTarget, F ruling 32; a pair-layer Parameter is captured and reaches none); a body reads k in its own
+    // statement and adds only the filed row's `x + 0`, so no failure the rows do not test (F ruling 33).
     [Theory]
     [InlineData("    let k: i32 = 1\n    var g = func [x, k, k] () -> i32 => x + 0\n    return g()\n", "[x, k, ", "func [x, ")]
-    [InlineData("    let k: i32 = 1\n    var g = func [x, k] (k: i32) -> i32 => x + k\n    return g(1)\n", "] (", "func [x, ")]
-    [InlineData("    let k: i32 = 1\n    var g = func [k, x, k] () -> i32 => x + k\n    return g()\n", "[k, x, ", "func [")]
+    [InlineData("    let k: i32 = 1\n    var g = func [x, k] (k: i32) -> i32\n        _ = k\n        return x + 0\n    return g(1)\n", "] (", "func [x, ")]
+    [InlineData("    let k: i32 = 1\n    var g = func [k, x, k] () -> i32\n        _ = k\n        return x + 0\n    return g()\n", "[k, x, ", "func [")]
     public void ARepeatStandsBesideAnEntrysLimit(string body, string beforeRepeat, string beforeEntry)
     {
         var source = PremiseTarget + body + "public func main() -> ()\n    Console.writeLine(\"p\")\n";
