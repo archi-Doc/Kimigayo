@@ -148,8 +148,9 @@ public partial class KimiLibraryShapeTest
         // `Storage.clockFailure` and `Time.readCounterFrequency`; O-412 (1)'s Array.sort(by:), which destroys `by` inside the operation;
         // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970; OSF2's Raw.writeVolatile,
         // whose pair Raw.readVolatile is cataloged for its NoStore row); the Linux row's library adds Time.monotonicNanoseconds (B7b6).
-        // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
-        Assert.Equal(122, KimiLibraryCatalog.Entries.Length);
+        // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`. The Tatara plan's B9a adds Platform and Boot, on
+        // every target.
+        Assert.Equal(124, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             Assert.NotNull(c.Library.GetSymbol(entry.Id));
@@ -162,7 +163,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf(c));
         }
 
-        Assert.Equal((122, unnamed), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((124, unnamed), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -582,6 +583,8 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.PositionRange, "public contract PositionRange: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\neffect Utf8Format.format confined\nfunc tryResolve(self: Self, length: isize) -> Option<ResolvedRange>")]
     [InlineData(KimiDeclarationId.Utf8Format, "public contract Utf8Format\nfunc format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>")]
     [InlineData(KimiDeclarationId.BufferWriter, "public contract BufferWriter\nfunc reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
+    // SPEC 22.4.5: the requirements in declaration order, the order the startup check publishes and the runtime's adapters read.
+    [InlineData(KimiDeclarationId.Platform, "public contract Platform\nSelf is Copy\nfunc start(boot: Boot) -> Self\nfunc mapPages(self: uniq/Self, bytes: isize) -> raw/u8\nfunc releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64\nfunc write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64\nfunc clock(self: uniq/Self) -> i64\nfunc terminate(self: uniq/Self, status: i32) -> Never")]
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
@@ -616,6 +619,9 @@ public partial class KimiLibraryShapeTest
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
     [InlineData("Text.InvalidUtf8", "public struct InvalidUtf8")]
+    // SPEC 6.1, 22.1: no Field initializer, so neither has a constructor; only the runtime creates a Boot (IMPL 21.6.2).
+    [InlineData("Boot", "public struct Boot\npublic let directMapOffset: usize\npublic let regions: raw/raw/Boot.Region\npublic let regionCount: isize")]
+    [InlineData("Boot.Region", "public struct Region\npublic let address: u64\npublic let length: u64\npublic let kind: u64")]
     public void RecordFieldsAreFixed(string path, string shape)
     {
         var c = Library.Value;
@@ -691,6 +697,9 @@ public partial class KimiLibraryShapeTest
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
     [InlineData("Storage.BufferRepr", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
+    // IMPL 21.1.2, 21.6.2: the C layouts the boot template stores the loader's answers at.
+    [InlineData("Boot", 24, "directMapOffset", 0, "regions", 8, "regionCount", 16)]
+    [InlineData("Boot.Region", 24, "address", 0, "length", 8, "kind", 16)]
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {
         var (layout, type) = Layout(path);

@@ -80,6 +80,58 @@ public class ContractBindingTest
         "    return need(v) + need(s.0)\npublic func main() -> ()\n    let p = dup<S1>(P.init(x: 3))\n    let n = read<S1>(S3.init(5))\n" +
         "    let m = cap<S1>(P.init(x: 4))\n    if p.0.x + p.1.x == 6 and n == 10 and m == 2 => Console.writeLine(\"ok\")\n    else => Console.writeLine(\"bad\")\n";
 
+    // The Tatara plan's B9 owner question (design §5's Kernel): Board.kimi without its comments, its Contract members `public` (SPEC
+    // 8.6.3's Access row, 9.4.6), before `terminate`; BoardTerminate is `terminate`.
+    private const string Board = """
+        struct Board
+            Self is Copy
+            Self is Platform
+            var next: usize
+            var end: usize
+            var screen: raw/u16
+            var cell: isize
+            var ticks: i64
+
+            init(next: usize, end: usize, screen: raw/u16)
+                self.next = next
+                self.end = end
+                self.screen = screen
+                self.cell = 0
+                self.ticks = 0
+
+            public func start(boot: Boot) -> Self
+                let window = boot.directMapOffset
+                return Board.init(window + 0x0100_0000, window + 0x0300_0000, (window + 0xB_8000)@raw/u16)
+
+            public func mapPages(self: uniq/Self, bytes: isize) -> raw/u8
+                if self.end - self.next < bytes@usize
+                    return null
+                let run = self.next
+                self.next += bytes@usize
+                return run@raw/u8
+
+            public func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64 => 0
+
+            public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64
+                let bytes = text.bytes()
+                var i: isize = 0
+                while i < bytes.length
+                    if bytes[i] == 10
+                        self.cell = (self.cell / 80 + 1) * 80
+                    else
+                        unsafe => self.screen[self.cell] = bytes[i]@u16 + 0x0700
+                        self.cell += 1
+                    i += 1
+                return 0
+
+            public func clock(self: uniq/Self) -> i64
+                self.ticks += 1
+                return self.ticks
+
+        """;
+
+    private const string BoardTerminate = "    public func terminate(self: uniq/Self, status: i32) -> Never\n        loop => ()\n";
+
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
     {
@@ -1244,6 +1296,28 @@ public class ContractBindingTest
 
         (BindingSymbol Type, BindingSymbol Contract) Named(string type, string contract)
             => identities.Where(x => x.Type.Name == type && x.Contract.Name == contract).Select(static x => (x.Type, x.Contract)).Single();
+    }
+
+    // SPEC 8.4-8.6, 22.4.5 (the Tatara plan's B9a): the Kernel's Board (Hello.kimi's body beside Board.kimi) conforms to the library's
+    // Platform on windows-x64, whose startup check does not read it yet (B9c1); without `terminate` (design §5 row 5), the clause's
+    // one missing-requirement record (SPEC 8.6.3) and nothing else.
+    [Theory]
+    [InlineData(BoardTerminate, "")]
+    [InlineData("", "MissingContractImplementation_Kd")]
+    public void AProgramsBoardConformsToTheLibrarysPlatform(string terminate, string code)
+    {
+        var c = CompilationTestHelper.ParseSuccess("Console.writeLine(\"Hello\")\n", "Hello.kimi");
+        c.Kotonoha.AddSource(new SourceDocument("Board.kimi", Board + terminate));
+        Assert.Equal(code.Length == 0, c.Bind().IsComplete);
+        var conformance = c.Binding.GetConformance(Container(c, "Board").TypeOf()!, c.Library.GetSymbol(KimiDeclarationId.Platform)!);
+        if (code.Length == 0)
+        {
+            Assert.True(Assert.IsType<BoundConformance>(conformance).IsVerified, Describe(c));
+            return;
+        }
+
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal((code, "Self is Platform"), (issue.Code.ToString(), issue.Node.ToString()));
     }
 
     // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.

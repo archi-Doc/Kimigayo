@@ -159,6 +159,11 @@ internal static partial class KimiLibraryCatalog
         // as a Storage keyed by the start and the range's Type (MirBuilder.First), never a Call.
         new(KimiDeclarationId.ViewStart, Form: true),
         new(KimiDeclarationId.RawReadVolatile), // SPEC 5.6: its storage's NoStore row (KimiLibraryCatalog.Rows.cs).
+        // SPEC 22.4.5 (the Tatara plan's decision 30): the platform a freestanding program supplies; Binding's startup check selects it
+        // by this identity.
+        new(KimiDeclarationId.Platform),
+        // SPEC 22.1, IMPL 21.6.2 (decision 31): what the loader described, created only by the runtime.
+        new(KimiDeclarationId.Boot),
     ];
 
     // The public declaration of each linked implementation, by ID; -1 elsewhere.
