@@ -68,6 +68,16 @@ public sealed class TataraExecutorTest : IDisposable
 
     private delegate int ModuleFromAddress(uint flags, IntPtr address, out IntPtr module);
 
+    // TheLinuxRowsModulesLinkStatically's modules: Hello, Hello ending in an Abort and the allocator program from their committed
+    // sources (tests/linux-elf, B7b9), and B7b6's Stopwatch.
+    public static TheoryData<string, string> LinuxModules => new()
+    {
+        { "Hello", LinuxPair.Program("Hello", "Hello.kimi") },
+        { "Abort", LinuxPair.Program("HelloAbort", "HelloAbort.kimi") },
+        { "Heap", HeapRuntimeTest.AllocatorProgram },
+        { "Stopwatch", TimeLibraryTest.Measured },
+    };
+
     private static string Root => Path.Combine(Repository.Root, "toolchain");
 
     private static string? Corpus => Environment.GetEnvironmentVariable("KIMI_TATARA_CORPUS");
@@ -283,10 +293,7 @@ public sealed class TataraExecutorTest : IDisposable
     // symbol, and linked by ld.lld at the row's entry into a static executable. Linux runs them under WSL (B7b2a's before its Ready, the
     // Stopwatch at B7b7), not here (N7).
     [Theory]
-    [InlineData("Hello", "::Kimi.Console.writeLine(\"Hello, world!\")")]
-    [InlineData("Abort", "::Kimi.Console.writeLine(\"Hello, world!\")\n$abort(\"x\")")]
-    [InlineData("Heap", HeapRuntimeTest.AllocatorProgram)]
-    [InlineData("Stopwatch", TimeLibraryTest.Measured)]
+    [MemberData(nameof(LinuxModules))]
     public void TheLinuxRowsModulesLinkStatically(string name, string source)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
@@ -302,9 +309,12 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
-    // Two emits and links of the probe in two folders give equal objects and executables (§6.1).
-    [Fact]
-    public void ElfBuildsInTwoFoldersAreEqual()
+    // Two emits and links of the probe in two folders give equal objects and executables (§6.1), at O0 and O2 (the Tatara plan's B7b8,
+    // C-560 N8).
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void ElfBuildsInTwoFoldersAreEqual(int level)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var probe = this.LinuxProbe("probe", string.Empty);
@@ -313,7 +323,7 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var folder = Directory.CreateDirectory(Path.Combine(this.directory, "elf" + i)).FullName;
             var (obj, exe) = (Path.Combine(folder, "probe.o"), Path.Combine(folder, "probe"));
-            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, probe, obj, 2));
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, probe, obj, level));
             Tatara.Instance.Link(LinuxContext, ["ld.lld", .. ElfLinkArguments(obj, exe, [])]);
             products[i] = Hash(obj) + Hash(exe);
         }
@@ -344,7 +354,7 @@ public sealed class TataraExecutorTest : IDisposable
             var manifest = Manifest(rows[i % 2]);
             await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
             var built = ArtifactPaths.Create(ArtifactPaths.IrOf(manifest), Level(manifest), TargetProfile.Windows);
-            var products = ArtifactFiles.Hash(built.Stem + ".obj") + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
+            var products = ArtifactFiles.Hash(built.Object) + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
         }

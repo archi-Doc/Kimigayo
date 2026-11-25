@@ -1,0 +1,2 @@
+::Kimi.Console.writeLine("Hello, world!")
+$abort("x")

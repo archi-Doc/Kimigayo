@@ -852,7 +852,7 @@
 
   + Name="TestTargetUnavailable_Kd"
     Category="Input"
-    Message="The tests of this project are not checked: testing requires a configured Windows x64 target"
+    Message="The tests of this project are not checked: testing requires a target with an executable profile"
 
   + Name="DocumentDesynchronized_Kd"
     Category="Input"
