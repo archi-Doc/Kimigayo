@@ -27,6 +27,14 @@ public sealed partial class Binding
     // independent failure of another entry.
     private Dictionary<Koto, CaptureListFailure>? captureRepeats;
 
+    // The walk that finds a capture's first occurrence in an omitted-list Closure (CaptureUse), kept so a warm judgment allocates none.
+    private CaptureUse? captureUse;
+
+    // SPEC 7.7.2: the span a capture site shows for the capture of `name`: at a Closure with a written list, its entry of that name;
+    // at a use, the use itself. Null for a list without such an entry.
+    private static SourceSpan? CapturedAt(Koto site, string name)
+        => site is FunctionKoto { Captures: not null } list ? CaptureEntryOf(list, name)?.Span : site.Span;
+
     // SPEC 7.7.2: an anonymous function without a capture list never captures contextual self or a setter's value; its use is
     // the location, and the declaration of the binding is related. In a later default of the receiver's function, an entry can
     // neither move self nor keep a new borrow of it (SPEC 7.2.3), so only a Copy that holds no borrow, [self], can be offered.
@@ -86,7 +94,7 @@ public sealed partial class Binding
                     store,
                     requirement,
                     code,
-                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference{this.FailingCaseNote(type, node)}",
+                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference{this.FailingCaseNote(type, this.BareAcquisition(type, node, out _))}",
                     evidence: [name],
                     span: capture.At,
                     repairs:
@@ -194,8 +202,8 @@ public sealed partial class Binding
     private void FailLateHelperSource(FunctionKoto closure, BoundCapture capture, BoundOrigin carrier, BoundOrigin helper)
     {
         var name = capture.Environment.Name;
-        var captured = closure.Captures is not null ? CaptureEntryOf(closure, name)?.Span : CaptureUse.Of(closure, capture.Environment);
-        if (this.LocalRegionSourceUse(carrier, helper)?.Value is not { } late || captured is not { } at)
+        var site = closure.Captures is not null ? closure : (this.captureUse ??= new()).Find(closure, capture.Environment);
+        if (this.LocalRegionSourceUse(carrier, helper)?.Value is not { } late || site is null || CapturedAt(site, name) is not { } at)
         {
             // The capture site judged every carrier but a region's later source, and CarrierOf found this one through the walk that finds
             // its use; the storage entry exists because of its entry or first occurrence. A broken contract, without recovery.
@@ -226,11 +234,14 @@ public sealed partial class Binding
     // when every other entry is valid, and its facts, null for an entry without facts, such as an unresolved name.
     private readonly record struct CaptureListFailure((int Start, int Count) Repeats, BindingFailure Failure, CaptureFailure? Entry);
 
-    // The first occurrence of an environment binding in its omitted-list Closure, in source order: a name that resolves to it, or the
-    // entry or first occurrence of the nested Closure's binding that it forwards.
-    private sealed class CaptureUse(BindingSymbol environment) : KotoVisitor
+    // The first occurrence of an environment binding in its omitted-list Closure, in source order: a name that resolves to it, or, for
+    // a nested Closure that forwards it, that Closure when its list is written (CapturedAt narrows it to the entry) or else the nested
+    // binding's first occurrence. One kept walk (Binding.captureUse): Find saves and restores the binding and the found node around a
+    // nested Closure's walk, so the walk is reentrant and allocates nothing.
+    private sealed class CaptureUse : KotoVisitor
     {
-        private SourceSpan? found;
+        private BindingSymbol? environment;
+        private Koto? found;
 
         public override void Visit(Koto node)
         {
@@ -244,29 +255,32 @@ public sealed partial class Binding
                 for (var i = 0; nested.ClosureStorage is { } plan && i < plan.Storage.Count && this.found is null; i++)
                 {
                     var forwarded = plan.Storage[i];
-                    if (ReferenceEquals(forwarded.Source, environment))
+                    if (ReferenceEquals(forwarded.Source, this.environment))
                     {
-                        this.found = nested.Captures is not null ? CaptureEntryOf(nested, forwarded.Environment.Name)?.Span : Of(nested, forwarded.Environment);
+                        this.found = nested.Captures is not null ? nested : this.Find(nested, forwarded.Environment);
                     }
                 }
 
                 return;
             }
 
-            if (ReferenceEquals(node.BoundSymbol, environment))
+            if (ReferenceEquals(node.BoundSymbol, this.environment))
             {
-                this.found = node.Span;
+                this.found = node;
                 return;
             }
 
             node.VisitChildren(this);
         }
 
-        internal static SourceSpan? Of(FunctionKoto closure, BindingSymbol environment)
+        internal Koto? Find(FunctionKoto closure, BindingSymbol environment)
         {
-            var finder = new CaptureUse(environment);
-            closure.VisitChildren(finder);
-            return finder.found;
+            var (savedEnvironment, savedFound) = (this.environment, this.found);
+            (this.environment, this.found) = (environment, null);
+            closure.VisitChildren(this);
+            var found = this.found;
+            (this.environment, this.found) = (savedEnvironment, savedFound);
+            return found;
         }
     }
 }

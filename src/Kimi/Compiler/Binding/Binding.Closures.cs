@@ -502,20 +502,22 @@ public sealed partial class Binding
         // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list. The other entries are
         // still bound, and the first that fails on its own is reported beside the repeats (SPEC 23.1.2).
         var repeats = this.RepeatedCaptures(function, captures);
-        foreach (var capture in captures)
+        for (var i = 0; i < captures.Length; i++)
         {
-            if (this.RepeatsEarlierEntry(repeats, capture))
+            var capture = captures[i];
+            if (RepeatedEntry(captures, i) >= 0)
             {
-                continue;
+                continue; // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
             }
 
-            var source = this.Lookup(capture.Name, scope.Parent!, function);
-            if (source is not null)
+            if (this.Lookup(capture.Name, scope.Parent!, function) is not { } source)
             {
-                this.QueryValueType(source);
+                this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null); // An unresolved name, without facts.
+                return DeclState.Error;
             }
 
-            if (source is not null && Receiver(source) is not null)
+            this.QueryValueType(source);
+            if (Receiver(source) is not null)
             {
                 // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                 // which self is reached only through its Fields (Receiver).
@@ -523,15 +525,17 @@ public sealed partial class Binding
                 return DeclState.Error;
             }
 
-            if (source is not null && this.HelperCarrier(function, source) is { } helper)
+            if (this.HelperCarrier(function, source) is { } helper)
             {
                 this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
                 return DeclState.Error;
             }
 
-            if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
+            // SPEC 23.1.2: no environment holds a source whose Type failed (QueryValueType demanded it above, so Capture would bind
+            // nothing more); the entry rests on it.
+            if (source.Type is null)
             {
-                if (source is { Type: null } && repeats.Count == 0)
+                if (repeats.Count == 0)
                 {
                     // The literal rests on the source's TypeSource: Error on a recorded failure, which derives the entry; not ready on a
                     // pending source (F's G230H-10 C1).
@@ -541,7 +545,13 @@ public sealed partial class Binding
                 }
 
                 // A source whose binding failed adds nothing to the repeats.
-                this.FailCaptureEntry(function, repeats, source is { Type: null } ? BindingFailure.None : BindingFailure.Capture, null);
+                this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
+                return DeclState.Error;
+            }
+
+            if (this.Capture(function, source, scope, capture) is not { } environment)
+            {
+                this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
                 return DeclState.Error;
             }
 

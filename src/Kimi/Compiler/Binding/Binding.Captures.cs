@@ -51,6 +51,22 @@ public sealed partial class Binding
     private static bool IsRuntimeBinding(BindingSymbol symbol)
         => symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture;
 
+    // SPEC 7.7.2: the earlier entry of a written list whose name its `i`-th entry repeats, the first such; -1 for none. The list's one
+    // repeat rule: the repeats read it, and the entries' walk skips a later entry by it (it declares nothing); it reads the written
+    // names only, never an entry's check.
+    private static int RepeatedEntry(CaptureKoto[] captures, int i)
+    {
+        for (var j = 0; j < i; j++)
+        {
+            if (captures[j].Name == captures[i].Name)
+            {
+                return j;
+            }
+        }
+
+        return -1;
+    }
+
     // SPEC 7.7.2 with 9.3 (G812 ruling 182): whether a body at `literal` can capture a binding of `scope`: a name whose first binding
     // visible at the literal (VisibleAt, the lookup's rule) is a runtime binding. It answers for every use in the body: a binding visible
     // at the literal's start is visible at each of them, and one not visible there at none. Read by TypedByHeader.
@@ -85,41 +101,23 @@ public sealed partial class Binding
         for (var i = 0; i < captures.Length; i++)
         {
             var name = captures[i].Name;
-            var repeated = false;
-            for (var j = 0; j < i && !repeated; j++)
+            if (RepeatedEntry(captures, i) is >= 0 and var earlier)
             {
-                if (captures[j].Name == name)
-                {
-                    this.captureRepeatRows.Add(new(captures[i].Span, captures[j].Span, name, false));
-                    repeated = true;
-                }
+                this.captureRepeatRows.Add(new(captures[i].Span, captures[earlier].Span, name, false));
+                continue;
             }
 
-            for (var p = 0; p < function.Parameters.Count && !repeated; p++)
+            for (var p = 0; p < function.Parameters.Count; p++)
             {
                 if (function.Parameters[p].InternalName == name)
                 {
                     this.captureRepeatRows.Add(new(function.Parameters[p].ExternalNameSpan, captures[i].Span, name, true));
-                    repeated = true;
+                    break;
                 }
             }
         }
 
         return (start, this.captureRepeatRows.Count - start);
-    }
-
-    // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
-    private bool RepeatsEarlierEntry((int Start, int Count) repeats, CaptureKoto capture)
-    {
-        for (var i = repeats.Start; i < repeats.Start + repeats.Count; i++)
-        {
-            if (!this.captureRepeatRows[i].Parameter && this.captureRepeatRows[i].Later == capture.Span)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     // SPEC 15.6.5, 7.7.2, 15.4.4 (R7-O2 O2-H; the owner's O-487 (a)): the scope in which every binding of a literal's written header is
@@ -350,11 +348,20 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.2: a use, in an omitted-list Closure, of a binding of an enclosing activation captures it as the Closure's environment
-    // binding; null when no environment holds it (a named function, an explicit list, a binding Capture refuses, or a value that carries
-    // the helper borrow, whose use fails as a contextual binding's does, SPEC 16.3.1); the binding itself when its Type failed.
+    // binding; the binding itself when its Type failed. Null when no environment holds it (a named function, an explicit list, a binding
+    // Capture refuses, or a value that carries the helper borrow, whose use fails as a contextual binding's does, SPEC 16.3.1): the use's
+    // one record point, where its refusal is recorded.
     private BindingSymbol? CaptureOuterUse(Koto use, BindingSymbol symbol, BindingScope scope)
-        => scope.Function is { IsAnonymous: true, Captures: null } closure && !this.FailHelperUse(closure, symbol, use)
-            ? this.Capture(closure, symbol, this.scopes[closure]) : null;
+    {
+        if (scope.Function is { IsAnonymous: true, Captures: null } closure && !this.FailHelperUse(closure, symbol, use) &&
+            this.Capture(closure, symbol, this.scopes[closure]) is { } capture)
+        {
+            return capture;
+        }
+
+        this.Fail(use, BindingFailure.Capture);
+        return null;
+    }
 
     // SPEC 16.3.1: an omitted list's use of a value that carries the helper borrow fails before the Closure's environment holds it.
     private bool FailHelperUse(FunctionKoto closure, BindingSymbol source, Koto use)
