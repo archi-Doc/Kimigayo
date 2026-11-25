@@ -154,6 +154,14 @@ public sealed partial class RecursiveContractTest
 
     private const string NeedOther = "func needOther<V>(v: ref/V) -> i32\n    V is Other\n    return 0\n";
 
+    // PLAN G1406's programs (artifacts/units/g1406/programs-u2.py, with r7-c25b2's helpers and its review's textOnly): KP's twin with
+    // another associate W that no clause states (KP2), and the callees requiring string or i32.
+    private const string OtherAssociates = "contract KP2\n    associate Next is KP2\n    associate V\n    associate W\n    Self.(KP2).V is string\n    func deep(self: ref/Self) -> ref/Self.(KP2).Next.(KP2).V\n    func deepw(self: ref/Self) -> ref/Self.(KP2).Next.(KP2).W\n";
+
+    private const string TextOnly = "func textOnly<V>(v: ref/V) -> i32\n    V is string\n    return 0\n";
+
+    private const string NeedI32 = "func needI32<V>(v: ref/V) -> i32\n    V is i32\n    return 0\n";
+
     // The Middle's C-313 B1 views (c2-2): AT2 supplies `T.(Tree).Child is AT3`, whose identity clause makes `T.(Tree).Child.(Tree).Alias`
     // identical with `T.(Tree).Child.(Tree).Child`, an AT3 (SPEC 8.2.3), so it is Copy; the view has no identity premise, so it keeps rows.
     private const string Orders = OrdersHead + "    Self.(Tree).Alias is Self.(Tree).Child\n" + OrdersTail;
@@ -540,6 +548,22 @@ public sealed partial class RecursiveContractTest
     [InlineData("g1407", "f-idl1c", LinkIdentities + "func probe<T>(t: ref/T) -> i32\n    T is KI\n    T.(KI).Next is not Marker\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
     [InlineData("g1407", "f-idand2", ConjunctIdentities + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is KC\n    let v = t.deep()\n    return needMark(v)\n", "")]
     [InlineData("g1407", "h-nop1i", NotPayloads + NeedNotPayload + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is NP\n    let n = t.next()\n    return needNotOP(n)\n", "")]
+
+    // PLAN G1406 (U2; artifacts/units/g1406/plan.md section 3's form C, labelled from SPEC first): the identity judge reads a positive
+    // identity clause at depth (SPEC 8.2.3: the grounds apply to every projection a query needs however deep; 8.3.2 Type identity).
+    // `Self.(KP).V is string` makes V a string two and three links up and through `U is T` (rv-g-tpos2, tpos3, tpos2i), so the overload
+    // requiring it is strictly best (rv-g-ntr2p, 10.1); a written negation of it is contradictory evidence (nts3c-rev, nts2ci-rev, class 1,
+    // as nts2c-rev above), and a use requiring i32 is refuted (ti32-2, 10.1). rv-g-tpos1 (one link) and tw2 (an associate no clause
+    // states: no evidence) are guards.
+    [InlineData("g1406", "rv-g-tpos2", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return textOnly(v)\n", "", Explicit = true)]
+    [InlineData("g1406", "rv-g-ntr2p", PositiveTexts + PickText + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return pickt(v)\n", "", Explicit = true)]
+    [InlineData("g1406", "tpos3", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep3()\n    return textOnly(v)\n", "", Explicit = true)]
+    [InlineData("g1406", "tpos2i", PositiveTexts + TextOnly + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is KP\n    let v = t.deep()\n    return textOnly(v)\n", "", Explicit = true)]
+    [InlineData("guard", "rv-g-tpos1", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.near()\n    return textOnly(v)\n", "")]
+    [InlineData("g1406", "nts3c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32", Explicit = true)]
+    [InlineData("g1406", "nts2ci-rev", PositiveTexts + "func probe<T, U>(t: ref/T) -> i32\n    T is KP\n    U is T\n    U.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T, U>(t: ref/T) -> i32", Explicit = true)]
+    [InlineData("g1406", "ti32-2", PositiveTexts + NeedI32 + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return needI32(v)\n", "NoApplicableOverload_Kd: return needI32(v)", Explicit = true)]
+    [InlineData("guard", "tw2", OtherAssociates + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP2\n    let w = t.deepw()\n    return textOnly(w)\n", "UnprovenConstraint_Kd: return textOnly(w)")]
 
     // SPEC 8.3.2 Contract refinement, 8.4.1, 8.4.3 (R7-C2c2 c2-5a; PLAN G402, G837, G849): `T is C<i32>` supplies C's own and
     // inherited Constraints with T for Self and i32 for C's parameter, at every projection a query needs: a clause naming the Contract's
