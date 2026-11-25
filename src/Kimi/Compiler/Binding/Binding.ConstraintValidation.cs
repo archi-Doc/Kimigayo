@@ -662,13 +662,13 @@ public sealed partial class Binding
 
     // PLAN G1278 (SPEC 9.7, 9.7.1, 23.1.2): a constructed Type with clauses is judged once, at its formation site, the node that forms it
     // as its binder publishes (FormedTypeRows: a written occurrence, a `Self` included, or a Dictionary literal, at the occurrence's Type
-    // node); a construction that inferred its target's arguments and an Enum acquisition that inferred an own slot or Origin judge what
-    // they formed. Every other node holding the Type (a declaration, a read, a call result, a Pattern position, an acquisition) carries it
-    // from a site or a call's own proof and is neither judged nor rested.
+    // node); a construction that inferred its target's arguments (its qualifier has no row: ConstructionTargetType writes one only for a
+    // target with no own parameters) and an Enum acquisition that inferred an own slot or Origin judge what they formed. Every other node
+    // holding the Type (a declaration, a read, a call result, a Pattern position, an acquisition) carries it from a site or a call's own
+    // proof and is neither judged nor rested.
     private BoundType? ConstrainedType(Koto node)
         => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
-            !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) &&
-            FormedTypeRows.Contains(this.OccurrenceTypeNode(node)) ? type : null;
+            (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) && FormedTypeRows.Contains(this.OccurrenceTypeNode(node)) ? type : null;
 
     // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
     // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its
