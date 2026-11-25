@@ -40,8 +40,10 @@ using System.Text;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>A foreign function declaration: its C signature named by the symbol's spelling (ExternalName), the external symbol itself,
-/// which the generation result publishes for the link (R9-B1), and DllImport, the import-library form (SPEC 20.4, 22.6).</summary>
-internal readonly record struct ExternalFunction(FunctionAbi Abi, string Symbol, bool DllImport);
+/// which the generation result publishes for the link (R9-B1), DllImport, the import-library form, which only the IR writer reads
+/// (WriteExternals; SPEC 20.4, 22.6), and Library, the import's providing library, which the link reads (Binding's
+/// LibraryImport.Library; IMPL 21.2; NamedProvider).</summary>
+internal readonly record struct ExternalFunction(FunctionAbi Abi, string Symbol, bool DllImport, string Library);
 
 /// <summary>Writes the syntax-free module frame of the LLVM text.</summary>
 internal static partial class LlvmModuleText
@@ -346,12 +348,13 @@ internal static partial class LlvmModuleText
         internal string? TestRuntime { get; }
 
         /// <summary>Gets the imports the runtime declares (LinkAmbiguity, T's ruling 32): the row's runtime declarations whose symbol it
-        /// declares, in the row's order (TargetProfile.RuntimeDeclarations), each a kernel32 import in its dllimport form.</summary>
-        internal string[] RuntimeImports { get; }
+        /// declares, in the row's order (TargetProfile.RuntimeDeclarations), each with its providing supply (NamedProvider).</summary>
+        internal (string Symbol, string Library)[] RuntimeImports { get; }
 
         /// <summary>Gets the imports a test build's runtime declares: those of <see cref="TestRuntime"/> and of the test runtime's routines
-        /// (Testing's TestRuntime.Text), in the row's order; null for a layer naming no test runtime.</summary>
-        internal string[]? TestRuntimeImports { get; }
+        /// (Testing's TestRuntime.Text), in the row's order, each with its providing supply; null for a layer naming no test
+        /// runtime.</summary>
+        internal (string Symbol, string Library)[]? TestRuntimeImports { get; }
 
         /// <summary>Gets the footer: every generated definition carries the row's profile attributes (SPEC 21.3.1) with its
         /// FunctionAttributes, #0; the memory part's definitions take #1, #0 plus "no-builtins", so no pass turns their loops into calls of
@@ -377,15 +380,18 @@ internal static partial class LlvmModuleText
             return "attributes #0 = { " + profile + " }\nattributes #1 = { " + profile + " \"no-builtins\" }\n" + flags;
         }
 
-        // The row's runtime declarations a runtime declares, or the test runtime's routines do, in the row's order.
-        private static string[] Imports(TargetProfile row, string runtime, string? routines)
+        // The row's runtime declarations a runtime declares, or the test runtime's routines do, in the row's order, each with the supply
+        // TargetProfile names as its provider: Core's contract, that exactly one supply lists each runtime symbol, so a missing one is a
+        // broken contract, never a default.
+        private static (string Symbol, string Library)[] Imports(TargetProfile row, string runtime, string? routines)
         {
-            var imports = new List<string>();
+            var imports = new List<(string Symbol, string Library)>();
             foreach (var (symbol, _) in row.RuntimeDeclarations)
             {
                 if (Declares(runtime, symbol) || (routines is not null && Declares(routines, symbol)))
                 {
-                    imports.Add(symbol);
+                    _ = TargetProfile.TryGetRuntimeDeclaration(symbol, out _, out var provider);
+                    imports.Add((symbol, provider ?? throw new InvalidOperationException($"No supply of the target row provides the runtime import '{symbol}'.")));
                 }
             }
 

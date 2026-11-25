@@ -392,6 +392,7 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> SynthesizedCalls; // Work: a call Binding synthesized in the pass, its consumer, the running pass's working state, released at the freeze (Binding.Check.cs).
     internal PagedColumn<List<BindingSymbol>?> GatheredGroups; // Kept: a use's function group gathered at the alias stage, emptied in place at each publication of its head (Binding.Imports.cs).
     internal PagedColumn<(bool Pattern, bool Guard)> IndexedPatterns; // Kept: whether the latest run of a node's pass indexed it as a pattern node or a guard scope, copied to the pass's previous-run lists and emptied at its reset (Binding.Patterns.cs).
+    internal PagedColumn<bool> FormedTypes; // Kept: whether a node forms its Type, a written Type occurrence the Type binding completed or a Dictionary literal (Binding.Types.cs).
 
     internal void Resize(int length)
     {
@@ -474,6 +475,7 @@ internal struct NodeColumns
         this.SynthesizedCalls.Grow(length);
         this.GatheredGroups.Grow(length);
         this.IndexedPatterns.Grow(length);
+        this.FormedTypes.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -616,6 +618,7 @@ internal struct NodeColumns
             SynthesizedCalls = this.SynthesizedCalls.Renumbered(length),
             GatheredGroups = this.GatheredGroups.Renumbered(length),
             IndexedPatterns = this.IndexedPatterns.Renumbered(length),
+            FormedTypes = this.FormedTypes.Renumbered(length),
         };
         return columns;
     }
@@ -656,6 +659,7 @@ internal struct NodeColumns
         this.KnownBases.Retire();
         this.GatheredGroups.Retire();
         this.IndexedPatterns.Retire();
+        this.FormedTypes.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -693,6 +697,7 @@ internal struct NodeColumns
         this.KnownBases.MoveTo(ref target.KnownBases, from, to);
         this.GatheredGroups.MoveTo(ref target.GatheredGroups, from, to);
         this.IndexedPatterns.MoveTo(ref target.IndexedPatterns, from, to);
+        this.FormedTypes.MoveTo(ref target.FormedTypes, from, to);
     }
 }
 

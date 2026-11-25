@@ -123,11 +123,12 @@ public class Utf8FormatBindingTest
 
     // SPEC 3.1.1, 22.10.2 (R8-S2d1): an abstract Wrapping<T> over a proven PrimitiveInteger is Utf8Format by the witness table's
     // WrappingFormat row (no longer by a premise): written, interpolated, converted and passed as a `U is Utf8Format` argument, with no
-    // record. Its invalid twin, Wrapping<T> over a T not proven PrimitiveInteger, keeps the records it had before R8-S2d1 (the parameter's
-    // one, R7-V1c's one record per written occurrence, and two at each use, all UnprovenConstraint_Kd; the same at S2c's head), none added.
+    // record. Its invalid twin, Wrapping<T> over a T not proven PrimitiveInteger, keeps the parameter's record (R7-V1c's one record per
+    // written occurrence) and one at each use, all UnprovenConstraint_Kd, none added; each use's read of `w` carries the parameter's Type,
+    // so its restating record (two at each use before) goes (PLAN G1278; G1278-A, Q13; F's G1278-3).
     [Theory]
     [InlineData("    T is PrimitiveInteger\n", 0)]
-    [InlineData("", 9)]
+    [InlineData("", 5)]
     public void AnAbstractWrappingIntegerIsTheTablesUtf8Format(string premise, int unproven)
     {
         var c = MinimalEmissionTest.Analyze(

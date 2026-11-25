@@ -61,6 +61,7 @@ public sealed partial class Binding
         }
 
         this.dictionaryLiteralKeys.Clear();
+        FormedTypeRows.Add(literal); // SPEC 12.4: the literal forms its Dictionary Type from its entries (PLAN G1278's open line: at an expected Type too).
         return Complete(literal, complete ? this.types.Intern(BoundTypeKind.Dictionary, expected.Symbol, SemanticsKind.Owner, [key ?? expected.Components[0], value ?? expected.Components[1]]) : null);
     }
 
