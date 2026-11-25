@@ -221,9 +221,13 @@ public sealed partial class Binding
             }
 
             var self = this.SelfType(typeSymbol);
+            // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the base's instance, the lookup and the inputs' match form in a site frame at the
+            // override where none is open, so a Type past the limit formed there is refused at it.
+            var site = this.OpenQuerySite(function);
             var baseType = AdtDef.Base(this.types, self);
             if (structure.BindingState == BindingState.Invalid || AdtDef.BaseNotStored(this.types, self))
             {
+                this.CloseQuerySite(site);
                 this.CompleteDependent(function, structure);
                 continue;
             }
@@ -239,6 +243,7 @@ public sealed partial class Binding
 
             if (failedInput is not null)
             {
+                this.CloseQuerySite(site);
                 this.CompleteDependent(function, failedInput);
                 continue;
             }
@@ -274,6 +279,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.CloseQuerySite(site);
             if (pending)
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
@@ -333,7 +339,11 @@ public sealed partial class Binding
 
         table.Version = this.storageVersion;
         table.Resolved = false;
+        // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the base's instance forms in a site frame at the struct where none is open, so a Type past
+        // the limit it forms is refused at the struct whose table reads it.
+        var site = this.OpenQuerySite(structure);
         var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.types, this.SelfType(symbol)));
+        this.CloseQuerySite(site);
         var inherited = parent is null ? null : this.FillVTable(parent);
         if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && inherited is null))
         {
