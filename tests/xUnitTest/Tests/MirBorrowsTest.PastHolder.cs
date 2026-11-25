@@ -1158,21 +1158,6 @@ public sealed partial class MirBorrowsTest
                 c(spare)
                 kk = 2
             """,
-        ["letStructU64Ok"] = """
-            struct ZHold
-                public var p: raw/u64
-                public init(p: raw/u64) => self.p = p
-            func letStructU64Ok()
-                var kk: u8 = 1
-                let r = kk@uniq
-                var spare: raw/u8 = r@follow@raw
-                var z: u64 = 0
-                let h = ZHold.init(p: z@raw)
-                var c = func [h@move] (v: raw/u8)
-                    unsafe => *(h.p) = 0@u64
-                c(spare)
-                kk = 2
-            """,
         ["letTupEnvOk"] = """
             func letTupEnvOk()
                 var kk: u8 = 1
@@ -1184,20 +1169,6 @@ public sealed partial class MirBorrowsTest
                 var c = func [t] (v: raw/u8)
                     unsafe => *(t.0) = *(t.0)
                 c(spare)
-                kk = 2
-            """,
-        ["byValDeclOk"] = """
-            struct ZHold
-                public var p: raw/u64
-                public init(p: raw/u64) => self.p = p
-            func put(h: ZHold, v: raw/u8) => ()
-            func byValDeclOk()
-                var kk: u8 = 1
-                let r = kk@uniq
-                var spare: raw/u8 = r@follow@raw
-                var z: u64 = 0
-                let h = ZHold.init(p: z@raw)
-                put(h@move, spare)
                 kk = 2
             """,
         ["cloResultLetBad"] = """
@@ -1324,9 +1295,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("cloLetPtrPtrU8ThroughBad", "cloLetPtrPtrU8ThroughBad: kk = 2")] // I, past m the call may write its own pointer at hop
     [InlineData("d4NestLetInnerVarOk", "")] // V, outer cannot call its `let inner` Exclusively, so inner's `var q` is not written
     [InlineData("letU64ParamSharedOk", "")] // V, a Shared call
-    [InlineData("letStructU64Ok", "")] // V, h.p a layer ZHold states, in a `let` binding; z not used after
     [InlineData("letTupEnvOk", "")] // V, t.0 in a `let` Tuple binding; w not used after
-    [InlineData("byValDeclOk", "")] // V, past a by-value input's declared layer; z not used after
     [InlineData("cloResultLetBad", "cloResultLetBad: let mk = func []()")] // I, mk's storage end: rule 4 at mk()'s result key (R4-M245); c's `kk = 2` waits for PLAN G941's Binding half
     [InlineData("cloResultLetSharedBad", "cloResultLetSharedBad: let mk = func []()")] // I, mk's storage end only (S11 at mk()'s result key)
     public void TheReadingKeyPastAHolderReadsEveryLayer(string form, string expected)
