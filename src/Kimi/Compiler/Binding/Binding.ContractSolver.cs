@@ -13,10 +13,12 @@
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts, published source states (BU-59).
 // - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain's Invalid environment, the cause it names);
 //   Enumerate's rows, the least set of Contracts `subject is R` closed under: (1) a direct Contract fact of the view stating
-//   the subject or a Type of its identity class, as written and, under a parameter identity, as the view reads it (Reading); (2) an
-//   item of the supply of a Contract row of a prefix of the subject's projection chain, the subject itself included, Self being that
-//   prefix, as a premise supplies it (SPEC 8.3.2, 8.2.3: an ancestor, a Self-dependent clause, a conjunction as its conjuncts) whose
-//   stated subject is the subject or of its class; (3) a Contract's own Self; (5) at each link, the rows of each projection
+//   the subject or a Type of its identity class, as written and, where its reading can differ from it (a projection in one of its
+//   Types or an identity premise in the view: NormalizeProofConstraint's own test, per fact; R7-C2c2 c2-5c), as the view reads it
+//   (Reading); (2) an item of the supply of a Contract row of a prefix of the subject's projection chain, the subject itself
+//   included, Self being that prefix, as a premise supplies it (SPEC 8.3.2, 8.2.3: an ancestor, a Self-dependent clause, a
+//   conjunction as its conjuncts) whose stated subject is the subject or of its class; (3) a Contract's own Self; (5) at each link,
+//   the rows of each projection
 //   of its identity class in the request's classes, by that projection's own walk (PLAN G881). Rows (1) and (2) take the Contract at the
 //   subject's Origin arguments (RowContract; SPEC 8.5.1, 8.5.4: application substitutes Origin atoms positionally). A row carries
 //   whether it is available (R7-C2c2 c2-3a): its fact and its Contract are, for a clause or an ancestor its source row too; the
@@ -57,10 +59,10 @@
 //   (ConstraintEnvironment.States: the in-place one and each a writer recorded, several where one fact instantiates several
 //   written premises), which AvailableCallableEffects reads; SelectValueCall reads the Source for a failed selection's related
 //   locations.
-// - Identity (R7-C2c2 c2-1; SPEC 8.2.3): a premise's supply reaches every parameter and projection of its identity class; a
-//   constructed member's conformance is ResolveConformance's. That is the implementation's limit, not SPEC's rule: where it is
-//   Unknown, a premise is not yet read as evidence for that member (SPEC 8.2.3), so valid programs such as d09c stay rejected, as on
-//   base, until c2-4 (a constructed member's conformance with premises for its arguments). Each request keys its
+// - Identity (R7-C2c2 c2-1; SPEC 8.2.3): a premise's supply reaches every parameter and projection of its identity class. A
+//   constructed root's conformance is ResolveConformance's; its projections are their bindings wherever J1 reads a Type, in facts
+//   and in demands alike (R7-C2c2 c2-5c: Reading, NormalizeProofConstraint and ProveConformance read it completed, then formed); its
+//   premise rows are its class's (c2-4). Each request keys its
 //   subject, its view's facts and the walk's comparisons by its own view's classes (ClassKey, Binding.TypeIdentity's: a class's least
 //   parameter or projection; an erroneous or incomplete class keys nothing), whatever the table's finality, which decides only kept
 //   rows. The written subject is walked beside its key and both refine, so a key only adds rows; each link's projection mates
@@ -77,7 +79,7 @@
 //   fact, a negation) whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4). A missing row rejects, but where it
 //   is the evidence against a written premise it accepts: a positive identity clause at depth is no row (TypeIdentity is no row kind;
 //   c2-2's identity rows reach only an extending refinement request) and the identity judge reads the view's classes, so a written
-//   negated identity premise against it is accepted (nts2c-rev); PLAN's open issue against c2-5c's constructed roots.
+//   negated identity premise against it is accepted (nts2c-rev); PLAN G1406.
 // - Extension (R7-C2c2 c2-2; SPEC 8.2.3's grounds include the identity Constraints a Contract premise supplies at every depth): the
 //   walk records the TypeIdentity clause instances of its available Contract rows, but a deferred mate's walk (PLAN G881b: a
 //   cycle's mate, walked from the top) records none, so an extension rests on the chains a request walks without a cycle, as
@@ -170,7 +172,7 @@
 //   (ValidateAssociatedOverlapAgreement, DisjointConformanceFacts) and Semantics (DisjointConformanceFacts). A row kind's row holds
 //   each fact as written, under its atom's subject and its class key in the view (R7-C2c2 c2-1: the forming request's classes,
 //   which are the view's), in the Sources' order (the Invariants above), and the Contract row,
-//   under a parameter identity, each fact as the view reads it (Reading) too. The TypeIdentity and Semantics rows hold each fact as
+//   where its reading can differ from it (row (1) above), each fact as the view reads it (Reading) too. The TypeIdentity and Semantics rows hold each fact as
 //   written under its written subject alone, in its environment's order, with no class key and no reading: a bucket of theirs holds
 //   the facts of one written subject key, so a reader that pairs by bucket pairs no other subject's fact.
 // - Kept: an entry is Kept when its content is Complete: written facts in every phase (a function of the chain's environments, which
@@ -449,7 +451,8 @@ public sealed partial class Binding
         return reading;
     }
 
-    // `proposition` is normalized by its caller (NormalizeProofConstraint); a fact is normalized only under the presence gate.
+    // `proposition` is normalized by its caller (NormalizeProofConstraint); a fact is normalized only where its environment's reading
+    // can differ (ReadingCanDiffer).
     private Evidence Supply(BoundConstraint proposition, EvidenceView view)
     {
         var positive = false;
@@ -466,7 +469,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, proposition, out _);
             negative |= this.AvailableConstraintFact(environment, negation, out _);
-            if (environment.HasAssociatedProjection || typeIdentity)
+            if (ReadingCanDiffer(environment.HasAssociatedProjection, typeIdentity))
             {
                 foreach (var fact in environment.Facts)
                 {

@@ -262,6 +262,9 @@ public sealed partial class RecursiveContractTest
     // proposition, R7-C2c2 c2-5b2, F's CC-25): 44, 94 and 104 (24, 74 and 84 without the forget). N3's observable: an
     // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (104 -> 84; reopening by the
     // table's finality did: a round with no rows builds a Final table).
+    // R7-C2c2 c2-5c (F's CC-35): IndexNormalized files the reading of a Contract fact over a projection in a view with no identity
+    // premise too (the per-fact domain; plan section 2's cost), so the view's entries index those readings beside AT2's facts: 24 more
+    // pairs in each program, (44, 94, 104) -> (68, 118, 128).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
@@ -271,7 +274,7 @@ public sealed partial class RecursiveContractTest
         probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
         var copy = Work(Orders + probe) - orders;
         probe += "    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal((44, 94, 104), (tree, copy, Work(Orders + probe) - orders));
+        Assert.Equal((68, 118, 128), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }
@@ -449,7 +452,7 @@ public sealed partial class RecursiveContractTest
     // written premise against it is contradictory evidence (nc2c to ncs2c, class 1). Its twins keep their verdicts: depth 1, another
     // Contract or reference, no clause, the positive clause, the use on T itself, a negated disjunction (8.3.1: no De Morgan), the
     // positive clause against a written negation, a Contract's own premises meeting, a Semantics atom (the admitted set decides, 8.3.4).
-    // nts2c-rev is invalid and accepted until PLAN's open issue against c2-5c's constructed roots: its identity at depth is no row.
+    // nts2c-rev is invalid and accepted until PLAN G1406 (F's CC-32 Q4 (a)): its identity at depth is no row.
     // ncs2g's noMark is a group's (SPEC 6.1.1: a Container body never finds a root function; ncs2, a guard row, keeps that record).
     // twcall keeps b1-r2-failed's records with a name discovery before the copy (W6: a walk that consulted a failure keeps no rows).
     [InlineData("c2-5b2", "nc2", "contract NC\n    associate Next is NC\n    associate V\n    Self.(NC).V is not Copy\n    func near(self: ref/Self) -> ref/Self.(NC).V\n    func deep(self: ref/Self) -> ref/Self.(NC).Next.(NC).V\nfunc noCopy<V>(v: ref/V) -> i32\n    V is not Copy\n    return 0\nfunc probe<T>(t: ref/T) -> i32\n    T is NC\n    let v = t.deep()\n    return noCopy(v)\n", "")]
@@ -485,7 +488,7 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "nts2n-other", NegatedTexts + NotI32 + "func probe<T>(t: ref/T) -> i32\n    T is KS\n    let v = t.deep()\n    return notI32(v)\n", "UnprovenConstraint_Kd: return notI32(v)")]
     [InlineData("guard", "nts2n-pos", PositiveTexts + NotText + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return notText(v)\n", "UnprovenConstraint_Kd: return notText(v)")]
     [InlineData("guard", "nm2c-rev", PositiveMarks + "func probe<T>(t: ref/T) -> i32\n    T is PM\n    T.(PM).Next.(PM).V is not Marker\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
-    [InlineData("c2-5c", "nts2c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32", Explicit = true)]
+    [InlineData("G1406", "nts2c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32", Explicit = true)]
     [InlineData("guard", "nh2c", "contract Marker\ncontract H2\n    associate Next is H2\n    associate V\n    Self.(H2).V is Marker\n    Self.(H2).Next.(H2).V is not Marker\n    func near(self: ref/Self) -> ref/Self.(H2).V\n    func deep(self: ref/Self) -> ref/Self.(H2).Next.(H2).V\n    func deep3(self: ref/Self) -> ref/Self.(H2).Next.(H2).Next.(H2).V\n", "InvalidConstraint_Kd: contract H2 | ...")]
     [InlineData("guard", "nmr2-pos", PositiveMarks + PickMark + "func probe<T>(t: ref/T) -> i32\n    T is PM\n    let v = t.deep()\n    return pickm(v)\n", "")]
     [InlineData("guard", "nmr2n-bare", BareMarks + PickMark + "func probe<T>(t: ref/T) -> i32\n    T is NB\n    let v = t.deep()\n    return pickm(v)\n", "UnprovenConstraint_Kd: return pickm(v)")]

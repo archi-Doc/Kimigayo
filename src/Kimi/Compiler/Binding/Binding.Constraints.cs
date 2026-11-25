@@ -146,6 +146,12 @@ public sealed partial class Binding
         return false;
     }
 
+    // J1's one test (R7-C2c2 c2-5c, CC-36 C4): a reading can differ from what is written only through an associated projection in it
+    // (`projection`: a constraint's HasAssociatedProjection, or an environment's, any of its facts') or an identity premise in the view
+    // (`typeIdentity`: HasTypeIdentity). Its readers: NormalizeProofConstraint's early return, Supply's consult (per environment) and
+    // IndexNormalized (per environment, then per fact).
+    private static bool ReadingCanDiffer(bool projection, bool typeIdentity) => projection || typeIdentity;
+
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
         => KotoHelper.IsSelectionBody(match, body) ? this.scopes.GetValueOrDefault(match.Arms[body.SelectionArm].Pattern) : null;
@@ -759,7 +765,7 @@ public sealed partial class Binding
     private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!constraint.HasAssociatedProjection && !HasTypeIdentity(scope))
+        if (!ReadingCanDiffer(constraint.HasAssociatedProjection, HasTypeIdentity(scope)))
         {
             return constraint;
         }
@@ -797,12 +803,20 @@ public sealed partial class Binding
         var contract = constraint.Contract;
         if (contract is not null && IsBoundContractReference(contract))
         {
-            var reference = this.NormalizedForm(contract.Type!, scope, out var part);
+            contract = this.NormalizedContract(contract, scope, out var part);
             completion = Meet(completion, part);
-            contract = ReferenceEquals(reference, contract.Type) ? contract : this.BoundContractReference(reference);
         }
 
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) && ReferenceEquals(contract, constraint.Contract) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
+    }
+
+    // J1's reading of a bound Contract reference (NormalizeProofConstraint's Contract arm): its arguments read as a proposition's Types
+    // (NormalizedForm), so a completed projection there is its binding (SPEC 8.2.3; R7-C2c2 c2-5a). Both J1 entries read a reference by
+    // it: NormalizeProofConstraint and ProveConformance, whose direct callers bypass that intake (R7-C2c2 c2-5c).
+    private BindingSymbol NormalizedContract(BindingSymbol reference, BindingScope scope, out Completion completion)
+    {
+        var form = this.NormalizedForm(reference.Type!, scope, out completion);
+        return ReferenceEquals(form, reference.Type) ? reference : this.BoundContractReference(form);
     }
 
     // J1's one reading of a proposition's Type (SPEC 8.3.1's normalized complete Types): normalized in the scope, a completed projection
