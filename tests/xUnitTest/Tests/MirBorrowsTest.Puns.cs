@@ -1520,6 +1520,253 @@ public sealed partial class MirBorrowsTest
 
         """;
 
+    // The partly stated holder forms (ACallsWriteAtPartlyStatedLayersTakesItsOwnVerdict): holders with a raw layer stating `a` beside one
+    // stating no Origin (Mixed, MixedQ, Deep), `static` (MixedS) or an abstract part (MixedT), Pin's every layer stated; C-layout ones whose
+    // first Field the layout places a store at (CMixedT, CMixedQ: keep, not a zero-sized Loan, keeps `a` from being Phantom).
+    private const string CarriedForms = """
+        struct Mixed {a}
+            let loan: Loan<uniq/(raw/u8) during a>
+            public var p: raw/(raw/u8) during a
+            public var q: raw/(raw/u8)
+            public init(target: uniq/(raw/u8) during a, q: raw/(raw/u8))
+                self.p = target@follow@raw
+                self.q = q
+                self.loan = Loan.init(target)
+        struct MixedQ {a}
+            let loan: Loan<uniq/(raw/u8) during a>
+            public var q: raw/(raw/u8)
+            public var p: raw/(raw/u8) during a
+            public init(target: uniq/(raw/u8) during a, q: raw/(raw/u8))
+                self.q = q
+                self.p = target@follow@raw
+                self.loan = Loan.init(target)
+        struct MixedS {a}
+            let loan: Loan<uniq/(raw/u8) during a>
+            public var p: raw/(raw/u8) during a
+            public var s: raw/(raw/u8) during static
+            public init(target: uniq/(raw/u8) during a)
+                self.p = target@follow@raw
+                self.s = null
+                self.loan = Loan.init(target)
+        struct MixedT<T> {a}
+            let loan: Loan<uniq/(raw/u8) during a>
+            public var p: raw/(raw/u8) during a
+            public var t: T
+            public init(target: uniq/(raw/u8) during a, t: T)
+                self.p = target@follow@raw
+                self.t = t@move
+                self.loan = Loan.init(target)
+        struct Pin {a}
+            let loan: Loan<uniq/(raw/u8) during a>
+            public var p: raw/(raw/u8) during a
+            public init(target: uniq/(raw/u8) during a)
+                self.p = target@follow@raw
+                self.loan = Loan.init(target)
+        struct Deep {a}
+            let loan: Loan<uniq/(raw/(raw/u8)) during a>
+            public var p: raw/(raw/(raw/u8)) during a
+            public var q: raw/(raw/u8)
+            public init(target: uniq/(raw/(raw/u8)) during a, q: raw/(raw/u8))
+                self.p = target@follow@raw
+                self.q = q
+                self.loan = Loan.init(target)
+        struct Carry<T>
+            public var w: raw/u8
+            public var t: T
+            public init(w: raw/u8, t: T)
+                self.w = w
+                self.t = t@move
+        #Layout("C")
+        struct CMixedT<T> {a}
+            public var p: raw/(raw/u8) during a
+            let keep: uniq/(raw/u8) during a
+            public var t: T
+            public init(target: uniq/(raw/u8) during a, t: T)
+                self.p = target@follow@raw
+                self.keep = target@move
+                self.t = t@move
+        #Layout("C")
+        struct CMixedQ {a}
+            public var q: raw/(raw/u8)
+            public var p: raw/(raw/u8) during a
+            let keep: uniq/(raw/u8) during a
+            public init(target: uniq/(raw/u8) during a, q: raw/(raw/u8))
+                self.p = target@follow@raw
+                self.keep = target@move
+                self.q = q
+        func stash(slot: raw/(raw/u8), value: raw/u8) => ()
+        func f<T>(t: uniq/T) => ()
+        func take<U>(c: uniq/Carry<U>) => ()
+        func viaCarriedMixedPOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = Mixed.init(target: slot@uniq, q: other@raw)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            stash(mx.p, spare)
+            kk = 2
+        func viaCarriedMixedBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = Mixed.init(target: slot@uniq, q: other@raw)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            stash(mx.q, spare)
+            kk = 2
+        func viaCarriedMixedQFirstPOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = MixedQ.init(target: slot@uniq, q: other@raw)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            stash(mx.p, spare)
+            kk = 2
+        func viaCarriedMixedQFirstBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = MixedQ.init(target: slot@uniq, q: other@raw)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            stash(mx.q, spare)
+            kk = 2
+        func viaCarriedMixedSPOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var mx = MixedS.init(target: slot@uniq)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            stash(mx.p, spare)
+            kk = 2
+        func viaCarriedMixedTPOk<T>(x: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var mx = MixedT.init(target: slot@uniq, t: x@move)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            stash(mx.p, spare)
+            kk = 2
+        func viaCarriedPinOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var pin = Pin.init(target: slot@uniq)
+            var h: raw/usize = pin@raw@raw/usize
+            f(h@uniq)
+            stash(pin.p, spare)
+            kk = 2
+        func viaCarriedMixedReplacedOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var slot2: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = Mixed.init(target: slot@uniq, q: other@raw)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            mx = Mixed.init(target: slot2@uniq, q: other@raw)
+            stash(mx.p, spare)
+            kk = 2
+        func viaCarriedDeepBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var cell: raw/u8 = null
+            var hop: raw/(raw/u8) = cell@raw
+            var other: raw/u8 = null
+            var mx = Deep.init(target: hop@uniq, q: other@raw)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            unsafe => stash(*mx.p, spare)
+            kk = 2
+        func viaCarriedMixedQCopyBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = Mixed.init(target: slot@uniq, q: other@raw)
+            var h: raw/usize = mx@raw@raw/usize
+            f(h@uniq)
+            let w: raw/(raw/u8) = mx.q
+            stash(w, spare)
+            kk = 2
+        func viaParamQBad(x: raw/(raw/u8))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var mx = Mixed.init(target: slot@uniq, q: x)
+            stash(mx.q, spare)
+            kk = 2
+        func viaParamQPOk(x: raw/(raw/u8))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var mx = Mixed.init(target: slot@uniq, q: x)
+            stash(mx.p, spare)
+            kk = 2
+        func viaParamQPinOk(x: raw/(raw/u8))
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var pin = Pin.init(target: slot@uniq)
+            stash(pin.p, spare)
+            kk = 2
+        func unknownMixedBad<T>(x: T)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = Mixed.init(target: slot@uniq, q: other@raw)
+            var c = Carry.init(w: mx@raw@raw/u8, t: x@move)
+            take(c@uniq)
+            stash(mx.p, spare)
+            kk = 2
+        func placedStatedFirstNoneOk<T>(x: T)
+            T is PrimitiveInteger
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var mx = CMixedT<Option<T>>.init(target: slot@uniq, t: .None)
+            let w = mx@raw@raw/u8
+            unsafe => *w = 0
+            stash(mx.p, spare)
+            kk = 2
+        func placedUnstatedFirstBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var slot: raw/u8 = null
+            var other: raw/u8 = null
+            var mx = CMixedQ.init(target: slot@uniq, q: other@raw)
+            let w = mx@raw@raw/u8
+            unsafe => *w = 0
+            stash(mx.p, spare)
+            kk = 2
+        """;
+
     // Each body read form's statements after its head (BodyRead): kk, its `uniq` borrow r and spare, a raw pointer that holds r's Loan.
     private static readonly Dictionary<string, string> BodyReadForms = new()
     {
@@ -2551,6 +2798,45 @@ public sealed partial class MirBorrowsTest
     public void ARawPointerABodyReadsPunnedReachesUnownedStorage(string form, string expected)
     {
         var c = MirBuildTest.Compile(BodyReadShapes + BodyRead(form) + "public func main() => ()\n");
+        var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
+    // PLAN G1106 (SPEC 15.6 Holders, 15.6.4 route 1, 5.2, 5.2.2, 5.7 Calls, 8.15; O-312 (a), O-230 Q1 (a)): at raw layers partly stated
+    // (one stating an Origin other than `static` beside one stating none, or an abstract part), a write the call may make at any layer it
+    // reaches keeps its own verdict: f, reaching mx through h's address, may leave its own pointer at the unstated layer, and every value
+    // read from any part of mx carries it, the stated mx.p included (OwnWrite; take's abstract part, UnknownWrite). A store the layout
+    // places stays undecided there (PlacedAt: the layout decides whether it covers the stated layer), the located Unsupported_Kd, never a
+    // Language record: at C-layout mx's first byte it covers the stated p in placedStatedFirstNoneOk (5.2: p's pointer promises what a
+    // claim of a promises) and the unstated q in placedUnstatedFirstBad. Every layer stated (Pin) keeps nothing of it. Replacing mx whole after f does not end it: the replacement is
+    // another Mixed.init result (15.6.4, 15.4.2), reuses other, and mx stays addressed from what f may leave (15.6 Addresses). Each row is
+    // I (relabelled: R4-M221 held viaCarriedMixedPOk valid, the repeated review viaCarriedMixedReplacedOk) but the V rows marked:
+    // viaCarriedPinOk, viaParamQPinOk and placedStatedFirstNoneOk.
+    [Theory]
+    [InlineData("viaCarriedMixedPOk", "viaCarriedMixedPOk: kk = 2; viaCarriedMixedPOk: var slot: raw/u8 = null")] // I, mx.p carries mx.q's
+    [InlineData("viaCarriedMixedBad", "viaCarriedMixedBad: kk = 2; viaCarriedMixedBad: var slot: raw/u8 = null")] // I, through mx.q
+    [InlineData("viaCarriedMixedQFirstPOk", "viaCarriedMixedQFirstPOk: kk = 2; viaCarriedMixedQFirstPOk: var slot: raw/u8 = null")] // I, Field order
+    [InlineData("viaCarriedMixedQFirstBad", "viaCarriedMixedQFirstBad: kk = 2; viaCarriedMixedQFirstBad: var slot: raw/u8 = null")] // I
+    [InlineData("viaCarriedMixedSPOk", "viaCarriedMixedSPOk: kk = 2")] // I, s `during static`
+    [InlineData("viaCarriedMixedTPOk", "viaCarriedMixedTPOk: kk = 2; viaCarriedMixedTPOk: var slot: raw/u8 = null")] // I, an abstract part
+    [InlineData("viaCarriedDeepBad", "viaCarriedDeepBad: kk = 2; viaCarriedDeepBad: var hop: raw/(raw/u8) = cell@raw")] // I, past p to hop
+    [InlineData("viaCarriedMixedQCopyBad", "viaCarriedMixedQCopyBad: kk = 2; viaCarriedMixedQCopyBad: var slot: raw/u8 = null")] // I, a Copy
+    // I: UnknownWrite gives mx its pun, but take's u8 write through c.w, off mx's Position, is the judge's undecided one (CallWrite).
+    [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2 Unsupported_Kd; unknownMixedBad: var slot: raw/u8 = null Unsupported_Kd")]
+    // V, a u8 store at mx's first byte, the stated p (PlacedAt's partly stated arm: t's abstract part; T is PrimitiveInteger, so no
+    // binding holds a reference, 8.7.4). Accepted without the store; a Language record at kk = 2 without the arm.
+    [InlineData("placedStatedFirstNoneOk", "placedStatedFirstNoneOk: kk = 2 Unsupported_Kd")]
+    // I (route M, 15.6 Holders), the store at the unstated q: the same arm.
+    [InlineData("placedUnstatedFirstBad", "placedUnstatedFirstBad: kk = 2 Unsupported_Kd; placedUnstatedFirstBad: var slot: raw/u8 = null Unsupported_Kd")]
+    [InlineData("viaParamQBad", "viaParamQBad: kk = 2; viaParamQBad: var slot: raw/u8 = null")] // I, mx.q holds a parameter's pointer
+    [InlineData("viaParamQPOk", "viaParamQPOk: kk = 2; viaParamQPOk: var slot: raw/u8 = null")] // I, mx.p carries it
+    [InlineData("viaCarriedPinOk", "")] // V, every layer stated: f leaves at pin.p only what a admits
+    [InlineData("viaParamQPinOk", "")] // V, no unstated layer
+    // I, as on dev: no V control at OwnWrite's site.
+    [InlineData("viaCarriedMixedReplacedOk", "viaCarriedMixedReplacedOk: kk = 2; viaCarriedMixedReplacedOk: var slot2: raw/u8 = null; viaCarriedMixedReplacedOk: var slot: raw/u8 = null")]
+    public void ACallsWriteAtPartlyStatedLayersTakesItsOwnVerdict(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + CarriedForms[..CarriedForms.IndexOf("func via", StringComparison.Ordinal)] + Form(CarriedForms, form));
         var problems = Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }

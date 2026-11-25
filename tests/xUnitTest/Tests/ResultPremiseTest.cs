@@ -124,6 +124,36 @@ public partial class ResultPremiseTest
         "    let pair = g(s)\n    return pair.1\n\nfunc mk(x: ref/i32) -> (Option<ref/(ref/i32 during x) during static>, ref/i32 during static) => (.None, x)\n\n" +
         "func caller(s: ref/i32 during static) -> ref/i32 during static\n    return use(mk, s)\n\n";
 
+    // A result holding a Function Type that writes a fixed Origin, b, below a borrow layer during q: OwnedOrigins of the Function Type is
+    // {b} (SPEC 15.2.3), so the result's well-formedness is b outlives q.
+    private const string HeldFixed = "func mk(b: ref/i32, q: ref/i32) -> Option<ref/((ref/i32 during b) -> i32) during q>\n";
+
+    // HeldFixed's control: the same well-formedness without a Function Type.
+    private const string StoredFixed = "func mk(b: ref/i32, q: ref/i32) -> Option<ref/(ref/i32 during b) during q>\n";
+
+    // The located limit at HeldFixed's result layer (F's ruling O3-24).
+    private const string HeldLimit = nameof(DiagnosticCode.Unsupported_Kd) + "|ref/((ref/i32 during b) -> i32) during q|";
+
+    private const string Loan = nameof(DiagnosticCode.ComparisonLoanConflict_Kd) + "|";
+
+    // leak_mk: mk stores b in the caller's array as `during q` on its result premise; leak_use calls it with a local borrow.
+    private const string HeldLeak = "func mk(b: ref/i32, q: ref/i32, slot: uniq/Array<ref/i32 during q>) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    slot@follow.append(b)\n    return .None\n\n";
+
+    private const string StoredLeak = "func mk(b: ref/i32, q: ref/i32, slot: uniq/Array<ref/i32 during q>) -> Option<ref/(ref/i32 during b) during q>\n    slot@follow.append(b)\n    return .None\n\n";
+
+    private const string LeakUse = "func use(x: ref/i32) -> i32\n    var arr: Array<ref/i32 during x> = []\n    arr.append(x)\n    if true\n        let local: i32 = 41\n" +
+        "        let o: Option<ref/((ref/i32 during x) -> i32) during x> = mk(local@ref, x, arr@uniq)\n    let old: i32 = arr[1]@follow\n    return old\n\n";
+
+    private const string StoredLeakUse = "func use(x: ref/i32) -> i32\n    var arr: Array<ref/i32 during x> = []\n    arr.append(x)\n    if true\n        let local: i32 = 41\n" +
+        "        let o: Option<ref/(ref/i32 during x) during x> = mk(local@ref, x, arr@uniq)\n    let old: i32 = arr[1]@follow\n    return old\n\n";
+
+    // ret_mk: mk returns b as `during q` on its result premise; ret_use calls it with a local borrow.
+    private const string HeldPair = "func mk(b: ref/i32, q: ref/i32) -> (Option<ref/((ref/i32 during b) -> i32) during q>, ref/i32 during q)\n    return (.None, b)\n\n";
+
+    private const string StoredPair = "func mk(b: ref/i32, q: ref/i32) -> (Option<ref/(ref/i32 during b) during q>, ref/i32 during q)\n    return (.None, b)\n\n";
+
+    private const string PairUse = "func use(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 41\n    let t = mk(local@ref, x)\n    return t.1\n\n";
+
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd) + "|";
 
     private const string Constraint = nameof(DiagnosticCode.UnprovenConstraint_Kd) + "|";
@@ -546,7 +576,7 @@ public partial class ResultPremiseTest
     [InlineData(ClauseType + ClauseResult + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", nameof(DiagnosticCode.UnprovenOriginContract_Kd) + "|func [] () => 5|the result's well-formedness requires the borrow a outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1a: a call keeps judging its Closure argument, recording at it (the owner's D-1, 「記録は引数に」)
     [InlineData(ClauseType + ClauseResult + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] () => 5)\n\n", Unproven + "Option<T during q>|requires q outlives static, which is not proven", Mismatch + "5|expected Option<T>, found integer literal")] // n1s: and adds no call record
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => true)\n\n", Mismatch + "true|expected i32, found bool")] // b2in: an input's clause is that signature's premise (R4-M137), so the callee's declaration walk does not enter it and the Closure keeps its own TypeMismatch_Kd (G374, closed by G375's structural core, DECISIONS R4-M163)
-    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "Box<Array<i32>>|", Unsatisfied + "b|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes, and the Closure's parameter fails where it occurs (DECISIONS R4-M163, Q13); the selected call no longer forms its instantiated input, whose record restated the declaration's (PLAN G464, SPEC 15.6.4 step 3; Q13, dependent); the parenthesized input `(Box<Array<i32>>)` is the written Type it holds, one occurrence and one record (R7-V1c, SPEC 8.3.1, Q13)
+    [InlineData(BoxType + "func k(f: (Box<Array<i32>>) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    return k(func [] (b) => 0)\n\n", Unsatisfied + "Box<Array<i32>>|")] // nin: a closed failing input keeps its declaration records; the call's re-proof (dev: NoApplicableOverload_Kd) goes (DECISIONS R4-M163, Q13); the Closure's parameter `b` carries the expected input's Type, so its restating record goes (G1278-A, Q13; F's G1278-3); the selected call no longer forms its instantiated input, whose record restated the declaration's (PLAN G464, SPEC 15.6.4 step 3; Q13, dependent); the parenthesized input `(Box<Array<i32>>)` is the written Type it holds, one occurrence and one record (R7-V1c, SPEC 8.3.1, Q13)
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host(s: ref/i32 during static) -> i32\n    return k(s, func [] (t) => 0)\n\n")] // b2valid: b2in's valid twin is accepted at the call (dev: UnprovenConstraint_Kd at the call; an acceptance move, DECISIONS R4-M163)
     [InlineData(ClauseType + "func k(q: ref/i32, f: (T during q) -> i32) -> i32\n    return 0\n\nfunc host() -> i32\n    let g = k\n    _ = g\n    return 0\n\n")] // refvalid: and at a function reference (dev: UnprovenConstraint_Kd at `k`; an acceptance move, R4-M163)
     [InlineData("public struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\n\npublic contract C\n    func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32\n\npublic struct S\n    Self is C\n    public func m(self: ref/Self, q: ref/i32, f: (T during q) -> i32) -> i32 => 0\n\n")] // ctrvalid: and in contract matching (dev: UnprovenConstraint_Kd at the conformance; an acceptance move, R4-M163)
@@ -567,6 +597,46 @@ public partial class ResultPremiseTest
     [InlineData("func f(u0: ref/((ref/i32) -> i32)) -> ref/((ref/i32) -> i32) during u0\n    return u0\n\n")] // f_sig_res_ok: a borrow layer holding a Function Type relates only its fixed Origins (SPEC 15.2.3, 15.6.1; none here)
     [InlineData("struct S {a}\n    public let call: ref/((ref/i32) -> i32) during a\n\n")] // f_fld_ok: as f_sig_res_ok in a Field
     public void ANestedSignaturesResultIsJudgedWhereItIsWritten(string program, params string[] records)
+    {
+        var text = program + Main;
+        Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
+    }
+
+    // SPEC 15.6.1, 15.2.3, 15.6.4 step 3 (DECISIONS BU-73's amendment, R7-O3 O3-B2, F's rulings O3-24, O3-27): a definition's result premise
+    // holds a held Function Type's fixed Origins, but no call carries that part yet (WellFormedPremises.EnterStored, PLAN's O3-B2 issue), so
+    // a row they form at the result Type that the definition's premises without that part do not prove is the located Unsupported_Kd at the
+    // written borrow layer (HeldResult; dev: UnprovenOriginRelation_Kd there, a Language record on a valid definition), and no program is
+    // accepted on that part: sres_fix, sres_use, leak_mk, ret_mk (valid) the limit only; call_ok (valid) and call_bad, leak_use, ret_use
+    // (invalid, SPEC 15.6.4 step 3) rejected by mk's limit, beside A5's Loan record where the borrow is retained; sres_bad keeps its own
+    // record at `g`. Every other part of the result premise, which the calls carry, proves such a row: tw_pair's second component stores b
+    // below q (valid, accepted), and so does tw_a1's element, the same part met inside and outside the held Function Type in one walk (F's
+    // ruling O3-29 C1). The controls without a Function Type, and the input premise (in_prem, in_prem_bad), are unchanged. A row the limit
+    // could hide stays a Judgment row and keeps its record beside the limit (F's ruling O3-30, the Middle's C-571 twins): h_nres_fixed_bad's
+    // nested result is judged where it occurs (SPEC 15.3.4), and s_local_hide's local Type is not assumed (SPEC 15.3.3, 15.6.1).
+    [Theory]
+    [InlineData(HeldFixed + "    return .None\n\n", HeldLimit)] // sres_fix
+    [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n", HeldLimit)] // sres_use: the premise decides the initializer
+    [InlineData(StoredFixed + "    return .None\n\n")] // sres_fix_ctl
+    [InlineData(StoredFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use_ctl
+    [InlineData("func mk(b: ref/i32, q: ref/i32) -> (Option<ref/((ref/i32 during b) -> i32) during q>, Option<ref/(ref/i32 during b) during q>)\n    return (.None, .None)\n\n")] // tw_pair
+    [InlineData("func mk(b: ref/i32, q: ref/i32) -> Option<ref/(((ref/i32 during b) -> i32), ref/i32 during b) during q>\n    return .None\n\n")] // tw_a1
+    [InlineData("func mk(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32)) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    return .Some(g)\n\n", HeldLimit, Unproven + "g|requires g outlives q, which is not proven")] // sres_bad
+    [InlineData("func mk(b: ref/i32, c: ref/i32, q: ref/i32) -> Option<ref/(() -> ref/(ref/i32 during b) during c) during q>\n    return .None\n\n", nameof(DiagnosticCode.Unsupported_Kd) + "|ref/(() -> ref/(ref/i32 during b) during c) during q|", Unproven + "ref/(ref/i32 during b) during c|requires b outlives c, which is not proven")] // h_nres_fixed_bad
+    [InlineData("func mk(b: ref/i32, q: ref/i32, x: ref/i32) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    let g: Option<ref/((ref/i32 during x) -> i32) during q> = .None\n    return .None\n\n", HeldLimit, Unproven + "ref/((ref/i32 during x) -> i32) during q|requires x outlives q, which is not proven")] // s_local_hide
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem: the input's premise b outlives q
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/(ref/i32 during b) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem_ctl
+    [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32) -> i32) during q) -> ref/i32 during q\n    return b\n\n", Unproven + "b|requires b outlives q, which is not proven")] // in_prem_bad: per-call Origins relate nothing
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n", HeldLimit)] // call_ok: mk's limit
+    [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> i32\n    let local: i32 = 1\n    let o = mk(local@ref, x)\n    return 0\n\n")] // call_ok_ctl
+    [InlineData(HeldFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/((ref/i32 during x) -> i32) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", HeldLimit)] // call_bad: mk's limit
+    [InlineData(StoredFixed + "    return .None\n\nfunc use(x: ref/i32) -> Option<ref/(ref/i32 during x) during x>\n    let local: i32 = 1\n    return mk(local@ref, x)\n\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x)|requires the borrow local@ref outlives x, which is false")] // call_bad_ctl: the return's fit itself
+    [InlineData(HeldLeak, HeldLimit)] // leak_mk: the premise decides the store
+    [InlineData(HeldLeak + LeakUse, HeldLimit, Loan + "let local: i32 = 41|")] // leak_use
+    [InlineData(StoredLeak + StoredLeakUse, Loan + "let local: i32 = 41|", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|mk(local@ref, x, arr@uniq)|requires the borrow local@ref outlives x, which is false")] // leak_use_ctl
+    [InlineData(HeldPair, HeldLimit)] // ret_mk: the premise decides the return
+    [InlineData(HeldPair + PairUse, HeldLimit, Loan + "let local: i32 = 41|")] // ret_use
+    [InlineData(StoredPair + PairUse, Loan + "let local: i32 = 41|", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) + "|t.1|requires the borrow local@ref outlives x, which is false")] // ret_use_ctl
+    public void AHeldFunctionTypeInADefinitionsResultIsTheLocatedLimit(string program, params string[] records)
     {
         var text = program + Main;
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));

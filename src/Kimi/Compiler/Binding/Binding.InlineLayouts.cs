@@ -57,7 +57,11 @@ public sealed partial class Binding
         {
             if (this.Summary(new(container.BoundSymbol, null, default), null, this.scopes[container]) is { Index: 0 } summary)
             {
+                // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): a walk's Types form in a site frame at its node's site where none is open, so
+                // one past the limit is refused there (the declaration, else the path's use).
+                var site = this.OpenQuerySite(summary.Site);
                 this.SummarizeInlineStorage(summary);
+                this.CloseQuerySite(site);
             }
         }
 
@@ -72,7 +76,9 @@ public sealed partial class Binding
                     if (this.InlineBinding(path, shape.AssociatedTypes[i]) is { } binding &&
                         this.Summary(new(null, path, shape.AssociatedTypes[i]), binding, path.Scope) is { Index: 0 } summary)
                     {
+                        var site = this.OpenQuerySite(summary.Site); // As above (F2).
                         this.SummarizeInlineStorage(summary);
+                        this.CloseQuerySite(site);
                     }
                 }
             }
@@ -91,7 +97,7 @@ public sealed partial class Binding
         {
             if (this.inlineSummaryPool[i] is { Path: { InheritedBase: null } path, Cyclic: true } node)
             {
-                this.Fail(this.SpecificationPart(path, node.Identity, path.Use) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
+                this.Fail(this.SpecificationPart(path, node.Identity) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
                 if (this.AssociatedBindingOf(path.RootPath, node.Identity) is { } binding)
                 {
                     binding.InlineCycle = true;

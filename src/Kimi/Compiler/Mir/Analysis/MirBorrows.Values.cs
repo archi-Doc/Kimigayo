@@ -54,8 +54,11 @@ internal sealed partial class MirBorrows
                 return (this.Displaced(value, cases.TypeOf(this.body.Operands[rvalue.Start])), 0); // Δ off a grid (MirBorrows.Puns).
             case MirRvalueKind.Opaque:
                 return (this.escapedSet, 0);
+            case MirRvalueKind.Use or MirRvalueKind.Adapt or MirRvalueKind.Cast or MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp or
+                MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage:
+                return (value, 0); // Its kept operands' (ValueOperands).
             default:
-                return (value, 0);
+                throw new InvalidOperationException($"A5's val has no row for the rvalue kind {rvalue.Kind} (InternalInvariant).");
         }
     }
 
@@ -66,15 +69,24 @@ internal sealed partial class MirBorrows
 
     // Whether an rvalue's value is its first operand's (val, A3 5): a Use, an Adapt, a value-keeping Cast (Erasure, Upcast, between raw
     // pointer Types, 5.4) or a raw pointer's displacement (5.3); the may-set (ValueOperands) and the must-set (MirBorrows.Storing) read it.
-    // An operand of no Type, a derived temp's read (PLAN G1073, MirCases.KnownTypeOf), is no raw pointer (rule W).
+    // An operand of no Type, a derived temp's read (PLAN G1073, MirCases.KnownTypeOf), is no raw pointer (rule W). Each kind has its
+    // row; a kind without one is an InternalInvariant.
     private bool Keeps(in MirRvalue rvalue) => rvalue.Kind switch
     {
         MirRvalueKind.Use or MirRvalueKind.Adapt => true,
-        MirRvalueKind.Cast => (MirCastKind)rvalue.Op is MirCastKind.Erasure or MirCastKind.Upcast ||
-            ((MirCastKind)rvalue.Op == MirCastKind.Pointer && rvalue.Type is { IsPointer: true }),
+        MirRvalueKind.Cast => (MirCastKind)rvalue.Op switch
+        {
+            MirCastKind.Erasure or MirCastKind.Upcast => true,
+            MirCastKind.Pointer => rvalue.Type is { IsPointer: true },
+            MirCastKind.Integer or MirCastKind.Floating or MirCastKind.Numeric or MirCastKind.Wrap or MirCastKind.Bits or
+                MirCastKind.IntToPointer => false,
+            _ => throw new InvalidOperationException($"A5's val has no row for the cast kind {rvalue.Op} (InternalInvariant)."),
+        },
         MirRvalueKind.BinaryOp => (MirBinaryOp)rvalue.Op is MirBinaryOp.Add or MirBinaryOp.Sub &&
             cases.KnownTypeOf(this.body.Operands[rvalue.Start]) is { IsPointer: true },
-        _ => false,
+        MirRvalueKind.Ref or MirRvalueKind.UnaryOp or MirRvalueKind.Aggregate or MirRvalueKind.Discriminant or MirRvalueKind.Len or
+            MirRvalueKind.Opaque or MirRvalueKind.Storage => false,
+        _ => throw new InvalidOperationException($"A5's val has no row for the rvalue kind {rvalue.Kind} (InternalInvariant)."),
     };
 
     // An operand's value: a constant's none, a Place's read (a PairAcquire's that Copies; one that Reborrows is its Use's issue, Plan).

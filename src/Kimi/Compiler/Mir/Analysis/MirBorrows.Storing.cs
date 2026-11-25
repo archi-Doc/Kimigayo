@@ -55,7 +55,6 @@ internal sealed partial class MirBorrows
     private int mustValue; // M of the value the location's Assign stores (Plan), read by the rule.
     private int mustKept; // What that store gives its whole destination: mustValue, or ∅ for an exposed one (Commit).
     private int overstored; // The input local whose own value the location's store puts where the contract refuses it, or 0 (Check).
-    private bool replaying; // Whether Carry runs the checks replay.
     private bool owning; // Whether the body forms an input's own part without a Loan (a raw address, a by-value pointer part): Run's producer.
 
     private static int Past(int input) => (2 * input) + 1;

@@ -20,7 +20,7 @@
 // mirroring the path's own bit; Open where a part may be missing: the components without a child path follow the own bit, each child
 // path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per view. Flags are numbered in path
 // order per body, so a subtree's flags are one range.
-// Invariant: a body the table marks has an Error problem in MirReport (R6-check IC, MirAnalysisTest): the one of its code at its subject in
+// Invariants: a body the table marks has an Error problem in MirReport (R6-check IC, MirAnalysisTest): the one of its code at its subject in
 // the body, or for an inline copy's, which Problem does not add, its template's of that code and subject (R4-M69), or MirReport's
 // InternalInvariant_Kd (a merge naming another requirement); generation's gate reads the mark. The mark names no report index, so a kept
 // library segment's marks stay valid when its problems are replayed at another index (PLAN G950).

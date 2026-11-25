@@ -77,7 +77,11 @@ public class AssociatedSubjectConstraintBindingTest
         var source = Source(true, valid ? "i32" : "string", "i32").Replace("func accept(x: Box<Source>) => ()", "func make() -> Box<Source> => .Empty", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, c.Binding.TryGetEnumConstruction(Function(c, "make").ExpressionBody!, out _));
+
+        // SPEC 8.6.3, 12.3, 23.1.2 (G1278-A, the Middle's C-563): the written `Box<Source>` is the one site; `.Empty` carries it and
+        // publishes its plan, on the rejected program too.
+        Assert.Equal(valid ? 0 : 1, c.Binding.Issues.Count(static x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint));
+        Assert.True(c.Binding.TryGetEnumConstruction(Function(c, "make").ExpressionBody!, out _));
     }
 
     [Theory]

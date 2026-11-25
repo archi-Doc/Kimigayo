@@ -279,7 +279,7 @@ internal sealed partial class MirBorrows
         internal bool SomeStated { get; init; } // A raw layer at the key states an Origin other than `static` (Key).
 
         // Whether a raw layer at the key states an Origin other than `static` while another raw layer or an unknown part there does not: a
-        // punned pointer's verdict differs by the layer it lands at, which one state per holder cannot place (MirBorrows.Puns' PunAt).
+        // placed pun's verdict differs by the layer the layout lands it at (MirBorrows.Puns' PlacedAt).
         internal bool PartlyStated => this.SomeStated && !this.Stated;
 
         internal bool Unsupported { get; init; }

@@ -9,15 +9,15 @@ namespace Kimi.Compiler.Mir;
 // a limit per declaration, flushed as one Collection-class record per key.
 // - Responsibility: each key's least use, a round's least held with its round, and the flush of every key's record at its least use.
 // - Inputs: the instance collector's uses (Limit), each a key (its record's code; an erased Type, or none where a forming site's
-//   substitution passes IMPL A.4's height; the forming site; the declaration) and its subject, made in its run's round (Begin with
+//   substitution passes IMPL A.4's height; the forming site; the declaration) and its subject, made in its version's round (Begin with
 //   MirRecordClass.Collection); a MIR body site's marks at its close (Uses; PLAN G651 U2b R5), each a use in the body's declaration added at
-//   once in every round, a body site's own subject a fallback; the run's end (FlushLimits, before Commit) and the first Merged read after a
+//   once in every round, a body site's own subject a fallback; the version's last run's end (FlushLimits, before Commit) and the first Merged read after a
 //   committed least changed.
 // - Outputs: per key one ControlFlow record of MirRecordClass.Collection at its least subject (a fallback after every use subject, then
 //   SourceRef order: module, then the syntax table's pre-order), TypeHeightLimit_Kd with its limit fact (IMPL A.4), added through Add in
 //   subject order, then code.
 // - Invariants: a round's uses are its own (Drop discards them, FlushLimits merges them into the committed least); a flush writes each
-//   key's one row again through Add's key, so a repeated clean run of a version, its committed least unchanged, adds no problem (ruling 16).
+//   key's one row again through Add's key, so a repeated last run of a version, its committed least unchanged, adds no problem (ruling 16).
 // - Prohibitions: no flush on a read of All or Records (A5's rule W and MirAnalysis read them while producers still run); no collector
 //   use outside its round; no body site's use after the flush outside a Collection round or from a library body.
 internal sealed partial class MirReport
@@ -29,7 +29,7 @@ internal sealed partial class MirReport
     private bool unflushed; // Whether a committed least changed since the last flush (Merged flushes it).
     private bool flushed; // Whether the table flushed in this version: a body site's use after it is a broken contract.
 
-    /// <summary>Adds the instance collector's use over a limit in a declaration to its run's round (IMPL 21.3.2; DECISIONS R5-M171): keyed
+    /// <summary>Adds the instance collector's use over a limit in a declaration to its version's round (IMPL 21.3.2; DECISIONS R5-M171): keyed
     /// by the limit's record and an erased Type (a Layout limit, its code the collector's; the type-driven height cap) or, where no Type
     /// is formed, a forming site whose substitution passes IMPL A.4's height (TypeHeightLimit_Kd, erased null; R7-T1), kept as the least
     /// subject of the declaration's uses in SourceRef order, whatever the collection's order. A use outside the collector's round is a
@@ -72,7 +72,7 @@ internal sealed partial class MirReport
         }
     }
 
-    /// <summary>Flushes the table at the clean collector run's end, before its round's <see cref="Commit"/>: merges the round's least uses
+    /// <summary>Flushes the table at the end of the collector version's last run, before its round's <see cref="Commit"/>: merges the round's least uses
     /// into the committed ones, then adds every key's record at its least use in subject order (DIAGNOSTICS rule 6) to the round.</summary>
     internal void FlushLimits()
     {
