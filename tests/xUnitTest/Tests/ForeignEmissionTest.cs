@@ -114,22 +114,16 @@ public class ForeignEmissionTest
         Assert.Matches(@"= call i32 @shared\(i32 2\)", ir);
     }
 
-    // The Tatara plan's B7b2b (IMPL 21.2, 21.5.2; decision 21; design §5 row 17): Ffi's linux-x64 module, whose program library takes the
-    // C path: c (static) required after codec, main defined (the layer's setup, the startup body, then 0 returned to crt1.o's exit) and no
-    // libc-free entry; codec_add's i16 parameter sign-extended at its call (System V x86-64), its declaration unextended. Windows' module
-    // is unchanged: the exported __kimi_start and the call without an attribute.
+    // The Tatara plan's B7b2b (IMPL 21.2, 21.5.2; decision 21; design §5 row 17): Ffi's linux-x64 module (tests/linux-elf/Ffi, the
+    // program CI's linux-elf job runs), whose program library takes the C path: c (static) required after codec, main defined (the
+    // layer's setup, the startup body, then 0 returned to crt1.o's exit) and no libc-free entry; codec_add's i16 parameter sign-extended
+    // at its call (System V x86-64), its declaration unextended. Windows' module is unchanged: the exported __kimi_start and the call
+    // without an attribute.
     [Fact]
     public void AProgramLibraryTakesTheCPathOnTheLinuxRow()
     {
-        const string Ffi = """
-            group Codec
-                #LibraryImport("codec", "codec_add")
-                public func add(a: i32, b: i16) -> i32
-            public func main()
-                require Codec.add(40, -2) == 38 else => $abort("add")
-                Console.writeLine("ffi ok")
-            """;
-        var c = AnalyzeAs(TargetProfile.Linux, Ffi, "static", OutputKind.Application);
+        var ffi = LinuxPair.Program("Ffi", "Ffi.kimi");
+        var c = AnalyzeAs(TargetProfile.Linux, ffi, "static", OutputKind.Application);
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Equal([("codec", "static"), ("c", "static")], c.Generated.Libraries);
         Assert.Equal(TargetProfile.MainSymbol, c.Generated.Entry);
@@ -139,7 +133,7 @@ public class ForeignEmissionTest
         Assert.Contains("declare i32 @codec_add(i32, i16)\n", ir, StringComparison.Ordinal);
         Assert.Matches(@"= call i32 @codec_add\(i32 40, i16 signext -2\)", ir);
 
-        var windows = Emit(Ffi, "static");
+        var windows = Emit(ffi, "static");
         Assert.Contains("define void @__kimi_start() noreturn #0 {\n", windows, StringComparison.Ordinal);
         Assert.DoesNotContain("@main(", windows, StringComparison.Ordinal);
         Assert.Contains("declare i32 @codec_add(i32, i16)\n", windows, StringComparison.Ordinal);

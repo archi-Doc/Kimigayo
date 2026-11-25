@@ -74,15 +74,15 @@ public class ReferenceBindingAssignmentTest
     // R7-E4 rulings 10 and 15: an `=` to a reassignable binding on a borrowed path is a rebind (SPEC 15.1.6). A literal at `ref/i32` is an
     // owner temporary whose lifetime ends with the assignment (SPEC 10.2): accepted without a later use (a3, snv), its later use rejected
     // at the assignment with the use related (a3u, snu); a value that fits neither the binding's Type nor, by a temporary, its referent is
-    // the value's mismatch (v2; the `uniq` twin u19, which takes no temporary; dr-a5, a value of the referent Type at `uniq/i32`, where dev
-    // named the mode; dr-rr at a reference slot `ref/(ref/i32)`).
+    // the value's mismatch (v2; the `uniq` twin u19, which takes no temporary; dr-rr at a reference slot `ref/(ref/i32)`), and an owned
+    // parameter of the referent Type at `uniq/i32` its written twin's denial at the Place (dr-a5, `n@uniq`'s; R7-M95 E4a-4).
     [InlineData("a3", "func f(items: ref/Array<i32>) -> ()\n    for var item in items\n        item = 5\n", "")]
     [InlineData("a3u", "func f(items: ref/Array<i32>) -> i32\n    var total = 0\n    for var item in items\n        item = 5\n        let k: i32 = item\n        total += k\n    return total\n", "ComparisonLoanConflict_Kd: item = 5")]
     [InlineData("snv", "func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield 0\n    .None => 0\n", "")]
     [InlineData("snu", "func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0\n", "ComparisonLoanConflict_Kd: n = 2")]
     [InlineData("v2", "func f(items: ref/Array<i32>) -> ()\n    for var item in items\n        item = true\n", "TypeMismatch_Kd: item = true")]
     [InlineData("u19", "func f() -> ()\n    var count: i32 = 1\n    match count@uniq\n        var n => n = 5\n", "TypeMismatch_Kd: var n => n = 5")]
-    [InlineData("dr-a5", "func f(items: uniq/Array<i32>, n: i32) -> ()\n    for var item in items\n        item = n\n", "TypeMismatch_Kd: item = n")]
+    [InlineData("dr-a5", "func f(items: uniq/Array<i32>, n: i32) -> ()\n    for var item in items\n        item = n\n", "InvalidAssignment_Kd: item = n")]
     // dr-rr: no move (dev gives the same TypeMismatch_Kd): the rebind rule's pin.
     [InlineData("dr-rr", "func f(a: i32, b: i32) -> ()\n    let refs: [2 of ref/i32] = [a@ref, b@ref]\n    for var r in refs\n        r = b@ref\n", "TypeMismatch_Kd: r = b@ref")]
     public void AReassignableBindingHasItsOwnRegionSlots(string form, string program, string records)

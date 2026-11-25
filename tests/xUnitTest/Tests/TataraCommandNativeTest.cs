@@ -68,6 +68,32 @@ public sealed class TataraCommandNativeTest : IDisposable
         }
     }
 
+    // The Tatara plan's B7b8 (design row 20): one session builds Hello for Windows, for Linux and for Windows again; the last Windows
+    // executable equals one built alone, and the Linux one is a static ELF (libc-free, entry __kimi_start). Fail-before: the Linux line
+    // fails with "Artifact production currently requires exactly one configured Windows x64 target.".
+    [Fact]
+    public async Task ASessionBuildsEachTargetInTurn()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (windows, linux) = ("build A/A.kimiproj --Target " + TargetProfile.Windows.Target, "build A/A.kimiproj --Target " + TargetProfile.Linux.Target);
+        var (alone, session) = (Path.Combine(this.directory, "alone"), Path.Combine(this.directory, "session"));
+        foreach (var root in new[] { alone, session })
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(root, "A")).FullName;
+            File.Copy(Path.Combine(Repository.Root, "docs", "examples", "Hello", "Hello.kimi"), Path.Combine(folder, "A.kimi"));
+            File.WriteAllText(Path.Combine(folder, "A.kimiproj"), $"Targets={{\"{TargetProfile.Windows.Target}\", \"{TargetProfile.Linux.Target}\"}} OutputKind=\"Application\" Optimization=\"O0\"");
+        }
+
+        var (code, text) = await Session(alone, [(windows, null)]);
+        Assert.True(code == 0, text);
+        (code, text) = await Session(session, [(windows, null), (linux, null), (windows, null)]);
+        Assert.True(code == 0, text);
+        Assert.Equal(3, TataraCommandTest.Count(text, "Built: "));
+        var executable = Path.Combine("A", "bin", TargetProfile.Windows.Target, "A.O0.exe");
+        Assert.Equal(File.ReadAllBytes(Path.Combine(alone, executable)), File.ReadAllBytes(Path.Combine(session, executable)));
+        ElfFile.Read(Path.Combine(session, "A", "bin", TargetProfile.Linux.Target, "A.O0")).AssertStatic(TargetProfile.Linux.EntrySymbol);
+    }
+
     // A press during a line cancels it (130, a failed line) and the next line builds.
     [Fact]
     public async Task ALineAfterACancelledLineSucceeds()

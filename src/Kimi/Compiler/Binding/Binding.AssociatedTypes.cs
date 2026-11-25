@@ -60,10 +60,7 @@ public sealed partial class Binding
     // a bound reference (`Indexable<isize>`), or a Contract applied to its own Type parameters (`Indexable<Key>` inside its
     // declaration), reached from the reference or refinement that supplied the name, or from the declaring Contract.
     private BoundType ProjectionContract(BindingSymbol associated, BindingSymbol? reference)
-    {
-        var supplied = reference ?? associated.Scope.Owner.BoundSymbol!;
-        return IsBoundContractReference(supplied) ? supplied.Type! : this.SelfType(supplied);
-    }
+        => this.ContractReferenceType(reference ?? associated.Scope.Owner.BoundSymbol!);
 
     // Projection syntax and the effective shape share one identity. A declaration applied to its own slots denotes
     // that declaration's requirement; every other normalized argument list retains its interned bound reference.
@@ -165,8 +162,8 @@ public sealed partial class Binding
                 Search(own);
             }
 
-            // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
-            // rows: the use is judged).
+            // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, each non-Alias row of Enumerate's rows (the use is
+            // judged); the reader (IsSelectionCandidate, NamesReference, SameConformanceType) identifies the rest.
             var start = this.premiseRows.Count;
             this.PremiseRows(type, scope, this.premiseRows);
             for (var i = start; i < this.premiseRows.Count; i++)

@@ -163,7 +163,6 @@ public class ArchitectureRulesTest
         "Binding.ArgumentOperations.cs:AdaptInput=2 sufficient",
         "Binding.ArgumentOperations.cs:SharedReferenceThroughLayers=1 sufficient",
         "Binding.ArithmeticContracts.cs:NotString=1 kind",
-        "Binding.ArithmeticOperators.cs:TryArithmetic=1 kind",
         "Binding.ArithmeticOperators.cs:TryArithmetic=1 sufficient",
         "Binding.ArrayInference.cs:ArrayElementEvidence=1 kind",
         "Binding.ArrayInference.cs:BindContextualArrayLiteral=1 kind",
@@ -198,6 +197,7 @@ public class ArchitectureRulesTest
         "Binding.CallRelations.cs:CollectCallRelations=1 sufficient",
         "Binding.CallRelations.cs:JudgeCallFit=1 sufficient",
         "Binding.CallSelection.Candidates.cs:InferExpectedResult=1 unchanged",
+        "Binding.CallSelection.Candidates.cs:TryCandidateCore=1 unchanged",
         "Binding.CallSlots.cs:FittedPattern=1 unchanged",
         "Binding.CallSlots.cs:FormedApplication=1 unchanged",
         "Binding.CallSlots.cs:Infer=4 formed",
@@ -211,6 +211,8 @@ public class ArchitectureRulesTest
         "Binding.CallableContracts.cs:CompareCallableContracts=1 declared",
         "Binding.CallableEffects.cs:CheckCallableEffectUses=2 key",
         "Binding.CallableEffects.cs:CollectCallableEffectUses=2 key",
+        "Binding.CallableSelection.cs:ItemPartFails=1 unchanged",
+        "Binding.CallableSelection.cs:ProbeValueCall=1 unchanged",
         "Binding.CallableSelection.cs:SameCallableSignature=1 sufficient",
         "Binding.CallableSelection.cs:SameProofPremise=1 key",
         "Binding.CallableSelection.cs:SelectValueCall=1 declared",
@@ -234,8 +236,9 @@ public class ArchitectureRulesTest
         "Binding.Constraints.Model.cs:Equals=2 key",
         "Binding.Constraints.Model.cs:NameUnprovenInput=1 key",
         "Binding.Constraints.cs:JudgeConstraintAtom=1 unchanged",
-        "Binding.Constraints.cs:NormalizeProofConstraint=3 unchanged",
+        "Binding.Constraints.cs:NormalizeProofConstraint=2 unchanged",
         "Binding.Constraints.cs:NormalizeProofTypeCore=1 unchanged",
+        "Binding.Constraints.cs:NormalizedContract=1 unchanged",
         "Binding.ConstructorValidation.cs:StableConstructionPremises=1 sufficient",
         "Binding.ConstructorValidation.cs:ValidateFixedConstruction=1 key",
         "Binding.ConstructorValidation.cs:ValidateFixedConstruction=1 sufficient",
@@ -253,8 +256,8 @@ public class ArchitectureRulesTest
         "Binding.ContractTypes.cs:Hop=1 key",
         "Binding.ContractTypes.cs:InstantiatedContract=1 unchanged",
         "Binding.ContractTypes.cs:WithConformingSelf=1 unchanged",
+        "Binding.Contracts.Expansion.cs:AddArgumentPasses=2 formed",
         "Binding.Contracts.cs:IsSelectionCandidate=1 sufficient",
-        "Binding.Contracts.cs:ProveConformance=1 unchanged",
         "Binding.ControlFlow.cs:EndArrival=1 kind",
         "Binding.ControlFlow.cs:InfersUnit=1 kind",
         "Binding.ControlFlow.cs:ReadTypeUnification=1 formed",
@@ -298,7 +301,6 @@ public class ArchitectureRulesTest
         "Binding.InPlaceReads.cs:StringThroughLayers=2 kind",
         "Binding.Indexers.cs:TryBindIndexer=1 unchanged",
         "Binding.InferCtxt.cs:BindsDistinctTypes=1 formed",
-        "Binding.InheritedConformances.cs:RetainedImplementation=1 record",
         "Binding.InlineLayouts.cs:AddInlinePart=1 key",
         "Binding.InlineLayouts.cs:WithComponent=1 unchanged",
         "Binding.Interpolation.cs:BindTryWrite=1 kind",
@@ -331,8 +333,7 @@ public class ArchitectureRulesTest
         "Binding.OpenSlots.cs:FillOpenSlots=1 unchanged",
         "Binding.OperatorApplicability.cs:ArithmeticPairApplicability=2 kind",
         "Binding.OperatorApplicability.cs:ComparisonApplicability=3 kind",
-        "Binding.OperatorApplicability.cs:NumericApplicability=1 kind",
-        "Binding.OperatorApplicability.cs:OperatorApplicabilityOf=3 kind",
+        "Binding.OperatorApplicability.cs:OperatorApplicabilityOf=4 kind",
         "Binding.OperatorApplicability.cs:OperatorApplicabilityOf=1 unchanged",
         "Binding.OperatorApplicability.cs:RightOperatorApplicability=1 kind",
         "Binding.OperatorApplicability.cs:ShiftCountApplicability=1 kind",
@@ -381,6 +382,7 @@ public class ArchitectureRulesTest
         "Binding.ResultPropagation.cs:BindWaitedSources=1 kind",
         "Binding.ResultPropagation.cs:DefaultWaitingPart=1 kind",
         "Binding.ResultPropagation.cs:FittedTupleType=1 kind",
+        "Binding.ResultPropagation.cs:LateAdaptation=1 unchanged",
         "Binding.ResultPropagation.cs:LateResultType=1 kind",
         "Binding.ResultPropagation.cs:LateType=1 kind",
         "Binding.ResultPropagation.cs:PartAwaits=1 kind",
@@ -421,7 +423,7 @@ public class ArchitectureRulesTest
         "Binding.TypeArities.cs:AddTypeCandidates=1 declared",
         "Binding.TypeHeight.cs:Mark=1 key",
         "Binding.TypeOrigins.cs:OriginFormationSite=2 record",
-        "Binding.TypeRelations.Origins.cs:CommonOriginType=2 sufficient",
+        "Binding.TypeRelations.Origins.cs:PlaceCommonType=1 sufficient",
         "Binding.TypeRelations.Walk.cs:Discharged=1 formed",
         "Binding.TypeRelations.Walk.cs:FunctionFits=1 formed",
         "Binding.TypeRelations.Walk.cs:Names=1 unchanged",
@@ -627,17 +629,23 @@ public class ArchitectureRulesTest
     [InlineData("Readers of a class's Member", "src/Kimi/Compiler", @"\bMemberOf\(", "Binding/Binding.Capabilities.cs=2;Binding/Binding.Constraints.cs=1;Binding/Binding.ContractTypes.cs=1;Binding/Binding.Contracts.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1")]
     // R7-C2c2 c2-4b (design R4.12b, R4.12c; ClassForm's contract in Keys.cs): an identity class's one form reaches Types only through
     // ClassForm, read by the one intake of each judgment over identical Types: J1 a proposition's identity (Constraints.cs:
-    // NormalizeProofConstraint's subject, required Type and Contract reference; Contracts.cs: ProveConformance's subject and Contract
-    // reference), J3 the Type relation at a use (TypeRelations.Walk.cs: the walk root's two sides; CallableSelection.cs:
+    // NormalizedForm, NormalizeProofConstraint's subject, required Type and Contract reference (NormalizedContract, which ProveConformance
+    // reads too, R7-C2c2 c2-5c); Contracts.cs: ProveConformance's subject), J3 the Type relation at a use (TypeRelations.Walk.cs: the walk
+    // root's two sides; CallableSelection.cs:
     // CallableContractType; a failed fit's record and CheckTypeUse read the pair the walk's intake published, F's C2 rulings 307 (2),
     // 315), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
     // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
     // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
     // input (Expressions.cs: the expected and the bound Type; Variables.cs; Conversions.cs: a conversion's written target,
     // BindConversionTarget, PLAN G1240), and (iii) a member step's receiver (R7-N1 c-b: MemberLookup.cs, QualifierSelection's
-    // receiver Type; ResolvePath.cs, EvaluateProjection's normal form); Keys.cs is ClassForm's own recursion. J2 reads the classes,
-    // no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.MemberLookup.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    // receiver Type; ResolvePath.cs, EvaluateProjection's normal form), and (iv) SPEC 8.3.3's expanding recursion (G563-C, F's
+    // G563C-1 Q1 (a), G563C-3: Contracts.Expansion.cs, a Contract's parameters and each supplied reference in its view, through J1's
+    // NormalizedForm); Keys.cs is ClassForm's
+    // own recursion. J2 reads the classes, no form. NormalizedForm, J1's reading through ClassForm, is counted with it, so its callers
+    // are reviewed rows too (G563-C's implementation review N2, F's G563C-6): Constraints.cs 5 (NormalizedForm's declaration and its
+    // ClassForm, NormalizeProofConstraint's subject and required Type, NormalizedContract's reference), Contracts.Expansion.cs 2 ((iv): the parameters and each supplied reference).
+    // A further reader fails here until its row is reviewed.
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\b(?:ClassForm|NormalizedForm)\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=5;Binding/Binding.Contracts.Expansion.cs=2;Binding/Binding.Contracts.cs=1;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.MemberLookup.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=5;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
@@ -925,7 +933,8 @@ public class ArchitectureRulesTest
     // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines, FirstRows, PremiseRows,
     // ExactAssumption and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
     // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row atom (RowAtom, c2-5b) and row merge (AddRow) are members.
-    // R7-C2c2: the walk's class
+    // G1407: row (2)'s intake of one source row's supply (AddSupplyRows) is a member; the conjunct split it calls (AddConjuncts, in
+    // Binding.Constraints.cs) only appends a constraint and its conjuncts. R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
     // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
     [Fact]
@@ -934,14 +943,14 @@ public class ArchitectureRulesTest
         string[] walk =
         [
             "Enumerate", "EnumerateLink", "EnumerateMates", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
-            "RowContract", "RowAtom", "AddRow", "HoldsOpenLink", "RowWeight",
+            "RowContract", "RowAtom", "AddRow", "AddSupplyRows", "HoldsOpenLink", "RowWeight",
         ];
         string[] allowed =
         [
-            "Add", "AddRow", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
+            "Add", "AddConjuncts", "AddRow", "AddSupplyRows", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
             "AvailableContractPremise", "CauseOf", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
             "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
-            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
+            "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
             "RowAtom", "RowContract", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",

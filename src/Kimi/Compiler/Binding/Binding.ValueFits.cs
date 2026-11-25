@@ -76,8 +76,8 @@ public sealed partial class Binding
     // acquisition and adaptation): the structural part alone, every Origin binding equal inside Function Types too, so no Origin relation
     // and no implementation well-formedness (FailedSignatureWellFormedness) drops a candidate for another to win; the selected candidate's
     // own fit judges them (DECISIONS R4-M155, landing review B1). SPEC 4.3.1, 12.3.1: also a contextual array literal's element against the
-    // expected element Type (BindContextualArrayLiteral), whose Origin part, a Function's contract included, the enclosing position's fit
-    // judges once the local's omitted Origins are inferred; its failure is the element's Type mismatch.
+    // expected element Type (BindContextualArrayLiteral), whose Origin part, a Function's contract included, the element's use-site fit to
+    // the place's Type judges (PLAN G1379); its failure is the element's Type mismatch.
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, this, use, OriginPart.Everywhere).Fits(actual, expected);
 

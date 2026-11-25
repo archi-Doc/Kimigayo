@@ -28,7 +28,6 @@ public sealed partial class Binding
     // BU-111).
     private enum ArithmeticSelectionCause : byte
     {
-        NonNumericLeft,
         Unproven,
         NoFit,
         Ambiguous,
@@ -258,17 +257,17 @@ public sealed partial class Binding
     // conformance (Constraint: the provider is the route's Contract, applied to the counterpart when it has one), the cause (Reason) and
     // each candidate conformance the route considered (Related, role 0, "conformance": its premise or declaration, then the Contract
     // instance it states as its Instance), in the route's order. A failure path only.
-    private BoundType? RecordArithmeticSelection(Koto use, BoundType self, BoundType? counterpart, KimiDeclarationId id, ArithmeticSelectionCause cause, BoundArithmetic? plan)
+    private BoundType? RecordArithmeticSelection(Koto use, BoundType self, BoundType? counterpart, KimiDeclarationId id, ArithmeticSelectionCause cause, BoundArithmetic plan)
     {
         var contract = counterpart is null ? this.Library.GetSymbol(id)! : this.ArithmeticReference(id, counterpart);
         var at = SourceRef.Of(use);
-        var count = plan?.Candidates.Count ?? 0;
+        var count = plan.Candidates.Count;
         var facts = new ProblemFact[2 + (2 * count)];
         facts[0] = new(ProblemFactKind.Constraint, at, this.report.Keep(this.InternConstraint(new(ConstraintKind.Contract, self, contract: contract))));
         facts[1] = new(ProblemFactKind.Reason, at, (long)cause);
         for (var i = 0; i < count; i++)
         {
-            var source = this.FactSite(plan!.Sources[i]);
+            var source = this.FactSite(plan.Sources[i]);
             facts[2 + (2 * i)] = new(ProblemFactKind.Related, source, 0);
             facts[3 + (2 * i)] = new(ProblemFactKind.Instance, source, this.report.Keep(plan.Candidates[i].Type!));
         }
@@ -294,7 +293,6 @@ public sealed partial class Binding
             ? DiagnosticTypeName(counterpart) : use is UnaryKoto ? "none (unary operation)" : "not independently typed";
         var note = cause switch
         {
-            ArithmeticSelectionCause.NonNumericLeft => "A right provider requires a built-in numeric left operand",
             ArithmeticSelectionCause.Unproven => "A structurally fitting conditional conformance remains unproven",
             ArithmeticSelectionCause.NoFit => "No proven conformance fits the counterpart structure",
             ArithmeticSelectionCause.Ambiguous => "Multiple proven conformances fit the counterpart structure",

@@ -402,5 +402,45 @@ Write-ForeignProject 'O0' "NativeRequirements=`n  `"x86_64-pc-windows-msvc`"=`n 
 $output = Invoke-Kimi @('emit', $foreignProject) 1
 if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler', 'removed options', 'project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+# Linux-x64 projects, the committed tests/linux-elf Hello and Ffi (Tatara B7b9: the programs CI's linux-elf job runs; O2, the
+# projects' default), each program's sources (*.kimi, *.kimiproj and native/*.c, never a local build's output) copied into a folder
+# of its own (a project takes every .kimi in its folder; docs/examples stays single-target), build static ELFs here, and run refuses
+# a target this host does not run (Unsupported_Kd, exit 1). Ffi's foreign static supply is an ELF codec.a: the toolchain's clang for
+# the Linux triple, archived by a copy of llvm-lib.exe named llvm-ar.exe in its folder, never in the toolchain (the Tatara plan's
+# B7b8, B7b7 ruling 7a).
+$linuxDirectory = Join-Path $work 'linux x64'
+$linuxFfiDirectory = Join-Path $work 'linux x64 ffi'
+$linuxNative = Join-Path $linuxFfiDirectory 'native'
+function Copy-LinuxProgram([string] $Name, [string] $Destination) {
+    $from = Join-Path $repo "tests/linux-elf/$Name"
+    foreach ($source in Get-ChildItem -LiteralPath $from -Recurse -File) {
+        $relative = [IO.Path]::GetRelativePath($from, $source.FullName).Replace('\', '/')
+        if ($relative -cnotmatch '^([^/]+\.kimi(proj)?|native/[^/]+\.c)$') { continue }
+        $target = Join-Path $Destination $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Copy-Item -LiteralPath $source.FullName -Destination $target
+    }
+}
+Copy-LinuxProgram 'Hello' $linuxDirectory
+Copy-LinuxProgram 'Ffi' $linuxFfiDirectory
+function Assert-Elf([string] $Directory, [string] $Name) {
+    $image = Join-Path $Directory "bin/x86_64-unknown-linux-musl/$Name.O2"
+    $magic = [IO.File]::ReadAllBytes($image)[0..3]
+    if (($magic -join ',') -cne '127,69,76,70') { throw "$Name.O2 is not an ELF image" }
+}
+$output = Invoke-Kimi @('build', (Join-Path $linuxDirectory 'Hello.kimiproj'))
+Assert-Elf $linuxDirectory 'Hello'
+$output = Invoke-Kimi @('run', (Join-Path $linuxDirectory 'Hello.kimiproj')) 1
+if (-not $output.Contains('This form is outside the implemented subset')) { throw "Run did not refuse a target this host does not run: $output" }
+& (Join-Path $ToolchainRoot 'clang.exe') --target=x86_64-unknown-linux-musl -O2 -fno-builtin -fno-stack-protector -c (Join-Path $linuxNative 'codec.c') -o (Join-Path $linuxNative 'codec.o')
+if ($LASTEXITCODE -ne 0) { throw 'clang failed for the Linux foreign supply' }
+Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'llvm-lib.exe') -Destination (Join-Path $linuxNative 'llvm-ar.exe')
+& (Join-Path $linuxNative 'llvm-ar.exe') rcs (Join-Path $linuxNative 'codec.a') (Join-Path $linuxNative 'codec.o')
+if ($LASTEXITCODE -ne 0) { throw 'llvm-ar failed for the Linux foreign supply' }
+$output = Invoke-Kimi @('build', (Join-Path $linuxFfiDirectory 'Ffi.kimiproj'))
+Assert-Elf $linuxFfiDirectory 'Ffi'
+$linuxRecord = Get-Content -LiteralPath (Join-Path $linuxFfiDirectory 'bin/x86_64-unknown-linux-musl/Ffi.link.build.json') -Raw | ConvertFrom-Json
+if (($linuxRecord.libraries | Where-Object name -ceq 'codec').sha256 -cne (Get-FileHash (Join-Path $linuxNative 'codec.a')).Hash.ToLowerInvariant()) { throw 'The Linux foreign supply was not linked from codec.a' }
+
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler', 'removed options', 'project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions', 'linux-x64 project builds a static ELF', 'run refuses a target this host does not run', 'linux-x64 foreign static supply') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

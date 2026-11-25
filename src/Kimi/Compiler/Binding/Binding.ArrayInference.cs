@@ -103,39 +103,63 @@ public sealed partial class Binding
 
     // SPEC 4.3.1, 12.3.1: the expected element Type is every element's expected Type, so each element is checked against it by the fit's
     // structural part on the Type its adaptation gave (BindNode; FitsStructuralPartAt) and a misfit is recorded at that element. The
-    // Origin part is the enclosing position's fit's: as for Tuple literals, the literal keeps the Origins its fitting elements meet at until
-    // the enclosing declaration has inferred omitted Origins, the evidence InferLocalOrigins reads, which the expectation itself would erase.
+    // place's Type is the fitting elements' common Type (PlaceCommonType) with the expected element Type's stated Origins (StatedPlaceType):
+    // its omitted ones keep the elements' meet, the evidence InferLocalOrigins reads, which the expectation itself would erase. After the
+    // whole meet, each fitting element's use-site fit to that Type forms its Origin rows (SPEC 15.3.6: a variable's bounds are checked
+    // against its candidate), so they do not depend on source order (PLAN G1379), at every site, on the Type the element's adaptation gave.
     private BoundType? BindContextualArrayLiteral(ArrayLiteralKoto literal, BindingScope scope, BoundType expected)
     {
         BoundType? element = null;
         var complete = true;
-        for (var i = 0; i < literal.Elements.Count; i++)
+        var adapted = this.RentTypes(literal.Elements.Count);
+        BoundType place;
+        try
         {
-            this.PropagateBound(literal.Elements[i], expected.Components[0]);
-            var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
-            if (actual is null)
+            for (var i = 0; i < literal.Elements.Count; i++)
             {
-                complete = false;
-            }
-            else if (!this.FitsStructuralPartAt(actual, expected.Components[0], literal.Elements[i]))
-            {
-                this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, expected.Components[0], ComparisonFailure.Shape);
-                complete = false;
-            }
-            else if (!ReferenceEquals(actual, BoundType.Never))
-            {
-                var failure = default(ComparisonFailure);
-                var common = element is null ? actual : this.CommonOriginType(element, actual, literal, out failure);
-                if (common is null)
+                this.PropagateBound(literal.Elements[i], expected.Components[0]);
+                var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
+                if (actual is null)
                 {
-                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
                     complete = false;
                 }
-                else
+                else if (!this.FitsStructuralPartAt(actual, expected.Components[0], literal.Elements[i]))
                 {
-                    element = common;
+                    this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, expected.Components[0], ComparisonFailure.Shape);
+                    complete = false;
+                }
+                else if (!ReferenceEquals(actual, BoundType.Never))
+                {
+                    var failure = default(ComparisonFailure);
+                    var common = element is null ? actual : this.PlaceCommonType(element, actual, literal, out failure);
+                    if (common is null)
+                    {
+                        this.FailMismatch(literal.Elements[i], literal.Elements[i], actual, element!, failure);
+                        complete = false;
+                    }
+                    else
+                    {
+                        element = common;
+                        adapted[i] = actual;
+                    }
                 }
             }
+
+            place = element is null ? expected.Components[0] : this.StatedPlaceType(element, expected.Components[0]);
+            var owned = element is not null;
+            for (var i = 0; owned && i < literal.Elements.Count; i++)
+            {
+                var part = literal.Elements[i];
+                if (adapted[i] is { } actual && !this.FitsValueAt(actual, place, part, part, out var failure))
+                {
+                    this.FailMismatch(part, part, actual, place, failure);
+                    complete = false;
+                }
+            }
+        }
+        finally
+        {
+            this.typeScratch.Return(adapted, clearArray: true);
         }
 
         if (expected.Kind == BoundTypeKind.FixedArray && (expected.LengthExpression is not null || (expected.Length >= 0 && expected.Length != literal.Elements.Count)))
@@ -143,7 +167,7 @@ public sealed partial class Binding
             return this.Fail(literal, BindingFailure.TypeMismatch);
         }
 
-        return Complete(literal, complete ? this.types.Intern(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
+        return Complete(literal, complete ? this.types.Intern(expected.Kind, expected.Symbol, expected.Semantics, [place], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
     }
 
     private void InferArrayAnnotation(Koto syntax, Koto initializer, BindingScope scope)
@@ -362,12 +386,12 @@ public sealed partial class Binding
         if (this.AwaitsPosition(source))
         {
             // SPEC 14.9.2 step 3, 4.3: it takes the established element Type; without one, the awaiting elements' own common Type.
-            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual, source, out _) ?? literalDefault;
+            literalDefault = literalDefault is null ? actual : this.PlaceCommonType(literalDefault, actual, source, out _) ?? literalDefault;
             return true;
         }
 
         var failure = default(ComparisonFailure);
-        var common = established is null ? actual : this.CommonOriginType(established, actual, source, out failure);
+        var common = established is null ? actual : this.PlaceCommonType(established, actual, source, out failure);
         if (common is null)
         {
             this.FailMismatch(source, source, actual, established!, failure);
@@ -468,7 +492,7 @@ public sealed partial class Binding
         }
 
         var failure = default(ComparisonFailure);
-        var common = established is null ? actual : this.CommonOriginType(established, actual, source, out failure);
+        var common = established is null ? actual : this.PlaceCommonType(established, actual, source, out failure);
         if (common is null)
         {
             this.FailMismatch(source, source, actual, established!, failure);

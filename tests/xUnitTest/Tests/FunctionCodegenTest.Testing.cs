@@ -123,14 +123,16 @@ public sealed partial class FunctionCodegenTest
 
     // IMPL 21.4.2, SPEC 20.6 (DECISIONS R5-M136): a test build's entry is the test runtime's, which reports the case and runs the selected
     // test, each test's function called in catalog order through the one call writer, under the runtime's test variant (its Aborts report
-    // the case's); the module has no Application entry body (fail-before: one located Unsupported_Kd at each test).
+    // the case's); the module has no Application entry body (fail-before: one located Unsupported_Kd at each test). The entry is the
+    // row's entry symbol, which the module states (Generated.Entry) and the runtime defines (the Tatara plan's B7b8, C-560 N7).
     [Fact]
     public void ATestBuildsEntryRunsEachTestInCatalogOrder()
     {
         var c = Analyze(Verifications);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var start = ir.Function("__kimi_start");
+        Assert.Equal(TargetProfile.Windows.EntrySymbol, c.Generated.Entry);
+        var start = ir.Function(c.Generated.Entry!);
         Assert.Equal(ir.Function("__kimi_test_begin"), CallsOf(start)[0].Callee);
         Assert.Equal(
             c.Tests.Cases.Select(x => Assert.Single(FunctionsOf(ir, c, x.Name))),
