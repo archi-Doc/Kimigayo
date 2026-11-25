@@ -185,13 +185,12 @@ public class CoreModelTest
         Assert.Null(TargetProfile.Find("x86_64-unknown-linux-gnu"));
     }
 
-    // The Tatara plan's B7b8: the host's row is the row that runs on this process's host, read once; on a Windows x64 process it is
-    // windows-x64's.
+    // The Tatara plan's B7b8 (C-575 N6): the host's row is the one row whose ExecutionHost is this process's HostName (SingleOrDefault
+    // throws on two), or null when there is none; on a Windows x64 process it is windows-x64's.
     [Fact]
     public void HostIsTheRowThatRunsOnThisHost()
     {
-        Assert.Same(TargetProfile.Host, TargetProfile.Host);
-        Assert.Equal(TargetProfile.Rows.SingleOrDefault(static x => x.ExecutionHost == TargetProfile.HostName), TargetProfile.Host);
+        Assert.Same(TargetProfile.Rows.SingleOrDefault(static x => x.ExecutionHost == TargetProfile.HostName), TargetProfile.Host);
         if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.X64)
         {
             Assert.Equal("windows x64", TargetProfile.HostName);

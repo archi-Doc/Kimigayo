@@ -24,9 +24,10 @@ public partial class Project
 
     // The product build's preparation sequence (BuildTargets) with the test settings: each failure is its own record (SPEC 23.1.2),
     // blocking the check before the front end (SPEC 23.2.2); a command renders them. The test target is the project's own selection
-    // (SelectTargets) and then one target with a row in the target table (IMPL 20.6.1; one without is Unsupported, SPEC 22 ¶1); a
-    // failure there leaves no target to prepare and ends the sequence. Preparation runs the front end only: whether this host runs the
-    // tests is the runner's rule (RunsOnHost, before any generation), so every Test-mode check reads the same unit on every host.
+    // (SelectTargets) and then its artifact target, one target with a row in the target table (ArtifactTarget; IMPL 20.6.1; one without
+    // is Unsupported, SPEC 22 ¶1); a failure there leaves no target to prepare and ends the sequence. Preparation runs the front end only:
+    // whether this host runs the tests is the runner's rule (RunsOnHost, before any generation), so every Test-mode check reads the same
+    // unit on every host.
     private Compilation? PrepareTests(CancellationToken cancellationToken, CheckContext? context, DiagnosticOwner diagnostics)
     {
         if (!this.ValidateConfiguration(diagnostics, out var sources))
@@ -41,24 +42,26 @@ public partial class Project
             valid = false;
         }
 
-        if (this.SelectTargets(diagnostics) is not { } targets)
+        if (this.SelectTargets(diagnostics) is null)
         {
             return null;
         }
 
-        if (targets.Length != 1)
+        if (this.ArtifactTarget(out var reason) is not { } row)
         {
-            this.Fail(diagnostics, "Select --Target when a test project has more than one configured target.");
-            return null;
-        }
+            if (reason == NoArtifactTarget.NoRow)
+            {
+                this.Unsupported(diagnostics);
+            }
+            else
+            {
+                this.Fail(diagnostics, "Select --Target when a test project has more than one configured target.");
+            }
 
-        if (TargetProfile.Find(targets[0]) is null)
-        {
-            this.Unsupported(diagnostics);
             return null;
         }
 
         Compilation? result = null;
-        return this.BuildTarget(targets[0], valid, false, null, sources, cancellationToken, c => result = c, context) ? result : null;
+        return this.BuildTarget(row.Target, valid, false, null, sources, cancellationToken, c => result = c, context) ? result : null;
     }
 }

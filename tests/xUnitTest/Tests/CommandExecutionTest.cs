@@ -28,7 +28,7 @@ public sealed class CommandExecutionTest : IDisposable
     // first:
     // - The message, no code: a missing input (build, check, restore), a directory without projects, the usage errors (build, toolchain,
     //   restore's input, an unknown command), run's selection, the toolchain's calls (a missing manifest, run --no-build
-    //   without a build, a missing executable), restore's lock write (an output failure naming the lock: PLAN G1257), a malformed
+    //   without a build on a host that runs its Windows target, a missing executable), restore's lock write (an output failure naming the lock: PLAN G1257), a malformed
     //   solution file and two files nested deeper than the configuration reader reads (the parse of a user's file is the file's failure),
     //   and a project file check cannot read (the load's reason, PLAN G1010).
     // - CheckFaulted_Kd: the host's console throwing at the selected project's line (build with a type the toolchain's classification
@@ -63,6 +63,7 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("restore lock line", "Dependency lock", true, null)]
     public async Task ACommandFailsByItsInputItsToolchainOrItsOwnFault(string origin, string? failingLine, bool faulted, string? message)
     {
+        Assert.SkipUnless(origin != "no build" || TargetProfile.Host == TargetProfile.Windows, "The run needs a host that runs the Windows target.");
         Action fail = origin == "selection, unlisted" ? () => throw new FormatException("The host's console failed.") : DiagnosticContractTest.DiagnosticConsole.Fail;
         var console = new DiagnosticContractTest.DiagnosticConsole { LineAction = failingLine is null ? null : (failingLine, fail) };
         var kimigayo = new Kimigayo(console);
@@ -511,7 +512,8 @@ public sealed class CommandExecutionTest : IDisposable
         // selection (O2); two projects with one identity, the later one's line, the loop going on to the next project, whose case is
         // listed (O3); an empty --results-dir, an option error at Parse before any project is prepared, also where no run follows (O5,
         // O5b); a project file the load cannot read, its reason through the service (L1, PLAN G1010). Exit 3 with its message: a results
-        // directory that cannot be created, a file in its place (R1, the runner's storage).
+        // directory that cannot be created, a file in its place (R1, the runner's storage), on a host that runs its Windows target, since
+        // the host rule comes before the run directory (TestRefusesATargetThisHostDoesNotRunAfterListing).
         // Exit 2, the command's own fault (DIAGNOSTICS rule 9): one CheckFaulted_Kd rendered and its code and message as the result's one
         // errors entry, for the host's console throwing at the "Project: " line (F1, in text and in the document) and at the native
         // build's "Built: " report (F2). No production seam: the console is the host's.
@@ -529,6 +531,7 @@ public sealed class CommandExecutionTest : IDisposable
         public async Task TestFailsByItsInputItsRunnerOrItsOwnFault(string origin, int expected, string? message, params string[] options)
         {
             Assert.SkipUnless(origin != "Built: " || OperatingSystem.IsWindows(), "The native build runs on Windows.");
+            Assert.SkipUnless(origin != "results file" || TargetProfile.Host == TargetProfile.Windows, "The run needs a host that runs the Windows target.");
             var input = WriteTests(Path.Combine(this.directory, "A", "A.kimiproj"), origin == "identity" ? "TestProjectId = \"Same\"\n" : string.Empty);
             if (origin == "identity")
             {
@@ -586,8 +589,9 @@ public sealed class CommandExecutionTest : IDisposable
 
         // The Tatara plan's B7b8 (IMPL 20.6.1, 20.6.4: 2; design row 19's test half, notes D1): a test project for a target this host does
         // not run is listed (nothing runs), and its run is refused after preparation, before the run directory and any generation or
-        // native build: the location-only Unsupported_Kd at the project, exit 2, no bin\ directory. Fail-before: both rows are
-        // preparation's "Testing requires a configured Windows x64 target.", exit 2.
+        // native build: the location-only Unsupported_Kd at the project, one errors entry naming the project, exit 2, no bin\ directory.
+        // Fail-before: both rows are preparation's "Testing requires a configured Windows x64 target.", exit 2; the errors entry, commit 2's
+        // empty errors (C-575 N2).
         [Theory]
         [InlineData(true)]
         [InlineData(false)]
@@ -597,9 +601,11 @@ public sealed class CommandExecutionTest : IDisposable
             File.WriteAllText(input, File.ReadAllText(input).Replace(TargetProfile.Windows.Target, TargetProfile.Linux.Target, StringComparison.Ordinal));
             var console = new DiagnosticContractTest.DiagnosticConsole();
             var kimigayo = new Kimigayo(console);
-            var output = Console.Out;
+            var (output, error) = (Console.Out, Console.Error);
             using var stdout = new StringWriter();
+            using var stderr = new StringWriter();
             Console.SetOut(stdout);
+            Console.SetError(stderr);
             try
             {
                 Environment.ExitCode = 0;
@@ -608,6 +614,7 @@ public sealed class CommandExecutionTest : IDisposable
             finally
             {
                 Console.SetOut(output);
+                Console.SetError(error);
             }
 
             var exit = Environment.ExitCode;
@@ -616,6 +623,8 @@ public sealed class CommandExecutionTest : IDisposable
             Assert.Contains("::passes", stdout.ToString(), StringComparison.Ordinal); // Listed, or reported NOT STARTED by the run.
             Assert.Equal(!list, stdout.ToString().Contains("NOT STARTED ", StringComparison.Ordinal));
             Assert.Equal(!list, console.Text.Contains(nameof(DiagnosticCode.Unsupported_Kd), StringComparison.Ordinal));
+            string[] errors = list ? [] : ["This host does not run the test target: A"]; // The result's one errors entry (C-575 N2).
+            Assert.Equal(errors, stderr.ToString().Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
             Assert.False(Directory.Exists(Path.Combine(this.directory, "A", "bin")));
         }
 

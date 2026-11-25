@@ -168,9 +168,12 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal("O0", project.ProjectFile.Optimization);
     }
 
+    // A run's later steps, on a host that runs its Windows target; on any other the host rule refuses it first, as
+    // CommandExecutionTest.RunRefusesATargetThisHostDoesNotRunBeforeAnyBuild reads on every host (the Tatara plan's B7b8, C-575 B1).
     [Fact]
     public async Task RunPreparesImplicitSettingsWithoutDecodingOrCompilingSource()
     {
+        Assert.SkipUnless(TargetProfile.Host == TargetProfile.Windows, "The run needs a host that runs the Windows target.");
         var source = Path.Combine(this.directory, "Single.kimi");
         File.WriteAllBytes(source, [0xff]);
         var console = new DiagnosticContractTest.DiagnosticConsole();

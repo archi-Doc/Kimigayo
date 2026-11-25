@@ -264,8 +264,9 @@ public sealed partial class CheckServiceTest : IDisposable
             return;
         }
 
-        Assert.Contains(code, console.Output, StringComparison.Ordinal);
-        Assert.Contains(note ?? code, console.Output, StringComparison.Ordinal);
+        // The record at the project file, with its note or with none (the location-only form; C-575 N6).
+        Assert.Contains($" : {code}\n --> Hello.kimiproj\n\n" + (note is null ? string.Empty : $"Note: {note}\n\n"), console.Output, StringComparison.Ordinal);
+        Assert.Equal(note is not null, console.Output.Contains("Note: ", StringComparison.Ordinal));
         Assert.DoesNotContain("Artifact production currently requires", console.Output, StringComparison.Ordinal);
         Assert.False(Directory.Exists(bin));
     }

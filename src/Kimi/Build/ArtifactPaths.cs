@@ -7,9 +7,9 @@ namespace Kimi.Build;
 /// <summary>One resolved artifact set shared by emission, build records and native execution. It alone names an output's files (IMPL
 /// 20.3.2): for the IR <c>Name.ll</c>, the manifest <c>Name.link.json</c>, the record <c>Name.link.build.json</c> (Begin keeps its lock
 /// beside it) and the stem <c>Name.O0</c> or <c>Name.O2</c> of the native build's own files, among them the folder
-/// <c>Name.O0.native</c> of its staged inputs, the object <c>Name.O0.obj</c>, the executable, the stem with its row's format's extension
-/// (COFF <c>.exe</c>, ELF none; the Tatara plan's B7b7), and a build's private executable, linked beside it under a fresh name until the
-/// build's commit moves it into place.</summary>
+/// <c>Name.O0.native</c> of its staged inputs, the optimized IR <c>Name.O2.ll</c>, the object <c>Name.O0.obj</c>, the executable, the stem
+/// with its row's format's extension (COFF <c>.exe</c>, ELF none; the Tatara plan's B7b7), and a build's private executable, linked
+/// beside it under a fresh name until the build's commit moves it into place.</summary>
 internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, string Stem, string ExecutableExtension)
 {
     private const string ManifestSuffix = ".link.json";
@@ -19,6 +19,8 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
     internal string Native => this.Stem + ".native";
 
     internal string Object => this.Stem + ".obj";
+
+    internal string OptimizedIr => this.Stem + ".ll";
 
     // A project's output for its artifact target's row (Project.ArtifactTarget): its OutputPath, bin/<target>/<Name>.ll by default.
     internal static ArtifactPaths Create(Project project, TargetProfile row)

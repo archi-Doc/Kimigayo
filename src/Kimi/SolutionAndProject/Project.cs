@@ -25,7 +25,7 @@ public partial class Project
     static Project()
     {
         var projectFile = new ProjectFile();
-        projectFile.Targets = ["x86_64-pc-windows-msvc"];
+        projectFile.Targets = [TargetProfile.Windows.Target];
 
         DefaultProjectFile = projectFile;
     }
@@ -346,7 +346,7 @@ public partial class Project
 
     /// <summary>Gets the targets the project's unit selects (IMPL 20.3), the configured ones or the one --Target names; none, with the
     /// failure, when none is configured or the selected one is not. The one selection rule: SelectTargets records it, and the artifact
-    /// target, the host rule and run's selection (Solution.PrepareRun) read it.</summary>
+    /// target (<see cref="ArtifactTarget"/>) and the host rule read it.</summary>
     /// <returns>The selected targets, and the failure when there are none.</returns>
     internal (string[] Targets, string? Failure) SelectedTargets()
     {
@@ -356,6 +356,33 @@ public partial class Project
             string.IsNullOrEmpty(selected) ? (targets, null) :
             targets.Contains(selected, StringComparer.Ordinal) ? ([selected], null) :
             ([], "The selected target is not configured in this project.");
+    }
+
+    /// <summary>Why a project has no artifact target (<see cref="ArtifactTarget"/>): its selection failed (<see cref="SelectedTargets"/>'s
+    /// failure), it selects several targets, or its one selected target has no row in the target table, whose artifacts are Unsupported
+    /// (SPEC 22 ¶1).</summary>
+    internal enum NoArtifactTarget : byte
+    {
+        /// <summary>The selection failed.</summary>
+        Selection,
+
+        /// <summary>Several targets are selected.</summary>
+        Several,
+
+        /// <summary>The one selected target has no row.</summary>
+        NoRow,
+    }
+
+    /// <summary>Gets the artifact target (IMPL 20.3, SPEC 22 ¶1), published once: the row of the one selected target, or none with why.
+    /// Its readers keep their own texts: the gate's records (BuildTargets) and Build, which selects it before the output's paths; run's
+    /// selection (Solution.PrepareRun) and run (NativeToolchain.RunProject, the row its build used); the test target (PrepareTests).</summary>
+    /// <param name="reason">Why there is none, when there is none.</param>
+    /// <returns>The artifact target's row, or null.</returns>
+    internal TargetProfile? ArtifactTarget(out NoArtifactTarget reason)
+    {
+        var (targets, failure) = this.SelectedTargets();
+        reason = failure is not null ? NoArtifactTarget.Selection : targets.Length > 1 ? NoArtifactTarget.Several : NoArtifactTarget.NoRow;
+        return reason == NoArtifactTarget.NoRow ? TargetProfile.Find(targets[0]) : null;
     }
 
     /// <summary>The host rule of run and test (IMPL 20.3, 20.6.1; SPEC 22 ¶1: running or testing a program for a target whose executables
@@ -489,16 +516,17 @@ public partial class Project
             return false;
         }
 
-        // Artifact production's gate: the artifact target (several selected: their record; one without a row: Unsupported).
-        if ((emit || paths is not null) && this.ArtifactTarget(out var failure) is null)
+        // Artifact production's gate: the artifact target (several selected: their record; one without a row: Unsupported). The
+        // selection's own failure ended the sequence above.
+        if ((emit || paths is not null) && this.ArtifactTarget(out var reason) is null)
         {
-            if (failure is null)
+            if (reason == NoArtifactTarget.NoRow)
             {
                 this.Unsupported(diagnostics);
             }
             else
             {
-                this.Fail(diagnostics, failure);
+                this.Fail(diagnostics, "Artifact production requires one selected target; select one with --Target.");
             }
 
             valid = false;
@@ -761,16 +789,6 @@ public partial class Project
         }
 
         return targets;
-    }
-
-    // IMPL 20.3, SPEC 22 ¶1: the artifact target, the row of the one selected target; null with why there is none: the selection's
-    // failure, several selected targets, or (failure null) a target without a row, whose build is Unsupported. Read by the gate's records
-    // (BuildTargets) and by Build, which selects it before the output's paths.
-    private TargetProfile? ArtifactTarget(out string? failure)
-    {
-        var (targets, selection) = this.SelectedTargets();
-        failure = selection ?? (targets.Length != 1 ? "Artifact production requires one selected target; select one with --Target." : null);
-        return failure is null ? TargetProfile.Find(targets[0]) : null;
     }
 
     private void Fail(DiagnosticOwner diagnostics, string message)

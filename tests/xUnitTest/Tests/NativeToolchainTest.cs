@@ -1016,7 +1016,7 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, token));
         Assert.Equal(DefaultLibrary, error.Message);
         Assert.False(File.Exists(paths.Executable));
-        File.Delete(paths.Stem + ".obj"); // The failed build released its object (Intermediates).
+        File.Delete(paths.Object); // The failed build released its object (Intermediates).
     }
 
     // The Tatara plan's B7b8 (C-560 N3): the object inspection's refusals are the row's own: a Linux object naming a default library (its
@@ -1305,7 +1305,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(await project.Generate(token), this.console.Text);
         var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
         WarnAtEmit(paths);
-        var intermediate = paths.Stem + "." + file;
+        var intermediate = file == "obj" ? paths.Object : paths.OptimizedIr;
         var bytes = file == "obj" ? File.ReadAllBytes(intermediate) : "changed"u8.ToArray();
         var hooked = false;
         Exception? refused = null;
@@ -1794,7 +1794,7 @@ public sealed class NativeToolchainTest : IDisposable
             await LinuxPair.Archive(this.directory, "codec", "rcsT", ("m1", "int codec_add(void) { return 3; }\n"));
             var paths = LinuxPair.Publish(this.directory, LinuxSource([("codec", "codec_add")]), "O2", ("codec", "static", "codec.a"));
             Assert.Equal(Text, (await Assert.ThrowsAsync<InvalidDataException>(() => LinuxPair.Build(paths))).Message);
-            Assert.False(File.Exists(paths.Stem + ".obj"));
+            Assert.False(File.Exists(paths.Object));
             Assert.False(File.Exists(paths.Executable));
             return;
         }
@@ -1807,7 +1807,7 @@ public sealed class NativeToolchainTest : IDisposable
         project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/codec.lib" } };
         Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         Assert.Contains(Text, this.console.Text, StringComparison.Ordinal);
-        Assert.False(File.Exists(ArtifactPaths.Create(project, TargetProfile.Windows).Stem + ".obj"));
+        Assert.False(File.Exists(ArtifactPaths.Create(project, TargetProfile.Windows).Object));
         Assert.False(File.Exists(ArtifactPaths.Create(project, TargetProfile.Windows).Executable));
     }
 

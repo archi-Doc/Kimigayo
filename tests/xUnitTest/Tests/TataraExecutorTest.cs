@@ -347,7 +347,7 @@ public sealed class TataraExecutorTest : IDisposable
             var manifest = Manifest(rows[i % 2]);
             await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
             var built = ArtifactPaths.Create(ArtifactPaths.IrOf(manifest), Level(manifest), TargetProfile.Windows);
-            var products = ArtifactFiles.Hash(built.Stem + ".obj") + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
+            var products = ArtifactFiles.Hash(built.Object) + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
         }

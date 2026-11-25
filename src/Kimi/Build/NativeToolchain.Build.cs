@@ -533,7 +533,7 @@ internal static partial class NativeToolchain
             }
 
             var ir = ModulePathPattern().Replace(tatara.Optimize(this.context, this.paths.Ir), m => Redact(m.Value, this.directory));
-            using var optimized = Hold(this.paths.Stem + ".ll", Utf8.GetBytes(ir));
+            using var optimized = Hold(this.paths.OptimizedIr, Utf8.GetBytes(ir));
             return Hold(obj, tatara.Emit(this.context, optimized.Name, obj, level));
         }
 

@@ -24,7 +24,7 @@
 // kind, the required libraries, the external declarations, each an ExternalFunction read for its Symbol and Library, the runtime's
 // imports, each its Symbol and Library, and the module's entry; R9-B1, LinkAmbiguity, the Tatara plan's B7b7, NamedProvider); the enum OutputKind, which project
 // configuration states too (ProjectFile.OutputKind); the target table's rows (TargetProfile: a pair's row is its compilation's at
-// publication and its manifest's target's at the native build; a project's paths are its artifact target's, run's the host's);
+// publication and its manifest's target's at the native build; a project's paths, run's included, are its artifact target's);
 // CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and of Misc JobProcess,
@@ -165,12 +165,14 @@ internal static partial class NativeToolchain
 
     // run --no-build (IMPL 20.3): the executable runs only when the latest record succeeded at the project's optimization, names the
     // executable's hash and names the project's input (IMPL 20.3.1; PLAN G1256), compared as Windows compares paths (ignoring case; G1202's
-    // ruling Q3). A record that names no input (an earlier compiler's) is refused for every project that names one.
+    // ruling Q3). A record that names no input (an earlier compiler's) is refused for every project that names one. The output is the
+    // project's artifact target's, the row its build used (Project.ArtifactTarget), on any host; a project without one has no build.
+    // Whether this host runs it is the host rule's (Project.RunsOnHost, before any build), and the launch keeps its own precondition
+    // (JobProcess).
     internal static async Task<int> RunProject(Project project, CancellationToken cancellationToken)
     {
-        // The host's row: run reaches here only for the host's target (Project.RunsOnHost, before any build).
-        var paths = ArtifactPaths.Create(project, TargetProfile.Host ?? throw new InvalidOperationException("Run reached a host without a row."));
-        if (project.ProjectFile.OutputKind != OutputKind.Application || !File.Exists(paths.Record) || !File.Exists(paths.Executable))
+        var paths = project.ArtifactTarget(out _) is { } row ? ArtifactPaths.Create(project, row) : null;
+        if (paths is null || project.ProjectFile.OutputKind != OutputKind.Application || !File.Exists(paths.Record) || !File.Exists(paths.Executable))
         {
             throw new InvalidDataException("No built Application is available. Run 'kimi build' first.");
         }

@@ -119,7 +119,8 @@ public class Solution
     }
 
     /// <summary>Checks run's selection before any build or record write (IMPL 20.3), with or without --no-build: exactly one loaded
-    /// project and one selected target, each else a command input error, and that target the host's (the project's host rule).</summary>
+    /// project and not several selected targets (its artifact target's reason), each else a command input error, and its target the
+    /// host's (the project's host rule).</summary>
     /// <returns>Whether the project may be built and run; false after the project's record.</returns>
     public bool PrepareRun()
     {
@@ -131,7 +132,7 @@ public class Solution
         var project = this.Projects.Values.Single();
         project.KimiOptions = this.KimiOptions;
         project.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
-        if (project.SelectedTargets().Targets.Length > 1)
+        if (project.ArtifactTarget(out var reason) is null && reason == Project.NoArtifactTarget.Several)
         {
             throw new CommandInputException("Run requires one selected target; select one with --Target.");
         }
