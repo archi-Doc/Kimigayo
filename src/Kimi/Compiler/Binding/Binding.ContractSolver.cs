@@ -733,7 +733,9 @@ public sealed partial class Binding
     // (ContractSupply, Self being `root`), as the premise intake reads it: each ancestor, and each clause instance as its conjuncts
     // (AddConjuncts). An ancestor (stating `root`) or an atom (RowAtom; a negation states its atom's subject) stating `subject` or a
     // Type of its class is a row of `subject`, its availability and Stated `source`'s; an identity atom of an available source is an
-    // identity row (c2-2). A leaf source (no Contract) supplies nothing.
+    // identity row (c2-2). A leaf source (no Contract) supplies nothing. The environment's intake drops a fact with an unresolved part
+    // whole (AddConstraintFact); this one rows the resolved conjuncts of such a clause, whose Contract is then an invalid declaration:
+    // `source` is unavailable, so its rows give no evidence and record no identity (a use rests on the reported failure, rule W).
     private void AddSupplyRows(List<PremiseRow> rows, PremiseRow source, BoundType root, BoundType subject, EvidenceView view)
     {
         if (source.Symbol?.Contract is not { } shape)

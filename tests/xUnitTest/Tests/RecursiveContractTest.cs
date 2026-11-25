@@ -138,6 +138,12 @@ public sealed partial class RecursiveContractTest
 
     private const string NegatedConjunction = "contract Marker\ncontract Tag\ncontract NNA2\n    associate Next is NNA2\n    associate V\n    Self.(NNA2).V is not (Marker and Tag)\n    func near(self: ref/Self) -> ref/Self.(NNA2).V\n    func deep(self: ref/Self) -> ref/Self.(NNA2).Next.(NNA2).V\n    func deep3(self: ref/Self) -> ref/Self.(NNA2).Next.(NNA2).Next.(NNA2).V\n";
 
+    // The review's twins (artifacts/units/g1406/review-twins.py, F's G1406-3 C1): an identity clause stating its own link (KI), and an
+    // identity atom inside a conjunction (KC).
+    private const string LinkIdentities = "contract Marker\ncontract KI\n    associate Next is KI\n    associate X\n    Self.(KI).X is Self\n    Self.(KI).X is Marker\n    func next(self: ref/Self) -> ref/Self.(KI).Next\n";
+
+    private const string ConjunctIdentities = "contract Marker\ncontract KC\n    associate Next is KC\n    associate V\n    associate W\n    Self.(KC).V is Self.(KC).W and Copy\n    Self.(KC).W is Marker\n    func near(self: ref/Self) -> ref/Self.(KC).V\n    func deep(self: ref/Self) -> ref/Self.(KC).Next.(KC).V\n    func deep3(self: ref/Self) -> ref/Self.(KC).Next.(KC).Next.(KC).V\n";
+
     private const string NeedNotPayload = "func needNotOP<V>(v: ref/V) -> i32\n    V is not ObjectPayload\n    return 0\n";
 
     private const string NeedPayload = "func needOP<V>(v: ref/V) -> i32\n    V is ObjectPayload\n    return 0\n";
@@ -526,6 +532,14 @@ public sealed partial class RecursiveContractTest
     [InlineData("g1407", "pand2-neg", PositiveConjuncts + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.deep()\n    return noMark(v)\n", "NoApplicableOverload_Kd: return noMark(v)")]
     [InlineData("guard", "nor2", NegatedDisjuncts + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NOR2\n    let v = t.deep()\n    return noMark(v)\n", "UnprovenConstraint_Kd: return noMark(v)")]
     [InlineData("guard", "nnand2", NegatedConjunction + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NNA2\n    let v = t.deep()\n    return noMark(v)\n", "UnprovenConstraint_Kd: return noMark(v)")]
+    // The review's twins (F's G1406-3 C1; fail-before: the review's base run on 3cbde9881). The link's own identity item is recorded in
+    // the same intake: `Self.(KI).X is Self` with `Self.(KI).X is Marker` makes `T.(KI).Next` a Marker (f-idl1, 8.2.3 grounds), and a
+    // written `T.(KI).Next is not Marker` is contradictory evidence (f-idl1c, 8.3.2); an identity atom inside a conjunction is recorded
+    // per conjunct (f-idand2); a class mate's row read at the link supplies there as the link's own (h-nop1i, `U is T`; row (5)).
+    [InlineData("g1407", "f-idl1", LinkIdentities + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is KI\n    let n = t.next()\n    return needMark(n)\n", "")]
+    [InlineData("g1407", "f-idl1c", LinkIdentities + "func probe<T>(t: ref/T) -> i32\n    T is KI\n    T.(KI).Next is not Marker\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1407", "f-idand2", ConjunctIdentities + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is KC\n    let v = t.deep()\n    return needMark(v)\n", "")]
+    [InlineData("g1407", "h-nop1i", NotPayloads + NeedNotPayload + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is NP\n    let n = t.next()\n    return needNotOP(n)\n", "")]
 
     // SPEC 8.3.2 Contract refinement, 8.4.1, 8.4.3 (R7-C2c2 c2-5a; PLAN G402, G837, G849): `T is C<i32>` supplies C's own and
     // inherited Constraints with T for Self and i32 for C's parameter, at every projection a query needs: a clause naming the Contract's
@@ -710,6 +724,18 @@ public sealed partial class RecursiveContractTest
         var c = Bind(Copies + "func needs<V>(v: ref/V)\n    V is CopyTree\n    ()\n" +
             "func probe<T>(value: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    needs<T.(Tree).Child.(Tree).Child.(Tree).Child>(value)\n" +
             "func both<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    T is U\n    needs<U.(Tree).Child.(Tree).Child>(value)\n");
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // PLAN G1407 (F's G1406-3 N3): the walk splits a conjunction clause at depth into its conjuncts over the pooled `conjuncts` run, so
+    // a warm rebind whose calls prove a conjunct two and three links up the premise's chain allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindThatSplitsAConjunctionAtDepthAllocatesNothing()
+    {
+        var c = Bind(PositiveConjuncts + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.deep()\n    return needMark(v)\n" +
+            "func probe3<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.deep3()\n    return needMark(v)\n");
         Assert.Empty(CompilationTestHelper.BindingErrors(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
