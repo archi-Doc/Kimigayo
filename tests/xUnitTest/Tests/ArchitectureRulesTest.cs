@@ -163,7 +163,6 @@ public class ArchitectureRulesTest
         "Binding.ArgumentOperations.cs:AdaptInput=2 sufficient",
         "Binding.ArgumentOperations.cs:SharedReferenceThroughLayers=1 sufficient",
         "Binding.ArithmeticContracts.cs:NotString=1 kind",
-        "Binding.ArithmeticOperators.cs:TryArithmetic=1 kind",
         "Binding.ArithmeticOperators.cs:TryArithmetic=1 sufficient",
         "Binding.ArrayInference.cs:ArrayElementEvidence=1 kind",
         "Binding.ArrayInference.cs:BindContextualArrayLiteral=1 kind",
