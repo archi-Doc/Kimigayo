@@ -148,6 +148,9 @@ public class LateConstraintEnvironmentBindingTest
     // once there, never at uses (a call, a requirement); a conformance's otherwise-Proven verdict is unverified and keeps dev's record at
     // the conformance (a kept dependent, DECISIONS Q13; ruling 294). A conformance's own failure keeps its record (s.c: Target is not
     // Copy; u.k: `U is i32` is not proven from `U is E`); u.k.mv is its control with Marker valid.
+    // R7-C2c2 c2-5b2 (F's CC-27 (3), DECISIONS Q13, a named move at the same site, four records before and after): u.k's comparison now
+    // reads E's row `E is Marker` through the identity, Marker's failure (reported) writes the limit and the open answer rests, an Error
+    // ContractMatching reports as IncompatibleContractImplementation_Kd (dependent; UnprovenConstraint_Kd before; PLAN's open issue).
     [Theory]
     [InlineData("p1.call", Marker + "group G\n    func take<T>()\n        T is Copy\n        ()\n    func caller<T>(value: T)\n        T is Marker\n        take<T>()\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd caller<T>(value: T)")]
     [InlineData("p1.req", Marker + Needs, "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd need<T>() | InvalidConstraint_Kd caller<T>(value: T)")]
@@ -155,7 +158,7 @@ public class LateConstraintEnvironmentBindingTest
     [InlineData("p1.cond", "public contract C\n" + Marker + "struct W<T>\n    Self is C when T is Marker\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd Self is C | InvalidConstraint_Kd Self is C when T is Marker")]
     [InlineData("p1.struct", "public contract C\n" + Marker + "public struct Target<T>\n    T is Marker\n    Self is C\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd struct | InvalidConstraint_Kd Self is C")]
     [InlineData("s.c", "public contract C: Copy\n" + Marker + "public struct Target<T>\n    T is Marker\n    Self is C\n    public var s: string = \"\"\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd struct | UnsatisfiedConstraint_Kd Self is C")]
-    [InlineData("u.k", Marker + Puts, "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd struct | UnprovenConstraint_Kd Self is Put<E>")]
+    [InlineData("u.k", Marker + Puts, "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd struct | IncompatibleContractImplementation_Kd Self is Put<E>")]
     [InlineData("u.k.mv", "public contract Marker: Copy\n    string is not Copy\n" + Puts, "UnprovenConstraint_Kd Self is Put<E>")]
     public void AnInvalidContractIsItsUsersDeclarationsPremiseErrorOnce(string id, string declarations, string records)
     {
