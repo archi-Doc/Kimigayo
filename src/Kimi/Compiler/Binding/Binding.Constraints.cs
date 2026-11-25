@@ -129,6 +129,12 @@ public sealed partial class Binding
         return false;
     }
 
+    // J1's one test (R7-C2c2 c2-5c, CC-36 C4): a reading can differ from what is written only through an associated projection in it
+    // (`projection`: a constraint's HasAssociatedProjection, or an environment's, any of its facts') or an identity premise in the view
+    // (`typeIdentity`: HasTypeIdentity). Its readers: NormalizeProofConstraint's early return, Supply's consult (per environment) and
+    // IndexNormalized (per environment, then per fact).
+    private static bool ReadingCanDiffer(bool projection, bool typeIdentity) => projection || typeIdentity;
+
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
         => KotoHelper.IsSelectionBody(match, body) ? this.scopes.GetValueOrDefault(match.Arms[body.SelectionArm].Pattern) : null;
@@ -738,7 +744,7 @@ public sealed partial class Binding
     private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!constraint.HasAssociatedProjection && !HasTypeIdentity(scope))
+        if (!ReadingCanDiffer(constraint.HasAssociatedProjection, HasTypeIdentity(scope)))
         {
             return constraint;
         }

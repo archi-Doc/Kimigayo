@@ -450,7 +450,8 @@ public sealed partial class Binding
         return reading;
     }
 
-    // `proposition` is normalized by its caller (NormalizeProofConstraint); a fact is normalized only under the presence gate.
+    // `proposition` is normalized by its caller (NormalizeProofConstraint); a fact is normalized only where its environment's reading
+    // can differ (ReadingCanDiffer).
     private Evidence Supply(BoundConstraint proposition, EvidenceView view)
     {
         var positive = false;
@@ -467,7 +468,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, proposition, out _);
             negative |= this.AvailableConstraintFact(environment, negation, out _);
-            if (environment.HasAssociatedProjection || typeIdentity)
+            if (ReadingCanDiffer(environment.HasAssociatedProjection, typeIdentity))
             {
                 foreach (var fact in environment.Facts)
                 {

@@ -631,10 +631,10 @@ public sealed partial class Binding
         this.enumerateHeads.Clear();
     }
 
-    // The outermost request's view: each Contract fact whose reading can differ from it (R7-C2c2 c2-5c: a projection in one of its
-    // Types or an identity premise in the view, NormalizeProofConstraint's own test, per fact) as the view reads it (Reading, every
-    // reader's; a leaf row's fact is indexed as written and by its class key alone, the class header's Identity), added after all are
-    // read. A reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the facts.
+    // The outermost request's view: each Contract fact whose reading can differ from it (R7-C2c2 c2-5c: ReadingCanDiffer, J1's test,
+    // per environment, then per fact) as the view reads it (Reading, every reader's; a leaf row's fact is indexed as written and by its
+    // class key alone, the class header's Identity), added after all are read. A reading's own demands are nested, so they read written
+    // facts alone: the index does not depend on the order of the facts.
     private int IndexNormalized(ViewIndex index, EvidenceView view)
     {
         int? after = index.Serial; // The loop writes nothing but through Reading.
@@ -642,7 +642,7 @@ public sealed partial class Binding
         var start = this.enumerateNormalized.Count;
         for (var scope = view.Premises; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { } environment || !(typeIdentity || environment.HasAssociatedProjection))
+            if (scope.Constraints is not { } environment || !ReadingCanDiffer(environment.HasAssociatedProjection, typeIdentity))
             {
                 continue;
             }
@@ -651,7 +651,7 @@ public sealed partial class Binding
             {
                 // R7-M25 (D), R7-C3 C6: a reading whose subject has no abstract part is not filed; a concrete constructed member's
                 // conformance is ResolveConformance's (never Unknown), so its row would repeat it or be a premise error.
-                if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } && (typeIdentity || fact.HasAssociatedProjection) &&
+                if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } && ReadingCanDiffer(fact.HasAssociatedProjection, typeIdentity) &&
                     this.Reading(fact, view.Premises, ref after) is { Subject.HasAbstractPart: true } normalized && !ReferenceEquals(normalized, fact))
                 {
                     this.enumerateNormalized.Add((scope, fact, normalized));
