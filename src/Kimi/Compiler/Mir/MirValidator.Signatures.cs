@@ -16,8 +16,8 @@ internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
-        // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's or a static's; none
-        // for the top-level statements, which have no symbol.
+        // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's, a static's or a
+        // layer body's struct's Self Type (DECISIONS R7-M111); none for the top-level statements, which have no symbol.
         private readonly BoundType? Result(MirDefKey key)
         {
             if (key.Decl is not { } decl)
@@ -25,12 +25,12 @@ internal sealed partial class MirValidator
                 return null;
             }
 
-            if (key.Kind == MirBodyKind.StaticInit)
+            return key.Kind switch
             {
-                return decl.Type;
-            }
-
-            return types.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _);
+                MirBodyKind.StaticInit => decl.Type,
+                MirBodyKind.Layer => types.SelfType(decl),
+                _ => types.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _),
+            };
         }
 
         // SPEC 7.3: a Fn, Requirement or Virtual callee takes its function's parameters under its Subst, the receiver first (a default

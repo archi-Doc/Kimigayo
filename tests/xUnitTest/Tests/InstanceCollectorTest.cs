@@ -22,6 +22,10 @@ public sealed partial class InstanceCollectorTest
     private const string Outer = "func outer<T>(x: T) -> T\n    T is Copy\n";
     private const string CopyBox = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n";
 
+    // A Field initializer whose generic call's Type argument passes the layout limit (PLAN G215's g_ twins, design probe q2c).
+    private const string LayerLimit = "group Util\n    public func make<T>() -> raw/T => Raw.allocate<T>(0)\nstruct Holder {a}\n    public let p: ref/i32 during a\n" +
+        "    public var n: i32 = if true\n        let q = Util.make<[2147483648 of u8]>()\n        unsafe => Raw.release(q)\n        yield 0\n    else => 0\n";
+
     // The F3 reproducers' nested functions (X40): one level into a generic function, one there calling a selected specialization, two
     // levels in, in a block, in a generic struct's method and in a specialization inside a generic struct; and in its getter and setter.
     private const string OneLevel = Outer + "    func middle(y: T) -> T => y\n    return middle(x)\n";
@@ -2374,11 +2378,14 @@ public sealed partial class InstanceCollectorTest
     // K 4.8, IMPL 21.3.2, DECISIONS R5-M44, R5-M171: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the
     // Type's least use in its declaration: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
     // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
-    // error and Option<Never> is laid out (X31), neither with a record. Subjects by their first line.
+    // error and Option<Never> is laid out (X31), neither with a record; a Field initializer's instance in its constructor's body and in a
+    // constructorless layer's body, which is checked only (DECISIONS R7-M111, the owner's (a2)). Subjects by their first line.
     [Theory]
     [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "[2147483648 of u8]")]
     [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "[2147483648 of ()]")]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<[2147483648 of u8]>()\nunsafe => Raw.release(p)\n", "Raw.allocate<T>(0)")]
+    [InlineData(LayerLimit + "    public init(p: ref/i32 during a) => self.p = p\npublic func main() => ()\n", "Raw.allocate<T>(0)")] // g_ctor
+    [InlineData(LayerLimit + "public func main() => ()\n", "Raw.allocate<T>(0)")] // g_noctor: the layer body, a checked-only root (the owner's (a2))
     [InlineData(
         "func host(big: [1073741824 of i32]) -> i32\n    let f = func [big] () -> i32 => 1\n    let e: () -> i32 = f\n    return e()\n",
         "[1073741824 of i32]|let f = func [big]() -> i32 => 1")]

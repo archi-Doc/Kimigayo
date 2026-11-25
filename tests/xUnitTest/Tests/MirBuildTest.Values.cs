@@ -558,6 +558,23 @@ public sealed partial class MirBuildTest
         Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
     }
 
+    // SPEC 6.3.3, 6.3.6 (DECISIONS R7-M111): a constructorless layer's body has the Receiver _0 of its Self Type, places each Field
+    // initializer into its Field of _0 and returns, with no base step and no FakeRead of _0 (a constructor's completion request); a Field
+    // without an initializer (p) is not placed.
+    [Fact]
+    public void AConstructorlessLayersBodyPlacesItsInitializersIntoItsReceiver()
+    {
+        var program = Compile("struct Holder {a}\n    public let p: ref/i32 during a\n    public var n: i32 = 1\npublic func main() => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var body = Assert.Single(program.Bodies.ToArray(), static x => x.Key.Kind == MirBodyKind.Layer);
+        var dump = MirDumpTest.Unsited(program, body);
+        Assert.Contains("_0: Holder return (Receiver)", dump, StringComparison.Ordinal);
+        Assert.Contains("_0.1 = ", dump, StringComparison.Ordinal);
+        Assert.DoesNotContain("_0.0 = ", dump, StringComparison.Ordinal);
+        Assert.Equal(MirTerminatorKind.Return, body.Blocks[^1].Terminator.Kind);
+        Assert.DoesNotContain("FakeRead", dump, StringComparison.Ordinal);
+    }
+
     // PLAN G1184 (DECISIONS R7-M88; IMPL A.4, R7-T1): the one projection rule (MirBody.SelectsPart) gives a Field step of no Type only for
     // a stored Field whose own slot failed; a part past IMPL A.4's height whose slot is typed is no part, so neither the builder's Stored
     // nor a constructor's Move Paths (MirMoveData) take it as one: D<T>'s `v: W^250<T>` is no part of D<W^8000<i32>> (8,251) and a typed

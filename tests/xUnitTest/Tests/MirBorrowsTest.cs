@@ -215,6 +215,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
+    // A Guard with a drop, and a layer over `a` with a Field without an initializer, so no constructor unless LayerInit declares one
+    // (PLAN G215's l_ and d_ twins; SPEC 6.3.6).
+    private const string LayerShapes = "struct LayerGuard {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
+        "    drop => ()\nstruct LayerHost {a}\n    public let p: ref/i32 during a\n";
+
+    private const string LayerInit = "    public init(p: ref/i32 during a) => self.p = p\n";
+
     /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's, and
     /// 15.6.4's destruction retention (PLAN G264 U1).</summary>
     public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases
@@ -4052,6 +4059,33 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 $"func good() -> bool\n    let t = {Tuple}\n    let other = {Tuple}\n    return t == other\n" +
                 "func bad2() -> bool\n    let s = \"a\"\n    return s == take(s@move)\n" +
                 "func good2() -> bool\n    let s = \"a\"\n    let other = \"b\"\n    return s == other\n"));
+    }
+
+    // SPEC 15.6.2, 15.6.5 (PLAN G215, G403; DECISIONS R7-M111): a Field initializer's Loans are judged in its constructor's body and in a
+    // constructorless layer's body alike: a write under a live shared Loan (l_; accepted before), and a Guard built from a block's local
+    // into the layer's Origin, Refuted in each branch (d_); the valid twins read the value before the write and drop the Guard in the block.
+    [Theory]
+    [InlineData("        var x = 1\n        let r = x@ref\n        let k = r@follow\n        x = 2\n        yield k\n", "")]
+    [InlineData("        var x = 1\n        let r = x@ref\n        x = 2\n        yield r@follow\n", "", ": x = 2")]
+    [InlineData("        var x = 1\n        let r = x@ref\n        x = 2\n        yield r@follow\n", LayerInit, ": x = 2")]
+    [InlineData("        let x = 1\n        do\n            let k = LayerGuard.init(x@ref)\n        yield 0\n", "")]
+    public void AFieldInitializersLoanIsJudgedInItsBody(string block, string constructor, params string[] expected)
+        => Assert.Equal(expected, Problems($"{LayerShapes}    public var n: i32 = if true\n{block}    else => 0\n{constructor}"));
+
+    // d_ (above): the Guard's Field initializer, with a constructor and without one alike: per branch the call Refuted (15.6.5) and
+    // the local's storage ending while the Guard holds its Loan (15.6.6), caused only by that branch's Refuted relation (15.6.5), still
+    // reported since A3 does not read it (AGENTS Diagnostics).
+    [Theory]
+    [InlineData("")]
+    [InlineData(LayerInit)]
+    public void AFieldInitializersGuardIntoTheLayersOriginIsRefutedInEachBranch(string constructor)
+    {
+        var c = MirBuildTest.Compile(Prelude + LayerShapes + "    public let g: LayerGuard during a = if true\n        let x = 1\n" +
+            "        yield LayerGuard.init(x@ref)\n    else\n        let y = 1\n        yield LayerGuard.init(y@ref)\n" + constructor);
+        Assert.Equal(
+            [": LayerGuard.init(y@ref) UnsatisfiedOriginRelation_Kd", ": LayerGuard.init(x@ref) UnsatisfiedOriginRelation_Kd", ": let x = 1",
+                ": let y = 1"],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.UnsatisfiedOriginRelation_Kd]));
     }
 
     // Whether a measure over three sizes, each double the one before, grows over the second doubling at most a factor times as much as

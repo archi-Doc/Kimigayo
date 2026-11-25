@@ -148,7 +148,8 @@ public sealed partial class MirOriginsTest
     // and the subject it binds (rv/guard-annot), the destruction receiver's part and its helper borrow (G161), shared and exclusive layers
     // a Ref is reached through (SPEC 15.6.3's containment), an object's own step, a mutable static's storage (row 7), and FailedClause's
     // body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart), and a Field initializer's layer rows in a
-    // declared or synthesized constructor's slice (AConstructorlessLayersRowsAreTheLocatedLimit's twins).
+    // declared or synthesized constructor's slice, and in a constructorless layer's body (PLAN G215; DECISIONS R7-M111): an omitted base
+    // clause that selects no constructor (NoBase) and a Field without an initializer (Holder), the latter also through an exclusive layer.
     [Theory]
     [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "local@ref")]
     [InlineData(Region, "view")]
@@ -165,8 +166,28 @@ public sealed partial class MirOriginsTest
     [InlineData(HolderP + LocalInit + InitP, "x@ref")]
     [InlineData("struct Leaf {a}\n" + LocalInit, "x@ref")]
     [InlineData(HolderP + ReborrowInit + InitP, "r@follow@ref")]
+    [InlineData(NoBase + LocalInit, "x@ref")]
+    [InlineData(HolderP + LocalInit, "x@ref")]
+    [InlineData(HolderP + ReborrowInit, "r@follow@ref")]
     public void AFiniteChainIntoAFixedOriginIsRefutedAtItsLastEdge(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
+
+    // SPEC 14.2.1, 23.1.2 (DECISIONS R7-M111; twins k_nobody, k_nobody_bad): a constructor whose body is missing is no Published one, so
+    // its struct's Field initializers are its layer body's and are judged there: the parse record alone, and with a local's Borrow
+    // annotated into the layer's Origin (LocalInit) A5's Refuted record beside it, an independent failure.
+    [Theory]
+    [InlineData("")]
+    [InlineData(LocalInit, "x@ref")]
+    public void AStructWhoseConstructorHasNoBodyJudgesItsInitializersInItsLayerBody(string initializer, params string[] sites)
+    {
+        var c = CompilationTestHelper.Parse(HolderP + initializer + "    public init(p: ref/i32 during a)\n" + Main, "Hello.kimi");
+        Assert.Equal(nameof(DiagnosticCode.MissingSyntax_Kd), Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Code);
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.Equal(
+            [.. sites.Select(static x => $"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {x}")],
+            MirTargetSide.MirSide(c).Select(static x => $"{x.Code} {x.Node}"));
+    }
 
     // SPEC 15.6.5 and MeetNode's rule (2a0-D D15): a non-fixed meet at a row's longer end is a node of its own beside an edge per operand,
     // so what reaches the meet itself is judged at the shorter end: a local's Borrow annotated `during (p and x)` and returned `during x`,
@@ -299,7 +320,8 @@ public sealed partial class MirOriginsTest
     // `during static` parameter (row 7', Inferred; SPEC 11.8), which check rejects (PLAN G197's residual, ledger (a)),
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
     // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
-    // Field initializer's written Type under the Type's clause in its constructor's slice, and a constructorless layer with no row (G215);
+    // Field initializer's written Type under the Type's clause in its constructor's slice and in a constructorless layer's body, whose
+    // Field without an initializer is not judged unset, with a Reborrow and with NoBase's pick call (G215; DECISIONS R7-M111);
     // a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3); and a `$tryWrite`
     // whose writer operand is Never, a transfer or `$abort`: it supplies no value, so its writer names no Origin of Utf8Writer's own
     // declaration (SPEC 14.10.3, 15.3.4; PLAN G410); and MeetTrans in a function and in both parts of a constructor's slice, whose call
@@ -323,6 +345,9 @@ public sealed partial class MirOriginsTest
     [InlineData(ClosureHeader + "    return h(x@ref@ref)\n")]
     [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit + InitP)]
     [InlineData(HolderP + "    public var n: i32 = if true\n        let x = 1\n        let t: ref/i32 = x@ref\n        yield t@follow\n    else => 0\n")]
+    [InlineData(HolderP + "    public var n: i32 = if true\n        var x = 1\n        var r = x@uniq\n        let t: ref/i32 = r@follow@ref\n        yield 0\n    else => 0\n")]
+    [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit)]
+    [InlineData("group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n" + NoBase + "    public var n: i32 = Util.pick(3@ref, 4@ref)\n")]
     [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n    origin b outlives a\n" + ValueCall)]
     [InlineData("func run() -> i32\n    _ = $tryWrite(do => return 7, \"\\(42)\")\n    return 0\n")]
     [InlineData("func run() -> i32\n    _ = $tryWrite($abort(\"w\"), \"x\")\n    return 0\n")]
@@ -344,39 +369,6 @@ public sealed partial class MirOriginsTest
         var c = MirBuildTest.Compile(source + Main);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         Assert.Empty(Origins(c));
-    }
-
-    // PLAN G215 (DECISIONS R4-M168): a layer whose rows no constructor body's slice includes is judged by no MIR body, so each of its rows
-    // is the located limit until the layer has a body of its own, valid or not: an omitted base clause that selects no constructor (the
-    // pick call; a local's Borrow into `a`), and a Field without an initializer and no declared constructor (the written Type with and
-    // without its clause; the local's Borrow). The twins with a constructor are judged (the Refuted, Unknown and valid theories).
-    [Theory]
-    [InlineData(
-        "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n" + NoBase +
-            "    public var n: i32 = Util.pick(3@ref, 4@ref)\n",
-        "3@ref",
-        "4@ref")]
-    [InlineData(NoBase + LocalInit, "x@ref")]
-    [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit, "ref/(ref/i32 during b) during a")]
-    [InlineData("struct Pair {a, b}\n" + PairInit, "ref/(ref/i32 during b) during a")]
-    [InlineData(HolderP + LocalInit, "x@ref")]
-    [InlineData(ComparisonUtil + ComparisonInit + "        let f: (ref/i64 during y) -> ref/i64 during x = Util.idf\n        yield 0\n    else => 0\n", "v@ref", "x", "Util.idf")] // G492-a (iii)'s vfil: valid
-    [InlineData(ComparisonUtil + ComparisonInit + "        let f: (ref/i64 during x) -> ref/i64 during a = Util.idf\n        yield 0\n    else => 0\n", "v@ref", "x", "Util.idf")] // vfiln: invalid (Refuted)
-    public void AConstructorlessLayersRowsAreTheLocatedLimit(string source, params string[] sites)
-        => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
-
-    // PLAN G951 E1 (DECISIONS R5-M168's input rule): a layer row outside the root range is the library check's, so the constructorless
-    // layer above (NoBase + LocalInit) adds its limit only under a root range that includes its module.
-    [Fact]
-    public void AConstructorlessLayerOutsideTheRootRangeIsNotJudged()
-    {
-        var c = MirBuildTest.Compile(NoBase + LocalInit + Main);
-        var program = c.BuildMir();
-        var (origins, outside, inside) = (new MirOrigins(c.Types, new MirCases(c.Types)), new MirReport(), new MirReport());
-        origins.Findings(program, outside, 0);
-        origins.Findings(program, inside, c.SourceModules.Length);
-        Assert.Empty(outside.All.ToArray());
-        Assert.Equal([DiagnosticCode.Unsupported_Kd], inside.All.ToArray().Select(static x => x.Code));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is a Dependent node, never a source or a judged target, so a
@@ -579,7 +571,7 @@ public sealed partial class MirOriginsTest
 
     // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components, bitsets and the arena; the oracles
     // the view pools; the cleared report it adds to): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes, a Field
-    // initializer's layer oracle and Dependent ends (FailedClause); and Findings, a constructorless layer's limit.
+    // initializer's layer oracle and Dependent ends (FailedClause); and a constructorless layer's body (DECISIONS R7-M111), Refuted.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmJudgmentAllocatesNothing()
@@ -595,6 +587,7 @@ public sealed partial class MirOriginsTest
         var origins = new MirOrigins(c.Types, new MirCases(c.Types));
         var bodies = program.Bodies.ToArray();
         var report = new MirReport();
+        var layer = Array.Find(bodies, static x => x.Key.Kind == MirBodyKind.Layer)!.Ordinal;
         void Run()
         {
             report.Clear();
@@ -602,12 +595,10 @@ public sealed partial class MirOriginsTest
             {
                 origins.Judge(body, MirCases.Count(body), report);
             }
-
-            origins.Findings(program, report, c.SourceModules.Length);
         }
 
         Run();
-        Assert.Contains(report.All.ToArray(), static x => x.Code == DiagnosticCode.Unsupported_Kd && x.Body == MirProblem.NoBody);
+        Assert.Contains(report.All.ToArray(), x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd && x.Body == layer);
         Assert.Equal(0, AllocationMeasurement.Measure(Run));
     }
 

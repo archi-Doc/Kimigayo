@@ -172,26 +172,50 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // statement's, its Meaning; none (unknown) for a statement whose value Binding failed, a failed declaration's or an Error's (PLAN G1073).
     private static BoundType? Held(Koto node) => HirTables.PlanOf(node).DiscardedType ?? KnownType(node);
 
-    // Whether the HIR publishes a definition its walk reached (an Op written; a synthesized executing function, which shares its accessor's
-    // body, has none) and evaluates its value node (its body, expression body or initializer, not Syntax): exactly a Body's or a Closure's,
-    // and a closure definition's whatever its creation (DECISIONS R5-M63).
-    private static bool Published(Koto node)
+    // Whether the HIR publishes a definition's node (an Op written; a synthesized executing function, which shares its accessor's body, has
+    // none) and evaluates its value node (its body, expression body or initializer, not Syntax).
+    private static bool Evaluates(Koto node, Koto? value) => value is not null && HirTables.Op(node) != HirOp.Unset && HirTables.Op(value) != HirOp.Syntax;
+
+    // Whether the HIR publishes a definition its walk reached and evaluates its value (Evaluates): exactly a Body's or a Closure's, and a
+    // closure definition's whatever its creation (DECISIONS R5-M63); a struct's where its Field initializers have a layer body (Layered).
+    private bool Published(Koto node) => node switch
     {
-        var value = node switch
+        FunctionKoto function => Evaluates(node, (Koto?)function.Body ?? function.ExpressionBody),
+        PropertyAccessorKoto accessor => Evaluates(node, accessor.Body),
+        PropertyKoto property => Evaluates(node, property.InitializerKoto),
+        StructKoto structure => this.Layered(structure),
+        _ => false,
+    };
+
+    // SPEC 6.3.3, 6.3.6, 23.1.2 (DECISIONS R7-M111): whether a struct's Field initializers are a layer body of their own: no constructor of
+    // the struct, declared or synthesized, is Published (none exists, or its Body is missing, 14.2.1, or a Kimi one has no definition), and
+    // some own Field has an initializer the HIR publishes (HasInitializer), Initialize's test for placing a value, so the two cannot drift.
+    // It forms no Type and allocates nothing, since the module walk asks it of every struct (a warm rebuild allocates nothing).
+    private bool Layered(StructKoto structure)
+    {
+        if (HirTables.Symbol(structure) is not { Adt: { } adt } || !HasInitializer(adt) ||
+            (structure.SynthesizedConstructor is { } synthesized && this.Published(synthesized)))
         {
-            FunctionKoto function => (Koto?)function.Body ?? function.ExpressionBody,
-            PropertyAccessorKoto accessor => accessor.Body,
-            PropertyKoto property => property.InitializerKoto,
-            _ => null,
-        };
-        return value is not null && HirTables.Op(node) != HirOp.Unset && HirTables.Op(value) != HirOp.Syntax;
+            return false;
+        }
+
+        var members = structure.Members;
+        for (var i = 0; i < members.Count; i++)
+        {
+            if (members[i] is FunctionKoto { IsConstructor: true } constructor && this.Published(constructor))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // The one map from a published definition's node to its body's key and Body's arguments, the module walk's and Demand's (G951 N6): a
     // function's Fn body, a #Test function's Test body, a Closure's keyed by its own symbol, a module's top-level statements by the module's
-    // ordinal; an accessor's Getter or Setter keyed by the function its calls target (SPEC 11.3); a static's initializer; null for another
-    // node. The result is the result slot's Type, its symbol's (an accessor's executing function's), never the node's Type column: none
-    // where Binding failed the slot (PLAN G1073); a module's top-level statements complete as Unit (SPEC 22.4.1).
+    // ordinal; an accessor's Getter or Setter keyed by the function its calls target (SPEC 11.3); a static's initializer; a struct's Layer
+    // body (Layered); null for another node. The result is the result slot's Type, its symbol's (an accessor's executing function's), never
+    // the node's Type column: none where Binding failed the slot (PLAN G1073); a module's top-level statements complete as Unit (SPEC 22.4.1).
     private (MirDefKey Key, BindingSymbol? Function, BoundType? Result, Koto Value)? Definition(Koto node, SyntaxTable table)
     {
         var symbol = HirTables.Symbol(node);
@@ -219,6 +243,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 return (new(executing, kind), executing, executing.Type, accessor.Body!);
             case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
                 return (new(symbol, MirBodyKind.StaticInit), null, symbol!.Type, ((PropertyKoto)node).InitializerKoto!);
+            case BindingSymbolKind.Type: // A struct's layer body (Layered): _0 of its Self Type (DECISIONS R7-M111).
+                return (new(symbol, MirBodyKind.Layer), null, compilation.Types.SelfType(symbol!), node);
             default:
                 return null;
         }
@@ -228,7 +254,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // HIR publishes it with a value (Published), null for another node. The one filter of the module walk, the library's numbering and
     // Demand, so every library body a build or a lookup builds has a slot.
     private (MirDefKey Key, BindingSymbol? Function, BoundType? Result, Koto Value)? Walked(SyntaxTable table, Koto? node)
-        => node is not null && ReferenceEquals(node.SyntaxOwner, table) && Published(node) ? this.Definition(node, table) : null;
+        => node is not null && ReferenceEquals(node.SyntaxOwner, table) && this.Published(node) ? this.Definition(node, table) : null;
 
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
     // source statement takes; a local does not take it.
@@ -241,7 +267,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
     // The definitions of a module whose value the HIR publishes (Published), in id order, a #Test function's a Test body and a Closure's
     // keyed by its own symbol; a struct instance
-    // Field's initializer is built into each constructor of its struct. Or the module's broken HIR contracts as records, then the templates
+    // Field's initializer is built into each constructor of its struct, or into its layer body where none is Published (Layered). Or the
+    // module's broken HIR contracts as records, then the templates
     // of the defaults the HIR published for its named functions (an anonymous function has none, SPEC 7.2.2).
     private void Module(SyntaxTable table, bool templates)
     {
@@ -361,7 +388,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // destroyed value's creation made; the body's end cleans up its layer's parts (FieldCleanup, SPEC 16.3.2). A
     // constructor builds its object in _0, its self (MirLocalRole.Receiver), in the fresh storage its caller's construction expression
     // made (SPEC 6.3.2-6.3.4): the base constructor into the base subobject, this layer's Field initializers in declaration order, then the
-    // body, whose Unit value is set aside (6.3.5). A default template's (plan 5.6.2), a generic body of its function, takes the slots its
+    // body, whose Unit value is set aside (6.3.5); a layer body only places the initializers into its _0, also its receiver, and returns
+    // (DECISIONS R7-M111). A default template's (plan 5.6.2), a generic body of its function, takes the slots its
     // call prepared for the earlier parameters as shared references p_i: ref/P_i in slot order (PreparedInput), which its names read
     // through (Bound), and gives the parameter's value. A parameter has no syntax node of its own: it, a template's p_i included, is located
     // at its written Type node, the one a fact about the slot names (DECISIONS R4-M90 D6, BU-48), and a function's result at its written
@@ -386,7 +414,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var parameters = this.OpenScope(block: true);
         PairBinder.Collect(compilation.Binding, declaration, body.Binders);
         var special = template || function is null ? null : CallPlan.Parameter(compilation.Binding, function, -1); // A constructor's or destructor's self.
-        var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType(compilation.Binding, (FunctionKoto)declaration) : null;
+        var layered = key.Kind == MirBodyKind.Layer; // Its _0 is its struct's object, of the result Type (Definition).
+        var self = layered ? result : !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType(compilation.Binding, (FunctionKoto)declaration) : null;
         this.entry = this.Info(declaration, local: true);
         body.AddLocal(self is null
             ? new(result, MirLocalKind.Return, template ? this.entry : this.Info(TyCtxt.SignatureSite(declaration, -1), local: true))
@@ -419,9 +448,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 MirLocalRole.PreparedInput);
         }
 
-        if (self is not null)
+        if (self is not null && !layered)
         {
-            this.locals[special!] = 0;
+            this.locals[special!] = 0; // A constructor's self; a layer body's _0 has no symbol, its initializers reading it as the receiver.
         }
         else if (special is not null)
         {
@@ -461,21 +490,32 @@ internal sealed partial class MirBuilder(Compilation compilation)
             (this.locals[failed], this.receiver) = (slot.Root, slot.Root);
         }
 
-        var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
-        this.constructed = self is null ? null : value;
+        var done = self is null || layered ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
+        this.constructed = self is null || layered ? null : value;
         this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.
-        if (self is not null)
+        if (layered)
         {
-            this.Construct(self, (FunctionKoto)declaration);
+            // SPEC 6.3.3 (DECISIONS R7-M111): a layer body is the constructor step alone, then a Return at the declaration: no base step,
+            // body value or exit request (SPEC 6.3.5 is a constructor body's rule), so a Field without an initializer is not judged unset.
+            this.Initializers(self!);
+            body.Terminate(this.current, MirTerminator.Return(this.Info(declaration)));
+        }
+        else
+        {
+            if (self is not null)
+            {
+                this.Construct(self, (FunctionKoto)declaration);
+            }
+
+            var valued = this.TargetBody(value, input: false);
+            if (self is not null)
+            {
+                this.Made(done); // A constructor's body value, set aside.
+            }
+
+            this.End(value, valued);
         }
 
-        var valued = this.TargetBody(value, input: false);
-        if (self is not null)
-        {
-            this.Made(done); // A constructor's body value, set aside.
-        }
-
-        this.End(value, valued);
         this.Pop(parameters);
         // SPEC 14.10.3: a non-value end of the body, which no construct closes, goes on nowhere; a default's, built after its cleanup,
         // to its return, the call that takes its value, for the checks only.
