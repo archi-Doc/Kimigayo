@@ -297,9 +297,10 @@ public sealed partial class Binding
     // local's declared Type, so it demands the declaration as a value use does (QueryValueType); the local forms in its declaring body
     // (FormingBodyOf), so a header bound before that body (R4-M101 E3) selects the Type and the regions the body forms. A local's own
     // declaration (its Type and clauses) reads its declared Type as it forms and is never demanded from inside it (SPEC 9.3). Asked once
-    // at its entry (G230H-6, G230H-8): where the owner's header is bound ahead of an environment the demand cannot form before its
-    // evaluating construct binds, every selection outside the owner's own scopes rests. The name selects nothing, so the header fails
-    // there and is bound again at the function's statement (BindFunction); a clause keeps that failure (Q-B's class).
+    // at its entry (G230H-6, G230H-8, G230H-10 C2): where the owner's header is bound ahead of an environment the demand cannot form
+    // before its evaluating construct binds, a name that a scope of the outermost such literal declares, outside the owner's own scopes,
+    // rests. The name selects nothing, so the header fails there and is bound again at the function's statement (BindFunction); a clause
+    // keeps that failure (Q-B's class). A name past that literal is selected normally (SPEC 9.3: naming an outer Origin is no capture).
     private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
@@ -314,18 +315,22 @@ public sealed partial class Binding
             return true;
         }
 
-        var ahead = this.AheadOfEnvironment(owner);
+        var resting = this.AheadOfEnvironment(owner) is { } literal ? this.scopes[literal] : null;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (ahead && !ReferenceEquals(current.Owner, owner))
-            {
-                return true; // G230H-6: the demand rests; nothing the environment forms is read before it is ready.
-            }
-
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
                 competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
                 (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
             var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name);
+            var visibleSet = current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
+                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start) ? local : null;
+            if (resting is not null && !ReferenceEquals(current.Owner, owner) &&
+                (visibleValue || set is not null || visibleSet is not null || current.Origins?.ContainsKey(name) == true))
+            {
+                return true; // G230H-6: the demand rests; nothing the environment forms is read before it is ready.
+            }
+
+            resting = ReferenceEquals(current, resting) ? null : resting; // Past the outermost not-ready literal (G230H-10 C2).
             if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);
@@ -339,16 +344,15 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
-                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
+            if (visibleSet is not null)
             {
-                if (!ReferenceEquals(localOwner, owner) && localOwner.BoundSymbol is { } setLocal)
+                if (OriginOwner(visibleSet) is { } setOwner && !ReferenceEquals(setOwner, owner) && setOwner.BoundSymbol is { } setLocal)
                 {
                     this.QueryValueType(setLocal);
                 }
 
-                carrier = this.BindOriginSetType(local, current);
-                repeated = RepeatedSet(local) ? local : null;
+                carrier = this.BindOriginSetType(visibleSet, current);
+                repeated = RepeatedSet(visibleSet) ? visibleSet : null;
                 return true;
             }
 

@@ -141,6 +141,11 @@ public class ClosureEnvironmentOriginTest
 
     private const string PassBlock = "    if true\n        let inner: i32 = 41\n        keep = pass(inner@ref)\n    return keep@follow\npublic func main() => ()\n";
 
+    // F's G230H-10 C1 twins: a Closure in a `for` body capturing the `for` binding, whose body's nested header the header loop binds first.
+    private const string ForItems = "func f() -> i32\n    let xs: Array<i32> = [1, 2]\n    var total: i32 = 0\n    for item in xs\n        let c = func [item] () -> i32\n";
+
+    private const string ForTotal = "        total = total + c()\n    return total\npublic func main() => ()\n";
+
     // G6's two forms of a function whose Closure stores through a captured `q` into an Origin of the enclosing body (2c-D design B's g6).
     private const string G6Single = "func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n";
 
@@ -709,8 +714,11 @@ public class ClosureEnvironmentOriginTest
     // local are a duplicate (dup_let, SPEC 9.1). A named function in a Closure body naming a local that borrows a capture is valid
     // (clo_cap, SPEC 7.7.2; an omitted list's, clo_cap_om), as is one naming a local of a parameter the literal writes (clo_par,
     // SPEC 7.7.1): the local demands its literal's environment (PLAN G230-H (i)); a parameter the literal omits is given by its expected
-    // Function Type (SPEC 7.7.1), so the demand rests and the local binds at its statement (clo_par_inf, F's G230H-6). A nested header
-    // that completes c before f's statements
+    // Function Type (SPEC 7.7.1), so the demand rests and the local binds at its statement (clo_par_inf, F's G230H-6). An entry whose
+    // source the pass has not bound (a `for` binding) is not ready either, so a header bound first waits for it (clo_for_own; its
+    // control clo_for_ctrl names no Origin; F's G230H-10 C1); a name past the not-ready literal, an enclosing parameter, is selected
+    // normally (clo_inf_outer_cl, SPEC 9.3; C2); an entry's record and the early header's own are both reported (clo_bad_entry_hdr,
+    // SPEC 7.7.2, 15.3.4, 23.1.2). A nested header that completes c before f's statements
     // gives the comparison's located limit at h@move, as its header-free twins do (rvd_hdr_let, rvd_hdr_set; R7 O-400 (b)).
     [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r = p\n    let w = pick(r)\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    return w\n")] // a_fwd_par
     [InlineData("public func main() => ()\nfunc f(p: ref/i32, q: ref/i32) -> i32\n    let r = p\n    let w = pick(q)\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    return w\n", "UnprovenOriginRelation_Kd q)")] // a_fwd_inv
@@ -730,6 +738,16 @@ public class ClosureEnvironmentOriginTest
     [InlineData("func f(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func () -> i32\n        let r = n@ref\n        let w = h(r)\n        func h(v: ref/i32 during r) -> i32 => v@follow\n        return w\n    return c()\npublic func main() => ()\n")] // clo_cap_om
     [InlineData("func f(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> i32\n        let r = x\n        let w = h(r)\n        func h(v: ref/i32 during r) -> i32 => v@follow\n        return w\n    return c(p)\npublic func main() => ()\n")] // clo_par
     [InlineData("func f(p: ref/i32) -> i32\n    let c: (ref/i32) -> i32 = func [] (x) -> i32\n        let r = x\n        func h(v: ref/i32 during r) -> i32 => v@follow\n        return h(r)\n    return c(p)\npublic func main() => ()\n")] // clo_par_inf
+    [InlineData(ForItems + "            func h(v: ref/i32) -> ref/i32 during v => v\n            return h(item)@follow\n" + ForTotal)] // clo_for_own
+    [InlineData(ForItems + "            func h(v: ref/i32) -> i32 => v@follow\n            return h(item)\n" + ForTotal)] // clo_for_ctrl
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c: (ref/i32) -> i32 = func [] (x) -> i32\n        func h(v: ref/i32 during q) -> i32\n            origin p outlives q\n" +
+            "            return v@follow\n        return x@follow\n    return c(p)\npublic func main() => ()\n")] // clo_inf_outer_cl
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [zz] () -> i32\n        func h(v: ref/i32) -> i32\n            origin qq outlives v\n            return v@follow\n" +
+            "        return 0\n    return c()\npublic func main() => ()\n",
+        "InvalidCaptureBinding_Kd func [zz]",
+        "MissingOriginBinding_Kd qq outlives")] // clo_bad_entry_hdr
     [InlineData(LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> i32\n    let r: ref/i32 = p\n    let c: Cursor{k} = Cursor.init(r)\n        origin k.at == r\n" + HeaderLift, "Unsupported_Kd h@move")] // rvd_hdr_let
     [InlineData(LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> i32\n    let a: Cursor{m} = Cursor.init(p)\n    let c: Cursor{k} = Cursor.init(a.item)\n        origin k.at == m.at\n" + HeaderLift, "Unsupported_Kd h@move")] // rvd_hdr_set
     public void ANestedSignatureNamingABodyLocalNamesItsRegion(string source, params string[] records)

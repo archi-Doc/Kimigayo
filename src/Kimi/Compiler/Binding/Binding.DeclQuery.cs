@@ -52,8 +52,9 @@ namespace Kimi.Compiler;
 //   symbols and its written entries in its plan and scope, demanded by its binding after its header and by a local of its body bound
 //   before it (BindVariable). Error: an entry's record, or the literal resting on its evaluating body's Error; its readers, the
 //   literal's binding and that local, rest on the literal. Not ready: an omitted parameter Type its binding has not bound (SPEC 7.7.1:
-//   its expected Function Type gives it), or its evaluating body's environment not ready. It is abandoned, with nothing formed or
-//   recorded, and the demanding local rests unbound and binds at its statement (G230H-6). Re-entry: reads the entries formed so far.
+//   its expected Function Type gives it), its evaluating body's environment not ready, or an entry's source pending, unbound in the
+//   pass or a retry with no recorded failure (G230H-10 C1; the literal rests on it). It is abandoned, with nothing recorded, and the
+//   demanding local rests unbound and binds at its statement (G230H-6). Re-entry: reads the entries formed so far.
 //   Frozen: never asked (no program pass binds a library literal).
 // - Interims (removal stages): BindHeader's guard reads the variable binding's Resolving and BindVariableCore's guard reads
 //   Signature's Running state (its CyclicBinding_Kd, a variable binding re-entered, is the variable binding's) until R7-D2 d4 makes the

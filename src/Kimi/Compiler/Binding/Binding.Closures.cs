@@ -19,7 +19,7 @@
 // - Invariants: BindClosure clears the published Signature, Published and Classified before a binding, and the pending relations an
 //   earlier binding formed in its body; the environment (Storage, Carried) is formed once in the pass (FormEnvironment, from the index
 //   walk's reset, BoundClosure.ResetPass) and kept by every later binding, and is not ready before the literal's header binds an
-//   omitted parameter Type (abandoned, no record); BindConcreteClosure starts from reset receiver facts (Shared,
+//   omitted parameter Type or an entry's source binds (abandoned, no record); BindConcreteClosure starts from reset receiver facts (Shared,
 //   no exclusive cause) and has them classified right after the body is bound, its pending relations judged then
 //   (Binding.OriginProof.cs); PublishClosure publishes the definition on both paths, with no Signature where a parameter's or the
 //   result's slot failed (BoundClosure's Access paragraph), and, in a Property header's frame, for a literal its header types before
@@ -321,9 +321,9 @@ public sealed partial class Binding
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
         this.BindClosureHeader(function, expected, open, plan);
-        if (this.FormEnvironment(function) == DeclState.Error)
+        if (this.FormEnvironment(function) is DeclState.Error or DeclState.NotStarted)
         {
-            return null; // The entry's, or the evaluating body's, record at the literal (SPEC 23.1.2); its header is bound, so it is ready.
+            return null; // The entry's, or the evaluating body's, record at the literal, or a pending entry source it rests on (SPEC 23.1.2).
         }
 
         if (this.FormsBorrows)
@@ -401,11 +401,13 @@ public sealed partial class Binding
     // formed once in the pass by its binding (after its header) or by a demand from its body that comes first (a local of the body bound
     // before the literal, BindVariable through BodyEnvironment): its evaluating body's own environment where that body is a Closure's,
     // its written parameter Types as its header binds them (a probe may have bound one already), and its written entries
-    // (CaptureEntriesFail, the plan created at the header scope). Not ready (abandoned: nothing formed or recorded, asked again later):
-    // an omitted parameter Type, which only the literal's expected Function Type gives (SPEC 7.7.1), is unbound until the literal's
-    // binding binds its header, and an evaluating body's environment that is not ready waits the same way. Error: the literal's record
-    // (an entry's, or the resting evaluating body's) ends its binding. Every later reader reads the formed entries, so none is formed or
-    // recorded twice; a re-entry (Running) reads the entries formed so far.
+    // (CaptureEntries, the plan created at the header scope). Not ready (abandoned: nothing recorded, asked again later), one criterion
+    // (F's G230H-6, G230H-10 C1): the environment cannot form before what it reads binds. An omitted parameter Type, which only the
+    // literal's expected Function Type gives (SPEC 7.7.1), is unbound until the literal's binding binds its header; an evaluating body's
+    // environment that is not ready waits the same way; and an entry's source that is pending (unbound in the pass, or a retry with no
+    // recorded failure) leaves the literal resting on it, the entries before it kept. Error: the literal's record (an entry's, or the
+    // resting evaluating body's) ends its binding. Every later reader reads the formed entries, so none is formed or recorded twice; a
+    // re-entry (Running) reads the entries formed so far.
     private DeclState FormEnvironment(FunctionKoto literal)
     {
         var symbol = this.symbols[literal];
@@ -445,14 +447,21 @@ public sealed partial class Binding
                 parameter.Type = written.BindingState == BindingState.Unvisited ? this.BindType(written, scope) : written.BoundType;
             }
 
-            if (this.CaptureEntriesFail(literal, scope))
+            var entries = this.CaptureEntries(literal, scope);
+            if (entries == DeclState.NotStarted)
+            {
+                this.AbandonQuery(symbol, DeclQueryKind.Environment);
+            }
+            else if (entries == DeclState.Error)
             {
                 this.FailQuery(symbol, DeclQueryKind.Environment);
-                return DeclState.Error;
+            }
+            else
+            {
+                this.CompleteQuery(symbol, DeclQueryKind.Environment);
             }
 
-            this.CompleteQuery(symbol, DeclQueryKind.Environment);
-            return DeclState.Done;
+            return entries;
         }
         finally
         {
@@ -468,34 +477,37 @@ public sealed partial class Binding
         return literal is null ? DeclState.Done : this.FormEnvironment(literal);
     }
 
-    // SPEC 7.7.1, F's G230H-6 and G230H-8 (1): whether a function declared in a body (`owner`) is bound ahead of an environment the
-    // demand cannot form before its evaluating construct binds: its declaring body, or a body that declares that one, is a literal's
-    // body whose Environment query is not ready. Recorded facts only (DeclaringBody, EvaluatingBody): no body from a scope chain.
-    private bool AheadOfEnvironment(Koto? owner)
+    // SPEC 7.7.1, F's G230H-6, G230H-8 (1) and G230H-10 C2: the outermost literal ahead of whose environment a function declared in a
+    // body (`owner`) is bound, an environment the demand cannot form before its evaluating construct binds: the literal of its declaring
+    // body, or of a body that declares that one, whose Environment query is not ready; null where none is. Recorded facts only
+    // (DeclaringBody, EvaluatingBody): no body from a scope chain.
+    private FunctionKoto? AheadOfEnvironment(Koto? owner)
     {
         if (owner is not FunctionKoto || !this.symbols.TryGetValue(owner, out var symbol))
         {
-            return false;
+            return null;
         }
 
+        FunctionKoto? outermost = null;
         for (var body = symbol.DeclaringBody; body.IsBody; body = EvaluatingBody(body))
         {
-            if (this.BodyEnvironment(body, out _) == DeclState.NotStarted)
+            if (this.BodyEnvironment(body, out var literal) == DeclState.NotStarted)
             {
-                return true;
+                outermost = literal;
             }
         }
 
-        return false;
+        return outermost;
     }
 
-    // SPEC 7.7.2: the written capture list's entries; true where an entry ends the binding (its record at the literal). Each entry's
-    // source is demanded first (QueryValueType), so the entry is judged on its source's declared Type whenever the list is formed.
-    private bool CaptureEntriesFail(FunctionKoto function, BindingScope scope)
+    // SPEC 7.7.2: the written capture list's entries: Done; Error where an entry ends the binding (its record at the literal); NotStarted
+    // where an entry's source is pending (FormEnvironment's not-ready criterion). Each entry's source is demanded first (QueryValueType),
+    // so the entry is judged on its source's declared Type whenever the list is formed.
+    private DeclState CaptureEntries(FunctionKoto function, BindingScope scope)
     {
         if (function.Captures is not { } captures)
         {
-            return false;
+            return DeclState.Done;
         }
 
         // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list. The other entries are
@@ -519,38 +531,46 @@ public sealed partial class Binding
                 // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                 // which self is reached only through its Fields (Receiver).
                 this.FailCaptureEntry(function, repeats, BindingFailure.Capture, CaptureFailure.Of(capture, source));
-                return true;
+                return DeclState.Error;
             }
 
             if (source is not null && this.HelperCarrier(function, source) is { } helper)
             {
                 this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
-                return true;
+                return DeclState.Error;
             }
 
             if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
             {
-                // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
-                _ = source is { Type: null } ? repeats.Count == 0 ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
-                    : this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
-                return true;
+                if (source is { Type: null } && repeats.Count == 0)
+                {
+                    // The literal rests on the source's TypeSource: Error on a recorded failure, which derives the entry; not ready on a
+                    // pending source (F's G230H-10 C1).
+                    var cause = TypeSource(source) ?? source.Declaration;
+                    this.CompleteDependent(function, cause);
+                    return this.RecordedState(cause) == BindingState.Invalid ? DeclState.Error : DeclState.NotStarted;
+                }
+
+                // A source whose binding failed adds nothing to the repeats.
+                this.FailCaptureEntry(function, repeats, source is { Type: null } ? BindingFailure.None : BindingFailure.Capture, null);
+                return DeclState.Error;
             }
 
             environment.MutableCapture = capture.IsMutable;
             if (this.CaptureEntry(function, capture, source, environment) is { } failure)
             {
                 this.FailCaptureEntry(function, repeats, failure, CaptureFailure.Of(capture, source));
-                return true;
+                return DeclState.Error;
             }
         }
 
         if (repeats.Count != 0)
         {
             this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
-            return true;
+            return DeclState.Error;
         }
 
-        return false;
+        return DeclState.Done;
     }
 
     // SPEC 11.6, 3.2.1, 7.7.1, 7.7.2, 10.5.4 (G812 rulings 174, 176): typing a Property's initializer needs a literal's Type, not its body,

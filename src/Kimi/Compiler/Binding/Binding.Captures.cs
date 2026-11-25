@@ -129,8 +129,8 @@ public sealed partial class Binding
     // and the regions its written list's entries name, each entry's binding's Type fixed by its declaration, in the literal's
     // Carried and in that of each enclosing omitted list that forwards the entry (ForwardsThrough). It forms no environment binding: the
     // entries' and the forwarded captures' bindings, their slots and their order are Capture's, at the literal's binding
-    // (CaptureEntriesFail), which records the same regions again for nothing (CarryOrigin keeps a region once), so a probe records exactly
-    // the regions of the captures the binding forms. Two exceptions reach only rejected programs (rule W): an entry CaptureEntriesFail
+    // (CaptureEntries), which records the same regions again for nothing (CarryOrigin keeps a region once), so a probe records exactly
+    // the regions of the captures the binding forms. Two exceptions reach only rejected programs (rule W): an entry CaptureEntries
     // refuses before Capture (a receiver, a helper carrier) has its regions recorded, and a literal a probe reads that is never bound (its
     // call failed) leaves an enclosing omitted list's Carried with regions it does not capture. An omitted list's own entries are its
     // body's uses, recorded as each captures (Capture).
