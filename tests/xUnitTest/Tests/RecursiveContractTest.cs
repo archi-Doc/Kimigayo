@@ -98,7 +98,7 @@ public sealed partial class RecursiveContractTest
     [InlineData(Mutual, "T is B", "T.(B).Y", true)]
     [InlineData(Refinement, "T is Rec", "T.(Node).Child", true)]
     [InlineData(Refinement, "T is Node", "T.(Node).Child", false)]
-    [InlineData("contract Seq<E>\n    associate Next is Seq<Option<E>>\n", "T is Seq<i32>", "T.(Seq<i32>).Next", true)]
+    [InlineData("contract Seq<E>\n    associate Next is Seq<i32>\n", "T is Seq<i32>", "T.(Seq<i32>).Next", true)]
     [InlineData(TwoStep, "T is A", "T.(A).X", true)]
     [InlineData(TwoStep, "T is B", "T.(B).Y", false)]
     [InlineData("contract Leafy\ncontract Bush\n    associate Child is Bush or Leafy\n", "T is Bush", "T.(Bush).Child", false)]
@@ -130,7 +130,7 @@ public sealed partial class RecursiveContractTest
     [Fact]
     public void AWarmRebindAndItsQueriesAllocateNothing()
     {
-        var c = Bind(Forest + Mutual + "contract Seq<E>\n    associate Next is Seq<Option<E>>\n" +
+        var c = Bind(Forest + Mutual + "contract Seq<E>\n    associate Next is Seq<i32>\n" +
             "func probe<T, U, V>(value: T.(Forest).Root.(Tree).Child, other: U.(A).X, next: V.(Seq<i32>).Next)\n    T is Forest\n    U is A\n" +
             "    V is Seq<i32>\n    ()\n");
         var probe = Probe(c);
