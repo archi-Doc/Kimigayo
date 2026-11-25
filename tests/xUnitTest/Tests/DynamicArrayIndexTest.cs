@@ -89,13 +89,13 @@ public class DynamicArrayIndexTest
             string.Empty);
 
     [Theory]
-    [InlineData("values@ref.insert(^0, 1)")]
-    [InlineData("values@uniq.insert(true, 1)")]
-    [InlineData("values@uniq.remove(true)")]
-    public void RejectsWrongReceiversAndIndices(string statement)
+    [InlineData("values@ref.insert(^0, 1)", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("values@uniq.insert(true, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("values@uniq.remove(true)", DiagnosticCode.NoApplicableOverload_Kd)]
+    public void RejectsWrongReceiversAndIndices(string statement, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
 }

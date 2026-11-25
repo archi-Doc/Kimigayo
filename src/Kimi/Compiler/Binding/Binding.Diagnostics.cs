@@ -513,11 +513,31 @@ public sealed partial class Binding
 
     // The facts of a bare Place's acquisition record, appended to `facts` (FailAcquisition's scratch, or the selection's when a call's
     // selection records it through RecordSelection's one guard).
+    // An implicit exclusive acquisition the lending rule denies (OwnedLending, ExclusiveAcquisitionDenial: AccessFailure's codes) records
+    // its written twin's form, RecordWrite's: the Place alone, as role 0, "target" (SPEC 7.3.3); a limit (BU-15's construction receiver,
+    // PLAN G762's object pair layer) is located at the Place, as RecordLocated's (SPEC 23.1.1). The denials are SharedPathAccess and
+    // InvalidAssignment; any kind but a spelling, a denial or a limit is a broken contract (InternalInvariant_Kd).
     private void AcquisitionFacts(List<ProblemFact> facts, Koto node, BindingFailure failure, Koto place, bool @object)
     {
+        if (failure == BindingFailure.Unsupported)
+        {
+            facts.Add(LocatedFact(node, place.Span));
+            return;
+        }
+
         var transfer = failure == BindingFailure.TransferRequired;
         var judgment = transfer ? this.TakeJudgment(place) : AcquisitionJudgment.Verified;
         facts.Add(new(ProblemFactKind.Related, this.FactSite(place), 0));
+        if (failure is BindingFailure.SharedPathAccess or BindingFailure.InvalidAssignment)
+        {
+            return;
+        }
+
+        if (failure is not (BindingFailure.TransferRequired or BindingFailure.ExclusiveBorrowRequired))
+        {
+            throw new InvalidOperationException($"An acquisition record is a spelling, a lending denial or a limit, not {failure} (InternalInvariant; R7-E4 E4a-3).");
+        }
+
         facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(node), (@object ? 1L : 0L) | ((long)judgment << 1)));
         if (transfer && this.AcquisitionCaseMask(place) is { } cases)
         {

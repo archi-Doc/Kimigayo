@@ -606,7 +606,7 @@ public class PairFollowTest
     [Theory]
     [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("func pick<s/T>(c: ref/Collection<s/T>, i: isize) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let n = c[i]\n    return n.load()", DiagnosticCode.TransferRequired_Kd)]
-    [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)", DiagnosticCode.InvalidAssignment_Kd)]
     public void PairPositionsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Collection + source);
@@ -713,7 +713,7 @@ public class PairFollowTest
     [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is uniq\n    p.bump()", null)]
     [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is owner or uniq\n    p.level++", null)]
     [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is ref or uniq\n    p.level += 1", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is ref or uniq\n    p.bump()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is ref or uniq\n    p.bump()", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/(uniq/P during b))\n    s is uniq\n    p.level += 1", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/(uniq/P during b))\n    s is uniq\n    p.bump()", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/(uniq/P during b))\n    s is ref or uniq\n    let n = p.level", null)]
@@ -737,11 +737,11 @@ public class PairFollowTest
     [InlineData("func g(t: ref/(uniq/(i32, i32) during b))\n    let r = t.0@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func g<s/T, u/U>(value: s/T, n: u/U, t: s/(u/(i32, i32) during b))\n    s is owner\n    u is owner\n    let r = t.0@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Bump + "func f<U>(g: uniq/(uniq/U during b)) -> ()\n    U is Bump\n    g.bump()", null)]
-    [InlineData(Bump + "func f<U>(g: uniq/(ref/U during b)) -> ()\n    U is Bump\n    g.bump()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData(Bump + "func f<U>(g: uniq/(ref/U during b)) -> ()\n    U is Bump\n    g.bump()", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Bump + "func f<s/T, U>(g: uniq/(s/U during b), m: s/T) -> ()\n    s is uniq\n    U is Bump\n    g.bump()", null)]
-    [InlineData(Bump + "func f<s/T, U>(g: uniq/(s/U during b), m: s/T) -> ()\n    s is ref or uniq\n    U is Bump\n    g.bump()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData(Bump + "func f<s/T, U>(g: uniq/(s/U during b), m: s/T) -> ()\n    s is ref or uniq\n    U is Bump\n    g.bump()", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Bump + "func f<U>(values: uniq/Array<uniq/(uniq/U during a) during b>) -> ()\n    U is Bump\n    values[0].bump()", null)]
-    [InlineData(Bump + "func f<U>(values: uniq/Array<uniq/(ref/U during a) during b>) -> ()\n    U is Bump\n    values[0].bump()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData(Bump + "func f<U>(values: uniq/Array<uniq/(ref/U during a) during b>) -> ()\n    U is Bump\n    values[0].bump()", DiagnosticCode.SharedPathAccess_Kd)]
     public void SelectionsFollowPairLayers(string function, DiagnosticCode? code)
     {
         var c = MinimalEmissionTest.Analyze(Selected + function);
