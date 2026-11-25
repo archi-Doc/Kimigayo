@@ -50,8 +50,13 @@ public sealed partial class Binding
             for (var c = 0; c < this.contractShapes.Count; c++)
             {
                 var symbol = this.contractShapes[c].Symbol;
+                if (symbol.Schema is not { GenericSlots.Count: > 0 } schema)
+                {
+                    continue;
+                }
+
                 this.expansionNodes[symbol] = this.expansionOwners.Count;
-                for (var i = symbol.Schema?.GenericSlots.Count ?? 0; i > 0; i--)
+                for (var i = schema.GenericSlots.Count; i > 0; i--)
                 {
                     this.expansionOwners.Add(c);
                 }
@@ -140,6 +145,13 @@ public sealed partial class Binding
     // parameters its argument contains. A Contract of no node here (another pass's) lies on no cycle of this pass.
     private void AddReferencePasses(BindingSymbol reference, BindingScope scope, int from, BoundConstraint? premise)
     {
+        // Only a Contract of the pass with parameters has nodes; any other (a library's, one without parameters and maybe without a
+        // schema for SelfType) receives no pass.
+        if (!this.expansionNodes.ContainsKey(IsBoundContractReference(reference) ? reference.Type!.Symbol! : reference))
+        {
+            return;
+        }
+
         var formed = this.ClassForm(this.ContractReferenceType(reference), scope, out _);
         if (formed.Symbol is not { } declaration || !this.expansionNodes.TryGetValue(declaration, out var to))
         {
