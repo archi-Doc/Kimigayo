@@ -29,8 +29,9 @@ public sealed partial class Binding
     // pending: those open when it began (ProveRequirement); 0 in a formation read (a verification's body, the binding cache's formation,
     // the inferred bindings' collection: what it forms is judged where written, after the conformance holds). A projection whose route's
     // evidence depends on a held obligation names no Type in that evidence (EndHeldAnswer): its part stays the projection, so exactly the
-    // judgments that read the part read the obligation pending. Written only by this file's brackets (BeginEvidence, BeginVerification,
-    // BeginFormation and their ends) and ResetContracts; read only through HeldPending.
+    // judgments that read the part read the obligation pending; PathConditions publishes that part as the held mark (ProjectionOutcome.Held,
+    // HeldProjection, R7-C2e2 e2-5b), which answers inside an evidence bracket only. Written only by this file's brackets (BeginEvidence,
+    // BeginVerification, BeginFormation and their ends) and ResetContracts; read only through HeldPending.
     private int heldObligations;
 
     // An open obligation's key: an instance's (Type, Contract), or a declaration path being verified.

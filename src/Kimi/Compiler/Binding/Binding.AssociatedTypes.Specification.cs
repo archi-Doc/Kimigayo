@@ -100,9 +100,9 @@ public sealed partial class Binding
     // conformance scope (SPEC 8.8.2, D + P) the binding was formed in, and the path's associated identity it binds, as the outcome's
     // Type (the binding in the subject declaration's terms), Path and Identity. W5: Complete when no chain path names the receiver and no
     // conformance is registered for it by declaration. SPEC 8.3.3 Finality, 8.6.3 (R7-C2e2 e2-3b Revision 4): in a requirement's
-    // evidence, a path the evidence holds pending (PathConditions) names no Type: the projection stays itself there, and only a judgment
-    // that reads that part reads the obligation pending. A formation read uses dev's deferred binding, whose retained obligation the
-    // written site's formation proves after the conformance holds.
+    // evidence, a path the evidence holds pending (PathConditions) names no Type: the projection stays itself there, its outcome Held (the
+    // held mark, HeldProjection), and only a judgment that reads that part reads the obligation pending. A formation read uses dev's
+    // deferred binding, whose retained obligation the written site's formation proves after the conformance holds.
     private ProjectionOutcome ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, QuerySite site, BoundType? qualifier)
     {
         var pending = this.AssociatedEvidencePending;
@@ -130,6 +130,7 @@ public sealed partial class Binding
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? available = null;
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? unproven = null;
         var conflicting = false;
+        var heldRoute = false;
         for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
             var path = this.impls.PathsOf(identity)[i];
@@ -147,6 +148,7 @@ public sealed partial class Binding
             if (held)
             {
                 pending = true;
+                heldRoute = true;
                 continue;
             }
 
@@ -173,13 +175,13 @@ public sealed partial class Binding
         // Explicit header metadata may normalize a common binding before witnesses are ready.
         // The separately retained projection obligation must still prove conformance at finalization.
         return (available ?? (conflicting ? null : unproven)) is { } chosen ? new(chosen.Binding, receiver, false, chosen.Path, chosen.Identity, Completion.Provisional)
-            : new(null, null, pending, null, default, Completion.Provisional);
+            : new(null, null, pending, null, default, Completion.Provisional) { Held = heldRoute };
     }
 
     // SPEC 8.2.3, 8.6.1, 8.6.3, 8.3.3 Finality (R7-C2e2 e2-5b, e2-3b Revision 4): a path's conditions at a receiver, and whether the
     // requirement's evidence in progress holds the path pending (`held`): the path's evidence (its conditions and, for a path they do not
     // rule out, the receiver's formation, one answer) depends on an obligation that evidence holds (EndHeldAnswer). A formation read holds
-    // none, so it reads the conditions alone.
+    // none, so it reads the conditions alone. Its `held` is the held mark's one source (ProjectionOutcome.Held, HeldProjection).
     private ConstraintProof PathConditions(BoundConformancePath path, BoundType receiver, BindingScope scope, QuerySite site, out bool held)
     {
         held = false;
@@ -195,6 +197,16 @@ public sealed partial class Binding
         return condition;
     }
 
+    // SPEC 8.3.3 Finality, 8.6.3, 8.3.1 (R7-C2e2 e2-5b; DECISIONS R7-M47): the held mark, the one predicate its readers ask: whether `type`
+    // is a projection the requirement's evidence in progress keeps as itself because a path its receiver meets rests on an obligation
+    // that evidence holds pending (ProjectionOutcome.Held, from PathConditions' `held`). Such a part is neither its binding nor absent: a
+    // relation reading it holds and binds nothing, and its reader's verdict is Unknown. False in a formation read (it holds none: the
+    // bracket is ConditionalConformances' BeginEvidence/EndEvidence, read through FormationRead), for a projection naming a Type, and for
+    // one that fails, has no conformance or is not yet inferred, which keep their verdict (Refuted where a relation reads them). Asked
+    // inside the evidence that kept the part, so it reads the same open and held obligations.
+    private bool HeldProjection(BoundType type, BindingScope scope, QuerySite site)
+        => !this.FormationRead && type.Kind == BoundTypeKind.AssociatedProjection && this.ProjectionSpecification(type, scope, site).Held;
+
     // SPEC 8.9.2 (DECISIONS BU-50, revised by bu55): two conformance paths of a receiver agree on an associated Type when their bindings are
     // one Type as written or as the receiver's Types. Each binding is in the subject declaration's terms, normalized under its own path's
     // conditions only: OwningIterator's direct `Self is LendingIterator` binds `I.(LendingIterator).LentItem(step)` and its refinement path
@@ -207,5 +219,10 @@ public sealed partial class Binding
     // ProjectionSpecification's one outcome (DECISIONS BU-50): the Type, with the Subject it is instantiated under (none for a builtin's
     // complete Type), the conformance path it comes from (its Scope the binding's conformance scope) and the path's identity it binds (a
     // binding's node, DECISIONS BU-65); else Pending (nothing decides it yet) or none; with its Completion (W5).
-    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path, BoundRequirement Identity, Completion Completion);
+    private readonly record struct ProjectionOutcome(BoundType? Type, BoundType? Subject, bool Pending, BoundConformancePath? Path, BoundRequirement Identity, Completion Completion)
+    {
+        // R7-C2e2 e2-5b: no Type because the requirement's evidence in progress holds a path the receiver meets pending (PathConditions'
+        // `held`), so Pending too; set only by ResolveAssociated's held path, never in a formation read (HeldProjection reads it).
+        internal bool Held { get; init; }
+    }
 }
