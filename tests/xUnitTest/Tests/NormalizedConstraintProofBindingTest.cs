@@ -313,7 +313,7 @@ public class NormalizedConstraintProofBindingTest
             "contract P<E>\n    E is Src\n    E.(Src).Item is not Marker\n    func read(self: ref/Self) -> Box<E.(Src).Item>\n";
         var (first, second) = (Use("via", "A"), Use("via2", "B"));
         var source = Declarations + (reversed ? second + first : first + second);
-        Assert.Equal("2*NoApplicableOverload_Kd 2*UnsatisfiedConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
+        Assert.Equal("2*NoApplicableOverload_Kd 1*UnsatisfiedConstraint_Kd", DiagnosticCorpus.RecordProfile(source)); // the requirement `read` carries its written result `Box<E.(Src).Item>`, which keeps the record: the Function's restating one goes (G1278-A, Q13; F's G1278-3)
 
         static string Use(string name, string slot)
             => $"func {name}<T, {slot}>(t: ref/T)\n    T is P<{slot}>\n    {slot} is Src\n    {slot}.(Src).Item is not Marker\n    t.read()\n";
