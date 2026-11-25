@@ -232,7 +232,10 @@ public sealed partial class Binding
         }
         else
         {
-            classes.Read(availability); // An unavailable premise that may become available: the classes may grow.
+            // An unavailable premise is read Provisional (W6): a derived one a Pending source may still supply (the classes may grow),
+            // or one whose read consulted a failure (a failed premise, its derived failure, a failed source), which a kept table would
+            // not replay. So the table is not Final (W7): not memoized, and the view's requests keep no entry or rows (RowsRequest).
+            classes.Read(availability);
         }
     }
 
