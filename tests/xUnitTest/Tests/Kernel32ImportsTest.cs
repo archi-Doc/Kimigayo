@@ -225,9 +225,10 @@ public sealed class Kernel32ImportsTest
     }
 
     // IMPL 20.4 (Tatara B6a): a libraries entry naming a compiler's supply is accepted as this compiler writes it, its kind and every
-    // identifying field equal and no input, any other member ignored (a sha256 is an assertion the build checks); a field changed or
-    // removed, an input added or another kind is not this compiler's, one text naming the entry. Each row edits the entry written from
-    // the supply's row: a JSON value, or null to remove the field.
+    // identifying field equal and no input, any other member ignored (a sha256 is an assertion the build checks against a one-file
+    // supply's file); a field changed or removed, an input added, another kind or a sha256 on a supply of several files (c: T's ruling 79,
+    // the Middle's N3; on 0e7a59618 it was accepted and failed every build) is not this compiler's, one text naming the entry. Each row
+    // edits the entry written from the supply's row: a JSON value, or null to remove the field.
     [Theory]
     [InlineData("kernel32", "generator", "\"other\"")]
     [InlineData("kernel32", "generator", null)]
@@ -241,6 +242,11 @@ public sealed class Kernel32ImportsTest
     [InlineData("kimi_backend", "resolution", "7")]
     [InlineData("kimi_backend", "kind", "\"import\"")]
     [InlineData("kimi_backend", "input", "\"override.lib\"")]
+    [InlineData("c", "resolution", "\"other\"")]
+    [InlineData("c", "resolution", null)]
+    [InlineData("c", "kind", "\"import\"")]
+    [InlineData("c", "input", "\"libc.a\"")]
+    [InlineData("c", "sha256", "\"any\"")]
     public void ACompilerSupplysEntryIsAcceptedOnlyAsWritten(string name, string field, string? value)
     {
         var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name)!;
@@ -254,7 +260,7 @@ public sealed class Kernel32ImportsTest
         var asserted = JsonNode.Parse(written.WrittenSpan)!.AsObject();
         asserted["sha256"] = "any";
         Assert.Equal(name, entry["name"]!.GetValue<string>());
-        foreach (var valid in new[] { entry, asserted })
+        foreach (var valid in supply.Files.Length == 1 ? new[] { entry, asserted } : [entry])
         {
             using var accepted = JsonDocument.Parse(valid.ToJsonString());
             LinkManifest.CheckCompilerSupply(accepted.RootElement, supply);

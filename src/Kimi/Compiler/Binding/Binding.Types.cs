@@ -64,6 +64,17 @@ public sealed partial class Binding
     private BoundType? BindType(Koto syntax, BindingScope scope)
         => this.BindType(syntax, scope, this.TypeContext(syntax, scope));
 
+    // SPEC 8.5.5 (C4 rulings 8-9): a Type-expression node's Type value is published here, once, and only Complete: after the gate a Type
+    // holding a pending projection (HoldsPendingProjection) stays unpublished and is returned for a partial header to inspect, so the
+    // binding after the requests forms the node and its parts again. A projection's name node and a specification's head keep their own
+    // write, the projection the name denotes as written (BindAssociatedProjection, BindAssociatedName; AsWritten's input, SPEC 8.6.1).
+    private BoundType? PublishType(Koto syntax, BoundType? type)
+        => type is not null && this.HoldsPendingProjection(type) ? type : Complete(syntax, type);
+
+    // The one predicate of a Type value not yet publishable: after the gate, a projection on a struct or enum receiver is a value inference
+    // has not determined (formed Types hold a determined projection's value, never the projection).
+    private bool HoldsPendingProjection(BoundType type) => this.associatedInferenceReady && this.PendingAssociatedType(type);
+
     private BoundType? BindType(Koto syntax, BindingScope scope, TypeBindingContext context)
     {
         if (syntax.BoundType is { } known && !(this.closureHeader?.ReturnType is { } result && IsWithin(syntax, result)))
@@ -118,7 +129,7 @@ public sealed partial class Binding
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
                 RestPendingOn(originDeclaration, syntax);
-                return Complete(syntax, null);
+                return this.PublishType(syntax, null);
             }
 
             if (type is null)
@@ -132,7 +143,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (this.associatedInferenceReady && this.PendingAssociatedType(type))
+            if (this.HoldsPendingProjection(type))
             {
                 return type; // A partial header may inspect structure; syntax is not a completed Type yet.
             }
@@ -145,7 +156,7 @@ public sealed partial class Binding
                 return this.HeightChecked(syntax, type);
             }
 
-            Complete(syntax, type);
+            this.PublishType(syntax, type);
             this.CompleteOriginDeclaration(originDeclaration);
             return syntax.BoundType;
         }
@@ -171,7 +182,7 @@ public sealed partial class Binding
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
-                Complete(root.Operands[0], rootType);
+                this.PublishType(root.Operands[0], rootType);
                 return rootType;
             case GenericParameterKoto:
                 return syntax.BoundSymbol?.WholeType;
@@ -208,7 +219,7 @@ public sealed partial class Binding
                             while (true)
                             {
                                 groupedTarget.BoundSymbol = target;
-                                Complete(groupedTarget, inner);
+                                this.PublishType(groupedTarget, inner);
                                 if (groupedTarget is not ParenthesizedTypeKoto targetParentheses)
                                 {
                                     break;
@@ -421,7 +432,7 @@ public sealed partial class Binding
         {
             // SPEC 3.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
             // declaration's only Constraint, so no container reference or obligation is formed.
-            return Complete(generic, own);
+            return this.PublishType(generic, own);
         }
 
         // SPEC 15.3.5: Loan<T> is formed only over a complete ref, uniq, objref or objuniq borrow Type.
@@ -431,7 +442,7 @@ public sealed partial class Binding
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
-        return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
+        return own is null ? null : this.PublishType(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
     }
 
     // SPEC 9.7, 23.1.2: explicit Type arguments resolve in the use-site context, whatever their head, so a head or arity that forms no

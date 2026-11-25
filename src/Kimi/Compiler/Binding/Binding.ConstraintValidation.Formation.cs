@@ -4,13 +4,15 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// A Type's formation in a scope (SPEC 8.3, 15.6.1; DECISIONS BU-19, BU-55, R4-M163), a part of constraint validation.
+// A Type's formation in a scope (SPEC 8.3, 15.6.1; DECISIONS BU-19, BU-55, R4-M163, PLAN G464), a part of constraint validation.
 // - Responsibility: two walks over one per-part step. The step (BeginTypeFormation, EndTypeFormation) judges a part's declaration
 //   context, its Origin clauses and a constructed part's clauses with every enclosing container's under its arguments. The per-use
-//   walk (CheckTypeConstraints) judges an instantiated Type and enters every component; the declaration walk
-//   (CheckDeclaredTypeConstraints) judges a callee's declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints
-//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth. An instance's
-//   evidence (InstanceFormation, SPEC 8.6.3) reads the step alone: its declaration's Constraints at its arguments.
+//   walk (CheckTypeConstraints) judges an instantiated Type; the declaration walk (CheckDeclaredTypeConstraints) judges a callee's
+//   declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints keeps its Proven as the declaration query
+//   SignatureVerdict). Both enter every component but a Function Type's, at any depth (SPEC 15.6.1, 15.3.4: a nested signature); they
+//   differ only in the clause fact the per-use walk hands on and the declaration walk's SignatureVerdict. An instance's evidence
+//   (InstanceFormation, SPEC 8.6.3) reads the step alone: its declaration's Constraints at its arguments; so does the question which
+//   parts of a Refuted signature failed where written (RefutedSignatureParts, DECISIONS Q13 rule W), at each part's root.
 // - Inputs: a Type and the scope whose premises apply; the declaration contexts, Origin declarations and constraint clauses bound so far.
 // - Outputs: the proof, combined as P < U < L < R < E, with the cause it rests on read into the enclosing proof scope; in the per-use
 //   walk, also the clause fact at the part's verdict, handed on as a clause list hands its own (LeaveClause; PLAN G354 (2)).
@@ -23,8 +25,8 @@ namespace Kimi.Compiler;
 //   instances nest, and an answer formed while an obligation or a capability request is pending is never read past it. A cached part
 //   and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
-//   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
-//   no clause fact on while PLAN G375's sigref1 stays open.
+//   (FormNestedResult, R4-M162) and its inputs at its calls (RequireInputPremises, R4-M137), never by either walk; the declaration walk
+//   hands no clause fact on while PLAN G375's sigref1 stays open.
 public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
@@ -47,6 +49,9 @@ public sealed partial class Binding
     // The reads of a part not decided on settled verdicts: a part whose computation read one rests on a provisional verdict through it.
     // Temporary with Settled and ProvisionalReads; removal: R7-C2e2 e2-5b (a part's Completion meets its parts').
     private int unsettledReads;
+
+    // Whether part `part` is in a set RefutedSignatureParts gave; a part past bit 63 is in none, so it is compared as written.
+    private static bool RefutedPart(ulong parts, int part) => (uint)part < 64 && (parts & (1UL << part)) != 0;
 
     // The per-use walk over an instantiated Type. A part's proof and the cause it rests on depend on the part alone in one query (its
     // scope fixed), so each distinct part is proven once (FormedPart). A call made while a per-use walk of the same scope runs (a
@@ -82,8 +87,9 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        // A Function Type's components are its inputs and its result.
-        for (var i = 0; i < type.Components.Count; i++)
+        // SPEC 15.6.1, 15.3.4 (PLAN G464): a Function Type is a nested signature, whose inputs are its premises, proven at its calls
+        // (RequireInputPremises), and whose result is formed where it is written (FormNestedResult, R4-M162); no use forms either.
+        for (var i = 0; type.Kind != BoundTypeKind.Function && i < type.Components.Count; i++)
         {
             proof = CombineProof(proof, this.FormedPart(type.Components[i], scope, query), true);
         }
@@ -280,5 +286,36 @@ public sealed partial class Binding
         }
 
         return proof;
+    }
+
+    // SPEC 23.1.2 (DECISIONS Q13 rule W): the parts of a callee's declared signature whose own written Type is the failed occurrence,
+    // as bits (its input i at bit i, its result at the parameter count): the signature's verdict is Refuted and the step alone at the
+    // part's root (BeginTypeFormation, EndTypeFormation; no component) is Refuted. A part whose failed Type lies under its root
+    // (`Option<Box<string>>`) is none: it is compared, and its other components with it. Only a reader that reads the verdict itself
+    // takes them as the wildcards of its comparison against a required Function Type (a function-group reference: ContractFits,
+    // InferReferenceSlots); every other comparison takes none. An Error verdict gives none: an Error part that misfits leaves the
+    // candidate inapplicable, and its record is as without the rule. The question is no proof: it runs in a scope of its own, opening no
+    // site frame (Nested), whose reads, an Error's cause among them, it drops; a Proven verdict is the kept query, so a valid callee
+    // walks nothing.
+    private ulong RefutedSignatureParts(FunctionKoto function)
+    {
+        var parts = 0UL;
+        this.BeginProof(QuerySite.Nested);
+        if (this.CheckSignatureTypeConstraints(function, QuerySite.Nested) == ConstraintProof.Refuted)
+        {
+            var scope = this.scopes[function];
+            for (var i = 0; i <= function.Parameters.Count && i < 64; i++)
+            {
+                var written = i < function.Parameters.Count ? function.Parameters[i].Type.BoundType : function.BoundSymbol?.Type;
+                if (written is not null && this.BeginTypeFormation(written, scope, QuerySite.Nested) is { } open &&
+                    this.EndProof(this.EndTypeFormation(written, scope, open)) == ConstraintProof.Refuted)
+                {
+                    parts |= 1UL << i;
+                }
+            }
+        }
+
+        this.EndProof(ConstraintProof.Proven);
+        return parts;
     }
 }

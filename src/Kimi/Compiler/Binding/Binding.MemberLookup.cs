@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
+    private readonly Dictionary<(BoundMemberPath? Parent, SourceRef Base, BoundType Type), BoundMemberPath> memberPaths = new();
     private readonly MemberSelectionRows memberSelections;
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
@@ -16,6 +16,9 @@ public sealed partial class Binding
 
     /// <summary>Gets the layers LookupMember searched in the latest pass, read by the scaling tests.</summary>
     internal int MemberWalkWork => this.memberWalks;
+
+    /// <summary>Gets the number of interned member paths, read by the scaling and removal tests.</summary>
+    internal int MemberPathCount => this.memberPaths.Count;
 
     /// <summary>Gets the clauses UnreadIdentity read in the latest pass, read by the scaling tests.</summary>
     internal int UnreadIdentityWork => this.unreadIdentityWork;
@@ -217,7 +220,7 @@ public sealed partial class Binding
             // requirements: the Type path over the formed projection; construction (`.init`) is ConstructorMember's. A member missing
             // through a projection that stays one rests on the projection's use (SPEC 23.1.2; as ConstructorMember, DECISIONS BU-184):
             // an unsatisfied conformance is that use's record, a pending prerequisite here.
-            Complete(member.Left, projected);
+            this.PublishType(member.Left, projected);
             var selected = this.SelectMember(member, null, this.QualifierSelection(member, null, name, scope, projected), default, scope);
             if (selected is null && projected.Kind == BoundTypeKind.AssociatedProjection)
             {
@@ -390,7 +393,7 @@ public sealed partial class Binding
             }
 
             typeSelection = typeSelection with { DeclaringType = completeType };
-            Complete(member.Left, completeType);
+            this.PublishType(member.Left, completeType);
         }
 
         // The Type side's verdict is TypePathFailure's, which PickReading reads too; the value side's access is checked against its receiver.
@@ -596,14 +599,15 @@ public sealed partial class Binding
     private MemberSide MemberSideOf(MemberAccessKoto member)
         => this.memberSelections.SideOf(member) ?? throw new UnreachableException("A member access without a published side.");
 
+    // The member path of a base clause reached with a Type under a parent path, interned (DECISIONS BU-220: an interner stays a
+    // content-hash table): one object per key while no edit intervenes, so a warm rebind finds the paths of the Bind before it. The key
+    // names the clause by its value identity, which only a renumbering changes, and every edit, which a renumbering follows, empties the
+    // table (Invalidate): no key outlives its numbering and no removed clause stays reachable.
     private BoundMemberPath MemberPath(BoundMemberPath? parent, Koto syntax, BoundType type)
     {
-        var key = (parent, syntax, type);
-        if (!this.memberPaths.TryGetValue(key, out var path))
-        {
-            this.memberPaths.Add(key, path = new(parent, syntax, type));
-        }
-
+        ref var path = ref CollectionsMarshal.GetValueRefOrAddDefault(this.memberPaths, (parent, SourceRef.Of(syntax), type), out _);
+        path ??= new(parent, syntax, type);
+        Debug.Assert(ReferenceEquals(path.Declaration, syntax), "A member path's key outlived its numbering.");
         return path;
     }
 

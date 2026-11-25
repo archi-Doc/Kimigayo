@@ -48,7 +48,7 @@ public class ArchitectureRulesTest
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget|PublishLookup|ReadLeft|MayBeValueQualifier";
 
-    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedTypes.cs=3;" +
+    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedInference.Discovery.cs=1;Binding.AssociatedTypes.cs=3;" +
         "Binding.Constraints.Requirements.cs=1;Binding.Constraints.cs=2;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;" +
         "Binding.Conversions.cs=1;Binding.Diagnostics.cs=1;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=1;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=4;Binding.ResultSurvey.cs=1;" +
@@ -117,11 +117,11 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding,
-    // TyCtxt and ImplTable are R7-N5's (B7c, B8), MirBody and MirBuilder the Middle's, DiagnosticOwner the Diagnostics owner's, HoverBuilder
-    // and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands second takes the merged counts.
-    private const string NodeKeyedTableSites = "Binding=13;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;ImplTable=1;MirBody=1;MirBuilder=1;" +
-        "TyCtxt=1";
+    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding
+    // is R7-N5's (B7c's left in W-359, ImplTable's in B8a, TyCtxt's in B8b), MirBody and MirBuilder the Middle's, DiagnosticOwner the
+    // Diagnostics owner's, HoverBuilder and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands
+    // second takes the merged counts.
+    private const string NodeKeyedTableSites = "Binding=7;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
 
     // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -175,7 +175,11 @@ public class ArchitectureRulesTest
         "Binding.AsWritten.cs:WrittenProjection=1 kind",
         "Binding.AsWritten.cs:WrittenProjection=2 unchanged",
         "Binding.AssociatedFormation.cs:StoresTypeArgument=2 declared",
-        "Binding.AssociatedInference.cs:InferAssociatedTypes=1 declared",
+        "Binding.AssociatedInference.Demand.cs:DecideAtLimit=1 declared",
+        "Binding.AssociatedInference.Demand.cs:HeldValue=1 declared",
+        "Binding.AssociatedInference.Demand.cs:PublishInferred=1 declared",
+        "Binding.AssociatedInference.Demand.cs:SuppliesInBoth=1 declared",
+        "Binding.AssociatedInference.Demand.cs:SuppliesInBoth=1 key",
         "Binding.AssociatedInference.cs:JoinEvidence=4 sufficient",
         "Binding.AssociatedOrigins.cs:AssociatedIdentityMatches=3 key",
         "Binding.AssociatedOrigins.cs:CanonicalAssociatedOrigins=1 unchanged",
@@ -225,7 +229,6 @@ public class ArchitectureRulesTest
         "Binding.ConditionalConformances.cs:DisjointConformanceFacts=1 key",
         "Binding.ConditionalConformances.cs:SameConformanceType=1 sufficient",
         "Binding.ConstraintValidation.Proofs.cs:UnprovenInputRead=1 sufficient",
-        "Binding.ConstraintValidation.StepFive.cs:CheckOperationTypeConstraints=1 unchanged",
         "Binding.ConstraintValidation.cs:SameTypeOperand=1 unchanged",
         "Binding.ConstraintValidation.cs:SemanticsPremise=1 declared",
         "Binding.Constraints.Model.cs:Equals=2 key",
@@ -680,9 +683,9 @@ public class ArchitectureRulesTest
     // PLAN G949 S1-r1b (rule (a), F's ruling 170): inside a pass Binding reads a conformance identity's paths only through ImplTable.PathsOf,
     // the one read that applies the running pass's admission to a library identity (from S1-r1b's split its point-1 paths while the
     // conditional registrar has not run: OwningIterator's and BorrowingIterator's LendingIterator identity gains its Iterator ancestor's path
-    // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. The one other
-    // match is an inference batch's Paths (Binding.AssociatedInference.cs), not an identity's.
-    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.AssociatedInference.cs=1;Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
+    // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. An inference
+    // batch's Paths (a batch's, not an identity's) is read through a batch (R7-C4 removed the last other match).
+    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
     // PLAN G949 Stage 2 (R8-L1 under O-381 (b)): a reader reaches its Binding's facts through its own Binding, never through a node's
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
     // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
@@ -851,7 +854,7 @@ public class ArchitectureRulesTest
     // R7-N5, PLAN G949 S1-N5 and G1314 (DECISIONS BU-220; COMPILER_ARCHITECTURE's Syntax identity): a node-keyed table outside Syntax is a
     // field of a keyed collection (a dictionary, a set or a weak table) whose key's equality reaches a node: a Koto type or an interface
     // one implements, object, or a Kimi type, value tuple or Nullable that is a value type or has its own Equals, one of whose fields
-    // reaches one (ShapePair, CollisionTerm, BindingObligation). Read from the compiled fields, so a named key type hides no node; a field of
+    // reaches one (ShapePair, BindingObligation). Read from the compiled fields, so a named key type hides no node; a field of
     // a constructed Kimi generic type is read through its fields. A class with reference equality (BindingSymbol, BoundType) is its own
     // identity and a SourceRef key a node's value identity, no node; a BCL struct's internals never count. Not seen: a node in a BCL key's
     // generic arguments (KeyValuePair, Tuple) or a node-keyed collection held as a value or an element; review reads those. Counted by

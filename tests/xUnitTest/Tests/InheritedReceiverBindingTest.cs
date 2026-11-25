@@ -506,6 +506,37 @@ public class InheritedReceiverBindingTest
         Assert.Equal(0, allocated);
     }
 
+    // SPEC 6.2.2, 9.6 (DECISIONS BU-220, R7-N5 B7c): an edit empties the member path interner, so a derived clause it replaces leaves no
+    // path: the edit replaces D0's clause `Mid` by `Base` (D0's path through `Mid` heads a depth-3 chain and is the parent of the path
+    // through Mid's clause), the rebind interns the current program's paths only and the removed clause is collected. Fails on an
+    // interner kept across edits, and on a row at the clause named last (C-518: Mid's row kept D0's path).
+    [Fact]
+    public void AnEditRemovingADerivedClauseLeavesNoPathOfIt()
+    {
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public var item: i32\n    public func get(self: ref/Self) -> i32 => self.item\nopen struct Mid: Base\n    public var other: i32\n" +
+            "struct D0: Mid\n    public func read(self: ref/Self) -> i32 => self.item + self.get()\nstruct D1: Mid\n    public func read(self: ref/Self) -> i32 => self.item + self.get()\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Equal(5, c.Binding.MemberPathCount);
+        var removed = ReplaceD0Base(c);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Equal(4, c.Binding.MemberPathCount);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(removed.IsAlive);
+    }
+
+    // Replaces D0's base clause `Mid` by `Base`, an edit, and returns the removed clause.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference ReplaceD0Base(Compilation c)
+    {
+        var d0 = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "D0");
+        var donor = KotoTree.Walk(CompilationTestHelper.ParseSuccess("open struct Base\nstruct D0: Base\n").Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "D0");
+        var removed = d0.Bases[0];
+        Assert.True(KotoHelper.Replace(d0, removed, ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(d0.CodeContext))));
+        return new(removed);
+    }
+
     private static BoundConformancePath Path(Compilation c, string type, string contract)
     {
         var t = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == type).TypeOf()!;

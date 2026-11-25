@@ -10,7 +10,10 @@ namespace Kimi.Compiler;
 //   anonymous function's (FormNestedResult; SPEC 15.3.4, DECISIONS R4-M162); the shape of a signature's per-call inputs (SignatureOwner,
 //   InputOrigins); the erasure of a Closure or Function Item to a common
 //   Function Type (ErasesToFunction, and ErasureSignatureFits, its signature part that applicability reads); and the solved
-//   comparison of a named function's contract with a required signature (ContractFits).
+//   comparison of a named function's contract with a required signature (ContractFits), of every part but the wildcards its caller
+//   gives (SPEC 23.1.2, DECISIONS Q13 rule W: the parts that failed where written, RefutedSignatureParts), which only a function-group
+//   reference gives, since it reads the candidate's signature verdict itself; an erasure, a requirement Item's fit and a Callable
+//   proof give none and compare every part.
 // - Inputs: the Types compared, the use whose premises the comparison reads, the Type relation (Binding.TypeRelations) and, for a
 //   Closure's erasure, its call's retention (TyCtxt.Retains).
 // - Outputs: the verdicts and, for ContractFits, the solved Origins and argument operations.
@@ -403,22 +406,25 @@ public sealed partial class Binding
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
     // `container` with `arguments` bound, or those of `item`, a Function Item or a Closure (its signature). `comparison` is the query
     // (ContractComparison): the required signature and the row sink that takes the region conjuncts its premises leave unproven.
+    // `wildcards` (SPEC 23.1.2, DECISIONS Q13 rule W) are the implementation's parts its caller does not compare: those that failed where
+    // written (RefutedSignatureParts), given only by a reader that reads the signature's verdict itself; every other caller gives none.
     private bool ContractFits(
         Koto use,
         BindingSymbol symbol,
-        FunctionKoto function,
         CallableInstance comparison,
         BoundType? container,
         BoundType? item,
         SlotFrame? frame,
         Span<BoundArgumentOperation> operations,
         BoundOrigin[] origins,
-        BoundOrigin[] inputs)
+        BoundOrigin[] inputs,
+        ulong wildcards)
     {
         // PLAN G1082: the comparison's proof requests share one premise environment of its use and comparison (Binding.OriginPremises.cs).
         var session = this.OpenPremiseSession();
         try
         {
+            var function = (FunctionKoto)symbol.Declaration;
             var required = comparison.Expected!;
             var parameters = required.Components[0];
             var generic = function.GenericArguments.Count;
@@ -478,6 +484,11 @@ public sealed partial class Binding
                 var walk = new RelationWalk(this, this, use, OriginPart.Contract);
                 if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
                 {
+                    if (RefutedPart(wildcards, i))
+                    {
+                        continue; // A wildcard (rule W): its misfit fails nothing and it has no premises of its own; the next part is compared.
+                    }
+
                     this.contractFailure = walk.Failure.Within((byte)(i + 1));
                     BlameMisfit(Declared(i), walk.Failure);
                     return false;
@@ -524,6 +535,11 @@ public sealed partial class Binding
             var resultWalk = new RelationWalk(this, this, use, OriginPart.Contract);
             if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
             {
+                if (RefutedPart(wildcards, function.Parameters.Count))
+                {
+                    return true;
+                }
+
                 this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
                 BlameMisfit(Declared(function.Parameters.Count), resultWalk.Failure);
                 return false;
@@ -627,7 +643,7 @@ public sealed partial class Binding
             var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(scratch.AsSpan(0, count));
             if (tuple is not null)
             {
-                Complete(tuple, parameters);
+                this.PublishType(tuple, parameters);
             }
 
             // The result is formed where it is written (FormNestedResult); the inputs add no obligation here (R4-M137).
