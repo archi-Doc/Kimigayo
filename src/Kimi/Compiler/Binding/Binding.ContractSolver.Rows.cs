@@ -197,7 +197,7 @@ public sealed partial class Binding
         {
             if (rounds > PremiseClosureLimit || restarts > PremiseClosureLimit)
             {
-                this.RefuseProof(scope, BindingFailure.PremiseClosureLimit);
+                this.RefuseProof(scope, BindingFailure.AnalysisLimit);
                 return false;
             }
 
@@ -277,22 +277,33 @@ public sealed partial class Binding
         }
     }
 
-    // R7-C2c2 c2-3b: SPEC 8.10's row for a Callable atom `S is Callable<r, Sig>`, normalized by its caller (Supply's): the premises
-    // of `scope` supply an available Callable row of S with the atom's receiver and signature (SameProofPremise's tests of two
-    // Callable atoms; the subject is the rows'). A row's signature is read as the Callable selection reads it.
-    private bool PremiseCallable(BoundConstraint atom, BindingScope scope)
+    // R7-C2c2 c2-3b, c2-5b: SPEC 8.10's row for a Callable atom `S is Callable<r, Sig>` or its negation, normalized by its caller
+    // (Supply's), both polarities in one request: an available row of S whose atom (RowAtom) is a Callable atom with the proposition
+    // atom's receiver and signature (SameProofPremise's tests of two Callable atoms; the subject is the rows') supplies the
+    // proposition where the row and the proposition agree in polarity and its negation where they differ (SPEC 8.3.2 Exact
+    // assumption). A row's signature is read as the Callable selection reads it. Any other proposition: neither.
+    private (bool Positive, bool Negative) PremiseCallable(BoundConstraint proposition, BindingScope scope)
     {
-        var start = this.premiseRows.Count;
-        this.FirstRows(atom.Subject!, scope, this.premiseRows);
-        var supplied = false;
-        for (var i = start; !supplied && i < this.premiseRows.Count; i++)
+        if (RowAtom(proposition) is not { Kind: ConstraintKind.Callable, Subject: { } subject } atom)
         {
-            supplied = this.premiseRows[i] is { Available: true, Clause: { Kind: ConstraintKind.Callable } clause } && clause.Mask == atom.Mask &&
-                this.SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
+            return default;
+        }
+
+        var start = this.premiseRows.Count;
+        this.FirstRows(subject, scope, this.premiseRows);
+        var (positive, negative) = (false, false);
+        for (var i = start; !(positive && negative) && i < this.premiseRows.Count; i++)
+        {
+            if (this.premiseRows[i] is { Available: true, Clause: { } clause } && RowAtom(clause) is { Kind: ConstraintKind.Callable } row &&
+                row.Mask == atom.Mask && this.SameCallableSignature(this.CallableContractType(row.RequiredType!, scope), atom.RequiredType!))
+            {
+                var agrees = (clause.Kind == ConstraintKind.Not) == (proposition.Kind == ConstraintKind.Not);
+                (positive, negative) = (positive || agrees, negative || !agrees);
+            }
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
-        return supplied;
+        return (positive, negative);
     }
 
     // R7-C2c2 c2-3b: the request boundary of a reader that demands no Contract: the rows of `subject` and of its class key under
@@ -529,9 +540,9 @@ public sealed partial class Binding
         return index;
     }
 
-    // The view's facts as written into its entry, each row's under its subject and a fact of a row kind (RowKind) also under its class
-    // key in the request's view. An extension's re-filing repeats the other rows' pairs in an entry no validator reads (the request's,
-    // dropped when it returns).
+    // The view's facts as written into its entry, each row's under its subject and a fact with a row atom (RowAtom) under its atom's
+    // subject and also its class key in the request's view. An extension's re-filing repeats the other rows' pairs in an entry no
+    // validator reads (the request's, dropped when it returns).
     private void IndexWritten(ViewIndex index, EvidenceView view)
     {
         for (var scope = view.Premises; scope is not null; scope = scope.Parent)
@@ -543,15 +554,15 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Subject is not null && RowKind(fact))
+                if (RowAtom(fact) is { Subject: { } subject })
                 {
-                    index.Add(scope, fact, fact, fact.Subject);
+                    index.Add(scope, fact, fact, subject);
                     this.ClosureIndexWork++;
 
                     // R7-C2c2 c2-1 meets R7-C2e2-2 here: the class-key copy is the row kinds' alone (c2-3b: a leaf kind's fact too). The
                     // other rows keep written subjects, so the validators, which pair facts by bucket, never meet a fact of another
                     // written subject.
-                    if (this.enumerateClasses is { } classes && this.ClassKey(fact.Subject, classes) is var at && !ReferenceEquals(at, fact.Subject))
+                    if (this.enumerateClasses is { } classes && this.ClassKey(subject, classes) is var at && !ReferenceEquals(at, subject))
                     {
                         index.Add(scope, fact, fact, at); // also under its class key in the request's view
                         this.ClosureIndexWork++;
@@ -711,8 +722,8 @@ public sealed partial class Binding
         }
 
         // An extension's walking round (Binding.ExtendClosed) reads its own table's keys alone: the pairs filed under another subject
-        // key than their fact's own (an earlier table's class-key pairs) go; the facts as written and their readings stay, each under
-        // its fact's own subject, in their order.
+        // key than their filing atom's (FilingAtom; an earlier table's class-key pairs) go; the facts as written and their readings
+        // stay, each under its filing atom's subject, in their order.
         internal void DropClassKeys()
         {
             foreach (var (key, list) in this.Buckets)
@@ -720,7 +731,7 @@ public sealed partial class Binding
                 var kept = 0;
                 for (var i = 0; i < list.Count; i++)
                 {
-                    var own = SubjectKey(list[i].Fact.Subject!);
+                    var own = SubjectKey(FilingAtom(list[i].Fact).Subject!);
                     if (ReferenceEquals(own.Symbol, key.Symbol) && ReferenceEquals(own.Type, key.Type))
                     {
                         list[kept++] = list[i];
@@ -731,15 +742,17 @@ public sealed partial class Binding
             }
         }
 
-        // One fact of an environment of the view in its kind's row under the subject key of `at` (a projection's declaration and
-        // receiver, else the Type; the fact's subject or its class key): `raw` as the environment holds it (its availability), `fact`
-        // as the index reads it. A row kind's bucket (RowKind) keeps one order whatever the premises' (the class header's Invariants:
-        // a row's Source): a fact whose own subject has the bucket's key before one under its class key or its reading's subject, then
-        // Binding.TypeIdentity's Order of the facts' subjects; equal subjects keep their arrival. Another kind's bucket keeps its
-        // environment's order, which its readers' pairs read (ValidateAssociatedOverlapAgreement: each identity with those before it).
+        // One fact of an environment of the view in its filing atom's kind's bucket (FilingAtom) under the subject key of `at` (a
+        // projection's declaration and receiver, else the Type; the fact's subject or its class key): `raw` as the environment holds
+        // it (its availability), `fact` as the index reads it. A fact with a row atom (RowAtom) is in its atom's kind's row, a
+        // negated leaf atom too, and that row kind's bucket keeps one order whatever the premises' (the class header's Invariants: a
+        // row's Source): a fact whose own atom's subject has the bucket's key before one under its class key or its reading's
+        // subject, then Binding.TypeIdentity's Order of the atoms' subjects; equal subjects keep their arrival. Another kind's bucket
+        // keeps its environment's order, which its readers' pairs read (ValidateAssociatedOverlapAgreement: each identity with those
+        // before it).
         internal void Add(BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
         {
-            var key = (scope, fact.Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
+            var key = (scope, FilingAtom(fact).Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
             if (!this.Buckets.TryGetValue(key, out var list))
             {
                 if (this.used == this.lists.Count)
@@ -752,11 +765,11 @@ public sealed partial class Binding
                 this.Buckets[key] = list;
             }
 
-            var position = RowKind(fact) ? 0 : list.Count;
+            var position = RowAtom(fact) is not null ? 0 : list.Count;
             for (var end = list.Count; position < end;)
             {
                 var middle = (position + end) >> 1;
-                if (Before(raw.Subject!, list[middle].Raw.Subject!, at))
+                if (Before(RowAtom(raw)!.Subject!, RowAtom(list[middle].Raw)!.Subject!, at))
                 {
                     end = middle;
                 }
@@ -775,5 +788,9 @@ public sealed partial class Binding
             static bool Own(BoundType subject, BoundType at)
                 => ReferenceEquals(SubjectKey(subject).Symbol, SubjectKey(at).Symbol) && ReferenceEquals(SubjectKey(subject).Type, SubjectKey(at).Type);
         }
+
+        // The atom a fact is filed by, Add's bucket kind and DropClassKeys' own subject: its row atom (RowAtom), else the fact itself
+        // (a TypeIdentity or Semantics fact, filed under its written subject: IndexWritten).
+        private static BoundConstraint FilingAtom(BoundConstraint fact) => RowAtom(fact) ?? fact;
     }
 }

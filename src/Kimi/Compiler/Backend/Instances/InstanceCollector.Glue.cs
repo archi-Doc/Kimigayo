@@ -14,16 +14,10 @@ internal sealed partial class InstanceCollector
     // (DropGlue.Destroyed, the walk code generation writes the Drop by, FunctionCodegen.Drops; Destroys), on the runtime paths or the
     // assumed paths of a Drop only the checks reach, so an Elide row, which destroys nothing, requests none; a Drop without a group (one only
     // the checks reach whose Place has no Move Path, or of a body whose verdicts are inexact, MirDropTable.Incomplete) destroys its Type
-    // whole (8.15.3: reachable or not). A body A2's table does not hold has no group yet: its run missed (Round), and the Drop requests
-    // nothing.
+    // whole (8.15.3: reachable or not). A replayed body is one A2's table holds (Round), so its groups are made.
     private void DropTargets(MirProgram program, int item, SourceRef subject, MirBody body, in (MirLocation At, bool Runtime) site, BoundType closed)
     {
         var drops = program.Drops;
-        if (!drops.Holds(body.Ordinal))
-        {
-            return;
-        }
-
         var group = drops.Incomplete(body.Ordinal) is null ? drops.Group(body.Ordinal, site.At.Block, this.Set.Items[item].View) : -1;
         if (group < 0)
         {
@@ -70,7 +64,7 @@ internal sealed partial class InstanceCollector
     // the Function Type () -> (), one glue in all; and for an owning handle whose release destroys no payload glue (FunctionCodegen.Objects'
     // Release then reads its counting alone): a Sealed payload (DropGlue.Parts gives it) that needs no drop, or a payload the descriptor's
     // finalizer destroys (none given, Variant 1), keyed by the handle over Unit, so each such release has one glue per counting. A Sealed
-    // payload that may need a drop keeps its Type's. Each handle Type is classified once per run (glueKeys): MayNeedDrop walks the
+    // payload that may need a drop keeps its Type's. Each handle Type is classified once per version (glueKeys): MayNeedDrop walks the
     // payload's destruction to its bound.
     private MonoKey GlueKey(BoundType closed)
     {

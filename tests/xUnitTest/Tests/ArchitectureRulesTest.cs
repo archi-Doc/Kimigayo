@@ -48,7 +48,7 @@ public class ArchitectureRulesTest
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget|PublishLookup|ReadLeft|MayBeValueQualifier";
 
-    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedTypes.cs=3;" +
+    private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedInference.Discovery.cs=1;Binding.AssociatedTypes.cs=3;" +
         "Binding.Constraints.Requirements.cs=1;Binding.Constraints.cs=2;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;" +
         "Binding.Conversions.cs=1;Binding.Diagnostics.cs=1;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=1;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=4;Binding.ResultSurvey.cs=1;" +
@@ -175,7 +175,11 @@ public class ArchitectureRulesTest
         "Binding.AsWritten.cs:WrittenProjection=1 kind",
         "Binding.AsWritten.cs:WrittenProjection=2 unchanged",
         "Binding.AssociatedFormation.cs:StoresTypeArgument=2 declared",
-        "Binding.AssociatedInference.cs:InferAssociatedTypes=1 declared",
+        "Binding.AssociatedInference.Demand.cs:DecideAtLimit=1 declared",
+        "Binding.AssociatedInference.Demand.cs:HeldValue=1 declared",
+        "Binding.AssociatedInference.Demand.cs:PublishInferred=1 declared",
+        "Binding.AssociatedInference.Demand.cs:SuppliesInBoth=1 declared",
+        "Binding.AssociatedInference.Demand.cs:SuppliesInBoth=1 key",
         "Binding.AssociatedInference.cs:JoinEvidence=4 sufficient",
         "Binding.AssociatedOrigins.cs:AssociatedIdentityMatches=3 key",
         "Binding.AssociatedOrigins.cs:CanonicalAssociatedOrigins=1 unchanged",
@@ -682,9 +686,9 @@ public class ArchitectureRulesTest
     // PLAN G949 S1-r1b (rule (a), F's ruling 170): inside a pass Binding reads a conformance identity's paths only through ImplTable.PathsOf,
     // the one read that applies the running pass's admission to a library identity (from S1-r1b's split its point-1 paths while the
     // conditional registrar has not run: OwningIterator's and BorrowingIterator's LendingIterator identity gains its Iterator ancestor's path
-    // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. The one other
-    // match is an inference batch's Paths (Binding.AssociatedInference.cs), not an identity's.
-    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.AssociatedInference.cs=1;Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
+    // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. An inference
+    // batch's Paths (a batch's, not an identity's) is read through a batch (R7-C4 removed the last other match).
+    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
     // PLAN G949 Stage 2 (R8-L1 under O-381 (b)): a reader reaches its Binding's facts through its own Binding, never through a node's
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
     // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
@@ -923,7 +927,7 @@ public class ArchitectureRulesTest
     // ProveConstraint, ResolveAssociated, NormalizeProof*, ClassForm, RequestCapability), and the two callees that can
     // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines, FirstRows, PremiseRows,
     // PremiseCallable and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
-    // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row list (RowKind) and row merge (AddRow) are members.
+    // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row atom (RowAtom, c2-5b) and row merge (AddRow) are members.
     // R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
     // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
@@ -933,7 +937,7 @@ public class ArchitectureRulesTest
         string[] walk =
         [
             "Enumerate", "EnumerateLink", "EnumerateMates", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
-            "RowContract", "RowKind", "AddRow", "HoldsOpenLink", "RowWeight",
+            "RowContract", "RowAtom", "AddRow", "HoldsOpenLink", "RowWeight",
         ];
         string[] allowed =
         [
@@ -942,7 +946,7 @@ public class ArchitectureRulesTest
             "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
             "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
-            "RowContract", "RowKind", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
+            "RowAtom", "RowContract", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",
         ];
         var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }

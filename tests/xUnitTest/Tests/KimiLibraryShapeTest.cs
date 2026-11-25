@@ -424,7 +424,7 @@ public partial class KimiLibraryShapeTest
             foreach (var function in container.Members.OfType<FunctionKoto>())
             {
                 var symbol = function.SymbolOf(c)!;
-                var writes = c.Types.Retains(symbol, null, null).Writes.ToArray();
+                var writes = c.Types.Retains(symbol, null, null, []).Writes.ToArray();
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
                     var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(c.Types.Signature(symbol, null, i, out _)!) &&
@@ -457,7 +457,7 @@ public partial class KimiLibraryShapeTest
         foreach (var function in KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>())
         {
             var symbol = function.SymbolOf(c)!;
-            var retention = c.Types.Retains(symbol, null, null);
+            var retention = c.Types.Retains(symbol, null, null, []);
             if (retention.ReferentStores.IsEmpty || (function.Parent is { } parent && c.Library.MembersOf(parent) is WitnessMembers.FixedArray or WitnessMembers.FixedArrayEntries) ||
                 function.Parent?.SymbolOf(c)?.LibraryDeclaration is KimiDeclarationId.Array or KimiDeclarationId.Dictionary)
             {

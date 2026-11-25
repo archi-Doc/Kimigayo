@@ -109,7 +109,7 @@ public partial class Compilation
         if (generator.Write(program, collector, this.Binding.Startup, roots, writer))
         {
             // The lists by reference.
-            this.generated = new(this.Binding.Startup.OutputKind, generator.Libraries, generator.Externals, generator.RuntimeImports);
+            this.generated = new(this.Binding.Startup.OutputKind, generator.Libraries, generator.Externals, generator.RuntimeImports, generator.Entry);
             return true;
         }
 

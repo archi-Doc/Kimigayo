@@ -28,7 +28,7 @@ public sealed partial class Binding
 {
     internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => function.Accessor is { } accessor
         ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
-        : this.symbols.Parameter(function, index);
+        : DeclaredSymbols.Parameter(function, index);
 
     // A statement of a generated function's block, which binds in its source document's scope (ScopeOf).
     private static bool GeneratedStatement(Koto node) => node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } };
@@ -251,6 +251,10 @@ public sealed partial class Binding
             kept = kept is null ? symbol : throw new ArgumentException($"A symbol is already declared at `{node}`.", nameof(node));
         }
 
+        internal static BindingSymbol Parameter(FunctionKoto function, int index)
+            => (function.SyntaxOwner is { } table && table.Hir.Families.Parameters.Get(function.SyntaxId) is { } parameters && index < parameters.Length ? parameters[index] : null)
+                ?? throw new KeyNotFoundException($"No symbol is declared for parameter {index} of `{function}`.");
+
         internal BindingSymbol? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Symbols.Get(node.SyntaxId) : null;
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out BindingSymbol? symbol) => (symbol = this.GetValueOrDefault(node)) is not null;
@@ -262,10 +266,6 @@ public sealed partial class Binding
                 Slot(node) = null;
             }
         }
-
-        internal BindingSymbol Parameter(FunctionKoto function, int index)
-            => (function.SyntaxOwner is { } table && table.Hir.Families.Parameters.Get(function.SyntaxId) is { } parameters && index < parameters.Length ? parameters[index] : null)
-                ?? throw new KeyNotFoundException($"No symbol is declared for parameter {index} of `{function}`.");
     }
 
     /// <summary>The `scopes` family's one accessor (DECISIONS BU-220): a scope is kept in its key node's module at the node's SyntaxId,

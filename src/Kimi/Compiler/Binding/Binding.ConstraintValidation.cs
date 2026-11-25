@@ -273,7 +273,11 @@ public sealed partial class Binding
             var state = scope.Owner.BindingState;
             var contradiction = this.ValidateArithmeticDirections(scope);
             changed |= state != scope.Owner.BindingState;
+            // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the identity classes form in a site frame at the owner, the record's node, where none
+            // is open, so a Type past the limit formed there is refused at it (shared with InvalidateProjectionCertificates' rounds).
+            var site = this.OpenQuerySite(scope.Owner);
             changed |= this.RecordIdentityPremiseError(scope, mode);
+            this.CloseQuerySite(site);
             var judged = this.JudgeFacts(scope, environment, environment, mode, ref changed);
 
             // SPEC 8.2.3 (F's C2 ruling 282, the owner's O-296 (a)): a premise error is reported where the premises causing it first
@@ -340,6 +344,24 @@ public sealed partial class Binding
         return (false, false);
     }
 
+    // SPEC 8.3.4 (F's C2/C3 rulings 332, 333): the owner of the environment whose premises, with its enclosing scopes', empty a pair's
+    // admitted set: the outermost such scope on the chain, whose own Semantics premise the validation step proves Error (JudgeFacts), the
+    // Error's one record; null when the chain admits a case. Read before that proof runs, where EmptyingEnvironment's FailedPremise is
+    // not yet written (RecordIdentityPremiseError); an error path only.
+    private Koto? EmptyingOwner(BindingScope scope, BoundType whole)
+    {
+        Koto? owner = null;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not null && this.AdmittedSemantics(whole, current) == SemanticsMask.None)
+            {
+                owner = current.Owner;
+            }
+        }
+
+        return owner;
+    }
+
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
     {
         var changed = false;
@@ -384,7 +406,7 @@ public sealed partial class Binding
 
     // A declaration's projection input `proof` in its frame: the declaration's requirement, what it gives the declaration's environment at
     // Final (FailInput) and, for a conditional conformance, the block's member applicability. True when a state or a premise changed.
-    private bool RecordDeclarationInput((Koto Use, BoundType Type, BindingSymbol Contract) use, Koto declaration, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame)
+    private bool RecordDeclarationInput((Koto Use, BoundType Type, BindingSymbol Contract) use, Koto declaration, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node, bool Held) frame)
     {
         var state = declaration.BindingState;
         this.RequireConstraintInFrame(declaration, proof, mode, frame);
@@ -876,9 +898,9 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Error)
         {
             var cause = diagnosticCause ?? this.TakeFailedCause().Use;
-            if (cause is not null && this.RecordedFailure(use) == BindingFailure.None)
+            if (cause is not null)
             {
-                this.Consulted(cause); // SPEC 23.1.2: the proof's evidence explains its outcome, never a record the use's own check owns.
+                this.ConsultedFor(use, cause);
             }
 
             this.FailConstraint(use, cause);
@@ -901,19 +923,11 @@ public sealed partial class Binding
     private ProblemFact PropositionFact(Koto use, BoundConstraint proposition)
         => new(ProblemFactKind.Constraint, this.FactSite(use), this.report.Keep(proposition));
 
-    // SPEC 23.1.2: the outcome of a validation pass's proof at a use, inside the use's frame (opened before the proof). What the proof
-    // read of other nodes becomes the prerequisite of its outcome when the outcome is the use's record; a record the use's own check
-    // owns (the conformance's verdict, or a failure it held before the outcome) never derives from the frame, which is dropped.
-    private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame, Koto? diagnosticCause = null)
+    // SPEC 23.1.2: the outcome of a validation pass's proof at a use, inside the use's frame (opened before the proof): what the proof
+    // read of other nodes becomes the prerequisite of the use's record by the recorder's range rule.
+    private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node, bool Held) frame, Koto? diagnosticCause = null)
     {
-        var owned = this.RecordedFailure(use) != BindingFailure.None;
         this.RequireConstraint(use, proof, mode, diagnosticCause);
-        if (owned)
-        {
-            this.DropConsultation(frame);
-            return;
-        }
-
         this.EndConsultation(use, frame);
     }
 

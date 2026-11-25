@@ -233,14 +233,22 @@ public sealed partial class Binding
             return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
         }
 
+        // SPEC 8.2.3 (F's C2/C3 rulings 333, 334): an identity is decided once, by the identity judge. Over a Type with a part in a
+        // recorded erroneous class (IdentityPremiseErrorRead) the atom reads the judge's verdict as it is: Refuted where the judge
+        // refutes (IdentityRefuted: a known difference, as heads, whatever the class; one erroneous class is no difference), else
+        // Unknown, the read being the proof's limit (IdentityProven's ReadIdentityPremiseError), so an answer the valid facts leave open
+        // rests on the judge's record (EndProof). The other atom kinds (Callable, Semantics, a Contract or capability) are judged by
+        // their own judges, as before.
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
-            if (this.IdentityProven(proposition.Subject!, proposition.RequiredType!, scope))
+            var (subject, required) = (proposition.Subject!, proposition.RequiredType!);
+            if (this.IdentityProven(subject, required, scope))
             {
                 return ConstraintProof.Proven;
             }
 
-            return this.DependentType(proposition.Subject!) || this.DependentType(proposition.RequiredType!)
+            return this.DependentType(subject) || this.DependentType(required) ||
+                (this.IdentityPremiseErrorRead(scope, subject, required) is not null && !this.IdentityRefuted(subject, required, scope, null))
                 ? ConstraintProof.Unknown : ConstraintProof.Refuted;
         }
 
@@ -520,7 +528,16 @@ public sealed partial class Binding
         }
     }
 
+    // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): a clause binds in a site frame at itself where none is open (OpenQuerySite), so a Type past
+    // the limit its subject or requirement forms (a Contract reference's instance) is refused at the clause.
     private void BindConstraint(IsKoto clause, BindingScope scope)
+    {
+        var site = this.OpenQuerySite(clause);
+        this.BindConstraintClause(clause, scope);
+        this.CloseQuerySite(site);
+    }
+
+    private void BindConstraintClause(IsKoto clause, BindingScope scope)
     {
         if (IsRecovery(clause, out _))
         {
@@ -548,7 +565,7 @@ public sealed partial class Binding
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
-        Complete(clause.Left, subject);
+        this.PublishType(clause.Left, subject);
         var subjectEnd = this.projectionUses.Count; // The requirement's own projection uses come after it and stay its own (SPEC 23.1.2).
         // SPEC 23.1.2: a subject that formed no Type because of a failure in it, its own or a part's (the published HasFailureCauses),
         // supplies none: the requirement binds against no subject, and a rejecting verdict rests on the subject.

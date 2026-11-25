@@ -22,7 +22,7 @@ public partial class TypeDagScalingTest
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => CallPlan.Of(c.Binding, x, 0))
             .Single(static x => x is { Kind: not CalleeKind.Value } && x.Target.Name == "keepO")!;
         var main = c.Binding.Semantics.SymbolOf(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "main"));
-        var retention = c.Types.Retains(call.Target, c.Types.SubstOf(call), main);
+        var retention = c.Types.Retains(call.Target, c.Types.SubstOf(call), main, []);
         Assert.DoesNotContain(retention.Result.Kinds.ToArray(), static kind => kind != RetentionKind.None);
     }
 }

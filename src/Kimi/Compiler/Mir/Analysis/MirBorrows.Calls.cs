@@ -91,7 +91,7 @@ internal sealed partial class MirBorrows
             this.Add(moved.Root, 0, 0, Cleared, issue: false);
         }
 
-        var untied = this.Plan(call);
+        var untied = this.Planned(call);
         if (this.planned is { Result.Pairs.IsEmpty: false } contract)
         {
             var proven = this.Solved(state, call, contract.Result, checks);
@@ -123,7 +123,7 @@ internal sealed partial class MirBorrows
         this.covering.Clear();
         if (resultWrites is not null)
         {
-            this.KeepResult(state, call, resultWrites, checks); // A diverging call (Target < 0, below) has a Never result: no ResultWrites.
+            this.KeepResult(state, call, resultWrites, checks); // Not at a diverging call (Target < 0): a Never or Unit result, or a default template's call (no plan).
         }
 
         for (var p = 0; p <= call.Count; p++)

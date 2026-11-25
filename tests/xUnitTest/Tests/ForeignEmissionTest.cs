@@ -132,6 +132,7 @@ public class ForeignEmissionTest
         var c = AnalyzeAs(TargetProfile.Linux, Ffi, "static", OutputKind.Application);
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Equal([("codec", "static"), ("c", "static")], c.Generated.Libraries);
+        Assert.Equal(TargetProfile.MainSymbol, c.Generated.Entry);
         Assert.Contains("define i32 @main() #0 {\nentry:\n  call void @__kimi_platform_start()\n", ir, StringComparison.Ordinal);
         Assert.Matches(@"\n  call void @[\w.]+\(\)\n  ret i32 0\n}\n", ir);
         Assert.DoesNotContain("__kimi_start", ir, StringComparison.Ordinal);
@@ -233,6 +234,7 @@ public class ForeignEmissionTest
         Assert.Equal([("?value@@YAHXZ", kind == "import"), ("GetLastError", true)], module.Externals.Select(static x => (x.Symbol, x.DllImport)));
         Assert.Equal(("codec", kind), Assert.Single(module.Libraries, static x => x.Library == "codec"));
         Assert.Contains(("kernel32", "import"), module.Libraries);
+        Assert.Equal(output == OutputKind.Library ? null : TargetProfile.Windows.EntrySymbol, module.Entry);
     }
 
     // R9-B1: a symbol outside LLVM identifiers is published unspelled through a whole generation (SPEC 22.6: "the exact external symbol"),
