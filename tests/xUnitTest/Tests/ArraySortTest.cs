@@ -30,8 +30,9 @@ public class ArraySortTest
         => ScalarEmissionTest.EmitFixture("ArraySort" + name, $"var values: Array<{type}> = [{elements}]\nvalues.sort()\nrequire values[0] == {first} and values[1] == {second} and values[2] == {third} else => $abort(\"order\")", string.Empty);
 
     [Theory]
-    // SPEC 10: a receiver that cannot acquire uniq makes this overload inapplicable.
-    [InlineData("let values: Array<i32> = [1]\nvalues.sort()", "NoApplicableOverload_Kd")]
+    // SPEC 10.2, 7.3.3, 15.1.5: a receiver that cannot acquire uniq makes this overload inapplicable, recorded as its written twin
+    // `values@uniq` is (R7-E4 E4a-3; before, NoApplicableOverload_Kd).
+    [InlineData("let values: Array<i32> = [1]\nvalues.sort()", "InvalidAssignment_Kd")]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nvalues.sort()\nlet count = view.length", "CallActivationConflict_Kd")]
     [InlineData("var values: Array<i32> = []\nlet view = values[..]\nvalues.sort()\nlet count = view.length", "CallActivationConflict_Kd")]
     public void SortingRequiresExclusiveAccess(string source, string code)

@@ -310,7 +310,8 @@ public class ArrayBindingTest
     }
 
     [Theory]
-    [InlineData("values@ref.append(1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    // SPEC 7.3.3, 15.6.2 (R7-E4 E4a-3): a receiver through a shared layer records its written twin's failure.
+    [InlineData("values@ref.append(1)", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("let index = 1.5\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]

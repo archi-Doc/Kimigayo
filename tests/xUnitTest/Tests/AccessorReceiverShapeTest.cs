@@ -14,6 +14,8 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
 {
     private const string Meter = "struct Meter\n    var hits: i32 = 0\n    public computed reading: i32\n        get(self: uniq/Self) -> i32\n            self.hits += 1\n            return self.hits\n";
     private const string Point = "struct Point\n    Self is Copy\n    var raw: i32 = 0\n    public computed x: i32\n        get() -> i32 => self.raw\n        set(self: Self, value: i32) -> () => ()\n";
+    private const string Gauge = "struct Gauge\n    var hits: i32 = 0\n    public computed level: i32\n        get(self: obj/Self) -> i32 => 1\n" +
+        "func apply<G>(g: ref/G) -> i32\n    G is Callable<(obj/Gauge) -> i32>\n    return 0\n";
 
     [Theory]
     [InlineData("struct Api\n    public computed item: i32\n        get(self: Self) -> i32 => 1", "get", "Self", "ref/Self")]
@@ -65,7 +67,9 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
 
     // SPEC 11.3: the body is checked with the written receiver and the Property stays in member lookup. A use that only the
     // written shape rejects (a let or shared receiver of a uniq/Self getter, an owning setter receiver) rests on the declaration;
-    // a use the fixed shape also rejects, or that fails for another reason, is reported on its own.
+    // a use the fixed shape also rejects, or that fails for another reason, is reported on its own. The last row (R7-E4 E4a-3 D1, row
+    // dc1): an `obj/Self` getter's receiver in a closure body bound per candidate rests on the declaration and leaves the enclosing call's
+    // trial no acquisition (only a deferring caller writes it, RequireAcquisition), so `apply` stays applicable (SPEC 10.1, 23.1.2).
     [Theory]
     [InlineData(Meter + "var meter = Meter.init()\nlet a = meter.reading", "")]
     [InlineData(Meter + "let fixed = Meter.init()\nlet c = fixed.reading", "")]
@@ -75,6 +79,7 @@ public sealed class AccessorReceiverShapeTest(ITestOutputHelper output)
     [InlineData(Meter + "var meter = Meter.init()\nlet a = meter.missing", "UnresolvedBinding_Kd")]
     [InlineData(Point + "var point = Point.init()\npoint.x = 10", "")]
     [InlineData(Point + "let point = Point.init()\nlet x = point.x", "")]
+    [InlineData(Gauge + "func k() -> i32 => apply(func (t) => t.level)", "")]
     public void UsesRestOnTheDeclarationOnlyWhereTheWrittenShapeAloneRejectsThem(string source, string others)
     {
         var c = Analyze(source);
