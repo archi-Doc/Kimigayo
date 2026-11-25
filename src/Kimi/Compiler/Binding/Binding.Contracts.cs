@@ -124,8 +124,7 @@ public sealed partial class Binding
 
     // SPEC 8.6.1: a conformance's Contract `candidate` is a candidate of the selection by `contract`'s declaration with `reference` (none: a
     // query by declaration) when it is of that declaration and, for a bound reference, its reference is `reference` as written or,
-    // instantiated for `receiver`, identical with it in `scope` (NamesReference, the judge's). The selection's one admission test, which
-    // SpecifiesContract reads for a path's Contracts.
+    // instantiated for `receiver`, identical with it in `scope` (NamesReference, the judge's). The selection's one admission test.
     private bool IsSelectionCandidate(BindingSymbol candidate, BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site)
         => ReferenceEquals(candidate.Declaration, contract.Declaration) && (reference is null || ReferenceEquals(candidate.Type, reference) ||
             (candidate.Type is { } formal && this.NamesReference(formal, receiver, reference, scope, site)));

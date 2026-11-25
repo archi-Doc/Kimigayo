@@ -68,8 +68,10 @@ public partial class LocalOriginClauseTest
         // valid: `a == b` and `b outlives q`.
         { "e3fw", Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32 during a) -> i32) during p>) -> i32\n    origin q outlives p\n    origin a == b\n    origin b outlives q\n    let r: R<uniq/((ref/i32 during b) -> i32) during q> = r0@move\n    return 0\n", string.Empty },
         // invalid: e3f's comparison through a returned value (the relation's orientation, `a == b`).
-        // F-H-11 (R7-O1 H): the contract record prints the use-site fit's orientation, as that row states it.
-        { "e3fr", Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32 during a) -> i32) during p>) -> R<uniq/((ref/i32 during b) -> i32) during q>\n    origin q outlives p\n    return r0@move\n", "UnprovenOriginRelation_Kd@5:111 requires b outlives q, which is not proven|UnprovenOriginContract_Kd@7:12 the 1st parameter requires b == a, which is not proven" },
+        // F-H-11 (R7-O1 H): the contract record prints the use-site fit's orientation, as that row states it. The result Type's
+        // `b outlives q` is a held Function Type's fixed Origin no call carries yet: the located limit at the result's borrow layer
+        // (SPEC 15.6.1; R7-O3 O3-B2, F's ruling O3-24; UnprovenOriginRelation_Kd there before).
+        { "e3fr", Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32 during a) -> i32) during p>) -> R<uniq/((ref/i32 during b) -> i32) during q>\n    origin q outlives p\n    return r0@move\n", "Unsupported_Kd@5:111|UnprovenOriginContract_Kd@7:12 the 1st parameter requires b == a, which is not proven" },
         // invalid: a per-call input against a fixed one: the Function Types do not relate both ways (PLAN G900), and the declared
         // Type needs `b outlives q`.
         { "rq1", Reader + "func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32) -> i32) during p>) -> i32\n    origin q outlives p\n    let r: R<uniq/((ref/i32 during b) -> i32) during q> = r0@move\n    return 0\n", "UnprovenOriginRelation_Kd@7:14 requires b outlives q, which is not proven|UnprovenOriginContract_Kd@7:59 the 1st parameter requires the omitted Origin of ref/i32 outlives b, which is not proven" },
@@ -83,8 +85,9 @@ public partial class LocalOriginClauseTest
         { "rq1a", Reader + "func g(b: ref/i32, q: ref/i32, r: R<uniq/((ref/i32 during b) -> i32) during q>) -> i32\n    origin b outlives q\n    return 0\nfunc f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32) -> i32) during p>) -> i32\n    origin q outlives p\n    origin b outlives q\n    return g(b, q, r0@move)\n", "UnprovenOriginContract_Kd@11:20 the 1st parameter requires the omitted Origin of ref/i32 == b, which is not proven" },
         // invalid: rq1a through a `var` local.
         { "rq1av", Reader + "func g(b: ref/i32, q: ref/i32, r: R<uniq/((ref/i32 during b) -> i32) during q>) -> i32\n    origin b outlives q\n    return 0\nfunc f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32) -> i32) during p>) -> i32\n    origin q outlives p\n    origin b outlives q\n    var r1 = r0@move\n    return g(b, q, r1@move)\n", "UnprovenOriginContract_Kd@12:20 the 1st parameter requires the omitted Origin of ref/i32 == b, which is not proven" },
-        // invalid: rq1's pair through a returned value.
-        { "rq1r", Reader + "func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32) -> i32) during p>) -> R<uniq/((ref/i32 during b) -> i32) during q>\n    origin q outlives p\n    return r0@move\n", "UnprovenOriginRelation_Kd@5:90 requires b outlives q, which is not proven|UnprovenOriginContract_Kd@7:12 the 1st parameter requires the omitted Origin of ref/i32 outlives b, which is not proven" },
+        // invalid: rq1's pair through a returned value. The result Type's `b outlives q` is the located limit, as e3fr's (SPEC 15.6.1;
+        // R7-O3 O3-B2, F's ruling O3-24; UnprovenOriginRelation_Kd there before).
+        { "rq1r", Reader + "func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32) -> i32) during p>) -> R<uniq/((ref/i32 during b) -> i32) during q>\n    origin q outlives p\n    return r0@move\n", "Unsupported_Kd@5:90|UnprovenOriginContract_Kd@7:12 the 1st parameter requires the omitted Origin of ref/i32 outlives b, which is not proven" },
         // invalid: rq1 mirrored (the declared Function Type per-call): the Function Types' inequality; the declared Type relates no
         // per-call Origin to `q` (SPEC 15.2.3).
         { "rq2", Reader + "func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32 during b) -> i32) during p>) -> i32\n    origin q outlives p\n    let r: R<uniq/((ref/i32) -> i32) during q> = r0@move\n    return 0\n", "UnprovenOriginContract_Kd@7:50 the 1st parameter requires the omitted Origin of ref/i32 == b, which is not proven" },
