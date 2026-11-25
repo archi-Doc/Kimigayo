@@ -228,7 +228,8 @@ public sealed partial class Binding
     // each walk records its supplies as rows (C-f). A lower key re-roots and restarts with no rows; a restart onto a root filed in the
     // publication reads that closure. A round that adds no row ends it with E(r); past PremiseClosureLimit rounds or re-rootings it is
     // Limited with the last round's rows L(r), and its reader refuses (ReadIdentityLimit). Filed (FileClosure) under its final key with
-    // `root` mapped to it (one closed by the re-rooting bound under `root` alone), read with its walks' Completion. A closure is a
+    // `root` mapped to it (one closed by the re-rooting bound under `root` alone), read with its walks' Completion; before it is filed,
+    // the last round's table records the own error groups the scope has no record of (RecordClosureErrors, e2-7 C1). A closure is a
     // function of (root, G): no use's ask or earlier request's rows enter it. Returns the closure.
     private int CloseRoot(BindingScope scope, BoundType root)
     {
@@ -251,6 +252,7 @@ public sealed partial class Binding
             }
 
             var limited = closure.Rounds > PremiseClosureLimit || closure.Restarts > PremiseClosureLimit;
+            this.RecordClosureErrors(scope, this.enumerateClasses); // e2-7 C1: the last round's T_r, read inside the request (no closure nests)
             return this.FileClosure(scope, root, closure.Restarts > PremiseClosureLimit ? root : key, this.enumerateIdentities, limited, this.enumerateCompletion);
         }
         finally
@@ -343,7 +345,9 @@ public sealed partial class Binding
     // the premises of `scope`, appended to `into`, each row once (AddRow), whatever their availability and kind. They are the first
     // walk's rows, a function of (subject, view): a kept hit (a closed root's, the class header's Closure) reads
     // the kept rows, which are a first walk's. No row is Alias and no identity is judged here (the walk's class keys alone).
-    // Returns the request's identity classes, in which PremiseRows forms its column.
+    // Returns the request's identity classes, in which PremiseRows forms its column. G1406-12 (SPEC 8.3.3 Limits): it answers no
+    // judgment, only supplies rows (at a Limited root, the rows keyed by T_A), so it refuses nothing: a judgment that its rows over a
+    // Limited root's table leave unproven refuses through ReadIdentityLimit (Supply's judges, PremiseRefines).
     private IdentityClasses? FirstRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
         var (view, serial, classes, key, final, keep) = this.RowsRequest(subject, scope);

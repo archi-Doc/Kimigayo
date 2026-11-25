@@ -465,12 +465,14 @@ public sealed partial class Binding
     // every proof the node's own check reads the answer as a decision, so the node is failed at once. A candidate trial's settle is
     // held for its selection (Refusal.Settle): only the selected candidate's Unknown judgments are obligations (SPEC 10.1). All of it
     // while the pass produces its failures (producing): a query after the pass (a lint, MIR, emission, the editor) fails no node, so
-    // its request answers Unknown, as without the analysis (PLAN G651 U2 gives the after-run queries their outcome).
-    private void RefuseProof(BindingScope scope, BindingFailure limit)
+    // its request answers Unknown, as without the analysis (PLAN G651 U2 gives the after-run queries their outcome). Returns the
+    // record's node (Refusal.Use), which a check failing on the refused reading rests on (rule W, RecordTypeMismatch), or null after
+    // the pass.
+    private Koto? RefuseProof(BindingScope scope, BindingFailure limit)
     {
         if (!this.producing)
         {
-            return;
+            return null;
         }
 
         var owner = scope.Declaration;
@@ -487,10 +489,13 @@ public sealed partial class Binding
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
             this.ReadVerdict(ConstraintProof.Unknown, refusal, null);
-            return;
+        }
+        else
+        {
+            refusal.Settle();
         }
 
-        refusal.Settle();
+        return refusal.Use;
     }
 
     private void ClearProofScopes()

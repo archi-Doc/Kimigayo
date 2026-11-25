@@ -933,7 +933,8 @@ public class ArchitectureRulesTest
     // ExactAssumption and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
     // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row atom (RowAtom, c2-5b) and row merge (AddRow) are members.
     // G1407: row (2)'s intake of one source row's supply (AddSupplyRows) is a member; the conjunct split it calls (AddConjuncts, in
-    // Binding.Constraints.cs) only appends a constraint and its conjuncts. R7-C2c2: the walk's class
+    // Binding.Constraints.cs) only appends a constraint and its conjuncts. e2-7: a link's identity rows' recorder at its memo
+    // computation (RecordLinkIdentities) is a member; its row test (Recorded) compares references alone. R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
     // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
     [Fact]
@@ -942,7 +943,7 @@ public class ArchitectureRulesTest
         string[] walk =
         [
             "Enumerate", "EnumerateLink", "EnumerateMates", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
-            "RowContract", "RowAtom", "AddRow", "AddSupplyRows", "HoldsOpenLink", "RowWeight",
+            "RowContract", "RowAtom", "AddRow", "AddSupplyRows", "RecordLinkIdentities", "HoldsOpenLink", "RowWeight",
         ];
         string[] allowed =
         [
@@ -950,7 +951,7 @@ public class ArchitectureRulesTest
             "AvailableContractPremise", "CauseOf", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
             "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
             "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
-            "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
+            "ProjectionMembers", "ReadSourceState", "Rebuild", "RecordLinkIdentities", "Recorded", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
             "RowAtom", "RowContract", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",
         ];

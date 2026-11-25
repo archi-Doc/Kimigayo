@@ -554,7 +554,8 @@ public sealed partial class Binding
     // The rows of `subject` in the view (the contract above): its chain is walked from the root up, each link once per request and
     // view and round; a link's rows are closed before a taller link reads them, and a prefix stays active while its height plus its
     // rows' head depth reaches the link. No chain holding an open link is walked (row (5) defers such a mate), so a link is never
-    // demanded while open. A link that closes with rows that are not its last round's is noted (EnumerateClosed's stop test).
+    // demanded while open. A link's identity rows are recorded at its memo computation, still open (RecordLinkIdentities). A link
+    // that closes with rows that are not its last round's is noted (EnumerateClosed's stop test).
     private List<PremiseRow>? Enumerate(BoundType subject, EvidenceView view, ViewIndex index)
     {
         var serial = index.Serial;
@@ -587,6 +588,7 @@ public sealed partial class Binding
                 {
                     this.enumerateMemo[(link, view, serial)] = null; // Open: row (5) walks no chain holding it.
                     rows = this.EnumerateLink(link, view, index, activeStart);
+                    this.RecordLinkIdentities(rows, link, view);
                     this.enumerateMemo[(link, view, serial)] = rows;
                     this.enumerateMoved |= this.enumerateSeed.Count == 0 ? rows.Count != 0 : RowWeight(rows) != RowWeight(this.enumerateSeed.GetValueOrDefault((link, view, serial)));
                 }
@@ -703,10 +705,11 @@ public sealed partial class Binding
     // Row (2) for one source row (SPEC 8.3.2 Contract refinement, 8.2.3 grounds): what `source`'s Contract supplies at `root`
     // (ContractSupply, Self being `root`), as the premise intake reads it: each ancestor, and each clause instance as its conjuncts
     // (AddConjuncts). An ancestor (stating `root`) or an atom (RowAtom; a negation states its atom's subject) stating `subject` or a
-    // Type of its class is a row of `subject`, its availability and Stated `source`'s; an identity atom of an available source is an
-    // identity row (c2-2). A leaf source (no Contract) supplies nothing. The environment's intake drops a fact with an unresolved part
-    // whole (AddConstraintFact); this one rows the resolved conjuncts of such a clause, whose Contract is then an invalid declaration:
-    // `source` is unavailable, so its rows give no evidence and record no identity (a use rests on the reported failure, rule W).
+    // Type of its class is a row of `subject`, its availability and Stated `source`'s. It records no identity row: a link's own are
+    // recorded at its memo computation (RecordLinkIdentities, e2-7). A leaf source (no Contract) supplies nothing. The environment's
+    // intake drops a fact with an unresolved part whole (AddConstraintFact); this one rows the resolved conjuncts of such a clause, whose
+    // Contract is then an invalid declaration: `source` is unavailable, so its rows give no evidence (a use rests on the reported
+    // failure, rule W).
     private void AddSupplyRows(List<PremiseRow> rows, PremiseRow source, BoundType root, BoundType subject, EvidenceView view)
     {
         if (source.Symbol?.Contract is not { } shape)
@@ -714,7 +717,7 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (ancestor, declaration, item, clause) in new ContractSupply(this, shape, root, view.Premises))
+        foreach (var (ancestor, declaration, item, _) in new ContractSupply(this, shape, root, view.Premises))
         {
             if (item is null)
             {
@@ -731,17 +734,6 @@ public sealed partial class Binding
             for (var c = start; c < this.conjuncts.Count; c++)
             {
                 var premise = this.conjuncts[c];
-
-                // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
-                // deferred mate's walk keeps its rows (EnumerateClosed; the class header's Closure). One row per (pair, source): every
-                // supply with its supplier, the Contract and the clause, as AddContractPremises files a supply (IdentityRow;
-                // G1406-11 C-f), which the premise error's recorder reads by source; a table reads the pair alone.
-                if (premise is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } && this.enumerateDepth == 1 &&
-                    source.Available && !Recorded(this.enumerateIdentities, left, right, shape.Symbol))
-                {
-                    this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional)); // a row (SPEC 8.2.3 grounds) of a closure (CloseRoot)
-                }
-
                 if (RowAtom(premise) is { Subject: { } stated } &&
                     ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
                 {
@@ -755,6 +747,51 @@ public sealed partial class Binding
             }
 
             this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
+        }
+    }
+
+    // e2-7 (G1406-12 (b), design-p0 C1; SPEC 8.2.3 grounds): a link's identity rows, recorded at its memo computation (Enumerate) while
+    // it is open, from its own rows as row (2) reads them at the link (AddSupplyRows, which rows each Contract row's supply; this
+    // records its TypeIdentity conjuncts): each available Contract row's supply at `link` (ContractSupply), one row per (pair, source):
+    // every supply with its supplier, the Contract and the clause, as AddContractPremises files a supply (IdentityRow; G1406-11 C-f),
+    // which the premise error's recorder reads by source; a table reads the pair alone. An unavailable Contract premise supplies no
+    // ground (SPEC 8.3.1). Only the outermost request records (a nested demand's rows are dropped); a deferred mate's walk keeps its
+    // rows (EnumerateClosed; the class header's Closure). Each is a row of a closure (CloseRoot). A prefix's supply at a taller link
+    // records nothing: the prefix's own link recorded it, so the rows and their order are row (2)'s.
+    private void RecordLinkIdentities(List<PremiseRow> rows, BoundType link, EvidenceView view)
+    {
+        if (this.enumerateDepth != 1)
+        {
+            return;
+        }
+
+        for (var r = 0; r < rows.Count; r++)
+        {
+            if (rows[r] is not { Available: true, Symbol.Contract: { } shape })
+            {
+                continue;
+            }
+
+            foreach (var (_, _, item, clause) in new ContractSupply(this, shape, link, view.Premises))
+            {
+                if (item is null)
+                {
+                    continue;
+                }
+
+                var start = this.conjuncts.Count;
+                AddConjuncts(this.conjuncts, item);
+                for (var c = start; c < this.conjuncts.Count; c++)
+                {
+                    if (this.conjuncts[c] is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } premise &&
+                        !Recorded(this.enumerateIdentities, left, right, shape.Symbol))
+                    {
+                        this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional));
+                    }
+                }
+
+                this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
+            }
         }
 
         // Whether the walk recorded the identity row `a is b` from `supplier` (interned Types: by reference).

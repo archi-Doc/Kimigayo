@@ -163,8 +163,10 @@ public sealed partial class Binding
         => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
 
     // SPEC 23.3: the sides a mismatch compared and the syntax that shows them; a node's further mismatch with other sides takes its own
-    // key (RecordNumbered). e2-7 (G1406-11 C-a; SPEC 8.3.3 Limits, R2.1's Mismatch writers row): a mismatch whose sides' reading is a
-    // Limited root's table (T_A) with no recorded error class is the analysis limit at the node (AnalysisLimit_Kd), not a Type mismatch.
+    // key (RecordNumbered). e2-7 (G1406-11 C-a, G1406-12; SPEC 8.3.3 Limits, R2.1's Mismatch writers row): a mismatch whose sides'
+    // reading is a Limited root's table (T_A) with no recorded error class is the analysis limit, not a Type mismatch: the reading's one
+    // refusal (ReadIdentityLimit, in a site frame at the node where none is open), the declaration's AnalysisLimit_Kd once per run
+    // (RefuseProof), on which the node rests (rule W, RestOnPart) where the record stands at another node; it records nothing of its own.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
         var scope = this.ConstraintScope(node);
@@ -172,9 +174,17 @@ public sealed partial class Binding
         {
             this.AddPrerequisite(node, premise.Use); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
         }
-        else if (HasTypeIdentity(scope) && this.ClassesOf(scope, [actual.Type, expected.Type], out _) is { Limited: true })
+        else if (HasTypeIdentity(scope) && this.ClassesOf(scope, [actual.Type, expected.Type], out _) is { Limited: true } read)
         {
-            return this.RecordNumbered(node, BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(at), (long)AnalysisBound.PremiseClosure)]);
+            var frame = this.OpenQuerySite(node);
+            var refused = this.ReadIdentityLimit(scope, read);
+            this.CloseQuerySite(frame);
+            if (refused is not null && !ReferenceEquals(refused, node))
+            {
+                this.RestOnPart(node, refused);
+            }
+
+            return null;
         }
 
         var site = this.FactSite(at);

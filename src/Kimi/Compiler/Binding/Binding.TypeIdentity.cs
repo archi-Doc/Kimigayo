@@ -15,7 +15,8 @@ namespace Kimi.Compiler;
 //   edges a constructor's components and a projection's Contract arguments (SPEC 8.3.3's expansion), Cyclic only through a
 //   constructor edge (R7-C2c2 c2-4b); a Type that is no node is in the class of the node it is congruent with (ClassOf); the
 //   premise error an error class is (SPEC 8.2.3's table), recorded once per pass at the declaration whose premises first form it, one
-//   record per error group at its last own premise clause and a supplied group at its supplier (R7-C3 C3d);
+//   record per error group at its last own premise clause and a supplied group at its supplier (R7-C3 C3d), by one recorder for the
+//   validation step's table and a closure's round table alike (RecordErrorGroups, e2-7 C1);
 //   the identity proposition's Proven (IdentityProven; two complete Types by SameCompleteType, Binding.TypeIdentity.Complete, R7-C3
 //   C3c); the class key the premise supply compares by (ClassKey, R7-C2c2 c2-1); the
 //   one form every Type of a class takes in a view (ClassForm, R7-C2c2 c2-4b: its own contract in Binding.TypeIdentity.Keys, its
@@ -48,13 +49,15 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BindingScope, (int Serial, int Complete, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
-    // A scope's recorded premise error: whether it is the owner's failure, whether an own class reached the closure limit, and the site
-    // of its first record when the owner rests on its records (R7-C3 C3d: no record at the owner and no failure of its own; an own
-    // clause or the supplier, the owner's published cause, IdentityErrorSite, and the owner's own checks are its readers), else null;
-    // and its own premise clauses holding a group record, a range of identityClauses (HoldsGroupRecord).
-    private readonly Dictionary<BindingScope, (bool Own, bool Limited, Koto? Site, (int Start, int Count) Clauses)> identityRecorded = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(int Group, byte State)> identityGroups = new(); // RecordIdentityPremiseError's own error groups (R7-C3 C3d)
-    private readonly List<Koto> identityClauses = new(); // identityRecorded's clause ranges, reused between passes
+    // A scope's recorded premise error, written before its first record: whether it is the owner's failure (the owner had none before
+    // it), whether an own class reached the closure limit, the site of its first record when the owner rests on its records (R7-C3
+    // C3d: no record at the owner and no failure of its own; an own clause or the supplier, the owner's published cause,
+    // IdentityErrorSite, and the owner's own checks are its readers), else null; and whether the validation step judged it in the pass
+    // (Judged, RecordIdentityPremiseError's gate: its failure kinds are decided once per pass, e2-7 C1). Its group records' sites are
+    // identityGroupSites' rows (RecordsAt).
+    private readonly Dictionary<BindingScope, (bool Own, bool Limited, Koto? Site, bool Judged)> identityRecorded = new(ReferenceEqualityComparer.Instance);
+    private readonly List<(int Group, byte State)> identityGroups = new(); // OwnError's own error groups (R7-C3 C3d), a stack of ranges
+    private readonly List<(BindingScope Scope, Koto Site)> identityGroupSites = new(); // each group record's scope and site, reused between passes
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
     private readonly List<IdentityRow> identityRows = new(); // the views' rows while their tables are built (AddViewRows), a stack of ranges
@@ -150,7 +153,7 @@ public sealed partial class Binding
         this.identityClasses.Clear();
         this.ForgetClosures();
         this.identityRecorded.Clear();
-        this.identityClauses.Clear();
+        this.identityGroupSites.Clear();
     }
 
     // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C-a, C-b, C-d, N2): the table a reading of the Types `asked` (its X) reads in the view
@@ -377,14 +380,10 @@ public sealed partial class Binding
 
     // G1406-11 C-a (SPEC 8.3.3 Limits): a judgment that its reading of a Limited root's table (T_A, ClassesOf) leaves unproven is refused
     // (RefuseProof: AnalysisLimit, at the use whose check asked, else at the scope's owner), read from that reading alone, never from
-    // scope state; a judgment over a table that is not Limited reads nothing.
-    private void ReadIdentityLimit(BindingScope scope, IdentityClasses? classes)
-    {
-        if (classes is { Limited: true })
-        {
-            this.RefuseProof(scope, BindingFailure.AnalysisLimit);
-        }
-    }
+    // scope state; a judgment over a table that is not Limited reads nothing. Returns the refusal's site (RefuseProof's), which a check
+    // over the same reading rests on (rule W, RecordTypeMismatch), or null when nothing is refused.
+    private Koto? ReadIdentityLimit(BindingScope scope, IdentityClasses? classes)
+        => classes is { Limited: true } ? this.RefuseProof(scope, BindingFailure.AnalysisLimit) : null;
 
     // R7-C2c2 c2-2: the declaration's classes with the identity rows a request's walk recorded (SPEC 8.2.3's grounds include the
     // Constraints `T is C` supplies at every depth): ClassesOver those rows. Request-local: one reused table, never memoized as the
@@ -582,61 +581,108 @@ public sealed partial class Binding
     // declaration's where its own classes hold the supplied clauses erroneous (a Contract for what its Constraints alone cause, reported
     // there, never again at a use), else the owner's. In the Final pass an own error class still waiting for its Origin declarations is
     // the located limit (an Origin attribute the judge could not decide), and a limit (Unsupported, the closure limit) stays the owner's
-    // record, as before.
+    // record, as before. e2-7 C1 (G1406-12 (a)): the step decides the failure kinds once per pass (Judged); its error groups go to the
+    // one recorder (RecordErrorGroups), which a closure's table (RecordClosureErrors) runs again for a group the scope has no record of.
     private bool RecordIdentityPremiseError(BindingScope scope, BindingMode mode)
     {
-        if (scope.Constraints is not { HasTypeIdentity: true } environment || this.identityRecorded.ContainsKey(scope) ||
+        if (scope.Constraints is not { HasTypeIdentity: true } environment || this.identityRecorded.GetValueOrDefault(scope).Judged ||
             this.OwnClasses(scope, environment) is not { Worst: not IdentityClasses.One } own)
         {
             return false;
         }
 
-        var groups = this.identityGroups;
-        groups.Clear();
-        var (worst, waiting, limited) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, [], out _) : null, groups);
-        var failure = worst switch
+        var start = this.identityGroups.Count;
+        try
         {
-            IdentityClasses.One when waiting && mode == BindingMode.Final => BindingFailure.Unsupported,
-            IdentityClasses.One => BindingFailure.None,
-            IdentityClasses.Unproven => BindingFailure.UnprovenConstraint,
-            IdentityClasses.Unsupported => BindingFailure.Unsupported,
-            IdentityClasses.Limit => BindingFailure.AnalysisLimit, // R7-C2c2 c2-4: the binding grounds' closure limit (SPEC 8.3.3)
-            _ => BindingFailure.InvalidConstraint,
-        };
+            var (worst, waiting, limited) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, [], out _) : null, this.identityGroups);
+            var failure = worst switch
+            {
+                IdentityClasses.One when waiting && mode == BindingMode.Final => BindingFailure.Unsupported,
+                IdentityClasses.One => BindingFailure.None,
+                IdentityClasses.Unproven => BindingFailure.UnprovenConstraint,
+                IdentityClasses.Unsupported => BindingFailure.Unsupported,
+                IdentityClasses.Limit => BindingFailure.AnalysisLimit, // R7-C2c2 c2-4: the binding grounds' closure limit (SPEC 8.3.3)
+                _ => BindingFailure.InvalidConstraint,
+            };
 
-        if (failure == BindingFailure.None)
-        {
-            return false;
-        }
+            if (failure == BindingFailure.None)
+            {
+                return false;
+            }
 
-        var owned = scope.Owner.BindingFailure == BindingFailure.None;
-        var clauses = this.identityClauses.Count;
-        this.identityRecorded.Add(scope, (owned, limited, null, (clauses, 0)));
-        if (ImplementationLimit(failure) is not null)
-        {
-            // A Resource record (SPEC 8.3.3 Limits, 23.1.1) is written as every limit writer writes it (RefuseProof's, TypeHeight's): the
-            // owner's failure, whose issue names its limit (ReportIssue); a problem carries no limit fact.
-            this.Fail(scope.Owner, failure);
+            // A closure's records (RecordClosureErrors) may have written the entry first: its Own (the owner had no failure before them)
+            // and Site stand.
+            var recorded = this.identityRecorded.TryGetValue(scope, out var closed) ? closed : (scope.Owner.BindingFailure == BindingFailure.None, false, null, false);
+            this.identityRecorded[scope] = (recorded.Own, recorded.Limited || limited, recorded.Site, true);
+            if (ImplementationLimit(failure) is not null)
+            {
+                // A Resource record (SPEC 8.3.3 Limits, 23.1.1) is written as every limit writer writes it (RefuseProof's, TypeHeight's): the
+                // owner's failure, whose issue names its limit (ReportIssue); a problem carries no limit fact.
+                this.Fail(scope.Owner, failure);
+                return true;
+            }
+
+            if (failure == BindingFailure.Unsupported)
+            {
+                this.Record(scope.Owner, failure, []); // a problem of its own where the owner's first failure is another check's (SPEC 23.1.2)
+                return true;
+            }
+
+            this.RecordErrorGroups(scope, environment, own, start);
             return true;
         }
-
-        if (failure == BindingFailure.Unsupported)
+        finally
         {
-            this.Record(scope.Owner, failure, []); // a problem of its own where the owner's first failure is another check's (SPEC 23.1.2)
-            return true;
+            this.identityGroups.RemoveRange(start, this.identityGroups.Count - start);
+        }
+    }
+
+    // e2-7 C1 (G1406-12 (a); SPEC 8.2.3, N3: the recorder stays per T_r): a closure's round table T_r (CloseRoot's last round, read
+    // inside its request, so no closure nests) can form an own error group that the scope's validation step never reads (its table's X
+    // is the own premises' sides, OwnClasses). Its own error groups (OwnError over the parent's table, as the step's) go to the one
+    // recorder (RecordErrorGroups), which records only a group whose site holds no record of the scope's yet. It decides no failure
+    // kind (the step's, Judged) and records nothing after the pass or for a table with no error class. A Limited reading's T_A is no
+    // round table and records nothing (N3).
+    private void RecordClosureErrors(BindingScope scope, IdentityClasses? table)
+    {
+        if (!this.producing || table is not { Worst: >= IdentityClasses.Unproven } || scope.Constraints is not { HasTypeIdentity: true } environment)
+        {
+            return;
         }
 
-        // Each group in an error state is its own problem (SPEC 23.1.2) beside any failure of its site; a group in a limit state beside a
-        // worse one stays behind the worst, as before.
+        var start = this.identityGroups.Count;
+        try
+        {
+            _ = table.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, [], out _) : null, this.identityGroups);
+            this.RecordErrorGroups(scope, environment, table, start);
+        }
+        finally
+        {
+            this.identityGroups.RemoveRange(start, this.identityGroups.Count - start);
+        }
+    }
+
+    // R7-C3 C3d (PLAN G830, G797; SPEC 8.2.3, 23.1.2), the one recorder of a scope's own error groups (identityGroups past `start`,
+    // OwnError's over `own`), for the validation step's table and a closure's alike (e2-7 C1). Each group in an error state is its own
+    // problem beside any failure of its site: at the last own premise clause reaching it (PremiseErrorClause), else at its supplier
+    // where the supplier holds it erroneous (PremiseErrorSupplier: the supplier's own record stands, none here), else at the owner. A
+    // group whose site holds a record of the scope's from an earlier run (RecordsAt) is that record and records nothing; a group in a
+    // limit state beside a worse one stays behind the worst. The scope's entry is written before any record (its readers read it; the
+    // step writes its own, a closure's first error group here), and each group's site before its record, which Fail may read in an
+    // open frame (HoldsGroupRecord). A table with no own group in an error state writes nothing.
+    private void RecordErrorGroups(BindingScope scope, ConstraintEnvironment environment, IdentityClasses own, int start)
+    {
+        var (end, earlier) = (this.identityGroups.Count, this.identityGroupSites.Count);
         Koto? first = null;
-        var atOwner = false;
-        foreach (var (group, state) in groups)
+        for (var i = start; i < end; i++)
         {
+            var (group, state) = this.identityGroups[i];
             if (state < IdentityClasses.Unproven)
             {
                 continue;
             }
 
+            this.identityRecorded.TryAdd(scope, (scope.Owner.BindingFailure == BindingFailure.None, false, null, false));
             Koto? site = this.PremiseErrorClause(scope, environment, own, group);
             if (site is null && this.PremiseErrorSupplier(scope, own, group) is { } supplier)
             {
@@ -644,15 +690,14 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (site is not null)
+            site ??= scope.Owner;
+            first ??= site;
+            if (this.RecordsAt(scope, site, earlier))
             {
-                // Published before its record, which Fail may read in an open frame (HoldsGroupRecord).
-                this.identityClauses.Add(site);
-                this.identityRecorded[scope] = (owned, limited, null, (clauses, this.identityClauses.Count - clauses));
+                continue;
             }
 
-            site ??= scope.Owner;
-            atOwner |= ReferenceEquals(site, scope.Owner);
+            this.identityGroupSites.Add((scope, site));
             this.RecordNumbered(site, state == IdentityClasses.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.InvalidConstraint, []);
 
             // F's C2/C3 rulings 332, 333 (SPEC 8.3.4, 23.1.2, rule W): a group whose meets read a binder's emptied admitted set (PairHead's
@@ -663,21 +708,25 @@ public sealed partial class Binding
             {
                 this.AddPendingPrerequisite(site, emptier);
             }
-
-            first ??= site;
         }
 
         // F's C2/C3 ruling 331 (B): an owner with no failure and no record of its own is Invalid with no failure and no part, and its
         // cause is the first record's site (IdentityErrorSite), which the cause queries read: a use whose proof rests on the declaration
-        // stays dependent (SPEC 8.2.3: never again at uses), and the context reader reads no part, so the owner keeps its context.
-        var rest = owned && !atOwner ? first : null;
-        this.identityRecorded[scope] = (owned, limited, rest, (clauses, this.identityClauses.Count - clauses));
-        if (rest is not null)
+        // stays dependent (SPEC 8.2.3: never again at uses), and the context reader reads no part, so the owner keeps its context. A
+        // record at the owner is its own cause: no site.
+        if (first is null)
+        {
+            return;
+        }
+
+        var recorded = this.identityRecorded[scope];
+        var atOwner = this.RecordsAt(scope, scope.Owner, this.identityGroupSites.Count);
+        var rest = atOwner ? null : recorded.Site ?? (recorded.Own ? first : null);
+        this.identityRecorded[scope] = (recorded.Own, recorded.Limited, rest, recorded.Judged);
+        if (rest is not null && recorded.Site is null)
         {
             this.SetRecordedState(scope.Owner, BindingState.Invalid);
         }
-
-        return true;
     }
 
     // R7-C3 C3d (F's C2/C3 ruling 331 (B)): the site a declaration's premise error stands at when no record stands at the declaration
@@ -693,14 +742,21 @@ public sealed partial class Binding
     // R7-C3 C3d (F's ruling C3d-R1 (A)): whether `clause` is an own premise clause of `declaration` holding a record of its scope's error
     // group, so the declaration's frame is that record's own check (ChecksOwnSite), as it is where the record stands at the declaration.
     private bool HoldsGroupRecord(Koto declaration, Koto clause)
+        => this.identityGroupSites.Count != 0 && this.scopes.TryGetValue(declaration, out var scope) && this.RecordsAt(scope, clause, this.identityGroupSites.Count);
+
+    // e2-7 C1: whether one of the first `count` group records (identityGroupSites) is the scope's at `site`: a recorder's run reads the
+    // earlier runs' records alone (RecordErrorGroups), every other reader all of them.
+    private bool RecordsAt(BindingScope scope, Koto site, int count)
     {
-        if (this.identityRecorded.Count == 0 || !this.scopes.TryGetValue(declaration, out var scope) || !this.identityRecorded.TryGetValue(scope, out var recorded))
+        for (var i = 0; i < count; i++)
         {
-            return false;
+            if (ReferenceEquals(this.identityGroupSites[i].Scope, scope) && ReferenceEquals(this.identityGroupSites[i].Site, site))
+            {
+                return true;
+            }
         }
 
-        var (start, count) = recorded.Clauses;
-        return this.identityClauses.IndexOf(clause, start, count) >= 0;
+        return false;
     }
 
     // R7-C3 C3d (PLAN G830): an own error group's clause, the last of the owner's premise clauses (its own facts) with a Type in the group.

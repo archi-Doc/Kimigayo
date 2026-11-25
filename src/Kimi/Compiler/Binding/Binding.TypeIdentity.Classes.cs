@@ -223,9 +223,11 @@ public sealed partial class Binding
         // The worst final error class this table holds that the parent's table does not hold with the same state for the same member (the
         // premises that first form it are this scope's), whether an own error class is still waiting for its Origin declarations, and
         // whether an own final class is at the closure limit, which a worse class hides from Worst; each own final error group with its
-        // worst state, appended to `groups` (R7-C3 C3d: the recorder's one record per group, PLAN G830).
+        // worst state, appended to `groups` past its entry count (R7-C3 C3d: the recorder's one record per group, PLAN G830), so a
+        // recorder nested in another's reads (a closure's, e2-7 C1) appends its own range.
         internal (byte Worst, bool Waiting, bool Limited) OwnError(IdentityClasses? parent, List<(int Group, byte State)> groups)
         {
+            var start = groups.Count;
             var (worst, waiting, limited) = (One, false, false);
             for (var root = 0; root < this.types.Count; root++)
             {
@@ -245,15 +247,15 @@ public sealed partial class Binding
                 limited |= !this.incompleteClass[root] && this.state[root] == Limit;
                 if (!this.incompleteClass[root])
                 {
-                    AddGroup(groups, this.Group(root), this.state[root]);
+                    AddGroup(groups, start, this.Group(root), this.state[root]);
                 }
             }
 
             return (worst, waiting, limited);
 
-            static void AddGroup(List<(int Group, byte State)> groups, int group, byte state)
+            static void AddGroup(List<(int Group, byte State)> groups, int start, int group, byte state)
             {
-                for (var i = 0; i < groups.Count; i++)
+                for (var i = start; i < groups.Count; i++)
                 {
                     if (groups[i].Group == group)
                     {
