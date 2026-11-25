@@ -8,21 +8,22 @@ namespace Kimi.Compiler.Backend;
 // O-504 Q1 (a)), and its declaration request, one per symbol, whose Types the first called import's signature gives (Binding admits
 // imports of one symbol only with an equal physical code); computed once per Write through the per-index cache of
 // ModuleCodegen.Signatures.cs and the previous one reused while it still matches. What the written module states for its link (the
-// generation result, Compilation.Generated; R9-B1): the external functions it declares (Externals), the native libraries it requires
-// (Libraries), which decide its start (IMPL 21.5.2: on the C path when they hold the row's C runtime), and the imports its runtime
-// declares that no external names (RuntimeImports; LinkAmbiguity, T's ruling 32), each published here and nowhere re-derived (the
-// toolchain reads no IR text).
+// generation result, Compilation.Generated; R9-B1): the external functions it declares (Externals), each with its providing Library
+// (Binding's), the native libraries it requires (Libraries), which decide its start (IMPL 21.5.2: on the C path when they hold the row's
+// C runtime), and the imports its runtime declares that no external names (RuntimeImports; LinkAmbiguity, T's ruling 32), each with its
+// providing Library (the frame's; NamedProvider), each published here and nowhere re-derived (the toolchain reads no IR text).
 internal sealed partial class ModuleCodegen
 {
     private readonly List<(string Library, string Kind)> libraries = []; // The latest Write's required libraries (Libraries).
-    private readonly List<string> runtimeImports = []; // The latest Write's runtime imports no external names (RuntimeImports).
+    private readonly List<(string Symbol, string Library)> runtimeImports = []; // The latest Write's runtime imports no external names (RuntimeImports).
     private readonly Abi.Convention importConvention; // The row's C convention of its imports (ImportConvention).
     private FunctionAbi?[] importSignatures = []; // By import.
     private int[] importSigned = []; // By import, the Write whose signature importSignatures holds (0: none).
     private string?[] importSymbols = []; // By import, the external symbol its signature is named by.
 
     /// <summary>Gets the external functions the latest written module declares, one per symbol in declaration order, each with its
-    /// external symbol and dllimport form (SPEC 22.6): the imports its definitions call, a kernel32 one the runtime declares included.</summary>
+    /// external symbol, dllimport form and providing library (SPEC 22.6, IMPL 21.2): the imports its definitions call, a kernel32 one the
+    /// runtime declares included.</summary>
     internal IReadOnlyList<ExternalFunction> Externals => this.externals;
 
     /// <summary>Gets the native libraries the latest written module requires (SPEC 22.6, IMPL 20.4): the library and Kind of every
@@ -30,11 +31,11 @@ internal sealed partial class ModuleCodegen
     /// (TargetProfile.CRuntime), that supply with its row Kind when any library is required and no import names it (IMPL 21.5.2).</summary>
     internal IReadOnlyList<(string Library, string Kind)> Libraries => this.libraries;
 
-    /// <summary>Gets the imports the latest written module's runtime declares and no external of <see cref="Externals"/> names, each a
-    /// kernel32 import in its dllimport form, in the row's order: the frame's runtime's, a test build's the test runtime's
+    /// <summary>Gets the imports the latest written module's runtime declares and no external of <see cref="Externals"/> names, each
+    /// with its providing supply, in the row's order: the frame's runtime's, a test build's the test runtime's
     /// (LlvmModuleText.ModuleFrame), so the module's external declarations, these after <see cref="Externals"/>, name each symbol once
-    /// (LinkAmbiguity, T's ruling 32).</summary>
-    internal IReadOnlyList<string> RuntimeImports => this.runtimeImports;
+    /// (LinkAmbiguity, T's ruling 32; NamedProvider).</summary>
+    internal IReadOnlyList<(string Symbol, string Library)> RuntimeImports => this.runtimeImports;
 
     /// <summary>Gets the C signature of a validated <c>#LibraryImport</c> function a definition calls (SPEC 22.6; Abi.Of's C convention
     /// of the row), its own import's, and requests its declaration, one per external symbol (DECISIONS R5-M89).</summary>
@@ -49,7 +50,7 @@ internal sealed partial class ModuleCodegen
                 var (abi, symbol) = (this.ImportSignature(index), this.imports[index].Symbol);
                 if (!this.DeclaresExternal(symbol))
                 {
-                    this.externals.Add(new(abi, symbol, this.imports[index].Kind == "import"));
+                    this.externals.Add(new(abi, symbol, this.imports[index].Kind == "import", this.imports[index].Library));
                 }
 
                 return abi;
@@ -95,11 +96,11 @@ internal sealed partial class ModuleCodegen
     {
         this.runtimeImports.Clear();
         var frame = LlvmModuleText.Frame(this.row);
-        foreach (var symbol in (this.IsTestBuild ? frame.TestRuntimeImports : frame.RuntimeImports)!)
+        foreach (var import in (this.IsTestBuild ? frame.TestRuntimeImports : frame.RuntimeImports)!)
         {
-            if (!this.DeclaresExternal(symbol))
+            if (!this.DeclaresExternal(import.Symbol))
             {
-                this.runtimeImports.Add(symbol);
+                this.runtimeImports.Add(import);
             }
         }
     }
