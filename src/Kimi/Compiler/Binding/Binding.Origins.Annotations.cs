@@ -296,11 +296,12 @@ public sealed partial class Binding
     // SPEC 15.3.4, 15.4.4 (PLAN G230-H, rule D): a name of a local, its value or its set, outside that local's own declaration reads the
     // local's declared Type, so it demands the declaration as a value use does (QueryValueType); the local forms in its declaring body
     // (FormingBodyOf), so a header bound before that body (R4-M101 E3) selects the Type and the regions the body forms. A local's own
-    // declaration (its Type and clauses) reads its declared Type as it forms and is never demanded from inside it (SPEC 9.3). Asked once
-    // at its entry (G230H-6, G230H-8, G230H-10 C2): where the owner's header is bound ahead of an environment the demand cannot form
-    // before its evaluating construct binds, a name that a scope of the outermost such literal declares, outside the owner's own scopes,
-    // rests. The name selects nothing, so the header fails there and is bound again at the function's statement (BindFunction); a clause
-    // keeps that failure (Q-B's class). A name past that literal is selected normally (SPEC 9.3: naming an outer Origin is no capture).
+    // declaration (its Type and clauses) reads its declared Type as it forms and is never demanded from inside it (SPEC 9.3). Asked once,
+    // where the name's candidate is found (G230H-6, G230H-8, G230H-11 C-2): a name that a not-ready literal itself declares (its
+    // parameter, a body local, set or Origin, a written entry not yet formed), for a header bound ahead of that literal's environment
+    // (AheadOfEnvironment), rests. The name selects nothing, so the header fails there and is bound again at the function's statement
+    // (BindFunction); a clause keeps that failure (Q-B's class). A formed written entry selects its environment binding, whose Type its
+    // entry fixes (SPEC 7.7.2, C-1), and a name of a named function's scope is selected normally (SPEC 9.3, 15.3.4).
     private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
@@ -315,7 +316,6 @@ public sealed partial class Binding
             return true;
         }
 
-        var resting = this.AheadOfEnvironment(owner) is { } literal ? this.scopes[literal] : null;
         for (var current = scope; current is not null; current = current.Parent)
         {
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
@@ -324,13 +324,13 @@ public sealed partial class Binding
             var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name);
             var visibleSet = current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
                 (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start) ? local : null;
-            if (resting is not null && !ReferenceEquals(current.Owner, owner) &&
-                (visibleValue || set is not null || visibleSet is not null || current.Origins?.ContainsKey(name) == true))
+            var entry = current.Owner is FunctionKoto { IsAnonymous: true } literal && CaptureEntryOf(literal, name) is not null;
+            if ((entry || visibleValue || set is not null || visibleSet is not null || current.Origins?.ContainsKey(name) == true) &&
+                this.AheadOfEnvironment(owner, current) && !(entry && current.Values.GetValueOrDefault(name) is { Kind: BindingSymbolKind.Capture }))
             {
-                return true; // G230H-6: the demand rests; nothing the environment forms is read before it is ready.
+                return true; // G230H-6: the demand rests; nothing the environment forms is read before it is ready (a formed entry is, C-1).
             }
 
-            resting = ReferenceEquals(current, resting) ? null : resting; // Past the outermost not-ready literal (G230H-10 C2).
             if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);

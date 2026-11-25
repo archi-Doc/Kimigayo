@@ -401,13 +401,15 @@ public sealed partial class Binding
     // formed once in the pass by its binding (after its header) or by a demand from its body that comes first (a local of the body bound
     // before the literal, BindVariable through BodyEnvironment): its evaluating body's own environment where that body is a Closure's,
     // its written parameter Types as its header binds them (a probe may have bound one already), and its written entries
-    // (CaptureEntries, the plan created at the header scope). Not ready (abandoned: nothing recorded, asked again later), one criterion
-    // (F's G230H-6, G230H-10 C1): the environment cannot form before what it reads binds. An omitted parameter Type, which only the
-    // literal's expected Function Type gives (SPEC 7.7.1), is unbound until the literal's binding binds its header; an evaluating body's
-    // environment that is not ready waits the same way; and an entry's source that is pending (unbound in the pass, or a retry with no
-    // recorded failure) leaves the literal resting on it, the entries before it kept. Error: the literal's record (an entry's, or the
-    // resting evaluating body's) ends its binding. Every later reader reads the formed entries, so none is formed or recorded twice; a
-    // re-entry (Running) reads the entries formed so far.
+    // (CaptureEntries, the plan created at the header scope), formed before the expected input is read, as each entry's Type needs
+    // only its own source (F's G230H-11 C-1), so a header in the body names an entry's environment binding on every program. Not ready
+    // (abandoned: nothing recorded, asked again later), one criterion (F's G230H-6, G230H-10 C1): the environment cannot form before
+    // what it reads binds. An omitted parameter Type, which only the literal's expected Function Type gives (SPEC 7.7.1), is unbound
+    // until the literal's binding binds its header; an evaluating body's environment that is not ready waits the same way; and an
+    // entry's source that is pending (unbound in the pass, a retry with no recorded failure, or one resting on another's reported
+    // record, whose record the literal's then derives: rule W) leaves the literal resting on it, the entries before it kept. Error: the
+    // literal's record (an entry's, or the resting evaluating body's) ends its binding. Every later reader reads the formed entries, so
+    // none is formed or recorded twice; a re-entry (Running) reads the entries formed so far.
     private DeclState FormEnvironment(FunctionKoto literal)
     {
         var symbol = this.symbols[literal];
@@ -428,7 +430,7 @@ public sealed partial class Binding
                 return DeclState.Error;
             }
 
-            if (outer == DeclState.NotStarted || AwaitsExpectedInput(literal))
+            if (outer == DeclState.NotStarted)
             {
                 this.AbandonQuery(symbol, DeclQueryKind.Environment);
                 return DeclState.NotStarted;
@@ -447,7 +449,9 @@ public sealed partial class Binding
                 parameter.Type = written.BindingState == BindingState.Unvisited ? this.BindType(written, scope) : written.BoundType;
             }
 
+            // The entries before the expected input (F's G230H-11 C-1): each entry's Type reads only its own source, never a parameter.
             var entries = this.CaptureEntries(literal, scope);
+            entries = entries == DeclState.Done && AwaitsExpectedInput(literal) ? DeclState.NotStarted : entries;
             if (entries == DeclState.NotStarted)
             {
                 this.AbandonQuery(symbol, DeclQueryKind.Environment);
@@ -477,28 +481,13 @@ public sealed partial class Binding
         return literal is null ? DeclState.Done : this.FormEnvironment(literal);
     }
 
-    // SPEC 7.7.1, F's G230H-6, G230H-8 (1) and G230H-10 C2: the outermost literal ahead of whose environment a function declared in a
-    // body (`owner`) is bound, an environment the demand cannot form before its evaluating construct binds: the literal of its declaring
-    // body, or of a body that declares that one, whose Environment query is not ready; null where none is. Recorded facts only
-    // (DeclaringBody, EvaluatingBody): no body from a scope chain.
-    private FunctionKoto? AheadOfEnvironment(Koto? owner)
-    {
-        if (owner is not FunctionKoto || !this.symbols.TryGetValue(owner, out var symbol))
-        {
-            return null;
-        }
-
-        FunctionKoto? outermost = null;
-        for (var body = symbol.DeclaringBody; body.IsBody; body = EvaluatingBody(body))
-        {
-            if (this.BodyEnvironment(body, out var literal) == DeclState.NotStarted)
-            {
-                outermost = literal;
-            }
-        }
-
-        return outermost;
-    }
+    // SPEC 7.7.1, F's G230H-6, G230H-8 (1) and G230H-11 C-2: whether a function's header (`owner`) is bound ahead of the environment of
+    // the literal one of whose own scopes `scope` is (its header scope or a body scope, the published scope Function), an environment
+    // the demand cannot form before its evaluating construct binds: that literal, another than the owner, whose Environment query is
+    // not ready. A named function's scope, a ready literal's and the owner's own are never ahead (SPEC 9.3, 15.3.4).
+    private bool AheadOfEnvironment(Koto? owner, BindingScope scope)
+        => owner is FunctionKoto && scope.Function is { IsAnonymous: true } literal && !ReferenceEquals(literal, owner) &&
+            this.FormEnvironment(literal) == DeclState.NotStarted;
 
     // SPEC 7.7.2: the written capture list's entries: Done; Error where an entry ends the binding (its record at the literal); NotStarted
     // where an entry's source is pending (FormEnvironment's not-ready criterion). Each entry's source is demanded first (QueryValueType),
