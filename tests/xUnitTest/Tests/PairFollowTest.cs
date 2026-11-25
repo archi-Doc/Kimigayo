@@ -824,7 +824,7 @@ public class PairFollowTest
     {
         var c = MinimalEmissionTest.Analyze(Box + "func f<s/T>(item: s/T, factor: s/i32) -> i32\n    return factor * 2");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Contains(DiagnosticCode.TypeMismatch_Kd, Codes(c));
+        Assert.Contains(DiagnosticCode.OperatorNotDefined_Kd, Codes(c)); // PLAN G1356, Q13: was TypeMismatch_Kd at `2` (SPEC 13.3.4: no provider)
     }
 
     [Fact]
