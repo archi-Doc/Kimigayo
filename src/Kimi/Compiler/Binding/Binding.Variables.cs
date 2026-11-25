@@ -11,17 +11,36 @@ public sealed partial class Binding
     private BoundType? BindVariable(VariableKoto variable, BindingScope scope)
     {
         // A variable is checked in its own frame, also when a use binds it first (BindReference), and a local in its declaring body
-        // (FormingBodyOf; PLAN G1369), also when a use, a capture or a nested header binds it first.
+        // (FormingBodyOf; PLAN G1369), also when a use, a capture or a nested header binds it first. A Closure body's local reads its
+        // literal's environment (BodyEnvironment, which forms it when the local comes first; PLAN G230-H (i)) and rests on the literal
+        // where that failed, as the literal's binding then binds no body (SPEC 23.1.2). Where it is not ready, the demand cannot form
+        // the declaration before its evaluating construct binds (F's G230H-6, Q-B's class): it rests with no record and no read, the
+        // local stays unbound, and its statement binds it.
         var frame = this.BeginConsultation(variable);
-        var saved = this.EnterBody(this.FormingBodyOf(variable));
-        BoundType? type;
-        try
+        var body = this.FormingBodyOf(variable);
+        var environment = this.BodyEnvironment(body, out var literal);
+        if (environment == DeclState.NotStarted)
         {
-            type = this.BindVariableCore(variable, scope);
+            this.DropConsultation(frame);
+            return null;
         }
-        finally
+
+        BoundType? type;
+        if (environment == DeclState.Error)
         {
-            this.formingBody = saved;
+            type = this.CompleteDependent(variable, literal!);
+        }
+        else
+        {
+            var saved = this.EnterBody(body);
+            try
+            {
+                type = this.BindVariableCore(variable, scope);
+            }
+            finally
+            {
+                this.formingBody = saved;
+            }
         }
 
         this.EndConsultation(variable, frame);

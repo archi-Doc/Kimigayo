@@ -95,20 +95,6 @@ public sealed partial class Binding
         return slot < 0 ? null : type!.Kind == BoundTypeKind.Slice ? type.Origin : slot < type.OriginArguments.Count ? type.OriginArguments[slot] : null;
     }
 
-    // An atom of a body local's annotation or set (a FieldKoto's Type), not its region slot, which its body reads, or a meet with one.
-    private static bool LocalAtom(BoundOrigin origin)
-    {
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (LocalAtom(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto && !SlotRegion(origin);
-    }
-
     // SPEC 8.13.1: whether a node is one of a `specialize func` header's Type arguments.
     private static bool IsSpecializationArgument(FunctionKoto function, Koto node)
     {
@@ -307,6 +293,13 @@ public sealed partial class Binding
     }
 
     // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
+    // SPEC 15.3.4, 15.4.4 (PLAN G230-H, rule D): a name of a local, its value or its set, outside that local's own declaration reads the
+    // local's declared Type, so it demands the declaration as a value use does (QueryValueType); the local forms in its declaring body
+    // (FormingBodyOf), so a header bound before that body (R4-M101 E3) selects the Type and the regions the body forms. A local's own
+    // declaration (its Type and clauses) reads its declared Type as it forms and is never demanded from inside it (SPEC 9.3). Asked once
+    // at its entry (G230H-6, G230H-8): where the owner's header is bound ahead of an environment the demand cannot form before its
+    // evaluating construct binds, every selection outside the owner's own scopes rests. The name selects nothing, so the header fails
+    // there and is bound again at the function's statement (BindFunction); a clause keeps that failure (Q-B's class).
     private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
@@ -321,8 +314,14 @@ public sealed partial class Binding
             return true;
         }
 
+        var ahead = this.AheadOfEnvironment(owner);
         for (var current = scope; current is not null; current = current.Parent)
         {
+            if (ahead && !ReferenceEquals(current.Owner, owner))
+            {
+                return true; // G230H-6: the demand rests; nothing the environment forms is read before it is ready.
+            }
+
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
                 competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
                 (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
@@ -343,13 +342,13 @@ public sealed partial class Binding
             if (current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
                 (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
             {
-                carrier = this.BindOriginSetType(local, current);
-                repeated = RepeatedSet(local) ? local : null;
-                if (repeated is null && this.UnlinkedLocalType(use, carrier))
+                if (!ReferenceEquals(localOwner, owner) && localOwner.BoundSymbol is { } setLocal)
                 {
-                    carrier = null;
+                    this.QueryValueType(setLocal);
                 }
 
+                carrier = this.BindOriginSetType(local, current);
+                repeated = RepeatedSet(local) ? local : null;
                 return true;
             }
 
@@ -390,48 +389,17 @@ public sealed partial class Binding
                 }
 
                 (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
-                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
-                if (symbol is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { TypeKoto: not null } annotated })
+                if (!ReferenceEquals(symbol.Declaration, owner))
                 {
-                    // SPEC 15.3.4 (PLAN G230 (A)): a declaration's plain name of an annotated body local whose top Origin it omits is that
-                    // local's region (LocalRegionSlot), the atom its body reads; any other selection of the annotation's own atoms keeps
-                    // the located limit (UnlinkedLocalType).
-                    if (!this.formingBody.IsBody && use is IdentifierNameKoto && symbol.Type is null && this.originAtoms.TryGetValue((annotated, OriginKind.Inference, -1), out var region))
-                    {
-                        scalar = region;
-                    }
-                    else if (this.UnlinkedLocalType(use, carrier))
-                    {
-                        carrier = null;
-                    }
+                    this.QueryValueType(symbol);
                 }
 
+                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
                 return true; // An unsuitable nearest candidate never falls through.
             }
         }
 
         return false;
-    }
-
-    // SPEC 15.3.4 (PLAN G230 (A)'s remaining limit, DECISIONS BU-56 narrowed): a declaration's written Origin (bound with no body) that
-    // selects an atom of a body local's set or annotation which no body reads: a projection of an annotated local or of a set, or a
-    // plain name bound before the local's declaration formed its region (a declaration bound ahead of the local). The name is a located
-    // Unsupported_Kd and resolves to nothing a judge could read; a name that selects no Origin keeps its own failure. A Closure's header is
-    // bound in its evaluating body and keeps EnclosingAtom's rule.
-    private bool UnlinkedLocalType(Koto use, BoundType? type)
-    {
-        if (this.formingBody.IsBody || use is not (IdentifierNameKoto or MemberAccessKoto) || OriginOwner(use) is FieldKoto)
-        {
-            return false;
-        }
-
-        if (SelectedOrigin(use, ref type, out _) is not { } selected || !LocalAtom(selected))
-        {
-            return false;
-        }
-
-        this.Fail(use, BindingFailure.Unsupported);
-        return true;
     }
 
     private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref, int aggregateSlot = -1, BindingSymbol? borrowCondition = null)

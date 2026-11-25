@@ -48,6 +48,13 @@ namespace Kimi.Compiler;
 //   abandoned; on a base cycle every member stays NotStarted for the pass, and the records are the base walk's and formation's, none
 //   here. Not ready: a reading of its clause by DirectBase that moved the not-ready count (BaseLayers' answer: in progress or not
 //   ready), or its base not Done. Frozen: Done (the freeze verifies every library struct's Done).
+//   Environment (Binding.Closures' FormEnvironment; PLAN G230-H (i)): output a Closure literal's written parameter Types on their
+//   symbols and its written entries in its plan and scope, demanded by its binding after its header and by a local of its body bound
+//   before it (BindVariable). Error: an entry's record, or the literal resting on its evaluating body's Error; its readers, the
+//   literal's binding and that local, rest on the literal. Not ready: an omitted parameter Type its binding has not bound (SPEC 7.7.1:
+//   its expected Function Type gives it), or its evaluating body's environment not ready. It is abandoned, with nothing formed or
+//   recorded, and the demanding local rests unbound and binds at its statement (G230H-6). Re-entry: reads the entries formed so far.
+//   Frozen: never asked (no program pass binds a library literal).
 // - Interims (removal stages): BindHeader's guard reads the variable binding's Resolving and BindVariableCore's guard reads
 //   Signature's Running state (its CyclicBinding_Kd, a variable binding re-entered, is the variable binding's) until R7-D2 d4 makes the
 //   variable binding a kind. This is the only read of a state outside this file. SignatureVerdict's not-ready path and its exclusion of a
@@ -70,6 +77,9 @@ internal enum DeclQueryKind : byte
 
     /// <summary>A struct's inherited conformance paths registered in ImplTable (Binding.InheritedConformances).</summary>
     InheritedConformances,
+
+    /// <summary>What a Closure literal's body reads of the literal: its written parameter Types and entries (Binding.FormEnvironment).</summary>
+    Environment,
 
     /// <summary>The number of kinds; BindingSymbol packs two bits per kind, so a ninth kind fails its compile-time check.</summary>
     Count,

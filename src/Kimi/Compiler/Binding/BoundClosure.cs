@@ -7,8 +7,8 @@
 //   (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose acquisition by value Reborrows by case
 //   (BoundCapture.BareReborrows), the first Exclusive cause, and whether this binding has classified them (Classified).
 // - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, InfersResult and the resets), Binding.Captures
-//   (Storage and Carried), Binding.ClosureReceivers (the receiver facts). The evaluating body is the literal's symbol's
-//   (BindingSymbol.DeclaringBody, written at the header scope, ClosureHeaderScope).
+//   (Storage and Carried), Binding.ClosureReceivers (the receiver facts), Binding.Indexing (the pass's reset, ResetPass). The evaluating
+//   body is the literal's symbol's (BindingSymbol.DeclaringBody, written by the index walk, DECISIONS BU-258's rule).
 // - Outputs: InfersResult for Binding's discard rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
 //   reader (value calls, candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a
 //   view of one admitted case, that case's
@@ -107,4 +107,19 @@ public sealed class BoundClosure
     // its latest binding published it (Published); null for a named function, an unbound literal and until the definition is published.
     internal static BoundClosure? Of(FunctionKoto literal)
         => HirTables.PlanOf(literal).Plan is BoundClosure { Published: true } plan ? plan : null;
+
+    // The pass's start (the index walk's reset of the literal, before any binding or demand of it; PLAN G230-H (i)): the environment
+    // (Storage, Carried, Walk) is formed once in the pass, by the literal's binding or by a demand from its body that comes first
+    // (Binding.Closures' FormEnvironment), and kept by every later binding; the definition is published again (Signature, Published,
+    // Classified).
+    internal void ResetPass()
+    {
+        this.Storage.Clear();
+        this.Carried.Clear();
+        this.Walk.Clear();
+        this.WalkVersion = -1;
+        this.Signature = null;
+        this.Published = false;
+        this.Classified = false;
+    }
 }

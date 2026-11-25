@@ -81,10 +81,15 @@ public sealed partial class Binding
     }
 
     // A node's per-pass fields: its HIR row, its comparison, arithmetic and formatting plans' activity, its identity premise, its
-    // conversion binding and a clause's constraint and runtime test.
+    // conversion binding, a clause's constraint and runtime test, and a Closure literal's plan (BoundClosure.ResetPass).
     private static void ResetRow(Koto node)
     {
         HirTables.Reset(node);
+        if (node is FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan })
+        {
+            plan.ResetPass();
+        }
+
         if (node is BinaryKoto binary)
         {
             binary.ComparisonActive = false;
@@ -394,6 +399,9 @@ public sealed partial class Binding
                     }
 
                     closureSymbol.Scope = scope;
+                    // SPEC 15.3.4, 7.7.2 (DECISIONS BU-258's rule; PLAN G230-H (i)): a Closure's evaluating body is the body the walk
+                    // reaches it in, as a named function's declaring body is, so a demand from its body before it binds reads it.
+                    closureSymbol.DeclaringBody = this.indexBody;
                 }
 
                 if (!function.IsGenerated && !function.IsAnonymous)

@@ -125,8 +125,8 @@ public sealed partial class Binding
     // SPEC 15.6.5, 7.7.2, 15.4.4 (R7-O2 O2-H; the owner's O-487 (a)): the scope in which every binding of a literal's written header is
     // bound (BindClosureHeader, the header probe ClosureSignatureFits, FailClosureHeader and the call-signature evidence InferClosureHeader
     // each take it here, the one way to it), with what the header's Owned proofs read recorded first, so CarriedRegion reads a complete
-    // set at any of them: the literal's plan (created when absent) and its evaluating body, the body the literal is in (this is its one
-    // writer); and the regions its written list's entries name, each entry's binding's Type fixed by its declaration, in the literal's
+    // set at any of them: the literal's plan (created when absent; its evaluating body is the index walk's, DECISIONS BU-258's rule);
+    // and the regions its written list's entries name, each entry's binding's Type fixed by its declaration, in the literal's
     // Carried and in that of each enclosing omitted list that forwards the entry (ForwardsThrough). It forms no environment binding: the
     // entries' and the forwarded captures' bindings, their slots and their order are Capture's, at the literal's binding
     // (CaptureEntriesFail), which records the same regions again for nothing (CarryOrigin keeps a region once), so a probe records exactly
@@ -138,7 +138,6 @@ public sealed partial class Binding
     {
         var scope = this.scopes[literal];
         var plan = literal.ClosureStorage ??= new();
-        this.symbols[literal].DeclaringBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (R4-M101 E1).
         foreach (var capture in literal.Captures ?? [])
         {
             if (this.Lookup(capture.Name, scope.Parent!, literal) is not { Type: { } type } source)
@@ -223,8 +222,9 @@ public sealed partial class Binding
         }
 
         // SPEC 7.7.2, 8.15: an environment binding holds the source's complete Type, whatever it is, as a local would; each instance
-        // lowers it at its case Type (a pair target, a projection, a Type parameter alike).
-        var plan = function.ClosureStorage!;
+        // lowers it at its case Type (a pair target, a projection, a Type parameter alike). The plan is created here when a use in the
+        // body forms the entry before the literal binds (PLAN G230-H (i): a demand from its body, FormEnvironment).
+        var plan = function.ClosureStorage ??= new();
         for (var i = 0; i < plan.Storage.Count; i++)
         {
             if (ReferenceEquals(plan.Storage[i].Source, source))

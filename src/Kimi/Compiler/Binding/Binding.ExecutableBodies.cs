@@ -6,8 +6,8 @@
 //   Property's initializer, ValidateOriginRelations, and a local's declaration: BindVariable and BindType, PLAN G1369), each through
 //   EnterBody, with the one value of each body (FunctionBody, a default template's, AccessorBody, InitializerBody).
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
-//   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (a Closure's, ClosureHeaderScope; a named
-//   function's or a local's is the index walk's, DeclareFunction and IndexNode).
+//   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (the index walk's: a Closure's, a named function's
+//   and a local's, IndexNode and DeclareFunction).
 // - The rule for a local (SPEC 15.3.4, 15.3.6; DECISIONS R8-M56): its declaration, its Type's Origin declaration and its initializer are
 //   formed in its declaring body whoever demands them (FormingBodyOf: a use, a capture or a nested header binding them first), so every
 //   atom, row and region they form is that body's. DeclaringBody is total for a local: the index walk enters every body Binding forms
@@ -57,8 +57,8 @@ public sealed partial class Binding
         => property is { Kind: BindingSymbolKind.Property, Scope.Owner: DeclarationContainerKoto { HasStaticMembersOnly: true } };
 
     // The body that declares `body`'s definition (SPEC 15.3.4), the one recorded fact BindingSymbol.DeclaringBody: a Closure's evaluating
-    // body, recorded on its symbol when its header is bound, and a named function's declaring body, the body the index walk declares it in
-    // (a root function's is its module's top-level statements, SPEC 6.1.1); no body for any other.
+    // body and a named function's declaring body, the body the index walk reaches it in (a root function's is its module's top-level
+    // statements, SPEC 6.1.1); no body for any other.
     private static ExecutableBody EvaluatingBody(ExecutableBody body) => body.Definition is { } definition ? definition.DeclaringBody : default;
 
     // A function's own body; a module's top-level statements have no symbol and are named by the module's ordinal.
