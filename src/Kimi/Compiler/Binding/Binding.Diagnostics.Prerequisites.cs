@@ -110,13 +110,13 @@ public sealed partial class Binding
     /// <returns>Whether it rests on causes.</returns>
     internal bool HasRestingCauses(Koto node) => this.RestingSource(node, out _, out _);
 
-    /// <summary>Gets whether Binding recorded a cause for a node it did not resolve: the node is a recovery, failed, or rests on an
-    /// unresolved prerequisite (a dependent, SPEC 23.1.2).</summary>
+    /// <summary>Gets whether Binding recorded a cause for a node it did not resolve: the node is a recovery, failed, rests on an
+    /// unresolved prerequisite (a dependent, SPEC 23.1.2), or is a declaration resting on its premise error's site (IdentityErrorSite).</summary>
     /// <param name="node">The node.</param>
     /// <returns>Whether a check that reads the node rests on a Binding cause.</returns>
     internal bool HasFailureCauses(Koto node)
         => this.RecordedState(node) != BindingState.Resolved &&
-            (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
+            (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node) || this.IdentityErrorSite(node) is not null);
 
     // SPEC 23.1.2 (PLAN G1073): the declaration part that gives a slot its Type, where Binding records that Type's failure: a
     // parameter's written Type, an accessor parameter's annotation or Property Type; a definition's result: an accessor's executing
@@ -526,8 +526,13 @@ public sealed partial class Binding
 
     // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2), R7-E5 c1: whether the open consultation is `site`'s own check. A
     // failure's own checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity
-    // premise error (IdentityPremiseErrorRead); a failure (Fail) or a read (Consulted) of the frame's own node is no prerequisite of it.
-    private bool ChecksOwnSite(Koto site) => ReferenceEquals(site, this.consultationNode);
+    // premise error (IdentityPremiseErrorRead); a failure (Fail) or a read (Consulted) of the frame's own node, or of its own premise
+    // clause holding its error group's record (HoldsGroupRecord, R7-C3 C3d), is no prerequisite of it. A conformance's verification asks
+    // it of the conformance's use (VerifyConformance's `!ChecksOwnSite(conformance.Use)`, Binding.ContractMatching): where JudgeFacts
+    // proves an own group clause's conformance (`T is K`) in the declaration's frame, that frame answers as the clause's own frame does,
+    // so the conformance does not read the failed premises of its scope chain (F's ruling C3d-R2).
+    private bool ChecksOwnSite(Koto site)
+        => ReferenceEquals(site, this.consultationNode) || (this.consultationNode is { } node && this.HoldsGroupRecord(node, site));
 
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
     /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
@@ -788,12 +793,19 @@ public sealed partial class Binding
         return keys;
     }
 
+    // A node's causes in a walk: its unresolved part, its premise error's site (a declaration resting on its records, IdentityErrorSite)
+    // and its unresolved consulted operands.
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)
     {
         var count = pending.Count;
         if (this.UnresolvedPart(node) is { } part)
         {
             pending.Push(part);
+        }
+
+        if (this.IdentityErrorSite(node) is { } site)
+        {
+            pending.Push(site);
         }
 
         if (this.prerequisites.TryGetValue(node, out var range))
