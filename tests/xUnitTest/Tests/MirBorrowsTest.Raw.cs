@@ -1914,6 +1914,12 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(MinimalEmissionTest.Analyze("func inspect<T>(value: ref/T) => ()\n" + PopLateOk + "public func main() => ()\n").Problems);
     }
 
+    // SPEC 5.4 (X-5 N4): a bare `@raw` "checks like an immediately ending `@ref`, reads nothing and leaves no Loan", so h's write while
+    // p lives is valid; the clause's error half, a `@raw` while an exclusive borrow of h is live, is MirBorrowsTest.Derived's z-raw-ok.
+    [Fact]
+    public void ABareRawLeavesNoLoan()
+        => Assert.Empty(Problems("func rawWrite()\n    var h = 1\n    let p = h@raw\n    h = 2\n    _ = p == null\n"));
+
     // SPEC 15.6.4, 5.7, 5.2 (PLAN G415; DECISIONS BU-91): raw storage holds what is written there, so a borrow `at` forms within the
     // storage a receiver holds through a raw layer, punned to another Type than its pointee's (`during self` or no Origin), keeps the
     // receiver's Loan as the unpunned twin's (IntBuf) does: each err at the free while the result lives (punRefUse also at `b@uniq`;
