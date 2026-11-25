@@ -34468,6 +34468,11 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     parsed by `Tatara.Facts` and read by `LinkInput.Read` into the same store; only a program's input is inspected at build time.
     P3's catalog-facts follow-up is done: `libc.a`'s first read per process is under P3's 3 ms gate (the unit's commits state the
     medians), and G1374 is closed.
+  - Amended by T-M50 (LinkRoots, 2026-11-25; PLAN G1377): the step also starts from the row's `LoadConfigSymbol`
+    (`_load_config_used` on windows-x64), and the whole inputs are of form `o` or `b`. The closure's referenced symbol is a joined
+    unit's `U` or a name it roots (`I`: `/include:`'s, `/export:`'s). Kind 4 gains `b` (LLVM bitcode). Kind 6 lists `/export:`'s
+    names as `I` and `/entry:`'s as `E` (T-M50's text). A library whose loaded unit carries `/entry:` or is bitcode is an
+    unsupported native dependency.
 - **T-M46 A library inconsistent with its declared Kind is an error at the link** (Tatara, 2026-11-25; PLAN G1330, D-1192, Q-762;
   Major; design `artifacts\handoff\tatara\units\LinkAmbiguity\kind-design.md` Revision 0 with its corrections 1-3 from LinkAmbiguity
   Revisions 1-3a (`kind-brief-impl.md`); the Middle's C-514; T's ruling 24). IMPL 20.4 makes a native dependency inconsistent with its
@@ -34493,6 +34498,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M48 (NamedProvider, 2026-11-25): K2 is deleted: rule P (an import's named library defines its referenced form)
     states every case it stated, and P's lines take K2's place among the symbol lines. The manifest now names each import's library,
     for P (not for K).
+  - Amended by T-M50 (LinkRoots, 2026-11-25): the inputs loaded whole are of form `o` or `b` (a lone LLVM bitcode object, which
+    lld-link loads whole), and a library input that is no archive and of neither form is no library. A bitcode unit is Code. The
+    unit is unsupported by T-M50 wherever the link loads it, and K still judges it.
 - **T-M47. The native build per target row (Tatara B7b7, D-1274, Q-773).** Decision: the link manifest's fixed head is per row (the common
   rows from the row's columns, the backend-support rows only where the row reserves `kimi_backend`); `LinkManifest.CheckFixed` reads
   `target` first and returns the row, which every later check and the build read. `TargetProfile` gains `Format` (COFF, ELF: the
@@ -34602,3 +34610,54 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     computed when Kimi is built; a per-machine cache; a lazy read; a `kimi toolchain facts` command; inspecting when the facts are
     missing or stale (a fallback); the facts' hash in the catalog; a Tatara identity in the header (it repeats the row for LLVM and
     the ABI and misses `inspect.cpp`); verify through `LinkInputs`.
+- **T-M50 The dependency step reads every reference lld-link makes for a loaded file** (Tatara, 2026-11-25; PLAN G1377, G1378,
+  D-1291, Q-788; Major; design `artifacts\handoff\tatara\units\LinkRoots\design.md` Revision 1a; C-553 (the Middle's and the Back's
+  reviews of Revisions 0 and 1), C-572 (the implementation reads, ACCEPT); T's rulings 59, 64, 67, 67a, 68, 69, 71, 73, 76, 94, 98,
+  101 and 104; amends T-M45 and T-M46 in part). IMPL 20.4 counts the references a loaded file names in a linker directive, but
+  T-M45's step read only `/include:` and `/alternatename:`. lld-link 22.1.8 also roots a loaded member's `/export:` and `/entry:`
+  names and `_load_config_used` whenever an input defines it, and LTO's code generation calls library functions that no IR symbol
+  table lists. So a member loaded only through them was judged neither for ambiguity nor for its library's Kind.
+  - **The reading.** A directive names a symbol only when the link roots that symbol or may load a definition of it through the
+    directive. This is the rule, not a list of LLD's options. At LLD 22.1.8 (`parseDirectives`: 14 options applied, 5 ignored,
+    eight naming a symbol) it selects `/include:`, `/export:`, `/alternatename:` and `/entry:`. `/aligncomm:`,
+    `/exclude-symbols:`, `/arm64xsameaddress:` and `/guardsym:` root and load nothing on windows-x64 (design §2.1a; T's ruling 76).
+    An LLVM update re-reads `parseDirectives`.
+  - **Tatara's facts (an ABI change).** Kind 6's `I` is a name lld-link roots, from two directives:
+    - `/include:`, with the four prefixes;
+    - `/export:`, with the prefixes `/` and `-` only (LLD's fast path). The name is the text before the first `,`; of `<x>=<y>` it
+      is `y`, and there is none when `y` holds `.` (a forwarder).
+
+    Kind 6 also gains `E <name>` per `/entry:`, with the four prefixes. A directive naming no symbol is skipped. Kind 4 gains `b`, LLVM
+    bitcode (an IR object, which LLD compiles at the link). A whole input is no archive, of form `o` or `b`. The ABI hash moves with
+    `tatara.h`. T-M49's stored facts need no regeneration: no compiler supply holds bitcode, `/export:` or `/entry:`, and
+    `EachCompilerSupplysFactsAreItsInspection` in read mode, on the `tatara.dll` built from this change, finds every `.facts` file
+    byte-equal.
+  - **The link's own root.** `TargetProfile.LoadConfigSymbol` holds `_load_config_used` on windows-x64 and null on linux-x64 (ld.lld
+    roots no load configuration). The step references it after `RuntimeReferences`, so a name nothing defines joins nothing. Members
+    picked through any of these references are judged for ambiguity and Kind as any pick is.
+  - **Unsupported (R-E).** A library is IMPL 20.4's unsupported native dependency when a loaded unit of it carries `/entry:` or is
+    LLVM bitcode. Under `/entry:`, lld-link's entry point depends on the pass that loads the member. Under bitcode, LTO adds
+    references nothing lists. Two lines, each a build line without location or code as T-M45's are (not ruling 64's located
+    `Unsupported_Kd`):
+    - "Native library 'carrier' sets the entry point to 'ent2' in a linker directive of an object that the link would load, which
+      is not supported.";
+    - "Native library 'alpha' holds LLVM bitcode that the link would load, which is not supported."
+
+    They sort with Kind's library lines. The unit still joins, so its other references are resolved and judged, and a bitcode unit
+    keeps class Code, so Kind judges it apart from the unsupported line (k11lcb pins both lines for one unit). Rule P judges a
+    library with an E or B line (ruling 67a): the line judges a loaded member, not the input, and ruling 61's skip covers only the
+    two input lines (T-M46's "not a library", T-M47's "no symbol index").
+  - **Record selection (R-D; ruling 67 (6)).** IMPL 20.4 counts an `/entry:` name as referenced, but the closure does not resolve
+    it. An ambiguity record for that name rests on the failed directive, not on its library input (which P still judges).
+  - **Malformed directives stay LLD's** (design §5.1; ruling 54 concerns an input's form). The fatal error that ends Tatara for the
+    process is PLAN G1411. A library's `/subsystem:` or `/stack:` directive is PLAN G1412.
+  - **The import library (G1378).** The windows-x64 link passes `/noimplib`. lld-link wrote `<stem>.<guid>.lib` beside an image that
+    exports a symbol; the image is unchanged (the products check: IR, `irSha256` and executables byte-equal).
+  - Rejected:
+    - an `X` letter for the ignored options;
+    - `/entry:` as a reference only (a library entry point that silently starts the program);
+    - IMPL naming LTO's code-generation references (an over-approximation, and a second Tatara text);
+    - checking LLD's option grammar before the link (an open family);
+    - `_load_config_used` in `RuntimeReferences` (`Inspect` would allow it unjudged);
+    - a `Format` test in the step;
+    - the root on every row (a false error on linux-x64).
