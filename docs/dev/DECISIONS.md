@@ -32968,6 +32968,12 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     (`NativeConfiguration.Reserved` reads `TargetProfile.ReservedSupply`; change W1).
   - Amended by T-M36 (unit B7r5, 2026-11-24): the backend archive is ABI 3's (626a858a...), the `kimi_backend` supply's symbols
     `__chkstk` alone; the bytes above (4ef5b90f...) are the replaced ABI 2 archive's.
+  - Amended by T-M49 (SupplyFacts, 2026-11-25; C-556 B-C5): the build compares one more fact before the link: a compiler supply
+    file's stored facts must name the staged copy's hash (one ordinal compare of two strings already in memory, no hash pass). It
+    binds the facts to the bytes they describe and is not C-434 C1's rejected check, which would repeat the catalog invariant; but a
+    defective Kimi whose resource is not the catalog's bytes (its committed facts naming the catalog's hash) now fails on a fresh
+    stage, as the toolchain's InvalidDataException naming the facts, and on reuse links the catalog's bytes with their facts. The
+    catalog row test still owns the resources' hashes; NativeToolchainTest's facts row owns the facts (T-M49).
 - **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
   `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
   owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
@@ -33101,6 +33107,13 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     semantics' definition mismatch go: the manifest's `definitionSha256` is the catalog's and `Kernel32ImportsTest` compares the
     committed file with the catalog. The development check's `windows_x64` checks (N3-1) ended with the root's copy, and the tool
     rules it shares with setup have one owner, `toolchain.ps1` (PLAN G1228 and G1230 closed).
+  - Amended by T-M49 (SupplyFacts, 2026-11-25; C-556 M-C1): the supplies step also loads each file's stored link facts through the
+    build's loader (`NativeToolchain.SupplyFacts`, never the process's `LinkInputs`) with the hash it just computed, once that hash
+    matched the catalog's: each line is "<row> <supply> <file>: <sha256> (the catalog's), facts matched", and each report entry
+    gains `factsMatched` after `hashMatched`, written false with the entry and set true once the facts load, so a hash mismatch or
+    a facts mismatch leaves it false. A facts mismatch is the toolchain's InvalidDataException (IMPL 20.3.2's "a supply's
+    mismatch"); a malformed facts file is a fault, the report left incomplete. "Facts matched" states that the facts name these
+    bytes and parse; that they are the current Tatara's reading is NativeToolchainTest's facts row's (T-M49), not verify's.
 - **T-M12 `run`'s program in a kill-on-close job: `JobProcess`** (Tatara, 2026-11-22; PLAN G1188, Q-637, D-1045; Major; design
   `artifacts\handoff\tatara\units\G1188\design.md`; the Middle's review C-442, review 2 ACCEPT WITH CONDITIONS; the Front's and the
   Back's consent C-446). Amends T-M5's SP1 limit; closes PLAN G1188.
@@ -33943,6 +33956,14 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   output; supplies from memory (a `tatara.h` ABI).
   - Amended by T-M41 (StagedHold, 2026-11-24): `IsStaged` is `HoldStaged`, which returns the copy held with read sharing only until
     the build ends.
+  - Amended by T-M49 (SupplyFacts, 2026-11-25; C-556 B-C5, B-C6): a defective Kimi whose resource is not the catalog's bytes while
+    its committed facts name the catalog's hash no longer links its resource under its own hash from a fresh stage: on a store miss
+    on a fresh stage the staged copy's hash is not the one its facts name, and the build fails before the link (the toolchain's
+    InvalidDataException, "The compiler's <row> <supply> <file> facts do not describe its bytes."); on a hit it links the catalog's
+    bytes with their facts. The folder's state decides between those two outcomes. One case remains (C-568's N6): if a program input
+    byte-equal to that defective resource was inspected earlier in the process, the store hits on the resource's own hash, its
+    facts are not compared, and the resource links under its own hash. Otherwise T-M35's reading stands; the catalog row, T1 and
+    `toolchain verify` detect such a Kimi.
 - **T-M36 The backend archive holds `__chkstk` alone (ABI 3)** (Tatara, 2026-11-24; the plan's unit B7r5, the owner's decision 24,
   Q-725, D-1205; Major; design `artifacts\handoff\tatara\units\B7\design-b7b.md` Revision 2.5.1 §3.6, §7.2, §7.3; implementation
   review C-506, the Middle's ACCEPT and the Back's ACCEPT WITH CONDITIONS, its C1 met; lands in window W5 with T-M37). Amends T-M8's
@@ -34026,6 +34047,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Rejected: M2 (a PowerShell port of musl's object list: a second copy of musl's build) and M3 (LLVM's Linux archive in WSL: a
     second download) while M1 works; patching musl's sources or `libc.a`; a Linux backend archive for the three helpers (C1); the
     runtime defining the three helpers in IR (compiler-rt's builtins are the canonical owner, and B9e builds them anyway).
+  - Amended by T-M49 (SupplyFacts, 2026-11-25; C-556 M-C1): `src/backend/linux-x64/` also holds each product's `<file>.facts`,
+    embedded as `Kimi.Linux.<file>.facts`; verify's Linux lines end ", facts matched" and their report entries are `{name, row,
+    file, sha256, expectedSha256, hashMatched, factsMatched}` (T-M11 as amended); `build-musl.ps1`'s products are adopted with
+    their regenerated facts.
 - **T-M38 An import's providing library is its reserved supply or its Kotonoha's name; one final symbol table over every import**
   (Tatara, 2026-11-24; unit ProvidingLibrary, PLAN G1326 (D-1181), the Front's C-501 C1 and C2; Q-733, D-1216; Major; design
   `artifacts\handoff\tatara\units\ProvidingLibrary\design.md` Revisions 1-1b; T's rulings 1, 1a, 2-4 and the briefs' rulings 1-5;
@@ -34222,6 +34247,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M48 (NamedProvider, 2026-11-25): the start's referenced form is the named entry's `kind`'s (`__imp_X` for `import`),
     read once per build; the manifest is schema 6, and each declaration names its library (a runtime import's: the row's provider) in
     place of its dllimport form. The step also checks that each declaration's named library defines its form (rule P).
+  - Amended by T-M49 (SupplyFacts, 2026-11-25; PLAN G1374): a compiler supply file's facts are its stored inspection (T-M49),
+    parsed by `Tatara.Facts` and read by `LinkInput.Read` into the same store; only a program's input is inspected at build time.
+    P3's catalog-facts follow-up is done: `libc.a`'s first read per process is under P3's 3 ms gate (the unit's commits state the
+    medians), and G1374 is closed.
 - **T-M46 A library inconsistent with its declared Kind is an error at the link** (Tatara, 2026-11-25; PLAN G1330, D-1192, Q-762;
   Major; design `artifacts\handoff\tatara\units\LinkAmbiguity\kind-design.md` Revision 0 with its corrections 1-3 from LinkAmbiguity
   Revisions 1-3a (`kind-brief-impl.md`); the Middle's C-514; T's ruling 24). IMPL 20.4 makes a native dependency inconsistent with its
@@ -34278,6 +34307,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   Measured cost, accepted by the owner under RQ8 (a) (W-362, dev 8262860a0; O-W362 「(a) 現状で着地」; T-W362c): alone against
   dev 62e531705 cold Hello Bind 1.024 times A', compiler bytes unchanged; Milestone26, Interpolation and every warm row within;
   with Q-772 (R7-M105) and Q-774 the window read 1.047-1.051 (about +3 us of 60 us); O2 PASS, code differs in 0.
+  - Amended by T-M49 (SupplyFacts, 2026-11-25; T's ruling 81): the staged list's record is `NativeToolchain.StagedLibrary(Name,
+    Kind, Sha256, Held, File)`: `File` is the compiler's supply file the input stages (`SupplyFile?`, a program library's null),
+    whose place the ELF line reads (`File?.Place`) and whose stored facts the dependency step reads (T-M49); the place is not kept
+    beside it.
 - **T-M48 An import's symbol is resolved in the library it names** (Tatara, 2026-11-25; PLAN G1333, D-1199, Q-781; Major; design
   `artifacts\handoff\tatara\units\LinkAmbiguity\provider-design.md` Revision 2 with its facts refresh
   `artifacts\handoff\tatara\units\ProvidingLibrary\facts-refresh-20261125.md`; C-517 (the Middle's ACCEPT of Revision 1, the Back's of
@@ -34318,3 +34351,37 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     link's own resolution); (package, name) keys before BU-92 lifts (PLAN G1332 widens them with each declaration's `library`); a
     literal `kernel32` or a per-write lookup for a runtime import's provider; runtime imports as `ExternalFunction`s (a placeholder
     ABI; T's ruling 32).
+
+- **T-M49 A compiler supply's link facts are stored with its catalog** (Tatara, 2026-11-25; PLAN G1374, Q-782, D-1285; Major;
+  design `artifacts\handoff\tatara\units\SupplyFacts\design.md` Revision 1a; design review C-556, the Middle's ACCEPT and the Back's
+  ACCEPT WITH CONDITIONS, met; T's rulings 68, 72, 75, 77, 81, 83, 89 and 90). Amends T-M8, T-M11, T-M35, T-M37, T-M45 and T-M47.
+  - **The data:** each compiler supply file (windows-x64 `kernel32.lib` and `kimi_backend_windows_x64_v1.lib`; linux-x64 `c`'s
+    `crt1.o`, `crti.o`, `libc.a` and `crtn.o`) carries Tatara's inspection of its bytes as `<file>.facts` beside it in
+    `src/backend/<row>/`, embedded as its resource's name plus `.facts`. The form: UTF-8 with `\n` line ends; first the SHA-256
+    (64 lower-case hex digits) of the bytes the writer inspected; then `flags <flag 1> <flag 2>` (each `0` or `1`); then kinds 1, 2,
+    4, 5, 6 and 7 in that order, each a line `<kind> <length of its text in UTF-8 bytes>` and that text as `tatara_inspect`
+    returned it; nothing after kind 7's text. One owner, `Tatara.Inspection` (the six texts and two flags, copied inside Tatara's
+    lock; `Write` and `Read` of the whole file); one parser, `Tatara.Facts(Inspection)`, which `Tatara.Inspect` uses too
+    (`Facts(InspectTexts(...))`). A malformed file is a fault (`InvalidOperationException`), never a lenient read.
+  - **The build:** the dependency step's per-input function (`NativeToolchain.ReadInputFacts`) takes a compiler supply file's facts
+    (the staged input's `StagedLibrary.File`, null for a program's library) from its resource (`SupplyFile.OpenFacts`,
+    `NativeToolchain.SupplyFacts`), requires their first line to be the staged copy's hash (else the toolchain's
+    `InvalidDataException`, "The compiler's <row> <supply> <file> facts do not describe its bytes."), parses them with
+    `Tatara.Facts` and derives them with `LinkInput.Read` into the same store (`LinkInputs`, by the staged hash); a program's input
+    is inspected as before. No supply is inspected at build time, and nothing falls back to an inspection.
+  - **Staleness:** the build pins only the bytes. A changed reading of unchanged bytes (`src/Tatara`, `inspect.cpp` alone
+    included; the pinned LLVM; the facts' codec) is detected only by `NativeToolchainTest.EachCompilerSupplysFactsAreItsInspection`,
+    which re-inspects each committed file with the process's Tatara on every Windows run and requires no message from the
+    inspection, the committed facts byte-equal to that inspection written with the inspected bytes' SHA-256, their first line the
+    catalog's hash, the embedded copy the committed file, and the stored inspection parsed as the fresh one is. A unit that changes
+    `src/Tatara` or the pinned LLVM runs it on the `tatara.dll` built from its change; a unit that changes a supply's bytes or the
+    codec runs it on the toolchain it builds Kimi with; when it fails, whatever the cause, the unit regenerates the facts (the row
+    with `KIMI_SUPPLY_FACTS=write`, Kimi built again, the row in read mode) and commits them with its change. Adoption: new bytes,
+    their catalog hash and their facts land in one commit.
+  - **Verify:** T-M11 as amended: ", facts matched" and `factsMatched` state that the facts name these bytes and parse.
+  - **P3** (design §6): the gate, each row's median of `libc.a`'s first read under 3 ms over 11 rounds, passed in T's timing slot;
+    wall rows are a record. The measurements are in the unit's commits.
+  - Rejected: the step's form (F2: derived data every step change regenerates, a second codec); facts inside `profile.json`;
+    computed when Kimi is built; a per-machine cache; a lazy read; a `kimi toolchain facts` command; inspecting when the facts are
+    missing or stale (a fallback); the facts' hash in the catalog; a Tatara identity in the header (it repeats the row for LLVM and
+    the ABI and misses `inspect.cpp`); verify through `LinkInputs`.
