@@ -23,14 +23,15 @@ public sealed partial class Binding
     private bool HasArithmeticPremise(BoundType type, KimiDeclarationId id, BindingScope scope)
         => this.Library.GetSymbol(id) is { } contract && this.PremiseRefines(type, contract, scope);
 
-    private bool ArithmeticNumericDomain(BoundType type, BindingScope scope, QuerySite site)
+    private bool ArithmeticNumericDomain(BoundType type, KotoKind operation, BindingScope scope, QuerySite site)
     {
         if (this.BuiltinNumeric(type, scope, site))
         {
             return true;
         }
 
-        // A Left premise publishes numeric eligibility without enumerating concrete numeric Types.
+        // SPEC 13.3.3, 13.3.4: a Left premise of this operation's Contract over the Type publishes its numeric eligibility for this
+        // operation without enumerating concrete numeric Types; directly applicable evidence is per operation, so another's publishes none.
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { } environment)
@@ -41,7 +42,7 @@ public sealed partial class Binding
             foreach (var fact in environment.Facts)
             {
                 if (fact.Kind == ConstraintKind.Contract && fact.Contract is { Type.Components: [var counterpart] } contract &&
-                    ArithmeticContractSyntax.Identity(contract) is { } id && KimiLibraryCatalog.IsLeftContract(id) && AssociatedIdentityMatches(type, counterpart) &&
+                    ArithmeticContractSyntax.Identity(contract) == ArithmeticContract(operation, true) && AssociatedIdentityMatches(type, counterpart) &&
                     this.AvailableConstraintFact(environment, fact, out _))
                 {
                     return true;
@@ -81,7 +82,7 @@ public sealed partial class Binding
         // A fixed left provider can give the other operand a bounded expected Type after selection.
         right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
         var rightCore = right is null ? null : this.OperandTerminal(binary.Right, right);
-        var domain = leftCore is not null && this.ArithmeticNumericDomain(leftCore, scope, binary);
+        var domain = leftCore is not null && this.ArithmeticNumericDomain(leftCore, operation, scope, binary);
         if ((!leftLiteral && this.RestsOn(binary.Left, left)) || (!rightLiteral && this.RestsOn(binary.Right, right)))
         {
             // Missing inputs defer provider selection, while successful operand facts retain independent prohibitions. SPEC 13.3.4: a left
