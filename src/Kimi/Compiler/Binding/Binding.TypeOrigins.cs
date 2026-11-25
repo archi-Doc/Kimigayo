@@ -130,8 +130,7 @@ public sealed partial class Binding
             if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
             {
                 // Transitional, R7-E5 (E4c, B1, C1; PLAN's accepted Origin binding on an associated-Type projection, whose unit
-                // settles this arm): a null `origin` reads BindOrigin's or BindOriginName's record (at the expression, or at `use`),
-                // so it keeps `Fail` until R7-E5's per-problem inputs.
+                // deletes this arm): a null `origin` reads BindOrigin's or BindOriginName's record, so the arm keeps `Fail`.
                 return origin is null ? this.Fail(use, BindingFailure.InvalidOrigin) : this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
