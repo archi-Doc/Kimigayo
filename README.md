@@ -2,7 +2,7 @@
 
 Kimigayo is a pre-alpha programming language.
 
-Native execution currently targets Windows x64. See [STATUS.md](docs/STATUS.md) for verified capabilities and remaining limitations.
+Native builds target Windows x64 and Linux x64 (static ELF, built on Windows); `run` and `test` run Windows x64 programs on Windows x64. See [STATUS.md](docs/STATUS.md) for verified capabilities and remaining limitations.
 
 - [Repository layout](#repository-layout)
 - [Getting started](#getting-started)
