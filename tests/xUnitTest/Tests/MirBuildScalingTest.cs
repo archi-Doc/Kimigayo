@@ -124,6 +124,53 @@ public class MirBuildScalingTest(ITestOutputHelper output)
         Assert.Equal(63, branched);
     }
 
+    // R7 plan Z4 (SPEC 7.7.3; the Z23 design's §4.2, §4.4): a value call whose Closure receiver is by case opens a case branch only where
+    // its decision splits the views of the side being built, so a call chain of one decision (`h1(h2(...(hN())))`, each Closure taking
+    // its own `s/T` capture bare) has one branch, the inner calls built once per side, and grows linearly with N (10, 20, 30); six binders
+    // of distinct decisions (64 views) build call k on at most 2^k sides: 63 branches, within the bound. Each body is valid, with no
+    // finding.
+    [Fact]
+    public void ByCaseClosureCallsBuildEachNodeOncePerViewRegion()
+    {
+        var sizes = new[] { 10, 20, 30 };
+        var chains = new long[3];
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            (chains[i], var branches) = Branches(Calls(sizes[i], static _ => ("s/T", "    s is owner or uniq\n    T is Copy\n"), "<s/T>"));
+            Assert.Equal(1, branches);
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: call chain blocks {string.Join(", ", chains)}");
+        Assert.True(chains[2] - chains[1] <= (2 * (chains[1] - chains[0])) + 8, $"call chain blocks {string.Join(", ", chains)}");
+
+        var binders = $"<{string.Join(", ", Enumerable.Range(1, 6).Select(static k => $"s{k}/T{k}"))}>";
+        var (blocks, branched) = Branches(Calls(6, static k => ($"s{k}/T{k}", $"    s{k} is owner or uniq\n    T{k} is Copy\n"), binders));
+        output.WriteLine($"64 views: blocks {blocks}, branches {branched}");
+        Assert.Equal(63, branched);
+    }
+
+    // f calling N Closures in one chain, h1 outermost: Closure k captures the parameter vk bare and takes the result of Closure k + 1, so
+    // its receiver is by case on vk's binder; `kind` gives vk's Type and its binder's premises.
+    private static string Calls(int n, Func<int, (string Type, string Premises)> kind, string binders)
+    {
+        var text = new StringBuilder($"func f{binders}(");
+        text.AppendJoin(", ", Enumerable.Range(1, n).Select(k => $"v{k}: {kind(k).Type}")).Append(") -> ()\n");
+        foreach (var premises in Enumerable.Range(1, n).Select(k => kind(k).Premises).Distinct())
+        {
+            text.Append(premises);
+        }
+
+        var chain = $"h{n}()";
+        for (var k = n; k >= 1; k--)
+        {
+            var parameter = k == n ? string.Empty : "x: ()";
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    var h{k} = func [v{k}] ({parameter}) -> ()\n        let l{k} = v{k}\n        _ = l{k}\n");
+            chain = k == n ? chain : $"h{k}({chain})";
+        }
+
+        return text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    {chain}\n").ToString();
+    }
+
     // The nested shape at a depth: K overwrites, each in the previous one's defer, then each target used.
     private static string Nested(int depth)
     {

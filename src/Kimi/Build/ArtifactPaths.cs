@@ -7,16 +7,17 @@ namespace Kimi.Build;
 /// <summary>One resolved artifact set shared by emission, build records and native execution. It alone names an output's files (IMPL
 /// 20.3.2): for the IR <c>Name.ll</c>, the manifest <c>Name.link.json</c>, the record <c>Name.link.build.json</c> (Begin keeps its lock
 /// beside it) and the stem <c>Name.O0</c> or <c>Name.O2</c> of the native build's own files, among them the folder
-/// <c>Name.O0.native</c> of its staged inputs.</summary>
-internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, string Stem)
+/// <c>Name.O0.native</c> of its staged inputs and the executable, the stem with its row's format's extension (COFF <c>.exe</c>, ELF
+/// none; the Tatara plan's B7b7).</summary>
+internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, string Stem, string ExecutableExtension)
 {
     private const string ManifestSuffix = ".link.json";
 
-    internal string Executable => this.Stem + ".exe";
+    internal string Executable => this.Stem + this.ExecutableExtension;
 
     internal string Native => this.Stem + ".native";
 
-    // A project's output: its OutputPath, bin/<target>/<Name>.ll by default.
+    // A project's output: its OutputPath, bin/<target>/<Name>.ll by default; windows-x64's until B7b8 opens the commands for every row.
     internal static ArtifactPaths Create(Project project)
     {
         if (project.ProjectFile.Optimization is not ("O0" or "O2"))
@@ -31,12 +32,21 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
             throw new InvalidDataException("OutputPath must have a .ll extension.");
         }
 
-        return Create(ir, project.ProjectFile.Optimization);
+        return Create(ir, project.ProjectFile.Optimization, TargetProfile.Windows);
     }
 
-    // The output of the IR ir, a full path with a .ll extension.
-    internal static ArtifactPaths Create(string ir, string optimization)
-        => new(ir, Path.ChangeExtension(ir, ManifestSuffix), RecordOf(ir), Path.ChangeExtension(ir, "." + optimization));
+    // The output of the IR ir, a full path with a .ll extension, for a row: its executable's extension is the row's format's, mapped
+    // once here (IMPL 20.3.2); another format is a broken contract.
+    internal static ArtifactPaths Create(string ir, string optimization, TargetProfile row)
+    {
+        var extension = row.Format switch
+        {
+            "COFF" => ".exe",
+            "ELF" => string.Empty,
+            _ => throw new InvalidOperationException($"No executable format '{row.Format}'."),
+        };
+        return new(ir, Path.ChangeExtension(ir, ManifestSuffix), RecordOf(ir), Path.ChangeExtension(ir, "." + optimization), extension);
+    }
 
     // build --Manifest's IR: the Name.ll beside the manifest Name.link.json, as emit writes the pair, so the manifest's name is its output's;
     // a manifest of another name names no output (G1203).

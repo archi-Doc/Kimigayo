@@ -91,6 +91,8 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     // modifier (23.1.1). The limit's check reads the receiver shape and the modifier only, so it is independent of the declaration's other
     // failures (NotOpen, Private, own Type parameters, a duplicate, no override target by name or receiver mode, 6.4.2) and is reported
     // beside them (23.1.2). Twins: the limit's cause fixed (objref) keeps the other record alone; the other cause fixed keeps the limit.
+    // A declaration that held its failure before a later frame read a failed input keeps the limit too (PLAN G1141; the consultation
+    // frame's one rule): a consulted unresolved parameter Type (tw), a rejected #LibraryImport (d4).
     [Theory]
     [InlineData("d1", "struct S\n    public virtual func f(self: objuniq/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) => () | Unsupported_Kd: public virtual func f(self: objuniq/Self) => ()")]
     [InlineData("d1t", "struct S\n    public virtual func f(self: objref/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objref/Self) => ()")]
@@ -105,19 +107,17 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     [InlineData("d7u", "open struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | Unsupported_Kd: override func f(self: objuniq/Self) -> i32 => 2")]
     [InlineData("om", "open struct S\n    public virtual func f(self: objref/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "MissingOverrideTarget_Kd: override func f(self: objuniq/Self) -> i32 => 2 | Unsupported_Kd: override func f(self: objuniq/Self) -> i32 => 2")]
     [InlineData("omt", "open struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objref/Self) -> i32 => 2", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | MissingOverrideTarget_Kd: override func f(self: objref/Self) -> i32 => 2")]
+    [InlineData("tw", "struct S\n    public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1 | Unsupported_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1 | UnresolvedBinding_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1")]
+    [InlineData("d4", "open struct S\n    #LibraryImport(\"codec\", \"touch\")\n    public virtual func f(self: objuniq/Self) -> i32", "InvalidLibraryImport_Kd: #LibraryImport(\"codec\", \"touch\") | InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) -> i32 | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
     public void TheDispatchLimitIsItsOwnRecordBesideTheDeclarationsOtherFailures(string form, string program, string records)
         => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
 
     // SPEC 6.4.1 and 23.1.2 keep the limit independent here too, but today it is lost: these rows pin that, never as the correct outcome,
     // until R7-E5 judges each problem by its own inputs. An override pending on a failed original (own Type parameters, a base that is not
-    // open) holds a plain Unsupported, which the pending declarations' guard only marks Unresolved, so its limit is not recorded (pg, pn);
-    // a node resting on another check's failed input derives every further Unsupported problem, the limit included: a consulted
-    // unresolved parameter Type (tw), a rejected #LibraryImport (d4).
+    // open) holds a plain Unsupported, which the pending declarations' guard only marks Unresolved, so its limit is not recorded (pg, pn).
     [Theory]
     [InlineData("pg", "open struct S\n    public virtual func f<T>(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "InvalidVirtualDeclaration_Kd: public virtual func f<T>(self: objuniq/Self) -> i32 => 1 | Unsupported_Kd: public virtual func f<T>(self: objuniq/Self) -> i32 => 1")]
     [InlineData("pn", "struct S\n    public virtual func f(self: objuniq/Self) -> i32 => 1\nstruct D : S\n    override func f(self: objuniq/Self) -> i32 => 2", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32 => 1 | InvalidTypeFormation_Kd: struct D : S")]
-    [InlineData("tw", "struct S\n    public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1 | UnresolvedBinding_Kd: public virtual func f(self: objuniq/Self, k: Missing) -> i32 => 1")]
-    [InlineData("d4", "open struct S\n    #LibraryImport(\"codec\", \"touch\")\n    public virtual func f(self: objuniq/Self) -> i32", "InvalidLibraryImport_Kd: #LibraryImport(\"codec\", \"touch\") | InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) -> i32")]
     public void ADispatchLimitAtANodeRestingOnAnotherFailureIsLostUntilE5(string form, string program, string records)
         => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
 

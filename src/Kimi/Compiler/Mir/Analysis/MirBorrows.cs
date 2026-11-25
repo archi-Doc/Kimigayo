@@ -16,10 +16,9 @@
 // reaches a holder the guard leaves undecided, MirWrites.Limit, R4-M147, and the cases of the rules below); OwnershipDepthLimit_Kd where a
 // check's verdict rests on a part past a walk's bound or on a call's retention limit (R4-M153: a borrowed root's Drop, a destroying call,
 // a store W or its referent leaves undecided there, A4's Deep at a call or Drop, and a conflict only drop-liveness gives, at the drop-live
-// holder's declaration); each a limit record at its operation also inside a copy, and in a view PD13 holds (a Closure call acquiring more than the
-// view's case admits, R4-M148) every rejection at its subject, through MirReport; InternalInvariant_Kd at a Value call whose declared
-// signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an
-// operation that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with only
+// holder's declaration); each a limit record at its operation also inside a copy, through MirReport; InternalInvariant_Kd at a Value
+// call whose declared signature does not number its operands (G136, R4-M148); the own-step Warning OwnStepDeparture_Kd at an operation
+// that may end an owning value's stay in its holder while a pointer formed through its own step may still be used, with only
 // an Evaluated fact (SPEC 5.2.1 condition 3; no Loan fact, G673); a Loan conflict caused only by Refuted Origin relations (SPEC 15.6.5) with
 // their problems as Cause facts; UnretainedRawStore_Kd at a safe direct store of an input's own part that its own contract refuses
 // (SPEC 5.2.1 Retained dependencies; MirBorrows.Storing, PLAN G581); and Work, the steps it took (A3 6.2).
@@ -33,7 +32,7 @@
 // - a Place's steps and their classes, E17's Inline row included: MirSteps (R4-M100);
 // - a Place's and a borrow's exact lent position (the storage past each dereference, by the borrow that formed the reference):
 //   MirBorrows.Lent (Z5-F), over MirBorrows.Loans' store record;
-// - the problems' codes and facts, and PD13's held view: MirBorrows.Reports, its fact MirBorrows.CallRows' (R4-M148);
+// - the problems' codes and facts: MirBorrows.Reports;
 // - a Call's rows, a Closure callee's call receiver at the callee operand among them: MirBorrows.CallRows (R4-M148);
 // - rule W, its elements, indirect markers, escape holders and causes: MirBorrows.Causes (R4-M132).
 // - the storing rule, its must-facts (Own, Past, the landing fact) and its producer: MirBorrows.Storing (PLAN G581);

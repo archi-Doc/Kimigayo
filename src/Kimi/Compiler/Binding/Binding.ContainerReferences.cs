@@ -408,7 +408,7 @@ public sealed partial class Binding
 
         if (syntax is ParenthesizedTypeKoto grouped)
         {
-            return Complete(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
+            return this.PublishType(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
         }
 
         if (symbol.Declaration is GroupKoto)
@@ -418,14 +418,14 @@ public sealed partial class Binding
 
             // The qualifier names its group, as BindType names a struct qualifier, so no consumer takes the group's Type as a value.
             syntax.BoundSymbol = symbol;
-            return result is null ? null : Complete(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
+            return result is null ? null : this.PublishType(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
         }
 
         if (symbol.Declaration is ContractKoto)
         {
             // SPEC 8.4, 18.2.1: a Contract reference has no Type role either; the bound Contract reference is formed where every other is,
             // and the qualifier completes with it, as a group's does (a Contract without arguments forms no Type there).
-            return this.BindContractReference(syntax, symbol, scope) is { } contract ? Complete(syntax, contract.Type) : null;
+            return this.BindContractReference(syntax, symbol, scope) is { } contract ? this.PublishType(syntax, contract.Type) : null;
         }
 
         return this.BindType(syntax, scope, context with { SuppressOuter = true });
