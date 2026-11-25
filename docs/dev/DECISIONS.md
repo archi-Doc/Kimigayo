@@ -9292,7 +9292,8 @@ resumed by R4-M86 (2026-10-20).
   superseded by G224 Static Field classification, acquisition legality remains).
 - **BU-22** (amended by R4-M161 (r2-1b): an Owned verdict also carries the Origin it rests on and its parts that are not Proven, a
   proof-scope read like the U fact, and an Owned failure no work judged is a derived failure on its failed operand context (BU-75);
-  amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2 Amendments 4-5)
+  amended by R4-M155: the channel also carries a Callable proof's U fact, under BU's conditions 1-3 and design-r2 Amendments 4-5;
+  amended by R7-M117: it also carries a Refuted Contract answer's selected conformance, the R fact, and EndProof pops a scope's slot)
   (2026-10-21; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of `draft/Sketches/A5 Step
   2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1) The per-declaration component summary is a canonical component
   (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each struct or enum, what its storage adds, in its
@@ -29753,6 +29754,22 @@ Closure row of `MirCases.Branch`).
     k4c and ef2 have one shape, sh1-2 files no reading); `Identified` comparing J1 readings by ReferenceEquals (a third form of the
     meaning); reading every fact in every view; the per-fact term restated at each reader (a third copy of NormalizeProofConstraint's
     early return, CC-36 C4). Supersedes in part R7-M110's counts and R7-M30's Alias-column sentence (below).
+- **R7-M117 A refuted Contract answer carries the conformance it selected; a specification link settles to an unresolved Type
+  (R7-C3 G1386, G1405)** (Back, 2026-11-26; Q-801, D-1304; Major; design `artifacts\units\g1386\design.md`; commits 52275a0425 ..
+  077e844635) SPEC 8.6.1, 8.6.2, 23.1.2. Amends BU-22 (the channel carries a fourth payload).
+  - **Rule.** `ResolveConformance` writes the conformance it selected into its proof scope first (the R fact, `ProofReads.Conformance`);
+    `EndProof` hands it on only from a Refuted answer, first-wins, so a connective's R fact is its first refuted operand's selection,
+    whether or not that conformance's paths hold a rejected implementation, and pops the whole slot (no scope's reads outlive it, so
+    the library layer keeps none: KimiLibraryShapeTest); `CheckConstraints` takes each clause's own into its clause fact, and the
+    candidate record reads that conformance's paths' `RejectedSelfSignature` (`RetainedImplementation`), never selecting again.
+    `SettleSpecificationLinks` moves a link to the specified Type when the clause has no failure of its own and the Type is not
+    Resolved; IsDerived's `InvalidAssociatedType` row reads Invalid or `FailureReported` of that part.
+  - **Removes.** The as-written Contract comparison and its TypeComparisonSites row.
+  - **Rejected.** Selecting again at the failure (R7-M104); comparing the normalized written reference; handing on the rejecting
+    implementation from the path verification; suppressing at `RestOnSpecification`; choosing at the hand-on the first operand whose
+    paths hold a rejected implementation (a second criterion, a copy of the read's test); taking only the R fact at the pop (the other
+    reads of a nested scope stay in its popped slot the same way).
+  - **Open.** A later refuted operand's explanation (PLAN G1427); c3a, c3o, c3w (PLAN G1428, G1429, G1430).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
