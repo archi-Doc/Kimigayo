@@ -1021,8 +1021,11 @@ public sealed partial class Binding
             var scope = this.scopes[this.nodes[n]];
             if (scope.Owner is ContractKoto contract)
             {
-                // SPEC 8.7.3: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does.
+                // SPEC 8.7.3: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does. Its frame is
+                // a separate one at the same element as ExpandScopeContractPremises' (the Contract, PLAN G651 a2).
+                var site = this.OpenQuerySite(contract);
                 this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
+                this.CloseQuerySite(site);
             }
 
             this.ExpandScopeContractPremises(scope);
@@ -1042,9 +1045,12 @@ public sealed partial class Binding
             this.contractFactScratch = new BoundConstraint[Math.Max(count, Math.Max(16, this.contractFactScratch.Length * 2))];
         }
 
-        // Expansion performs no proof or nested scope expansion, so one owned buffer suffices.
+        // Expansion performs no proof or nested scope expansion, so one owned buffer suffices. PLAN G651 a2 (C1, BU-161; IMPL 21.3.2): it
+        // forms the premises in a site frame at the scope's owner where none is open (a caller's frame keeps them), so a Type past the
+        // limit formed there is refused at the owner.
         var facts = this.contractFactScratch;
         environment.Facts.CopyTo(facts);
+        var site = this.OpenQuerySite(scope.Owner);
         try
         {
             for (var i = 0; i < count; i++)
@@ -1058,6 +1064,7 @@ public sealed partial class Binding
         finally
         {
             Array.Clear(facts, 0, count);
+            this.CloseQuerySite(site);
         }
 
         environment.MarkDeclared(); // R7-C2c2 c2-4b: what follows is a use's supply (ConstraintEnvironment.Declares)

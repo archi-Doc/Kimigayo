@@ -473,7 +473,16 @@ public sealed partial class Binding
         }
     }
 
+    // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): a clause binds in a site frame at itself where none is open (OpenQuerySite), so a Type past
+    // the limit its subject or requirement forms (a Contract reference's instance) is refused at the clause.
     private void BindConstraint(IsKoto clause, BindingScope scope)
+    {
+        var site = this.OpenQuerySite(clause);
+        this.BindConstraintClause(clause, scope);
+        this.CloseQuerySite(site);
+    }
+
+    private void BindConstraintClause(IsKoto clause, BindingScope scope)
     {
         if (IsRecovery(clause, out _))
         {

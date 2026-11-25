@@ -273,7 +273,11 @@ public sealed partial class Binding
             var state = scope.Owner.BindingState;
             var contradiction = this.ValidateArithmeticDirections(scope);
             changed |= state != scope.Owner.BindingState;
+            // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the identity classes form in a site frame at the owner, the record's node, where none
+            // is open, so a Type past the limit formed there is refused at it (shared with InvalidateProjectionCertificates' rounds).
+            var site = this.OpenQuerySite(scope.Owner);
             changed |= this.RecordIdentityPremiseError(scope, mode);
+            this.CloseQuerySite(site);
             var judged = this.JudgeFacts(scope, environment, environment, mode, ref changed);
 
             // SPEC 8.2.3 (F's C2 ruling 282, the owner's O-296 (a)): a premise error is reported where the premises causing it first
