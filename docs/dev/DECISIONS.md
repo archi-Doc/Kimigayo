@@ -1633,8 +1633,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Deref the candidate forms no Loan, E3); a γ id table per candidate (the local index is the key).
   - Amendment (2026-11-04, U-T2): a holder whose next use lies past the access's chain is witnessed by its declaration as a `Store`
     (the value retaining the Loan, DIAGNOSTICS A6), no longer by none, which dropped the `loan` the old path gave (an `if` or block
-    join, a loop head or an inline copy's join before the use); one rule in `MirBorrows.Witnesses.Facts`, a drop slot's witness (R4-M153's "none past the chain")
-    included; local 0 keeps none, its next use being the caller's (R4-M156).
+    join, a loop head or an inline copy's join before the use); one rule in `MirBorrows.Witnesses.Facts`; local 0 keeps none, its next use being the caller's (R4-M156).
+    The drop tier gives no witness: its records are R4-M153's depth limits, which have no fact, and its via is the holder,
+    never a drop slot (G396 (11), h3b-ut2 N2: `MirBorrows.HolderLocal`'s drop-slot arm deleted).
 - **R4-M61** (2026-10-17; PLAN G96; supersedes R4-M42's `MirBuilder.Broken`; its "which the builder replaces whole" and "its children
   are not published as evaluated and a closure inside it is not built" are superseded by R5-M63 for the children Binding resolved) A
   published Op guarantees the Binding facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`,
@@ -5058,8 +5059,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `Report` records such a candidate, and `Ended` such a marker, as the depth limit at the drop-live holder's declaration. The readers that
     only ask whether a candidate is taken (the effect rule's Limit loop, the initialization proof) read both tiers. An own-step entry the
     drop tier finds is tagged apart (`OwnSteps`): a departure only it keeps open keeps SPEC 5.2.1 condition 3's Warning, as the base gives
-    it, with its witness by the one rule (the holder's next use in the location's chain, here its drop slot's; none past the chain, as the
-    base's records at depth 10; superseded by R4-M57's amendment of 2026-11-04: the holder's declaration), beside the depth limit at
+    it (its witness superseded by R4-M193 (G673): the Warning carries no Loan fact), beside the depth limit at
     the holder's declaration (`DroppedDeparture`). A location's departure is the one
     a counted pass gives where one stands; a departure only the drop tier gives is recorded only where none does (revision 2). Amended
     2026-11-06 (PLAN G272 N2): a real candidate, marker or departure is the decided answer and the drop tier's the Deep one; each site
