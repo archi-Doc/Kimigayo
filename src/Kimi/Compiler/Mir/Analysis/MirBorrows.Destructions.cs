@@ -156,7 +156,7 @@ internal sealed partial class MirBorrows
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
             this.Work++;
-            this.dropRows.Add(types.Retains(destructor, types.Synthesized(destructor, type, [], []), definition));
+            this.dropRows.Add(types.Retains(destructor, types.Synthesized(destructor, type, [], []), definition, []));
             return MirTypes.Parts(types, type, ref composer, depth);
         }
 

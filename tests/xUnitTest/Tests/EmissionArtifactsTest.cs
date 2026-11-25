@@ -88,6 +88,50 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.NotEmpty(PublicationFailure(c));
     }
 
+    // The Tatara plan's B7b7 (IMPL 20.4; design §5 row 18; O8): a program library's input has its row's extension, checked under the
+    // row's key even when unused, one text per row: a Linux pair takes native/codec.a and refuses native/codec.lib; Windows' text names
+    // its triple and .lib.
+    [Theory]
+    [InlineData("x86_64-unknown-linux-musl", "native/codec.a", null)]
+    [InlineData("x86_64-unknown-linux-musl", "native/codec.lib", "NativeLibraries inputs for x86_64-unknown-linux-musl must be .a files.")]
+    [InlineData("x86_64-pc-windows-msvc", "native/codec.a", "NativeLibraries inputs for x86_64-pc-windows-msvc must be .lib files.")]
+    public void ANativeInputHasItsRowsExtension(string target, string input, string? failure)
+    {
+        var row = TargetProfile.Find(target)!;
+        var c = MinimalEmissionTest.Analyze(row, "::Kimi.Console.writeLine(\"Hello, world!\")", "Hello.kimi", OutputKind.Application);
+        c.Project.Directory = this.directory;
+        c.Project.ProjectFile.NativeLibraries[target] = new() { ["codec"] = new() { Kind = "static", Input = input } };
+        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "Hello.ll"), "O2", row);
+        Assert.Equal(failure is null, EmissionArtifacts.Publish(c, paths));
+        if (failure is not null)
+        {
+            Assert.Contains(failure, PublicationFailure(c), StringComparison.Ordinal);
+        }
+    }
+
+    // The Tatara plan's B7b7 (design §3.7, §3.11; T's rulings D4, D5, O7 and 10): a Linux pair's manifest is the row's: its head without
+    // backendSupport, its entry the generation result's (main on the C path, __kimi_start without a library) and no subsystem, and its
+    // libraries in Ordinal order with c, the row's C runtime, listed only when the module requires it, its entry the compiler's
+    // (resolution toolchain, no input): Ffi's lists c before codec, Hello's none.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ALinuxManifestIsTheRows(bool ffi)
+    {
+        var source = ffi
+            ? "group Codec\n    #LibraryImport(\"codec\", \"codec_add\")\n    public func add(a: i32, b: i16) -> i32\npublic func main()\n    require Codec.add(40, -2) == 38 else => $abort(\"add\")\n"
+            : "::Kimi.Console.writeLine(\"Hello, world!\")";
+        var paths = LinuxPair.Publish(this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
+        var root = manifest.RootElement;
+        Assert.Same(TargetProfile.Linux, NativeToolchain.ValidateManifest(root));
+        Assert.False(root.TryGetProperty("backendSupport", out _));
+        Assert.Equal((ffi ? "main" : "__kimi_start", JsonValueKind.Null), (root.GetProperty("entry").GetString(), root.GetProperty("subsystem").ValueKind));
+        Assert.Equal(
+            ffi ? ["c static resolution=toolchain", "codec static input=" + Path.Combine("..", "native", "codec.a")] : [],
+            root.GetProperty("libraries").EnumerateArray().Select(static x => string.Join(' ', x.EnumerateObject().Skip(1).Select(static y => y.Name == "kind" ? y.Value.GetString() : $"{y.Name}={y.Value.GetString()}")).Insert(0, x.GetProperty("name").GetString() + " ")));
+    }
+
     [Theory]
     [InlineData(null, "codec.dll")]
     [InlineData(null, "/DEFAULTLIB:evil.lib")]
@@ -514,7 +558,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\npublic func main()\n" + Call);
         File.WriteAllText(Path.Combine(this.directory, "t.kimi"), "#Test\nfunc lastErrorIsRead()\n" + Call + "    $expect(true)\n");
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, file, out var project));
-        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "tests.ll"), project.ProjectFile.Optimization);
+        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "tests.ll"), project.ProjectFile.Optimization, TargetProfile.Windows);
         Assert.True(test
             ? project.PublishArtifacts(Assert.IsType<Compilation>(project.PrepareTests(TestContext.Current.CancellationToken)), paths, null)
             : await project.Generate(TestContext.Current.CancellationToken));

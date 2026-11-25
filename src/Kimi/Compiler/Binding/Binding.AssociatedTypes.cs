@@ -387,7 +387,7 @@ public sealed partial class Binding
         Complete(syntax.Right, projection);
         if (!ReferenceEquals(receiver, syntax.Left))
         {
-            Complete(syntax.Left, type);
+            this.PublishType(syntax.Left, type);
         }
 
         return this.NormalizedProjection(projection, scope, applyingOrigins);
@@ -746,19 +746,28 @@ public sealed partial class Binding
         {
             if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
             {
+                this.ValidateInferenceRead(batch, binding);
+
                 // SPEC 8.5.5, 8.6.3 (PLAN G1001): a formation reads an inferred binding as its normal form, a requirement's evidence as its
                 // sources wrote it (InferredEvidence). SPEC 6.2, DECISIONS BU-128: one on an inline cycle names no Type to either reader
                 // after the failed Binding, as a written one does (its failed specification fails the conformance's environment, so its
                 // path's conditions are Error).
-                this.InferAssociatedTypes(batch);
-                return batch.State != 2 || ReferenceEquals(batch, this.collectingAssociated) || binding.InferenceConflict || binding.InlineCycle ||
+                if (this.inferenceRequest >= 0 && batch.Component == this.inferenceRequest && this.inferenceBindingIndex.TryGetValue(binding, out var heldIndex))
+                {
+                    // R7-C4 (SPEC 8.5.5, 8.3.3): a binding of the component under request is its answer under the reading run's hold, a
+                    // Type only when determined there; inside a run every answer is Provisional (AssociatedEvidencePending).
+                    return this.HeldValue(binding, this.collectingAssociated?.Hold ?? this.inferenceEmptyHold) is { State: HeldState.Type } held ? held.Type : null;
+                }
+
+                return !batch.Published || binding.InferenceConflict || binding.InlineCycle ||
                     binding.Inferred is null ? null : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
             }
 
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
         }
 
-        if (binding.State != 0)
+        var formed = binding.State == 0;
+        if (!formed)
         {
             binding.State = binding.State == 1 ? (byte)4 : binding.State; // Revisited while it is being resolved.
             pending |= binding.State == 4;
@@ -779,7 +788,16 @@ public sealed partial class Binding
 
         // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence reads the binding as its first candidate formed in
         // that evidence, so each part rests on its own route there (HeldPending), through every associated Type it names.
-        return binding.State != 2 ? null : this.FormationRead ? binding.Result : this.ContractType(binding.Candidates[0], path.Scope, this.ConformanceSelf(path));
+        var read = binding.State != 2 ? null : this.FormationRead ? binding.Result : this.ContractType(binding.Candidates[0], path.Scope, this.ConformanceSelf(path));
+        if (formed && this.inferenceRequest >= 0)
+        {
+            // R7-C4 design R4: a binding formed inside an inference request is that read's (it may read a held answer), never kept; the
+            // reset loop after the requests forms it finally.
+            binding.State = 0;
+            binding.Result = null;
+        }
+
+        return read;
     }
 
     // The binding's formation from its candidates (ResolveAssociated): one Type, or none.

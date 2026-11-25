@@ -171,7 +171,7 @@ if (-not $NativeCompiler) {
         $output = Invoke-Kimi @('toolchain', 'verify', '--Report', $verifyReport)
         $verified = Get-Content -LiteralPath $verifyReport -Raw | ConvertFrom-Json
         if (-not $output.Contains("Tatara: build $($verified.tatara.build), ABI $($verified.tatara.abi), LLVM $($catalog.llvmVersion)") -or
-            -not $output.Contains("kernel32: $($catalog.kernel32.sha256) (the catalog's)") -or -not $output.Contains("kimi_backend: $($catalog.artifactSha256) (the catalog's)") -or
+            -not $output.Contains("windows-x64-v1 kernel32 kernel32.lib: $($catalog.kernel32.sha256) (the catalog's)") -or -not $output.Contains("windows-x64-v1 kimi_backend kimi_backend_windows_x64_v1.lib: $($catalog.artifactSha256) (the catalog's)") -or
             -not $output.Contains('Toolchain verification passed.') -or $verified.status -cne 'passed' -or
             (@($verified.PSObject.Properties.Name) -join ',') -cne 'status,compilerVersion,llvmVersion,tatara,supplies,seconds') { throw "toolchain verify must check only what Kimi carries: $output" }
         Remove-Item -LiteralPath (Join-Path $alone 'tatara.dll')

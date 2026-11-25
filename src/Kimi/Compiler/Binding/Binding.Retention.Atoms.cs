@@ -37,13 +37,13 @@ public sealed partial class Binding
         Captured = 2,
     }
 
-    // SPEC 15.8.2 (DECISIONS R4-M148): a Closure contract's input 0, its call receiver as its body is checked against it: `R/Env during ρ`,
-    // R the strongest receiver (BoundClosure.Receiver), Env the callee's Closure Type, whose environment the walk reads as the body sees it
-    // (TyCtxt.ClosureEnvironment), and ρ its receiver atom (ClosureValueSlot); Env by value under `owner/Self`. The MIR body's receiver
-    // local has the same Type over the definition's environment, without ρ (MirBuilder).
-    internal BoundType ClosureReceiver(FunctionKoto closure, BoundType callee)
-        => closure.ClosureDefinition!.Receiver is var receiver && receiver == SemanticsKind.Owner ? callee
-            : this.types.Reference(receiver, callee, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
+    // SPEC 15.8.2, 7.7.3 (DECISIONS R4-M148, Z4-M): a Closure contract's input 0, its call receiver: `R/Env during ρ`, R the `receiver`
+    // the callee's Type admits (its one reader, TyCtxt.Retains, passes TyCtxt.ClosureReceiverIn of it: a view's case Type its case's),
+    // Env the callee's Closure Type, whose environment the walk reads as the body sees it (TyCtxt.ClosureEnvironment), and ρ its receiver
+    // atom (ClosureValueSlot); Env by value under `owner/Self`. The body is checked once, against the strongest receiver
+    // (BoundClosure.Receiver), which the MIR body's receiver local has over the definition's environment, without ρ (MirBuilder).
+    internal BoundType ClosureReceiver(FunctionKoto closure, SemanticsKind receiver, BoundType callee)
+        => receiver == SemanticsKind.Owner ? callee : this.types.Reference(receiver, callee, this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot));
 
     // A callable Type, which stores nothing (SPEC 15.2.3): no position below it is storage a call writes (RetentionParts, the hold walk).
     private static bool IsCallable(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;

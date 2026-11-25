@@ -566,8 +566,8 @@ public sealed partial class RetentionTest
         Assert.Equal(["limit", "result {0 Value}"], Calls(c, "init"));
         Assert.Equal(["limit", string.Empty], Calls(c, "inspect"));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).First(static x => x.Target.Name == "inspect");
-        Assert.Same(c.Types.Retains(call.Target, c.Types.SubstOf(call), null), c.Types.Retains(call.Target, c.Types.SubstOf(call), null));
-        Assert.Throws<InvalidOperationException>(() => c.Types.Retains(call.Target, c.Types.SubstOf(call), null).Result);
+        Assert.Same(c.Types.Retains(call.Target, c.Types.SubstOf(call), null, []), c.Types.Retains(call.Target, c.Types.SubstOf(call), null, []));
+        Assert.Throws<InvalidOperationException>(() => c.Types.Retains(call.Target, c.Types.SubstOf(call), null, []).Result);
     }
 
     // SPEC 4.8.1, 4.8.2, 15.6.4 step 4: a Slice or UniqSlice input is a borrow of its elements, its outer Origin Value and the elements'
@@ -1095,7 +1095,7 @@ public sealed partial class RetentionTest
             "    let first = iterator.next()\n    let second = iterator.next()\n    return (first@move, second@move)\n");
         Assert.Equal(["result {0 Content}, store 0: own {0 Content}, reached {0 Content}", "result {0 Content}, store 0: own {0 Content}, reached {0 Content}"], Calls(c, "next"));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).First(static x => x.Target.Name == "next");
-        Assert.Equal("result {0 Value}, store 0: own {0 Content}, reached {0 Content}", Show(c.Types.Retains(call.Target, c.Types.SubstOf(call), null)));
+        Assert.Equal("result {0 Value}, store 0: own {0 Content}, reached {0 Content}", Show(c.Types.Retains(call.Target, c.Types.SubstOf(call), null, [])));
     }
 
     // SPEC 5.7 Calls, 15.6.4 (D6, D15; design-final §6): a raw result layer with an Origin retains as that borrow would; one without
@@ -1401,7 +1401,7 @@ public sealed partial class RetentionTest
     public void StorageOperationsRetainTheirRawArguments(string path, string expected)
     {
         var c = Bind(string.Empty);
-        Assert.Equal(expected, Show(c.Types.Retains(LibrarySource.Symbol(c.Library, path), null, null)));
+        Assert.Equal(expected, Show(c.Types.Retains(LibrarySource.Symbol(c.Library, path), null, null, [])));
     }
 
     // SPEC 15.6.4 (OQ-3, DECISIONS R4-M116; G160-2c): a raw argument is retained as a borrowed one, its pointee as the referent. An Origin
@@ -1837,7 +1837,7 @@ public sealed partial class RetentionTest
     public void AConsumingCallRetainsItsArgumentsCleanup()
     {
         var c = Bind(Writer + "func consumeW(x: Writer) => ()\nfunc consume<T>(x: T) => ()\nfunc at(w: Writer, v: Writer)\n    consumeW(w@move)\n    consume(v@move)\n");
-        var drop = Show(c.Types.Retains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!, null, null));
+        var drop = Show(c.Types.Retains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!, null, null, []));
         Assert.Equal("store 0: own {0 Chain}, reached {0 Chain} untied", drop);
         Assert.Equal([drop, drop], [.. Calls(c, "consumeW"), .. Calls(c, "consume")]);
     }
@@ -2074,8 +2074,8 @@ public sealed partial class RetentionTest
         var drop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!;
         var at = Function(c, "at").SymbolOf()!;
         var layer = c.Types.Signature(at, null, 0, out _)!.Components[0];
-        Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null)), Declared(c, "flush")));
-        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, [], []), at)), Calls(c, "flush").Single()));
+        Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null, [])), Declared(c, "flush")));
+        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, [], []), at, [])), Calls(c, "flush").Single()));
     }
 
     // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47): the library's drops retain over their destruction receivers as their contracts say: the owning
@@ -2086,7 +2086,7 @@ public sealed partial class RetentionTest
     {
         var c = Bind(string.Empty);
         var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
-            .Select(x => $"{x.Parent!.SymbolOf(c)!.Name}: {Show(c.Types.Retains(x.SymbolOf(c)!, null, null))}");
+            .Select(x => $"{x.Parent!.SymbolOf(c)!.Name}: {Show(c.Types.Retains(x.SymbolOf(c)!, null, null, []))}");
         Assert.Equal(
             ["ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}", "HeapBuffer: "],
             drops);
@@ -2220,7 +2220,7 @@ public sealed partial class RetentionTest
                 }
 
                 var retention = value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, Definition(c.Binding, node))
-                    : c.Types.Retains(callee, c.Types.SubstOf(call), Definition(c.Binding, node));
+                    : c.Types.Retains(callee, c.Types.SubstOf(call), Definition(c.Binding, node), []);
                 var count = value ? call.DeclaredSignature.Components[0].Components.Count : Slots(c.Types, callee);
                 Assert.True(
                     retention.IsLimit || (retention.Result.Kinds.Length == count &&
@@ -2240,14 +2240,14 @@ public sealed partial class RetentionTest
         var c = Bind("func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nvar a = 1\nvar b = 2\nvar t = true\n" +
             "let p = first(a@ref, b@ref)\nlet q = first(b@ref, a@ref)\nlet r = first(t@ref, t@ref)\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).Where(static x => x.Target.Name == "first").ToArray();
-        var retentions = calls.Select(x => c.Types.Retains(x.Target, c.Types.SubstOf(x), null)).ToArray();
+        var retentions = calls.Select(x => c.Types.Retains(x.Target, c.Types.SubstOf(x), null, [])).ToArray();
         Assert.NotSame(c.Types.SubstOf(calls[0]), c.Types.SubstOf(calls[1]));
         Assert.Same(retentions[0], retentions[1]);
         Assert.NotSame(retentions[0], retentions[2]);
-        Assert.NotSame(retentions[0], c.Types.Retains(calls[0].Target, null, null));
-        Assert.Same(c.Types.Retains(calls[0].Target, null, null), c.Types.Retains(calls[0].Target, null, null));
+        Assert.NotSame(retentions[0], c.Types.Retains(calls[0].Target, null, null, []));
+        Assert.Same(c.Types.Retains(calls[0].Target, null, null, []), c.Types.Retains(calls[0].Target, null, null, []));
         c.Binding.Bind(BindingMode.Final);
-        Assert.Same(retentions[0], c.Types.Retains(calls[0].Target, c.Types.SubstOf(calls[0]), null));
+        Assert.Same(retentions[0], c.Types.Retains(calls[0].Target, c.Types.SubstOf(calls[0]), null, []));
     }
 
     // R7-N5 B8b (DECISIONS BU-220): a Value callee's retention is one per declared signature and owner, an item's declaration or a
@@ -2327,10 +2327,10 @@ public sealed partial class RetentionTest
             {
                 var call = CallPlan.Of(c.Binding, node, 0)!;
                 _ = call.Kind == CalleeKind.Value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, definition)
-                    : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
+                    : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition, []);
             }
 
-            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, [], []), null);
+            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, [], []), null, []);
             _ = c.Types.RetainsErasedDestruction(part, gen);
         }));
     }
@@ -2359,7 +2359,7 @@ public sealed partial class RetentionTest
             var c = Bind($"func f({inputs}) -> i32\n{clauses}    return 0\n");
             var metrics = new OriginProofMetrics();
             c.Binding.OriginProofMetrics = metrics;
-            var rows = c.Types.Retains(Function(c, "f").SymbolOf()!, null, null).Writes.ToArray().Sum(static x => x.Own.Kinds.ToArray().Zip(x.All.Kinds.ToArray()).Count(static y => (y.First | y.Second) != RetentionKind.None));
+            var rows = c.Types.Retains(Function(c, "f").SymbolOf()!, null, null, []).Writes.ToArray().Sum(static x => x.Own.Kinds.ToArray().Zip(x.All.Kinds.ToArray()).Count(static y => (y.First | y.Second) != RetentionKind.None));
             Assert.Equal(size * (size + 1) / 2, rows);
             Assert.Equal((size, 0L), (metrics.Closures, metrics.BoundViolations));
             Assert.True(metrics.Insertions + metrics.Activations <= (2 * rows) + (4 * size), $"{metrics.Insertions + metrics.Activations} for {rows} rows at {size}");
@@ -2367,7 +2367,7 @@ public sealed partial class RetentionTest
     }
 
     // A function's own contract, with no call substitution.
-    internal static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null));
+    internal static string Declared(Compilation c, string name) => Show(c.Types.Retains(Function(c, name).SymbolOf()!, null, null, []));
 
     // The records of a call that may store what a `nest` value holds by value, then a write under the stored borrow (SPEC 15.6.4).
     private static string NestRecords(string nest)
@@ -2444,7 +2444,7 @@ public sealed partial class RetentionTest
 
     private static IEnumerable<(CallPlan Call, CallRetention Retention)> Retentions(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
-            .Select(x => (x.Call!, c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(c.Binding, x.Node))));
+            .Select(x => (x.Call!, c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(c.Binding, x.Node), [])));
 
     // Each Value call over its declared Callable signature, in its definition, in source order.
     private static string[] ValueCalls(Compilation c) => [.. ValueRetentions(c).Select(Show)];

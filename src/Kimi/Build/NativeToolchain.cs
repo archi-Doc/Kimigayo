@@ -16,11 +16,12 @@
 // checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).
-// Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
-// Compilation.Diagnostics, and its result Compilation.Generated (GeneratedModule: the output kind, the required libraries, the
-// external declarations, each an ExternalFunction read for its Symbol and DllImport, and the runtime's imports, symbols; R9-B1,
-// LinkAmbiguity); the enum OutputKind, which project
-// configuration states too (ProjectFile.OutputKind); the target profile TargetProfile.Windows; CompilerRelease; CompilationBuildMetadata, which
+// Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project,
+// Compilation.Diagnostics and Compilation.TargetTriple (its row), and its result Compilation.Generated (GeneratedModule: the output
+// kind, the required libraries, the external declarations, each an ExternalFunction read for its Symbol and DllImport, the runtime's
+// imports, symbols, and the module's entry; R9-B1, LinkAmbiguity, the Tatara plan's B7b7); the enum OutputKind, which project
+// configuration states too (ProjectFile.OutputKind); the target table's rows (TargetProfile: a pair's row is its compilation's at
+// publication and its manifest's target's at the native build; a project's paths are windows-x64's until B7b8); CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and of Misc JobProcess,
 // Kimi's launcher for the programs it runs, in which the run's program runs (PLAN G1188).

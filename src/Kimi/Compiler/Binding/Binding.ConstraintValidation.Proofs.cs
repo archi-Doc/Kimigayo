@@ -78,7 +78,7 @@ public sealed partial class Binding
 
     // The site frame the outermost proof scope opened at its judgment's node (BeginProof, OpenQuerySite), closed with that scope (EndProof);
     // null: none opened.
-    private (int Start, Koto? Node)? proofSite;
+    private (int Start, Koto? Node, bool Held)? proofSite;
 
     // What the proof scope in progress read: the slot of the channel's stack at its depth.
     private ref ProofReads ScopeReads => ref this.proofScopes[this.proofNesting];
@@ -618,7 +618,7 @@ public sealed partial class Binding
         }
 
         // The declaration's refusal of `reached`: each limit a declaration reaches is its own record (SPEC 23.1.2: independent). Its one
-        // `other` slot covers exactly the two limits RefuseProof serves (PremiseClosureLimit, TypeHeightLimit); a third limit needs a
+        // `other` slot covers exactly the two limits RefuseProof serves (AnalysisLimit, TypeHeightLimit); a third limit needs a
         // slot of its own (F's C8 ruling 29, note).
         internal Refusal Of(BindingFailure reached) => reached == limit ? this : (this.other ??= new(binding, reached));
 

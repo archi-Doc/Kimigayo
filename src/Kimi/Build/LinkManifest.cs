@@ -2,10 +2,11 @@
 
 // Owns the link manifest's fixed fields and its readers (schema 5, whose external declarations list the runtime's imports too,
 // LinkAmbiguity; IMPL 20.3.2 leaves the format implementation-defined; R9-B1): the
-// fixed fields, the profile and backend supply identity this compiler states, as one row table that publication writes (WriteFixed) and
-// the native build checks (CheckFixed) in the same order; the libraries entries of the compiler's supplies (IMPL 20.4's reserved names,
+// fixed fields, each target row's head (the profile from the row's columns, then the backend supply's identity on a row that reserves
+// it; the Tatara plan's B7b7), built once per row as one table that publication writes for the compilation's row (WriteFixed) and the
+// native build checks in the same order for the row the manifest's target names, which it returns (CheckFixed); the libraries entries of the compiler's supplies (IMPL 20.4's reserved names,
 // ToolchainIdentity.Supplies), each written from its row (WriteCompilerSupply) and checked against it (CheckCompilerSupply); and the
-// readers (Field, Text, OptionalText, Items, Flag), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
+// readers (Field, Text, OptionalText, NullableText, Items, Flag), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
 // number into InvalidDataException at the read (form J, the manifest's share of PLAN G983). The variable fields (optimization, the input,
 // the output section, the libraries array and its programs' entries) are written by EmissionArtifacts, which orders and fills the
 // libraries array, and read, through these readers, by NativeToolchain.Build. A removed member (Removed: the toolchain, Tatara B6b5) is
@@ -28,18 +29,10 @@ namespace Kimi.Build;
 /// <summary>The link manifest's fixed fields, the compiler's supplies' entries and the readers (R9-B1).</summary>
 internal static class LinkManifest
 {
-    // The fixed fields in writing and checking order, by path, each a string, an Int32 or a string list.
-    private static readonly (string Path, object Value)[] Rows =
+    // The backend supply's identity rows, which a row's head carries when the row reserves the backend supply (windows-x64; linux-x64 has
+    // no backend archive, C1).
+    private static readonly (string Path, object Value)[] BackendRows =
     [
-        ("schemaVersion", 5),
-        ("target", TargetProfile.Windows.Target),
-        ("codegen.profile", TargetProfile.Windows.Name),
-        ("codegen.llvmVersion", ToolchainIdentity.LlvmVersion),
-        ("codegen.cpu", TargetProfile.Windows.Cpu),
-        ("codegen.features", new[] { TargetProfile.Windows.Features }),
-        ("codegen.relocationModel", TargetProfile.Windows.RelocationModel),
-        ("codegen.codeModel", TargetProfile.Windows.CodeModel),
-        ("codegen.unwindTables", TargetProfile.Windows.UnwindTables),
         ("backendSupport.packageId", ToolchainIdentity.BackendPackageId),
         ("backendSupport.abiVersion", ToolchainIdentity.BackendAbiVersion),
         ("backendSupport.packageVersion", ToolchainIdentity.BackendVersion),
@@ -48,18 +41,23 @@ internal static class LinkManifest
         ("backendSupport.providedSymbols", ToolchainIdentity.Backend.Symbols),
     ];
 
+    // Each row's head, built once, in TargetProfile.Rows' order: the fixed fields in writing and checking order, by path, each a string,
+    // an Int32 or a string list; the common rows from the row's columns, then its compiler-supply identity rows.
+    private static readonly (string Path, object Value)[][] Heads = [.. TargetProfile.Rows.Select(static row => Head(row))];
+
     // The root members this compiler no longer accepts, each with its text, checked after the fixed fields. A later removal adds a row.
     private static readonly (string Name, string Text)[] Removed =
     [
         ("toolchain", "The link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."),
     ];
 
-    /// <summary>Writes the fixed fields, the manifest's head, in the table's order.</summary>
+    /// <summary>Writes the fixed fields, the row's head, in the table's order.</summary>
     /// <param name="json">The manifest's writer, inside its root object.</param>
-    internal static void WriteFixed(Utf8JsonWriter json)
+    /// <param name="row">The compilation's target row.</param>
+    internal static void WriteFixed(Utf8JsonWriter json, TargetProfile row)
     {
         var open = ReadOnlySpan<char>.Empty;
-        foreach (var (path, value) in Rows)
+        foreach (var (path, value) in Heads[Array.IndexOf(TargetProfile.Rows, row)])
         {
             var section = Section(path);
             if (!section.SequenceEqual(open))
@@ -104,13 +102,21 @@ internal static class LinkManifest
         }
     }
 
-    /// <summary>Checks that a manifest states every fixed field as this compiler writes it, in the table's order, and no removed member.</summary>
+    /// <summary>Checks that a manifest's target names a row of the target table and that the manifest states every field of that row's
+    /// head as this compiler writes it, in the table's order, and no removed member.</summary>
     /// <param name="root">The manifest's root.</param>
-    /// <exception cref="InvalidDataException">The first field that is missing, of another kind or another value; else the first removed
-    /// member.</exception>
-    internal static void CheckFixed(JsonElement root)
+    /// <returns>The manifest's row.</returns>
+    /// <exception cref="InvalidDataException">The target that is missing, of another kind or no row's; else the first field that is
+    /// missing, of another kind or another value; else the first removed member.</exception>
+    internal static TargetProfile CheckFixed(JsonElement root)
     {
-        foreach (var (path, value) in Rows)
+        var index = Array.IndexOf(TargetProfile.Rows, TargetProfile.Find(Text(root, "target")));
+        if (index < 0)
+        {
+            throw new InvalidDataException("The link manifest's 'target' is not this compiler's. Re-emit the manifest.");
+        }
+
+        foreach (var (path, value) in Heads[index])
         {
             var kind = value switch
             {
@@ -139,6 +145,8 @@ internal static class LinkManifest
                 throw new InvalidDataException(text);
             }
         }
+
+        return TargetProfile.Rows[index];
     }
 
     /// <summary>Writes a compiler's supply's libraries entry: its name, its kind and its row's identifying fields, in that order.</summary>
@@ -158,14 +166,16 @@ internal static class LinkManifest
     }
 
     /// <summary>Checks that a libraries entry naming a compiler's supply is the one this compiler writes: its kind and every identifying
-    /// field equal and no input; any other member is ignored, a sha256 being an assertion the native build checks.</summary>
+    /// field equal, no input, and no sha256 on a supply of several files; any other member is ignored, a sha256 being an assertion the
+    /// native build checks against the supply's one file.</summary>
     /// <param name="entry">The libraries entry.</param>
     /// <param name="supply">The row of the supply the entry names.</param>
     /// <exception cref="InvalidDataException">The entry is not this compiler's.</exception>
     internal static void CheckCompilerSupply(JsonElement entry, CompilerSupply supply)
     {
         if (!ArtifactFiles.States(entry, ("kind", supply.Supply.Kind)) || !ArtifactFiles.States(entry, supply.Entry) ||
-            ArtifactFiles.Member(entry, "input").ValueKind != JsonValueKind.Undefined)
+            ArtifactFiles.Member(entry, "input").ValueKind != JsonValueKind.Undefined ||
+            (supply.Files.Length != 1 && ArtifactFiles.Member(entry, "sha256").ValueKind != JsonValueKind.Undefined))
         {
             throw new InvalidDataException($"The link manifest's 'libraries' entry '{supply.Supply.Name}' is not this compiler's. Re-emit the manifest.");
         }
@@ -203,6 +213,13 @@ internal static class LinkManifest
     internal static string? OptionalText(JsonElement element, string path)
         => element.ValueKind == JsonValueKind.Object && ArtifactFiles.Member(element, Leaf(path)).ValueKind == JsonValueKind.Undefined ? null : Text(element, path);
 
+    /// <summary>Reads a string field whose value may be JSON null (an Application's subsystem on a row without one).</summary>
+    /// <param name="element">The object holding the field.</param>
+    /// <param name="path">The field's path.</param>
+    /// <returns>The string, or null when the field is JSON null.</returns>
+    internal static string? NullableText(JsonElement element, string path)
+        => ArtifactFiles.Member(element, Leaf(path)).ValueKind == JsonValueKind.Null ? null : Text(element, path);
+
     /// <summary>Reads an array field's items.</summary>
     /// <param name="element">The object holding the field.</param>
     /// <param name="path">The field's path.</param>
@@ -214,6 +231,21 @@ internal static class LinkManifest
     /// <param name="path">The field's path.</param>
     /// <returns>The boolean.</returns>
     internal static bool Flag(JsonElement element, string path) => Field(element, path, JsonValueKind.True).GetBoolean();
+
+    // A row's head (Heads): the common rows from the row's columns, then the backend supply's identity rows when the row reserves it.
+    private static (string Path, object Value)[] Head(TargetProfile row) =>
+    [
+        ("schemaVersion", 5),
+        ("target", row.Target),
+        ("codegen.profile", row.Name),
+        ("codegen.llvmVersion", ToolchainIdentity.LlvmVersion),
+        ("codegen.cpu", row.Cpu),
+        ("codegen.features", new[] { row.Features }),
+        ("codegen.relocationModel", row.RelocationModel),
+        ("codegen.codeModel", row.CodeModel),
+        ("codegen.unwindTables", row.UnwindTables),
+        .. row.Supply(ToolchainIdentity.Backend.Name) is null ? [] : BackendRows,
+    ];
 
     // A path's section, empty at the top level, and its field's name.
     private static ReadOnlySpan<char> Section(ReadOnlySpan<char> path) => path[..Math.Max(path.LastIndexOf('.'), 0)];

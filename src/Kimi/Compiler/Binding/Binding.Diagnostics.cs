@@ -709,6 +709,7 @@ public sealed partial class Binding
         this.consulted.Clear();
         this.consultationStart = -1;
         this.consultationNode = null;
+        this.consultationHeld = false;
         this.missingExpectation = null;
     }
 
