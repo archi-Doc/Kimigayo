@@ -191,7 +191,8 @@ public partial class OriginRelationDiagnosticTest
         => AssertRecords(form, body, records, null);
 
     // Explicit qualifiers and Cases with payload (d3 §6): `Option.Some(v)` types itself from `v`, whose signature Type gives q outlives r
-    // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument. cs1's contextual inner `Option.None` is judged at
+    // (cv1 to cv3 valid); with `v` during q the argument's fit fails once at the argument, and cv3_n's literal records its element's place
+    // fit at `Option.Some(v)` beside it (PLAN G1379; R4-M164 U2 S1 as amended). cs1's contextual inner `Option.None` is judged at
     // the argument; when an annotation settles the construction (cs1_ty), the annotation proves its contextual payload at its written Type,
     // as in ea1 (R4-M164 U1d; the payload's record waits for R7). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
     // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
@@ -203,7 +204,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cv2", PayloadHead + InnerPair + "    return inner((Option.Some(v), 1), q)\n", "", null)]
     [InlineData("cv2_n", WeakPayloadHead + InnerPair + "    return inner((Option.Some(v), 1), q)\n", "UnprovenOriginRelation_Kd (Option.Some(v), 1)", null)]
     [InlineData("cv3", PayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "", null)]
-    [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
+    [InlineData("cv3_n", WeakPayloadHead + InnerArray + "    return inner([Option.Some(v), Option.None], q)\n", "UnprovenOriginRelation_Kd Option.Some(v); UnprovenOriginRelation_Kd [Option.Some(v), Option.None]", null)]
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
     [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
