@@ -130,15 +130,16 @@ public class PatternTypeFormationBindingTest
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
     }
 
-    // SPEC 23.1.2 (rule W, PLAN G1321), 8.3, 17.3: a match judges its Subject Type's formation once, at its root position (the first
-    // arm's Pattern; a `try`'s first synthesized Pattern, never the `try` or its operand), and every other arm rests on that record:
-    // the written match's second arm adds none (its first arm restates 3:18 at 5:9, PLAN G1278's family). Each published error as
-    // Code@line:column. Controls: a valid Subject Type keeps the `try`'s 17.3 record, and its `@move` twin is valid.
+    // SPEC 8.6.3, 23.1.2 (PLAN G1278, G1321), 8.3, 17.3: a match never judges its Subject Type's formation: the Subject carries that
+    // Type, judged at its formation site (the written `Box<string>`, 3:18), and the plan reads the verdict with no record (Q13: the root's
+    // restating record at 5:9 is gone); every arm binds, so a body's own failure (`b.nope`, 12.5.1) is reported. Each published error
+    // as Code@line:column. Controls: a valid Subject Type keeps the `try`'s 17.3 record, and its `@move` twin is valid.
     [Theory]
-    [InlineData("func f(o: Option<Box<string>>) -> i32\n    return match o\n        .Some(_) => 1\n        .None => 0", "UnsatisfiedConstraint_Kd@3:18 | UnsatisfiedConstraint_Kd@5:9")]
+    [InlineData("func f(o: Option<Box<string>>) -> i32\n    return match o\n        .Some(_) => 1\n        .None => 0", "UnsatisfiedConstraint_Kd@3:18")]
+    [InlineData("func f(o: Option<Box<string>>) -> i32\n    return match o\n        .Some(let b) => b.nope\n        .None => 0", "UnsatisfiedConstraint_Kd@3:18 | UnresolvedBinding_Kd@5:25")]
     [InlineData("func f(o: Option<Box<i32>>) -> Option<i32>\n    let b = try o\n    return .Some(1)", "TransferRequired_Kd@4:17")]
     [InlineData("func f(o: Option<Box<i32>>) -> Option<i32>\n    let b = try o@move\n    return .Some(1)", "")]
-    public void ASubjectTypeIsJudgedOnceAtTheMatchRoot(string function, string expected)
+    public void ASubjectTypeIsJudgedOnlyAtItsFormationSite(string function, string expected)
     {
         var source = "struct Box<T>\n    T is i32\n" + function + "\n\npublic func main()\n    Console.writeLine(\"x\")";
         var c = MinimalEmissionTest.Analyze(source);
@@ -147,21 +148,20 @@ public class PatternTypeFormationBindingTest
         Assert.Equal(expected, TestDiagnostics.ErrorSites(c, source));
     }
 
-    // The same rule at a `try`, whose two synthesized arms share its span: a `try` over a failed operand Type records its Subject Type's
-    // failure once, at its first synthesized Pattern, so its site holds no two equal records and no internal fault (before: two equal
-    // records at one site, CheckFaulted_Kd). Each row asserts that and the records its SPEC labels give that this rule keeps
+    // The same rule at a `try`, whose two synthesized arms share its span: a `try` over a failed operand Type records nothing of its
+    // Subject Type, whose failure is recorded at its formation site, so its site holds no two equal records and no internal fault
+    // (before G1321: two equal records at one site, CheckFaulted_Kd). Each row asserts that and the records its SPEC labels give that this rule keeps
     // (`required`); it pins no exact list. Labels (SPEC 17.3, 23.1.2): gtrymin is invalid by one independent failure, its written
     // Constraint's subject `I.Iterator.Item` (3:5: I declares no member Iterator; 8.5.2 spells the projection `I.(Iterator).Item`); its
     // operand, a call's temporary, is transferred and its return target `Option<i64>` takes `.None`, so the `try` (6:18) and its operand
     // (6:22) read only that failed Constraint and rest on it. gtryinv and gtryres are invalid by `Box<string>` where the parameter Type is
     // written (3:18, 8.3) and by the bare non-Copy Place operand moved without `@move` (4:17, 17.3); gtryres's return target
-    // `Result<i32, i32>` takes `.Err(error)`, error `i32` fitting `i32`, so it holds; the `try`'s first synthesized Pattern restates 3:18
-    // (4:13, PLAN G1278's family). Not asserted, a known remainder while the arms rest on a refuted Subject Type (PLAN, after G1278):
-    // gtryinv's and gtryres's TransferRequired_Kd@4:17 is missing and gtryres gives an InvalidTryReturn_Kd@4:13.
+    // `Result<i32, i32>` takes `.Err(error)`, error `i32` fitting `i32`, so it holds. The `try` and its synthesized nodes carry the
+    // Subject Type and are not failed by it (PLAN G1278: G1321-C's restating 4:13 is gone, Q13), so the operand's 17.3 record is reported.
     [Theory]
     [InlineData("func drain<I>(iterator: uniq/I) -> Option<i64>\n    I is Iterator\n    I.Iterator.Item is i64\n    var total: i64 = 0\n    loop\n        total += try iterator.next()\n        if total > 10\n            exit\n    return .Some(total)", "UnresolvedBinding_Kd@3:5")]
-    [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Option<Box<string>>) -> Option<i32>\n    let b = try o\n    return .Some(1)", "UnsatisfiedConstraint_Kd@3:18 | UnsatisfiedConstraint_Kd@4:13")]
-    [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Result<Box<string>, i32>) -> Result<i32, i32>\n    let b = try o\n    return .Ok(1)", "UnsatisfiedConstraint_Kd@3:18 | UnsatisfiedConstraint_Kd@4:13")]
+    [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Option<Box<string>>) -> Option<i32>\n    let b = try o\n    return .Some(1)", "UnsatisfiedConstraint_Kd@3:18 | TransferRequired_Kd@4:17")]
+    [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Result<Box<string>, i32>) -> Result<i32, i32>\n    let b = try o\n    return .Ok(1)", "UnsatisfiedConstraint_Kd@3:18 | TransferRequired_Kd@4:17")]
     public void ATryOverAFailedOperandTypeRecordsOncePerSite(string function, string required)
     {
         var source = function + "\n\npublic func main()\n    Console.writeLine(\"x\")";

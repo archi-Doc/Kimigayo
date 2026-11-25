@@ -46,7 +46,7 @@ public partial class ImplicitBaseCallTest
     // PLAN G375 (Q13, rule W): RevalidateImplicitConstructors reads a kept Proven, so S's failure after the bodies is seen through its own
     // InaccessibleBinding_Kd records, and the base clause adds no record resting on them.
     [Theory]
-    [InlineData(LateFailureBehindABaseClause, "2*InaccessibleBinding_Kd 1*InvalidConstraint_Kd")]
+    [InlineData(LateFailureBehindABaseClause, "2*InaccessibleBinding_Kd")] // PLAN G1278 (G1278-A, Q13): the default `.None` carries the parameter's Type, so its InvalidConstraint_Kd goes
     [InlineData(LateFailureBehindABaseClauseValid, "clean")]
     public void ARejudgeAfterTheBodiesReadsAKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 

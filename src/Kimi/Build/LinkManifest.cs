@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the link manifest's fixed fields and its readers (schema 5, whose external declarations list the runtime's imports too,
-// LinkAmbiguity; IMPL 20.3.2 leaves the format implementation-defined; R9-B1): the
+// Owns the link manifest's fixed fields and its readers (schema 6, whose external declarations each name their providing library
+// (NamedProvider) and list the runtime's imports too (LinkAmbiguity); IMPL 20.3.2 leaves the format implementation-defined; R9-B1): the
 // fixed fields, each target row's head (the profile from the row's columns, then the backend supply's identity on a row that reserves
 // it; the Tatara plan's B7b7), built once per row as one table that publication writes for the compilation's row (WriteFixed) and the
 // native build checks in the same order for the row the manifest's target names, which it returns (CheckFixed); the libraries entries of the compiler's supplies (IMPL 20.4's reserved names,
 // ToolchainIdentity.Supplies), each written from its row (WriteCompilerSupply) and checked against it (CheckCompilerSupply); and the
-// readers (Field, Text, OptionalText, NullableText, Items, Flag), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
+// readers (Field, Text, OptionalText, NullableText, Items), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
 // number into InvalidDataException at the read (form J, the manifest's share of PLAN G983). The variable fields (optimization, the input,
 // the output section, the libraries array and its programs' entries) are written by EmissionArtifacts, which orders and fills the
 // libraries array, and read, through these readers, by NativeToolchain.Build. A removed member (Removed: the toolchain, Tatara B6b5) is
@@ -181,8 +181,7 @@ internal static class LinkManifest
         }
     }
 
-    /// <summary>Reads a field of the expected JSON kind; a boolean, either of JSON's two kinds, is read as <see cref="JsonValueKind.True"/>
-    /// (<see cref="Flag"/>).</summary>
+    /// <summary>Reads a field of the expected JSON kind.</summary>
     /// <param name="element">The object holding the field.</param>
     /// <param name="path">The field's path, whose last name is the field's.</param>
     /// <param name="kind">The expected kind.</param>
@@ -191,10 +190,9 @@ internal static class LinkManifest
     internal static JsonElement Field(JsonElement element, ReadOnlySpan<char> path, JsonValueKind kind)
     {
         var field = ArtifactFiles.Member(element, Leaf(path));
-        if ((field.ValueKind == JsonValueKind.False ? JsonValueKind.True : field.ValueKind) != kind)
+        if (field.ValueKind != kind)
         {
-            var expected = kind == JsonValueKind.True ? "Boolean" : kind.ToString();
-            throw new InvalidDataException($"The link manifest's '{path}' is missing or not a JSON {expected}. Re-emit the manifest.");
+            throw new InvalidDataException($"The link manifest's '{path}' is missing or not a JSON {kind}. Re-emit the manifest.");
         }
 
         return field;
@@ -226,16 +224,10 @@ internal static class LinkManifest
     /// <returns>The items.</returns>
     internal static JsonElement.ArrayEnumerator Items(JsonElement element, string path) => Field(element, path, JsonValueKind.Array).EnumerateArray();
 
-    /// <summary>Reads a boolean field.</summary>
-    /// <param name="element">The object holding the field.</param>
-    /// <param name="path">The field's path.</param>
-    /// <returns>The boolean.</returns>
-    internal static bool Flag(JsonElement element, string path) => Field(element, path, JsonValueKind.True).GetBoolean();
-
     // A row's head (Heads): the common rows from the row's columns, then the backend supply's identity rows when the row reserves it.
     private static (string Path, object Value)[] Head(TargetProfile row) =>
     [
-        ("schemaVersion", 5),
+        ("schemaVersion", 6),
         ("target", row.Target),
         ("codegen.profile", row.Name),
         ("codegen.llvmVersion", ToolchainIdentity.LlvmVersion),

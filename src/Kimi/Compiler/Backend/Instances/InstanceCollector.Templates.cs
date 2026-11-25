@@ -17,8 +17,9 @@
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
 // instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8).
-// Invariants: built before any item is replayed, in one walk in build order over the bodies built since the version's last walk, which
-// a replay extends to the bodies a lookup built during the run (PLAN G951): a body its store holds is not templated again, so the
+// Invariants: built at each run's start, before it replays an item, in one walk in build order over the bodies built since the version's
+// last walk (PLAN G951, G337 U2): a run replays only bodies A2's table holds, which were built before it began (InstanceCollector.cs,
+// Round), so every body it replays is templated; a body its store holds is not templated again, so the
 // library store's templates are built once per library segment of a program (Run compares the program and its LibrarySegment, so
 // another program's or a rebuilt segment's templates are never kept) and the program store's once per program version. MirDropTable.LibraryHolds is stable within a
 // version from the analyses' library step, which Run's input (a stepped program) has passed, so a body's store is the same in every
@@ -26,7 +27,7 @@
 // body alone: the runtime bit is one MirReach walk without CheckTarget edges, and a template holds locations and the body's Places only,
 // no substitution or target.
 // Must not: resolve a target, read TyCtxt, an item or the root range, or record anything: the definition-stage capability check (A3b) is
-// judged work, run in every run's root loop (InstanceCollector.Capabilities.cs).
+// judged work, run in every version's root loop (InstanceCollector.Capabilities.cs).
 
 using Kimi.Compiler.Mir;
 
@@ -91,7 +92,7 @@ internal sealed partial class InstanceCollector
     }
 
     // The templates of the bodies without one, the one walk: the bodies built since the version's last walk, in build order (Run starts
-    // a version at position 0; Replay calls it when a lookup built bodies during the run, PLAN G951), each appended to its store
+    // a version at position 0; each run walks at its start, PLAN G951, G337 U2), each appended to its store
     // (TemplatesOf) unless the store holds it: the library store keeps its templates while its key is the program and its library
     // segment (MirProgram.LibrarySegment). A body with a finding, which no consumer reads (DECISIONS R5-M183), has an empty range and is
     // not read.

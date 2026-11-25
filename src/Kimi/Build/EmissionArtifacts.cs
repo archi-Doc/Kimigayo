@@ -218,8 +218,8 @@ public static class EmissionArtifacts
     }
 
     // The published module, from the generation result: the IR file with its hash, the output kind with the module's entry (the
-    // generation result's) and an Application's subsystem (the row's, null on a row without one), and every external function it declares, its externals then its runtime's imports (dllimport), each once, which the
-    // native build's object inspection and dependency check read (SPEC 22.6; LinkAmbiguity, T's ruling 32).
+    // generation result's) and an Application's subsystem (the row's, null on a row without one), and every external function it declares, its externals then its runtime's imports, each once with its providing library, which the
+    // native build's object inspection and dependency check read (SPEC 22.6; LinkAmbiguity, T's ruling 32; NamedProvider).
     private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, GeneratedModule module, TargetProfile row)
     {
         var library = module.OutputKind == OutputKind.Library;
@@ -231,23 +231,23 @@ public static class EmissionArtifacts
         json.WriteStartArray("externalDeclarations");
         foreach (var external in module.Externals)
         {
-            WriteDeclaration(json, external.Symbol, external.DllImport);
+            WriteDeclaration(json, external.Symbol, external.Library);
         }
 
-        foreach (var symbol in module.RuntimeImports)
+        foreach (var import in module.RuntimeImports)
         {
-            WriteDeclaration(json, symbol, true);
+            WriteDeclaration(json, import.Symbol, import.Library);
         }
 
         json.WriteEndArray();
     }
 
-    // One external declaration: its symbol and dllimport form.
-    private static void WriteDeclaration(Utf8JsonWriter json, string symbol, bool dllimport)
+    // One external declaration: its symbol and providing library, a libraries entry, whose Kind gives the symbol's referenced form.
+    private static void WriteDeclaration(Utf8JsonWriter json, string symbol, string library)
     {
         json.WriteStartObject();
         json.WriteString("symbol", symbol);
-        json.WriteBoolean("dllimport", dllimport);
+        json.WriteString("library", library);
         json.WriteEndObject();
     }
 

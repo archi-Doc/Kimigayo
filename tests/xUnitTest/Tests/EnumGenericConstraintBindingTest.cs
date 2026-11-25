@@ -9,24 +9,29 @@ namespace XunitTest;
 
 public class EnumGenericConstraintBindingTest
 {
+    // SPEC 8.6.3, 12.3, 23.1.2 (PLAN G1278; DECISIONS R7-M80 as amended by G1278-A): a nested argument with a refuted clause is judged
+    // once, where it is written, so the program stays rejected with one UnsatisfiedConstraint_Kd per written site (the qualified form's
+    // qualifier is a second site). A contextual `.Empty` fixes no own slot, so it carries its expected Type and publishes its plan over
+    // it (the Middle's C-563: no check reads it on a rejected program); the qualified form's `.Empty` rests on its qualifier's record.
+    // Each row: the argument, the expression, the written sites and whether the plan is published.
     [Theory]
-    [InlineData("Box<string>", ".Empty")]
-    [InlineData("Box<string>", "E<Box<string>>.Empty")]
-    [InlineData("(i32, Box<string>)", ".Empty")]
-    [InlineData("[2 of Box<string>]", ".Empty")]
-    [InlineData("raw/Box<string>", ".Empty")]
-    public void InvalidNestedArgumentCannotPublishConstruction(string argument, string expression)
+    [InlineData("Box<string>", ".Empty", 1, true)]
+    [InlineData("Box<string>", "E<Box<string>>.Empty", 2, false)]
+    [InlineData("(i32, Box<string>)", ".Empty", 1, true)]
+    [InlineData("[2 of Box<string>]", ".Empty", 1, true)]
+    [InlineData("raw/Box<string>", ".Empty", 1, true)]
+    public void AnInvalidNestedArgumentIsRecordedAtItsWrittenSites(string argument, string expression, int sites, bool published)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nenum E<T>\n    Empty\ngroup Consumer\n    func make() -> E<" + argument + "> => " + expression);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
-        Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));
+        Assert.Equal(sites, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd));
+        Assert.Equal(published, c.Binding.TryGetEnumConstruction(Use(c), out _));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));
+        Assert.Equal(published, c.Binding.TryGetEnumConstruction(Use(c), out _));
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.False(restored.Binding.TryGetEnumConstruction(Use(restored), out _));
+        Assert.Equal(published, restored.Binding.TryGetEnumConstruction(Use(restored), out _));
     }
 
     [Fact]
@@ -72,7 +77,7 @@ public class EnumGenericConstraintBindingTest
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));
+        Assert.True(c.Binding.TryGetEnumConstruction(Use(c), out _)); // `.Empty` carries the refuted E<Box<string>> (G1278-A, C-563).
         Assert.True(KotoHelper.Replace(function, replacement, original));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetEnumConstruction(Use(c), out var restored));

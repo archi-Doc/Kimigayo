@@ -245,9 +245,21 @@ public sealed partial class Binding
     // reason (SPEC 8.3.3 so ends an expanding or cyclic specification), makes the part null. A part without an abstract part is its own
     // result, and a projection is completed after its components, so a subject that is itself a projection is completed first. A
     // projection is resolved in the scope of the owner's `declaration`, where PrepareStorage binds its parts. A part's result depends on
-    // the part alone in one query (its declaration fixed), so each distinct part is completed once (DECISIONS BU-19, BU-55).
+    // the part alone in one query (its declaration fixed), so each distinct part is completed once (DECISIONS BU-19, BU-55). PLAN G651 a2
+    // (F2, BU-161; IMPL 21.3.2): the completion runs in a site frame at that declaration where none is open, so a Type past the limit it
+    // forms outside the projections' proofs is refused there.
     private BoundType? CompleteProjections(BoundType part, Koto declaration)
-        => part.HasAbstractPart ? this.CompletedParts(part, declaration, this.completedParts.Begin(this.storageVersion)) : part;
+    {
+        if (!part.HasAbstractPart)
+        {
+            return part;
+        }
+
+        var site = this.OpenQuerySite(declaration);
+        var completed = this.CompletedParts(part, declaration, this.completedParts.Begin(this.storageVersion));
+        this.CloseQuerySite(site);
+        return completed;
+    }
 
     // A component's result (CompleteProjections), each distinct one with components completed once per query; a leaf is cheaper to
     // complete again than to record.

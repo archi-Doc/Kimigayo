@@ -273,7 +273,11 @@ public sealed partial class Binding
             var state = scope.Owner.BindingState;
             var contradiction = this.ValidateArithmeticDirections(scope);
             changed |= state != scope.Owner.BindingState;
+            // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the identity classes form in a site frame at the owner, the record's node, where none
+            // is open, so a Type past the limit formed there is refused at it (shared with InvalidateProjectionCertificates' rounds).
+            var site = this.OpenQuerySite(scope.Owner);
             changed |= this.RecordIdentityPremiseError(scope, mode);
+            this.CloseQuerySite(site);
             var judged = this.JudgeFacts(scope, environment, environment, mode, ref changed);
 
             // SPEC 8.2.3 (F's C2 ruling 282, the owner's O-296 (a)): a premise error is reported where the premises causing it first
@@ -338,6 +342,24 @@ public sealed partial class Binding
         }
 
         return (false, false);
+    }
+
+    // SPEC 8.3.4 (F's C2/C3 rulings 332, 333): the owner of the environment whose premises, with its enclosing scopes', empty a pair's
+    // admitted set: the outermost such scope on the chain, whose own Semantics premise the validation step proves Error (JudgeFacts), the
+    // Error's one record; null when the chain admits a case. Read before that proof runs, where EmptyingEnvironment's FailedPremise is
+    // not yet written (RecordIdentityPremiseError); an error path only.
+    private Koto? EmptyingOwner(BindingScope scope, BoundType whole)
+    {
+        Koto? owner = null;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not null && this.AdmittedSemantics(whole, current) == SemanticsMask.None)
+            {
+                owner = current.Owner;
+            }
+        }
+
+        return owner;
     }
 
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
@@ -660,9 +682,15 @@ public sealed partial class Binding
         return node;
     }
 
+    // PLAN G1278 (SPEC 9.7, 9.7.1, 23.1.2): a constructed Type with clauses is judged once, at its formation site, the node that forms it
+    // as its binder publishes (FormedTypeRows: a written occurrence, a `Self` included, or a Dictionary literal, at the occurrence's Type
+    // node); a construction that inferred its target's arguments and an Enum acquisition that inferred an own slot or Origin judge what
+    // they formed. Every other node holding the Type (a declaration, a read, a call result, a Pattern position, an acquisition) carries it
+    // from a site or a call's own proof and is neither judged nor rested.
     private BoundType? ConstrainedType(Koto node)
         => node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto { ConstraintNodes.Count: not 0 } } type &&
-            !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) ? type : null;
+            !this.inferredConstructionTargets.Contains(node) && (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0) &&
+            FormedTypeRows.Contains(this.OccurrenceTypeNode(node)) ? type : null;
 
     // SPEC 23.1.2 (rule W): the layers of a written Type occurrence from its judged node down to its Type node `written` are that Type;
     // when the Type's judgment leaves it failed or unproven, a layer with no failure of its own rests on it (RestOnPart) or takes its
