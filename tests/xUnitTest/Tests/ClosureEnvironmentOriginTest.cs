@@ -146,6 +146,9 @@ public class ClosureEnvironmentOriginTest
 
     private const string ForTotal = "        total = total + c()\n    return total\npublic func main() => ()\n";
 
+    // F's G230H-12 C-c: a fixed expected call signature that erases nothing (SPEC 10.5.2, 8.10; 7.7.4: a Callable is no erasure), then f.
+    private const string ApplyHead = "func apply<F>(g: F) -> i32\n    F is Callable<(i32) -> i32>\n    return g(1)\nfunc f(p: ref/i32) -> i32\n";
+
     // G6's two forms of a function whose Closure stores through a captured `q` into an Origin of the enclosing body (2c-D design B's g6).
     private const string G6Single = "func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n";
 
@@ -719,9 +722,17 @@ public class ClosureEnvironmentOriginTest
     // control clo_for_ctrl names no Origin; F's G230H-10 C1); a name past the not-ready literal, an enclosing parameter, is selected
     // normally (clo_inf_outer_cl, SPEC 9.3; C2), as is a name of an enclosing named function between (clo_inf_mid_cl; G230H-11 C-2);
     // an entry's record and the early header's own are both reported (clo_bad_entry_hdr, SPEC 7.7.2, 15.3.4, 23.1.2). A written
-    // entry's name selects its environment binding, with the Type its entry fixes, whether or not the literal omits a parameter Type
-    // (clo_ref_inf, a `@ref` entry, and its control clo_ref_ctrl; a clause naming a value entry, clo_val_cl; C-1): each keeps only the
-    // literal's Common Function conversion record (SPEC 7.7.4: the environment is not Owned). A nested header that completes c before f's statements
+    // entry's name in the literal's body selects its environment binding, with the Type its entry fixes, whether or not the literal
+    // omits a parameter Type (clo_ref_inf_cal, a `@ref` entry, and its control clo_ref_ctrl_cal; a clause naming a value entry,
+    // clo_val_cl_cal; C-1). Each literal is an argument under a Callable (SPEC 10.5.2, 8.10), which erases nothing, so no Owned
+    // environment is asked (7.7.4; G230H-12 C-c). The literal's own header never selects an environment binding, in either order
+    // (SPEC 15.8.2; G230H-12 C-a): a result Type naming the entry's source is the enclosing p's, so returning the binding is the
+    // relation's record whether or not a body header formed the entries first (hdr_res_early, hdr_res_late), and a parameter Type
+    // naming it is p's too (hdr_par_early; its control hdr_par_late). That is a visibility row, not a scope (F's G230H-13): the
+    // parameters share the body's one space, so a body local repeating one is a duplicate (hdr_dup_par, SPEC 9.3), and an inner
+    // literal in the body captures the environment binding (env_inner, SPEC 7.7.2). An entry's record that a body header's demand
+    // makes first and the literal's header mismatch are independent, so both are reported (thdr_inf, SPEC 23.1.2, 10.5, 7.7.2;
+    // G230H-12 C-b). A nested header that completes c before f's statements
     // gives the comparison's located limit at h@move, as its header-free twins do (rvd_hdr_let, rvd_hdr_set; R7 O-400 (b)).
     [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r = p\n    let w = pick(r)\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    return w\n")] // a_fwd_par
     [InlineData("public func main() => ()\nfunc f(p: ref/i32, q: ref/i32) -> i32\n    let r = p\n    let w = pick(q)\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    return w\n", "UnprovenOriginRelation_Kd q)")] // a_fwd_inv
@@ -752,17 +763,39 @@ public class ClosureEnvironmentOriginTest
         "InvalidCaptureBinding_Kd func [zz]",
         "MissingOriginBinding_Kd qq outlives")] // clo_bad_entry_hdr
     [InlineData(
-        "func f(p: ref/i32) -> i32\n    let c: (i32) -> i32 = func [p@ref] (k) -> i32\n        func h(v: ref/(ref/i32 during p) during p) -> i32 => 0\n" +
-            "        return h(p) + k\n    return c(1)\npublic func main() => ()\n",
-        "UnsatisfiedConstraint_Kd func [p@ref]")] // clo_ref_inf
+        ApplyHead + "    return apply(func [p@ref] (k) -> i32\n        func h(v: ref/(ref/i32 during p) during p) -> i32 => 0\n" +
+            "        return h(p) + k\n    )\npublic func main() => ()\n")] // clo_ref_inf_cal
     [InlineData(
-        "func f(p: ref/i32) -> i32\n    let c: (i32) -> i32 = func [p@ref] (k: i32) -> i32\n        func h(v: ref/(ref/i32 during p) during p) -> i32 => 0\n" +
-            "        return h(p) + k\n    return c(1)\npublic func main() => ()\n",
-        "UnsatisfiedConstraint_Kd func [p@ref]")] // clo_ref_ctrl
+        ApplyHead + "    return apply(func [p@ref] (k: i32) -> i32\n        func h(v: ref/(ref/i32 during p) during p) -> i32 => 0\n" +
+            "        return h(p) + k\n    )\npublic func main() => ()\n")] // clo_ref_ctrl_cal
     [InlineData(
-        "func f(p: ref/i32) -> i32\n    let c: (i32) -> i32 = func [p] (k) -> i32\n        func h(v: ref/i32 during q) -> i32\n            origin p outlives q\n" +
-            "            return v@follow\n        return h(p) + k\n    return c(1)\npublic func main() => ()\n",
-        "UnprovenConstraint_Kd func [p]")] // clo_val_cl
+        ApplyHead + "    return apply(func [p] (k) -> i32\n        func h(v: ref/i32 during q) -> i32\n            origin p outlives q\n" +
+            "            return v@follow\n        return h(p) + k\n    )\npublic func main() => ()\n")] // clo_val_cl_cal
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> ref/(ref/i32 during p) during p\n        func h(v: ref/i32 during p) -> i32 => 0\n" +
+            "        return p\n    return c()@follow@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd p\n    return c()")] // hdr_res_early
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> ref/(ref/i32 during p) during p\n        func h(v: ref/i32) -> i32 => 0\n" +
+            "        return p\n    return c()@follow@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd p\n    return c()")] // hdr_res_late
+    [InlineData(
+        "func f(p: ref/i32) -> ref/i32 during p\n    let c = func [p@ref] (v: ref/i32 during p) -> ref/i32 during v\n" +
+            "        func h(w: ref/i32 during p) -> i32 => 0\n        return v\n    return c(p)\npublic func main() => ()\n")] // hdr_par_early
+    [InlineData(
+        "func f(p: ref/i32) -> ref/i32 during p\n    let c = func [p@ref] (v: ref/i32 during p) -> ref/i32 during v\n" +
+            "        return v\n    return c(p)\npublic func main() => ()\n")] // hdr_par_late
+    [InlineData(
+        "func f() -> i32\n    let c = func (v: i32) -> i32\n        let v = 2\n        return v\n    return c(1)\npublic func main() => ()\n",
+        "DuplicateBinding_Kd v = 2")] // hdr_dup_par
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p] () -> i32\n        let d = func [p] () -> i32 => p@follow\n        return d()\n" +
+            "    return c()\npublic func main() => ()\n")] // env_inner
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let g: i32 = func [p, p] (k) -> i32\n        func h(v: ref/i32 during p) -> i32 => 0\n        return 0\n" +
+            "    return g\npublic func main() => ()\n",
+        "TypeMismatch_Kd func [p, p]",
+        "DuplicateBinding_Kd p] (k)")] // thdr_inf
     [InlineData(
         "func f(p: ref/i32) -> i32\n    let c: (ref/i32) -> i32 = func [] (x) -> i32\n        func g(w: ref/i32) -> i32\n            func h(v: ref/i32 during q) -> i32\n" +
             "                origin w outlives q\n                return v@follow\n            return h(w)\n        return g(x)\n    return c(p)\npublic func main() => ()\n")] // clo_inf_mid_cl

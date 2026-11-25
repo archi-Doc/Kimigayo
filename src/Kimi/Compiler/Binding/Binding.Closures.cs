@@ -175,8 +175,11 @@ public sealed partial class Binding
             // anonymous function as found.
             // Transitional, R7-E5 (D-924; B's E3a-2 ruling): the Closure recorded its own located limit at its header first (a
             // parameter past the subset), so a mismatch here is that header's second record; it keeps its first failure, as a Fail does,
-            // until R7-E5's per-problem inputs (PropertyBindingTest's field-Closure rows; probe g4).
-            if (this.RecordedFailure(function) != BindingFailure.None)
+            // until R7-E5's per-problem inputs (PropertyBindingTest's field-Closure rows; probe g4). An entry's failure, the
+            // Environment query's Error that a demand from the body recorded first, is no input of this fit: the mismatch is its own
+            // record beside the entry's (SPEC 23.1.2; F's G230H-12 C-b, thdr_inf).
+            if (this.RecordedFailure(function) != BindingFailure.None &&
+                !(this.symbols.GetValueOrDefault(function) is { } symbol && this.QueryRecord(symbol, DeclQueryKind.Environment) is not null))
             {
                 return this.Fail(function, BindingFailure.TypeMismatch);
             }

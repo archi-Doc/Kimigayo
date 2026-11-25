@@ -319,9 +319,10 @@ public sealed partial class Binding
         for (var current = scope; current is not null; current = current.Parent)
         {
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
-                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
-                (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
+                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture && Visible(competing);
             var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name);
+
+            // SPEC 15.3.4's Local set row: a local set is visible in its Type, its clauses and the following scope.
             var visibleSet = current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
                 (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start) ? local : null;
             var entry = current.Owner is FunctionKoto { IsAnonymous: true } literal && CaptureEntryOf(literal, name) is not null;
@@ -387,7 +388,8 @@ public sealed partial class Binding
             if (current.Values.TryGetValue(name, out var symbol) &&
                 symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture)
             {
-                if (symbol.Kind == BindingSymbolKind.Local && !ReferenceEquals(symbol.Declaration, owner) && symbol.Declaration.Span.End > use.Span.Start)
+                // Read again: the environment may have formed it since visibleValue (AheadOfEnvironment's demand, C-1).
+                if (!Visible(symbol))
                 {
                     continue;
                 }
@@ -404,6 +406,12 @@ public sealed partial class Binding
         }
 
         return false;
+
+        // The lookup's visibility (VisibleAt; SPEC 15.8.2: the literal's own header never sees its environment bindings), and SPEC 15.4.4's
+        // Origin-name rule: a local's own attached clauses and annotation name its declared Type's slots ("in them, `view.source` names the
+        // declared Type's slot").
+        bool Visible(BindingSymbol candidate)
+            => (candidate.Kind == BindingSymbolKind.Local && ReferenceEquals(candidate.Declaration, owner)) || this.VisibleAt(candidate, use);
     }
 
     private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref, int aggregateSlot = -1, BindingSymbol? borrowCondition = null)
