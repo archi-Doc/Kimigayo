@@ -416,7 +416,7 @@ public class InheritedConformanceTest
     [Theory]
     [InlineData("ri1", "struct Derived: Base<SrcI>\n", "i32", "let value = Derived.init()\nuse(value)", true)]
     [InlineData("ri1g", "struct Derived<X>: Base<X>\n    X is HasItem\n", "i32", "let value = Derived<SrcI>.init()\nuse(value)", true)]
-    [InlineData("ri1p", "struct Derived<X>: Base<X>\n    X is HasItem\n", "i32", "func g<X>(value: ref/Derived<X>)\n    X is HasItem\n    X.(HasItem).Item is i32\n    use(value)", true)]
+    [InlineData("ri1p", "struct Derived<X>: Base<X>\n    X is HasItem\n", "i32", "func g<X>(value: ref/Derived<X>)\n    X is HasItem\n    X.(HasItem).Item is i32\n    use(value)\npublic func main() => ()", true)]
     [InlineData("ri1n", "struct Derived: Base<SrcI>\n", "i64", "let value = Derived.init()\nuse(value)", false)]
     public void ARefutedClauseNamesTheRetainedImplementationOfItsSelectedConformance(string form, string derived, string argument, string use, bool retained)
     {
