@@ -93,6 +93,11 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // SPEC 3.3.2, 15.3.1, 8.5.1: whether a slot binding has a target in the denoted Type: an unbound Slice, or an owner Type whose schema has
+    // one Origin, not yet bound. No other Type (a borrow, raw, pair or object layer, a Type parameter, a Tuple, a Function) has one.
+    private static bool HasOpenSlot(BoundType type) => type.Kind == BoundTypeKind.Slice ? type.Origin is null
+        : type is { Semantics: SemanticsKind.Owner, Symbol.Schema.Origins.Count: 1 } && (type.OriginArguments.Count == 0 || type.OriginArguments[0] is null);
+
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)!
             : this.types.Rebuild(type, (BoundType[])type.Components, origin, arguments);
@@ -112,11 +117,15 @@ public sealed partial class Binding
             context = context with { SuppressOuter = false };
         }
 
-        if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
+        // SPEC 3.3.2, 15.3.1, 8.5.1: a slot binding targets the one open schema slot of the Type its name denotes; any other Type gives it no
+        // target. Its written atom is bound first, its failure being its own (SPEC 23.1.2).
+        if (written && annotation!.IsSlotBinding && !HasOpenSlot(type))
         {
+            _ = this.WrittenOrigin(annotation, use, scope);
             return this.Record(use, BindingFailure.InvalidOrigin, []);
         }
 
+        // A written Type parameter here is a pair binder's layer or carries Origin arguments: a slot binding's target is decided above.
         if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
@@ -124,16 +133,7 @@ public sealed partial class Binding
                 return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
-            var origin = written ? annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope) : type.Origin;
-            // SPEC 3.3.2, 8.5.1: a named Type that carries its own Origin (an associated Type's projection, `Pack.Item during x`) gives a
-            // written `during` no target, its own failure.
-            if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
-            {
-                // Transitional, R7-E5 (E4c, B1, C1; PLAN's accepted Origin binding on an associated-Type projection, whose unit
-                // deletes this arm): a null `origin` reads BindOrigin's or BindOriginName's record, so the arm keeps `Fail`.
-                return origin is null ? this.Fail(use, BindingFailure.InvalidOrigin) : this.Record(use, BindingFailure.InvalidOrigin, []);
-            }
-
+            var origin = written ? this.WrittenOrigin(annotation!, use, scope) : type.Origin;
             if (written && type.Kind == BoundTypeKind.Parameter)
             {
                 this.AddObligation(new(BindingObligationKind.TypeFormation, use, BindingDeadline.Definition, type));
@@ -220,10 +220,9 @@ public sealed partial class Binding
             var schema = target.Symbol?.Schema;
             var count = schema?.Origins.Count ?? 0;
 
-            // SPEC 15.3.1: a trailing during binds the only slot of a one-slot schema. It adds no borrow layer and never
-            // rebinds a complete Type; several slots need a binding set and relations.
-            if (written && (objectLayer || count != 1 || annotation!.OriginArguments is not null ||
-                (target.OriginArguments.Count == 1 && target.OriginArguments[0] is not null)))
+            // SPEC 15.3.1: braces never apply Origins. A trailing during binds the only slot of a one-slot schema (the target decided
+            // above); it adds no borrow layer.
+            if (written && annotation!.OriginArguments is not null)
             {
                 return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
@@ -241,7 +240,7 @@ public sealed partial class Binding
 
                     if (written)
                     {
-                        var slot = annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
+                        var slot = this.WrittenOrigin(annotation!, use, scope);
                         if (slot is null)
                         {
                             return null;
@@ -285,6 +284,10 @@ public sealed partial class Binding
 
         return type;
     }
+
+    // The one binding of a written Origin atom: its expression, or the name it was written as. Null when the atom failed (its own record).
+    private BoundOrigin? WrittenOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope)
+        => annotation.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
 
     // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value: every Origin
     // of OwnedOrigins(inner) (SPEC 15.2.3) outlives `outer`. A held Function Type's part is its call signature with its own per-call
