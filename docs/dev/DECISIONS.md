@@ -7226,7 +7226,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - The owner's O-254 (2026-11-14, 「O-254 Q1 D Q2 A」; SPEC 5.7 Calls and 7.2.3 as clarified, f12328811). Q1 D: a Closure's
     environment bindings are Fields of its call receiver's referent, so a raw layer without an Origin in an environment binding's
     Type is `Any`, a layer the Closure states, at every depth (below a borrow layer and below a layer that states an Origin too);
-    Binding publishes it (the Front's A5-F, PLAN G938) with the mark of a `let` binding's own layer, which no call replaces (15.8.2:
+    Binding publishes it (the Front's A5-F, PLAN G938) with the mark of a `let` binding's own layer (BU-261, R4-M248; PLAN
+    G941), which no call replaces (15.8.2:
     'no Closure body can replace its environment'). Rule 4 (the call's own pointer) applies at every raw layer without an Origin of
     storage the call writes, whichever row the layer above has, at a `var` binding's own layer, never at a `let` binding's. Q2 A is
     R4-M203 (U9).
@@ -8171,8 +8172,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       (the declared step reads the holder), after that step and under the guard the node takes at any other key. The reason that
       no longer holds: a part that is no layer the walked Type expression writes stops rule 4 at the key, while 5.7 Calls decides
       per layer, so such a part does not stop it at the key's raw layers without an Origin (R-G841-5; xMixDeclBad, r4MixHopBad).
-  - O-254's "never at a `let` binding's" holds once G938 publishes the `let` mark; until then a Closure's `let` layer is `Its`
-    (cloLetPtrU8ThroughU stays accepted; cloLet*UsedBad are G941's).
+  - O-254's "never at a `let` binding's": R4-M248 (rule L, PLAN G941); the layer's class stays `Its`.
   - Records (Q13): invalid programs newly rejected only, with `ComparisonLoanConflict_Kd`: cloVarPtrU8Bad, cloVarPtrU8CellBad,
     cloVarPtrU8NullWriteBad, cloVarPtrU8OtherVarBad, cloVarTupPtrU8Bad, enumPayloadPtrU8Bad, r4MixHopBad, xMixDeclBad, xRawDeclBad;
     `MirBorrowsTest.Exposed`'s intPastComposedBad (was intPastOk), rvPastU64HolderBad, rvPastU8OwnBad; `MirBorrowsTest.Guard`'s er
@@ -8471,6 +8471,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a form SPEC accepts, against AGENTS' Diagnostics rule: placedStatedFirstNoneOk and its valid twins noneCopyOk and okLocalTOk get
     `ComparisonLoanConflict_Kd` at `kk = 2` without it, `labels-c1b.md`);
     a holder state per raw layer (per-part holder states: R4-M191, R4-M198, R4-M219; against O-230 Q1 (a)).
+- **R4-M248 G941 rule L: rule 4 never at a layer Binding marks `Let`; the class column unchanged** (2026-11-25; the Middle;
+  A5; G941 unit 1, Q-789, D-1292; Major, an acceptance mover; design `artifacts\units\g941\design.md` Revision 1 R1.4, its reviews)
+  SPEC 15.6.4, 15.8.2, 5.7 Calls; the owner's O-254 Q1 D.
+  - **Rule.** Rule 4 (15.6.4's composition: the call's own pointer at a raw layer without an Origin) applies only where the call
+    may write that layer, never at a layer Binding marks `OwnLayer.Let` (BU-261). `MirBorrows.PunKeys`' `punPastLayers` holds per
+    past entry `(PastLayer Class, bool Let)`, `Let` copied from the layer in `Key`'s fold; `OwnPointer` alone reads `Let`.
+    `Punned`, `Keyed`, `ReadLayers` and `ReadPart` read `.Class`: the mark is no class, so a `let`-held layer is read past by its
+    class (Its layer by layer, Any by the declared step). `KeepResult`'s `OwnPointer` at a result key is unchanged (no mark there).
+  - **Stays:** a `var` environment layer, a binding past another exclusive layer and a Closure's result keep rule 4 (pair L's
+    record at `let mk`); G939 keeps the holders' reading past every `Any` layer.
+  - **Supersedes** R4-M241's line "until then a Closure's `let` layer is `Its`" for rule 4; the reason that no longer holds: the
+    mark exists (BU-261).
+  - **Records (Q13):** the valid cloLetRefPtrOk moves from rejected (`ComparisonLoanConflict_Kd` at `var hop` and `kk = 2`) to
+    accepted (Q17 class 3). No other program moves (48 probes; the whole suite's diagnostic and semantic snapshots, 0 differences; the A5
+    corpus oracle, 0 of 1,764).
+  - **Rejected:** `PastLayer.ReadOnly` (revision 0: a class row that changed the declared step of `Any` layers).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -12811,6 +12827,9 @@ resumed by R4-M86 (2026-10-20).
     input premise was dropped at `KnownToInference` for an Origin no evidence names; the bare form passed only through
     `CompleteWaiting`'s re-run) and its experiment exp2. Supersedes BU-51's "an Origin that no supplied input and no clause names is a
     local region" for an Origin a default's premise bounds (15.3.6's candidate first); one that no premise bounds stays the region.
+    A premise bounds an Origin only where its bound reaches a fixed or finite Origin (z0's `b outlives a` names `a`, a region), and a
+    default's discovery runs only in a solve that has begun an inference (evidence with an Origin, a Signature leaf row, which begins
+    one, or a callee clause): inert, since without evidence the only fixed end left is `static` (M's U2-d review 2, Point 2).
     `PremiseSolved` is the first published "which position fixes this Origin" fact; U4's `Decided` column takes it over.
   - Removal conditions that remain: join arguments (U3); `PartContribution` (U6). A non-Result root row is the part's contribution at
     the last `Contribute`; property rows are Evidence where `PartContribution` may say Signature, inert because the input carries no
@@ -19182,6 +19201,30 @@ resumed by R4-M86 (2026-10-20).
     rounds); an early Unknown left unmemoized by its value alone (it loses g464's and c1fi's rest, whose Unknowns read no program
     path); a new dependence constant (the erasure's Owned owner would read the forgotten work as final); re-judging at the final pass
     (a late correction).
+- **BU-261 G941 (B2): Binding marks the layers of a `let` environment binding of a Closure call's receiver referent
+  (`OwnLayer.Let`) at the receiver key it publishes (`TyCtxt.ReceiverKey`)** (2026-11-25; the Front's producer, implemented in the
+  Middle's G941 unit 1, Q-789, D-1292; design `artifacts\units\g941\design.md` Revision 1 R1.3 and the reviews `review-design-f.md`,
+  `review-design-m.md`) SPEC 15.8.2, 7.7.2, 7.7.3, 5.7 Calls; the owner's O-254 Q1 D.
+  - **Mark.** `OwnLayer.Let`: the part lies within a `let` environment binding of the call receiver's referent, at any depth by
+    value, so the call never writes at it (15.8.2: "no Closure body can replace its environment"). A column like `Kept`, not a
+    closed-vocabulary entry; permanent.
+  - **Receiver key.** `TyCtxt.ReceiverKey(callee)` beside `ParameterKey`: the root key of the contract's receiver Type
+    `R/Env during ρ` (`Binding.ClosureReceiver` over `ClosureReceiverIn`; Env by value under `owner/Self`); a callee without a
+    receiver input is a broken contract (`InternalInvariant_Kd`). A5's `InputKey` takes it at a Closure call's receiver slot.
+  - **One test.** `Binding.ReceiverClosure(outer, type)`: the Closure literal whose call receiver a borrow is (outer Origin
+    `Projection` at `ClosureValueSlot`, Binder the literal, and the Type that literal's Closure); RetentionInput, RootWalk and
+    OwnLayers read it. Where a key's `Through` is such a layer, OwnLayers lists the environment by `BoundClosure.Captures[i]` and
+    marks every layer OwnParts adds under a capture without `var`; its seen-set is keyed by the mark, so a `let` and a `var` binding
+    of one Type are both listed.
+  - **Scope.** Nested by-value Closures keep the outermost binding's mark. Nothing is marked past any layer (a pointee, a borrow's
+    referent, a Closure past another exclusive layer: 7.7.3), at a result key, at a parameter key, or for a by-value `owner/Self`
+    receiver.
+  - **Reader.** A5's rule L alone (R4-M248); the mark changes no class (`PastLayer`). It implements R4-M219's O-254 bullet;
+    departs from none.
+  - **Open:** B1, rule A's rows for the storage past such a layer (`Hold`), PLAN G941.
+  - **Rejected:** a mark by the key's Type (a Closure Type with a `let` binding): it marks `mk()`'s result key and accepts the
+    invalid cloResultLetSharedOk (pair L; relabelled I, the name kept); the mark folded into the class (`PastLayer.ReadOnly`, revision 0): it changed the
+    declared step of `Any` layers.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -27774,18 +27817,33 @@ Closure row of `MirCases.Branch`).
     neither judged nor rested: by induction its Type rests on a site's record or a call's own, so its record only restated one
     (SPEC 9.7, 9.7.1, 8.6.3, 23.1.2). A declaration carries its written Type (F's Q-A (i)): a Function with a refuted result Type
     stays Resolved, as one with a refuted parameter Type was.
-    - **`FormedTypes`, the site fact (F's G1278-6, G1278-7).** A Kept family of `NodeColumns` in BU-220's published-column form: a
-      `PagedColumn<bool>` at the node's SyntaxId, kept across passes (a node bound in an earlier pass keeps it), with the family's
-      Grow, Renumbered, Retire and Move rows in `HirTables`; one accessor, `Binding.FormedTypeRows`. A row reads "this node forms
-      its Type". Owner: Binding's Type binding. Producers, each where it completes the node's Type: BindType's completion of a
-      written occurrence (whatever names it: a declaration, a `Self`, an alias, a Type parameter); the rooted name's operand;
-      `EnumQualifierType`, for a construction or Case qualifier that writes its own list or is its declaration's `Self`;
-      `ConstructionTargetType`, for a qualifier with no own parameters (its path forms the whole Type); `BindContractReference`,
-      the one path from a written Contract reference, at each node it completes (a root-name form's levels, the unwrapped node and
-      the reference; F's G1278-9); the Dictionary literal's binder (SPEC 12.4). A qualifier whose own arguments the expected Type
-      supplies and an inferred construction target (`inferredConstructionTargets`) have no row: the acquisition or the construction
-      forms that Type and judges it once. Reader: `ConstrainedType`, ValidateConstraintUses' site test, at the occurrence's Type node
-      (`OccurrenceTypeNode`). Removal: none; it is the canonical site fact.
+    - **`FormedTypes`, the site fact (F's G1278-6, G1278-7; amended by G396-F).** A Kept family of `NodeColumns` in BU-220's
+      published-column form: a `PagedColumn<bool>` at the node's SyntaxId, with the family's Grow, Renumbered, Retire and Move rows
+      in `HirTables`; one accessor, `Binding.FormedTypeRows`. It is a per-pass Kept column: `ResetPass` empties it over the running
+      pass's modules (`FormedTypeRows.Empty`) before Index and every binder of the pass, which write its rows again, so a row is its
+      node's in the latest pass over its module; a node of another pass's module (the frozen library's) keeps its row, and a
+      renumbering moves a row with its node. A row reads "this node forms its Type". Owner: Binding's Type binding. Producers, each
+      where it completes the node's Type: BindType's completion of a written occurrence (whatever names it: a declaration, a `Self`,
+      an alias, a Type parameter); the rooted name's operand; `EnumQualifierType`, for a construction or Case qualifier that writes
+      its own list or is its declaration's `Self`; `ConstructionTargetType`, for a qualifier with no own parameters (its path forms
+      the whole Type); `BindContractReference`, the one path from a written Contract reference, at each node it completes (a
+      root-name form's levels, the unwrapped node and the reference; F's G1278-9); the Dictionary literal's binder (SPEC 12.4). A
+      qualifier whose own arguments the expected Type supplies and an inferred construction target (`inferredConstructionTargets`)
+      have no row: the acquisition or the construction forms that Type and judges it once. Reader: `ConstrainedType`,
+      ValidateConstraintUses' site test, at the occurrence's Type node (`OccurrenceTypeNode`). Removal: none; it is the canonical
+      site fact.
+      - Amended by G396-F (Q-791, D-1294, 2026-11-25; PLAN G396; the Back's G1278-A implementation review N6; F's G396F-1; Minor).
+        The row was kept across passes because BindType returns early for a node bound in an earlier pass (G1278-6; R-b's
+        rejection). That holds only for a node of another pass's module: Index resets the base row of each node it walks
+        (`HirTables.Reset`), so in the running pass's modules every producer completes its node again, while a writer's decision
+        reads the resolved declaration (`ConstructionTargetType`'s own parameters, the binder a qualifier's symbol selects), which
+        an edit can change under an unchanged node. A row kept from an earlier pass then made that node a site again, a second
+        record in an edit session (`SyntaxEditInvalidationTest.AnEditedQualifierLeavesNoStaleFormationRow`). Chosen: the canonical
+        Kept reset, the in-place `Empty` over the running pass's modules that IndexedPatterns (`ResetMatches`), FormationCauses and
+        KnownBases use (`Binding.Pass.cs`' invariant), not a Pass `StampedColumn<bool, PassCounter>`: the three neighbours are
+        reset this way, and one form serves them. Within a pass no inferred construction target has a row, so `ConstrainedType`
+        no longer reads `inferredConstructionTargets` (its term went; G1278-A review N4); the family's other readers keep it. R-b's
+        other reason (a list cannot absorb `inferredConstructionTargets`) still holds.
     - **`BoundEnumConstruction.FormsType` (F-2).** Set by the Enum binder with the plan: the acquisition inferred an own slot or an
       Origin (a slot left null or open after `FixConstructionSlots`, an Origin left null, or an open Origin slot variable), so it
       forms its Type (SPEC 6.5.2). Readers: the construction's clause proof (BindEnumConstruction) and `CompleteEnumAcquisitions`'
@@ -34468,6 +34526,11 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     parsed by `Tatara.Facts` and read by `LinkInput.Read` into the same store; only a program's input is inspected at build time.
     P3's catalog-facts follow-up is done: `libc.a`'s first read per process is under P3's 3 ms gate (the unit's commits state the
     medians), and G1374 is closed.
+  - Amended by T-M50 (LinkRoots, 2026-11-25; PLAN G1377): the step also starts from the row's `LoadConfigSymbol`
+    (`_load_config_used` on windows-x64), and the whole inputs are of form `o` or `b`. The closure's referenced symbol is a joined
+    unit's `U` or a name it roots (`I`: `/include:`'s, `/export:`'s). Kind 4 gains `b` (LLVM bitcode). Kind 6 lists `/export:`'s
+    names as `I` and `/entry:`'s as `E` (T-M50's text). A library whose loaded unit carries `/entry:` or is bitcode is an
+    unsupported native dependency.
 - **T-M46 A library inconsistent with its declared Kind is an error at the link** (Tatara, 2026-11-25; PLAN G1330, D-1192, Q-762;
   Major; design `artifacts\handoff\tatara\units\LinkAmbiguity\kind-design.md` Revision 0 with its corrections 1-3 from LinkAmbiguity
   Revisions 1-3a (`kind-brief-impl.md`); the Middle's C-514; T's ruling 24). IMPL 20.4 makes a native dependency inconsistent with its
@@ -34493,6 +34556,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - Amended by T-M48 (NamedProvider, 2026-11-25): K2 is deleted: rule P (an import's named library defines its referenced form)
     states every case it stated, and P's lines take K2's place among the symbol lines. The manifest now names each import's library,
     for P (not for K).
+  - Amended by T-M50 (LinkRoots, 2026-11-25): the inputs loaded whole are of form `o` or `b` (a lone LLVM bitcode object, which
+    lld-link loads whole), and a library input that is no archive and of neither form is no library. A bitcode unit is Code. The
+    unit is unsupported by T-M50 wherever the link loads it, and K still judges it.
 - **T-M47. The native build per target row (Tatara B7b7, D-1274, Q-773).** Decision: the link manifest's fixed head is per row (the common
   rows from the row's columns, the backend-support rows only where the row reserves `kimi_backend`); `LinkManifest.CheckFixed` reads
   `target` first and returns the row, which every later check and the build read. `TargetProfile` gains `Format` (COFF, ELF: the
@@ -34602,3 +34668,54 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     computed when Kimi is built; a per-machine cache; a lazy read; a `kimi toolchain facts` command; inspecting when the facts are
     missing or stale (a fallback); the facts' hash in the catalog; a Tatara identity in the header (it repeats the row for LLVM and
     the ABI and misses `inspect.cpp`); verify through `LinkInputs`.
+- **T-M50 The dependency step reads every reference lld-link makes for a loaded file** (Tatara, 2026-11-25; PLAN G1377, G1378,
+  D-1291, Q-788; Major; design `artifacts\handoff\tatara\units\LinkRoots\design.md` Revision 1a; C-553 (the Middle's and the Back's
+  reviews of Revisions 0 and 1), C-572 (the implementation reads, ACCEPT); T's rulings 59, 64, 67, 67a, 68, 69, 71, 73, 76, 94, 98,
+  101 and 104; amends T-M45 and T-M46 in part). IMPL 20.4 counts the references a loaded file names in a linker directive, but
+  T-M45's step read only `/include:` and `/alternatename:`. lld-link 22.1.8 also roots a loaded member's `/export:` and `/entry:`
+  names and `_load_config_used` whenever an input defines it, and LTO's code generation calls library functions that no IR symbol
+  table lists. So a member loaded only through them was judged neither for ambiguity nor for its library's Kind.
+  - **The reading.** A directive names a symbol only when the link roots that symbol or may load a definition of it through the
+    directive. This is the rule, not a list of LLD's options. At LLD 22.1.8 (`parseDirectives`: 14 options applied, 5 ignored,
+    eight naming a symbol) it selects `/include:`, `/export:`, `/alternatename:` and `/entry:`. `/aligncomm:`,
+    `/exclude-symbols:`, `/arm64xsameaddress:` and `/guardsym:` root and load nothing on windows-x64 (design §2.1a; T's ruling 76).
+    An LLVM update re-reads `parseDirectives`.
+  - **Tatara's facts (an ABI change).** Kind 6's `I` is a name lld-link roots, from two directives:
+    - `/include:`, with the four prefixes;
+    - `/export:`, with the prefixes `/` and `-` only (LLD's fast path). The name is the text before the first `,`; of `<x>=<y>` it
+      is `y`, and there is none when `y` holds `.` (a forwarder).
+
+    Kind 6 also gains `E <name>` per `/entry:`, with the four prefixes. A directive naming no symbol is skipped. Kind 4 gains `b`, LLVM
+    bitcode (an IR object, which LLD compiles at the link). A whole input is no archive, of form `o` or `b`. The ABI hash moves with
+    `tatara.h`. T-M49's stored facts need no regeneration: no compiler supply holds bitcode, `/export:` or `/entry:`, and
+    `EachCompilerSupplysFactsAreItsInspection` in read mode, on the `tatara.dll` built from this change, finds every `.facts` file
+    byte-equal.
+  - **The link's own root.** `TargetProfile.LoadConfigSymbol` holds `_load_config_used` on windows-x64 and null on linux-x64 (ld.lld
+    roots no load configuration). The step references it after `RuntimeReferences`, so a name nothing defines joins nothing. Members
+    picked through any of these references are judged for ambiguity and Kind as any pick is.
+  - **Unsupported (R-E).** A library is IMPL 20.4's unsupported native dependency when a loaded unit of it carries `/entry:` or is
+    LLVM bitcode. Under `/entry:`, lld-link's entry point depends on the pass that loads the member. Under bitcode, LTO adds
+    references nothing lists. Two lines, each a build line without location or code as T-M45's are (not ruling 64's located
+    `Unsupported_Kd`):
+    - "Native library 'carrier' sets the entry point to 'ent2' in a linker directive of an object that the link would load, which
+      is not supported.";
+    - "Native library 'alpha' holds LLVM bitcode that the link would load, which is not supported."
+
+    They sort with Kind's library lines. The unit still joins, so its other references are resolved and judged, and a bitcode unit
+    keeps class Code, so Kind judges it apart from the unsupported line (k11lcb pins both lines for one unit). Rule P judges a
+    library with an E or B line (ruling 67a): the line judges a loaded member, not the input, and ruling 61's skip covers only the
+    two input lines (T-M46's "not a library", T-M47's "no symbol index").
+  - **Record selection (R-D; ruling 67 (6)).** IMPL 20.4 counts an `/entry:` name as referenced, but the closure does not resolve
+    it. An ambiguity record for that name rests on the failed directive, not on its library input (which P still judges).
+  - **Malformed directives stay LLD's** (design §5.1; ruling 54 concerns an input's form). The fatal error that ends Tatara for the
+    process is PLAN G1411. A library's `/subsystem:` or `/stack:` directive is PLAN G1412.
+  - **The import library (G1378).** The windows-x64 link passes `/noimplib`. lld-link wrote `<stem>.<guid>.lib` beside an image that
+    exports a symbol; the image is unchanged (the products check: IR, `irSha256` and executables byte-equal).
+  - Rejected:
+    - an `X` letter for the ignored options;
+    - `/entry:` as a reference only (a library entry point that silently starts the program);
+    - IMPL naming LTO's code-generation references (an over-approximation, and a second Tatara text);
+    - checking LLD's option grammar before the link (an open family);
+    - `_load_config_used` in `RuntimeReferences` (`Inspect` would allow it unjudged);
+    - a `Format` test in the step;
+    - the root on every row (a false error on linux-x64).

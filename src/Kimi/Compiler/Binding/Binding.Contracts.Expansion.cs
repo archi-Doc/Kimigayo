@@ -12,10 +12,11 @@ namespace Kimi.Compiler;
 // - Inputs: the pass's Contract shapes (contractShapes: a library or earlier-layer Contract never refers to a later one, so every cycle
 //   lies inside one pass); each Contract's supply (ContractSupply, the one enumeration of what `Self is K` supplies, SPEC 8.3.2: its
 //   ancestors and its own and inherited clauses, each a Constraint whole). SPEC 8.3.3 counts "each reference ... in what `Self is K`
-//   supplies ... (an ancestor conformance or a Constraint)", so every premise about Self or a projection of Self among a supplied
-//   Constraint's operands passes, whatever the connective (`and`, `or`, `not`; F's G563C-6), through every Contract reference it holds:
-//   a Contract premise's reference and each projection's qualifier in the Types it holds, its subject, its required Type and its
-//   Contract reference's arguments (F's G563C-8, G563C-9). The Contract's
+//   supplies ... (an ancestor conformance or a Constraint)", so each ancestor conformance and every premise about Self or a projection
+//   of Self among a supplied Constraint's operands, whatever the connective (`and`, `or`, `not`; F's G563C-6), pass through every
+//   Contract reference they hold. Each supplied reference, an ancestor's or a Contract premise's, passes through one member
+//   (AddReferencePasses): its own arguments and each projection's qualifier in its Type (F's G563C-9, G563C-12); a premise's subject
+//   and required Type pass each projection's qualifier in them (F's G563C-8). The Contract's
 //   parameters and each reference's arguments are read in the Contract's view as a proposition's are (NormalizedForm: SPEC's
 //   "normalized under K's premises", a completed projection interpreted, 8.2.3; F's Q1 (a) and G563C-3: one interpretation). These
 //   forms are Complete here: the check runs after Advance(AssociatedBindings), where every binding they read is admitted (G563C-5),
@@ -32,8 +33,10 @@ namespace Kimi.Compiler;
 //   is no fact of the environment, and FailPremise fails a fact only (the same open issue).
 // - Invariants: the pass graph (a node per Contract parameter; a pass with its expanding flag and the premise that forms it) is call
 //   scratch in pooled fields, built and emptied in one call (warm 0 B), never published: no IR form, no vocabulary entry. Linear in the
-//   supplies' references, each supplied premise's Types' parts (each once per premise), the references' arguments' parts (each once)
-//   and the passes; the strongly connected sets by an iterative Tarjan walk with no depth bound.
+//   supplied elements, their Types' parts (each once per element: a premise's subject, required Type and reference Type, an ancestor's
+//   reference Type) and the passes, and linear per argument in its parts; a qualifier nested in a qualifier's argument walks the inner
+//   parts once per enclosing qualifier (quadratic in that nesting depth of one written Type, bounded by the source; F's G563C-11 N2).
+//   The strongly connected sets by an iterative Tarjan walk with no depth bound.
 // - Prohibitions: no limit (SPEC 8.3.3: the error depends on the declarations alone); no read of clause syntax (bound facts only); no
 //   proof; no second enumeration of the supply; no record at a Contract on no such set (a refiner or a user of an erroneous Contract
 //   reads its failure and rests, SPEC 23.1.2).
@@ -44,8 +47,8 @@ public sealed partial class Binding
     private readonly List<BoundType> expansionForms = new(); // the running Contract's parameters, formed in its view
     private readonly HashSet<BoundType> expansionParts = new(ReferenceEqualityComparer.Instance); // one argument's parts walked
 
-    // One supplied premise's Types' parts walked. Its one writer is AddQualifierPasses; AddPremisePasses empties it after each premise
-    // (and CheckExpandingRecursion on every exit).
+    // One supplied element's Types' parts walked. Its one writer is AddQualifierPasses; it is emptied once after each supplied element,
+    // by AddPremisePasses after a premise and AddContractPasses after an ancestor (and by CheckExpandingRecursion on every exit).
     private readonly HashSet<BoundType> expansionTypeParts = new(ReferenceEqualityComparer.Instance);
 
     private readonly List<(int From, int To, bool Expanding, BoundConstraint? Premise)> expansionPasses = new();
@@ -110,8 +113,9 @@ public sealed partial class Binding
         }
     }
 
-    // The passes from a Contract's parameters (its own reference's components, SelfType's, in its view): each ancestor of its supply,
-    // and each premise about Self or a projection of Self among a supplied Constraint's operands (AddPremisePasses).
+    // The passes from a Contract's parameters (its own reference's components, SelfType's, in its view): each ancestor of its supply
+    // (its reference, AddReferencePasses, formed by no premise), and each premise about Self or a projection of Self among a supplied
+    // Constraint's operands (AddPremisePasses).
     private void AddContractPasses(BoundContract shape)
     {
         if (shape.Symbol.Schema is not { GenericSlots.Count: > 0 })
@@ -137,6 +141,7 @@ public sealed partial class Binding
             else if (ancestor >= 0)
             {
                 this.AddReferencePasses(declaration.Symbol, scope, from, null);
+                this.expansionTypeParts.Clear();
             }
         }
 
@@ -145,10 +150,10 @@ public sealed partial class Binding
 
     // A supplied premise, a Constraint SPEC 8.3.3 counts whole: "each reference ... in what `Self is K` supplies ... (an ancestor
     // conformance or a Constraint)" (F's G563C-6, G563C-8, G563C-9). A premise about Self or a projection of Self (its subject or its
-    // required Type, OfSearchSelf) passes through every Contract reference in it: a Contract premise's reference, and each projection's
-    // qualifier in the three Types it holds, its subject, its required Type and its Contract reference's Type, whose components are the
-    // reference's arguments (AddQualifierPasses: `... is Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y`, or the same qualifier inside
-    // `Mark<...>`). One naming no Self is a reference input condition, not a supply (SPEC 6.1.4), and passes nothing. Every operand (Left, and Right
+    // required Type, OfSearchSelf) passes through every Contract reference in it: a Contract premise's reference (AddReferencePasses: its
+    // arguments and the qualifiers in its Type, as `Mark<Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y>`), and each projection's qualifier
+    // in its subject and its required Type (AddQualifierPasses: `... is Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y`). One naming no Self
+    // is a reference input condition, not a supply (SPEC 6.1.4), and passes nothing. Every operand (Left, and Right
     // where present) is walked whatever the connective: `and`, `or` and `not` alike, since the Disjunction and Negation rows decide proof
     // results, not what is supplied.
     private void AddPremisePasses(BoundConstraint premise, BoundType self, BindingScope scope, int from)
@@ -163,7 +168,6 @@ public sealed partial class Binding
 
             this.AddQualifierPasses(subject, scope, from, premise);
             this.AddQualifierPasses(required, scope, from, premise);
-            this.AddQualifierPasses(premise.Contract?.Type, scope, from, premise);
             this.expansionTypeParts.Clear();
         }
 
@@ -178,17 +182,23 @@ public sealed partial class Binding
         }
     }
 
-    // One supplied reference, formed in the supplying Contract's view: each argument position of the referenced Contract receives the
-    // parameters its argument contains. A Contract of no node here (another pass's) lies on no cycle of this pass.
+    // One Contract reference the supply holds, an ancestor conformance's or a Contract premise's, with the premise that forms it (none for
+    // an ancestor: a base, not a clause; F's G563C-12): its own arguments, formed in the supplying Contract's view (each argument position
+    // of the referenced Contract receives the parameters its argument contains; a Contract of no node here, another pass's, lies on no
+    // cycle of this pass), and each projection's qualifier in its Type, whose components are those arguments (AddQualifierPasses:
+    // `Mark<A.(R2).W.(HasY<A.(R2).V>).Y>`, an ancestor's or a premise's alike).
     private void AddReferencePasses(BindingSymbol reference, BindingScope scope, int from, BoundConstraint? premise)
     {
         // The reference's declaration symbol (a bound reference's Type's head, or the declaration's own symbol) keys its nodes. Only a
         // Contract of the pass with parameters has nodes; any other (a library's, one without parameters and maybe without the schema
-        // ContractReferenceType's SelfType needs) receives no pass, so the test comes before the reference's Type is formed.
+        // ContractReferenceType's SelfType needs) receives no pass, so the test comes before the reference's Type is formed. Its
+        // qualifiers are walked either way (a declaration's own symbol has only its parameters as arguments, so none).
         if (this.expansionNodes.TryGetValue(IsBoundContractReference(reference) ? reference.Type!.Symbol! : reference, out var to))
         {
             this.AddReferencePasses(this.ContractReferenceType(reference), to, scope, from, premise);
         }
+
+        this.AddQualifierPasses(reference.Type, scope, from, premise);
     }
 
     // A reference's Type (ContractReferenceType's, or a projection's qualifier, the same representation: ProjectionContract) to the
@@ -203,11 +213,11 @@ public sealed partial class Binding
         }
     }
 
-    // A supplied premise's Type (none where the premise holds none), each part once (expansionTypeParts: AddReferencePasses empties
-    // expansionParts per argument): a projection names its Contract reference (SPEC 8.6.1; ProjectionContract's, its second component),
-    // so a projection whose qualifier is a Contract with nodes is a reference the premise holds, and passes as AddReferencePasses'
-    // reference does.
-    private void AddQualifierPasses(BoundType? part, BindingScope scope, int from, BoundConstraint premise)
+    // A Type a supplied element holds (none where it holds none), each part once per element (expansionTypeParts: AddReferencePasses
+    // empties expansionParts per argument): a projection names its Contract reference (SPEC 8.6.1; ProjectionContract's, its second
+    // component), so a projection whose qualifier is a Contract with nodes is a reference the element holds, and passes as
+    // AddReferencePasses' reference does.
+    private void AddQualifierPasses(BoundType? part, BindingScope scope, int from, BoundConstraint? premise)
     {
         if (part is not { HasAbstractPart: true } || !this.expansionTypeParts.Add(part))
         {

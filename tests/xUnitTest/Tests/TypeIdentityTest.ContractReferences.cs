@@ -111,7 +111,7 @@ public partial class TypeIdentityTest
     // SPEC 7.5: a member's clause on its Type's parameter is a conditional member's premise; a literal adopts no abstract Type (oi1n).
     [InlineData("guard", "oi1", HasItem + Pick + "struct W<T, U>\n    U is HasItem\n    T is Pick<i32>\n    T is Pick<U.(HasItem).Item>\n    let t: T\n    public func run(self: ref/Self) -> i32\n        U.(HasItem).Item is i32\n        return self.t.pick(1)\n", "")]
     [InlineData("guard", "oi1n", HasItem + Pick + "struct W<T, U>\n    U is HasItem\n    T is Pick<i32>\n    T is Pick<U.(HasItem).Item>\n    let t: T\n    public func run(self: ref/Self) -> i32\n        return self.t.pick(1)\n", "")]
-    [InlineData("C3", "oi2", HasItem + Iter + "group G\n    public func use<T>(x: ref/T) -> i32\n        T is Iter<i32>\n        return x.size()\nstruct W<T, U>\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    let t: T\n    public func run(self: ref/Self) -> i32\n        U.(HasItem).Item is i32\n        return G.use(self.t)\n", "", Explicit = true)]
+    [InlineData("guard", "oi2", HasItem + Iter + "group G\n    public func use<T>(x: ref/T) -> i32\n        T is Iter<i32>\n        return x.size()\nstruct W<T, U>\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    let t: T\n    public func run(self: ref/Self) -> i32\n        U.(HasItem).Item is i32\n        return G.use(self.t)\n", "")]
     [InlineData("guard", "oi2n", HasItem + Iter + "struct W<T, U>\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    let t: T\n    public func run(self: ref/Self) -> i32\n        return use(self.t)\n", "*: return use(self.t)")]
 
     // SPEC 8.2.3: a chain of premises reaches a Contract argument; 8.3.2 Closed world: without it a distinct parameter is Unknown, never Refuted.

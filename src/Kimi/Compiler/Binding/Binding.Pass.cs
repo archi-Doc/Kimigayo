@@ -71,6 +71,7 @@ public sealed partial class Binding
             construction!.IsValid = false;
         }
 
+        FormedTypeRows.Empty(this.pass);
         this.nodes.Clear();
         this.aliases.Clear();
         this.ResetAliases();
