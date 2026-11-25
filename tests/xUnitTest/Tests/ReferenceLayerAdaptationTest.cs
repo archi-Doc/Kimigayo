@@ -73,6 +73,7 @@ public class ReferenceLayerAdaptationTest
     [InlineData("func f(values: ref/Dictionary<i32, uniq/(uniq/Meter during a) during b>) => values[1].bump()", nameof(Kimi.DiagnosticCode.SharedPathAccess_Kd))]
     [InlineData(Gauge + "func f(values: ref/Array<uniq/(uniq/Gauge during a) during b>) => values[0].level = 5", nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd))]
     [InlineData("func g(rr: uniq/(uniq/Meter during a) during b)\n    let vals = [rr@move]\n    vals[0].bump()", nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd))]
+    [InlineData("func g(r: uniq/Meter during a)\n    let vals = [r@move]\n    vals[0].bump()", nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd))]
     [InlineData(Bound + "\n    let view: ref/(Array<uniq/(uniq/Meter during a) during b>) = values\n    values[0].bump()\n    _ = view", nameof(Kimi.DiagnosticCode.CallActivationConflict_Kd))]
     [InlineData(Pot + "func f(values: uniq/Array<uniq/(uniq/Pot during a) during b>) => values[0].absorb(values[1])", nameof(Kimi.DiagnosticCode.CallActivationConflict_Kd))]
     [InlineData(Pot + "func f(values: uniq/Array<uniq/Pot during a>) => values[0].absorb(values[1])", nameof(Kimi.DiagnosticCode.CallActivationConflict_Kd))]
