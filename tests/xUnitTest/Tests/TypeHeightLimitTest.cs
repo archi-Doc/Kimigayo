@@ -249,12 +249,13 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
 
     // SPEC 8.13.1, 23.1.2, IMPL 21.3.2 (PLAN G651 a2-2c, its implementation review's B1): a specialization's restated input past the
     // limit is refused at its written Type alone; the match reads the refused input and rests, so the original's input is not formed
-    // again at the specialization (one Type, one record). One layer less is accepted.
+    // again at the specialization (one Type, one record). `D11<i32>.Item` is accepted; the input is `ref/`, since a by-value input
+    // of this height meets the instance collector's layout limit (DECISIONS R5-M44) before the height limit.
     [Fact]
     public void ASpecializationInputPastTheLimitIsRecordedOnceAtItsWrittenType()
     {
-        const string form = "func g<T>(value: D12<T>.Item) -> i32 => 1\nspecialize func g<{0}>(value: D12<{0}>.Item) -> i32 => 2\n";
-        var (within, accepted) = this.Compile(Doubling(12) + form.Replace("{0}", "D12<i32>.Item", StringComparison.Ordinal) + Main);
+        const string form = "func g<T>(value: ref/D12<T>.Item) -> i32 => 1\nspecialize func g<{0}>(value: ref/D12<{0}>.Item) -> i32 => 2\n";
+        var (within, accepted) = this.Compile(Doubling(12) + form.Replace("{0}", "D11<i32>.Item", StringComparison.Ordinal) + Main);
         Assert.Empty(within);
         Assert.True(accepted);
 
