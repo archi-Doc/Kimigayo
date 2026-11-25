@@ -278,16 +278,17 @@ public sealed partial class Binding
         }
     }
 
-    // R7-C2c2 c2-3b, c2-5b, c2-5b2: SPEC 8.3.2's Exact assumption over the rows, Supply's one rows reader, for an atom proposition about
-    // S or its negation, normalized by its caller (Supply's), both polarities in one request. An available leaf row of S (a Callable
-    // row, a negation's Not row) supplies the proposition where its atom (RowAtom), re-subjected to S (the rows matched it) and read
-    // as the proposition's intake reads it (NormalizeProofConstraint: each Type and the Contract reference's arguments in their class's
-    // form, a Callable signature as the Callable selection reads it), is the proposition's atom (SameProofPremise) and their
-    // polarities agree, and its negation where they differ. A conjunction, a disjunction or an Unresolved proposition: neither.
-    private (bool Positive, bool Negative) ExactAssumption(BoundConstraint proposition, BindingScope scope)
+    // R7-C2c2 c2-3b, c2-5b, c2-5b2: SPEC 8.3.2's Exact assumption over the rows, Supply's one rows reader, for a proposition about S
+    // and its negation (`negation`), normalized by its caller (Supply's), both polarities in one request. Its domain is the rows' one
+    // decision: the atom (RowAtom) of the Not row that would state the proposition or its negation, so every atom and no conjunction,
+    // disjunction or Unresolved proposition. An available leaf row of S (a Callable row, a negation's Not row) supplies the
+    // proposition where its atom (RowAtom), re-subjected to S (the rows matched it) and read as the proposition's intake reads it
+    // (NormalizeProofConstraint: each Type and the Contract reference's arguments in their class's form, a Callable signature as the
+    // Callable selection reads it), is the proposition's atom (SameProofPremise) and their polarities agree, and its negation where
+    // they differ.
+    private (bool Positive, bool Negative) ExactAssumption(BoundConstraint proposition, BoundConstraint negation, BindingScope scope)
     {
-        if ((proposition.Kind == ConstraintKind.Not ? proposition.Left! : proposition) is not
-            { Kind: not (ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Unresolved), Subject: { } subject } atom)
+        if (RowAtom(proposition.Kind == ConstraintKind.Not ? proposition : negation) is not { Subject: { } subject } atom)
         {
             return default;
         }

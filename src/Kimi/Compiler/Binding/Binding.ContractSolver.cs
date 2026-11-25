@@ -480,7 +480,7 @@ public sealed partial class Binding
 
         // R7-C2c2 c2-3b, c2-5b, c2-5b2: an atom's premise evidence at every depth, for the proposition and its negation, is the
         // subject's leaf rows (SPEC 8.3.2 Exact assumption: a clause at every depth, whatever its spelling).
-        var rows = this.ExactAssumption(proposition, view.Premises);
+        var rows = this.ExactAssumption(proposition, negation, view.Premises);
         return new() { Positive = positive || rows.Positive, Negative = negative || rows.Negative };
     }
 
