@@ -403,15 +403,26 @@ $output = Invoke-Kimi @('emit', $foreignProject) 1
 if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
 
 # Linux-x64 projects, the committed tests/linux-elf Hello and Ffi (Tatara B7b9: the programs CI's linux-elf job runs; O2, the
-# projects' default), each copied into a folder of its own (a project takes every .kimi in its folder; docs/examples stays
-# single-target), build static ELFs here, and run refuses a target this host does not run (Unsupported_Kd, exit 1). Ffi's foreign
-# static supply is an ELF codec.a: the toolchain's clang for the Linux triple, archived by a copy of llvm-lib.exe named llvm-ar.exe in
-# its folder, never in the toolchain (the Tatara plan's B7b8, B7b7 ruling 7a).
+# projects' default), each program's sources (*.kimi, *.kimiproj and native/*.c, never a local build's output) copied into a folder
+# of its own (a project takes every .kimi in its folder; docs/examples stays single-target), build static ELFs here, and run refuses
+# a target this host does not run (Unsupported_Kd, exit 1). Ffi's foreign static supply is an ELF codec.a: the toolchain's clang for
+# the Linux triple, archived by a copy of llvm-lib.exe named llvm-ar.exe in its folder, never in the toolchain (the Tatara plan's
+# B7b8, B7b7 ruling 7a).
 $linuxDirectory = Join-Path $work 'linux x64'
 $linuxFfiDirectory = Join-Path $work 'linux x64 ffi'
 $linuxNative = Join-Path $linuxFfiDirectory 'native'
-Copy-Item -LiteralPath (Join-Path $repo 'tests/linux-elf/Hello') -Destination $linuxDirectory -Recurse
-Copy-Item -LiteralPath (Join-Path $repo 'tests/linux-elf/Ffi') -Destination $linuxFfiDirectory -Recurse
+function Copy-LinuxProgram([string] $Name, [string] $Destination) {
+    $from = Join-Path $repo "tests/linux-elf/$Name"
+    foreach ($source in Get-ChildItem -LiteralPath $from -Recurse -File) {
+        $relative = [IO.Path]::GetRelativePath($from, $source.FullName).Replace('\', '/')
+        if ($relative -cnotmatch '^([^/]+\.kimi(proj)?|native/[^/]+\.c)$') { continue }
+        $target = Join-Path $Destination $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Copy-Item -LiteralPath $source.FullName -Destination $target
+    }
+}
+Copy-LinuxProgram 'Hello' $linuxDirectory
+Copy-LinuxProgram 'Ffi' $linuxFfiDirectory
 function Assert-Elf([string] $Directory, [string] $Name) {
     $image = Join-Path $Directory "bin/x86_64-unknown-linux-musl/$Name.O2"
     $magic = [IO.File]::ReadAllBytes($image)[0..3]

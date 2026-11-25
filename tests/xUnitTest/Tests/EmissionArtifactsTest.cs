@@ -118,9 +118,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     [InlineData(false)]
     public void ALinuxManifestIsTheRows(bool ffi)
     {
-        var source = ffi
-            ? "group Codec\n    #LibraryImport(\"codec\", \"codec_add\")\n    public func add(a: i32, b: i16) -> i32\npublic func main()\n    require Codec.add(40, -2) == 38 else => $abort(\"add\")\n"
-            : LinuxPair.Program("Hello", "Hello.kimi");
+        var source = ffi ? LinuxPair.Program("Ffi", "Ffi.kimi") : LinuxPair.Program("Hello", "Hello.kimi");
         var paths = LinuxPair.Publish(this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
