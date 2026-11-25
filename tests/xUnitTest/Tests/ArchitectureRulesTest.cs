@@ -298,7 +298,6 @@ public class ArchitectureRulesTest
         "Binding.InPlaceReads.cs:StringThroughLayers=2 kind",
         "Binding.Indexers.cs:TryBindIndexer=1 unchanged",
         "Binding.InferCtxt.cs:BindsDistinctTypes=1 formed",
-        "Binding.InheritedConformances.cs:RetainedImplementation=1 record",
         "Binding.InlineLayouts.cs:AddInlinePart=1 key",
         "Binding.InlineLayouts.cs:WithComponent=1 unchanged",
         "Binding.Interpolation.cs:BindTryWrite=1 kind",

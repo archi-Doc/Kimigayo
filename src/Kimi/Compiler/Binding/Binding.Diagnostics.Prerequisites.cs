@@ -576,7 +576,7 @@ public sealed partial class Binding
             (failure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
             this.formationCauses.ContainsKey(occurrence)) ||
             (failure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
-            (this.RecordedFailure(specification) != BindingFailure.None || this.RecordedState(specification) == BindingState.Invalid)) ||
+            (this.RecordedState(specification) == BindingState.Invalid || this.FailureReported(specification))) ||
             (failure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
             this.formationCauses.ContainsKey(read)) ||
             (failure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
