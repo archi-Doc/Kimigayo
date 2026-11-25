@@ -885,12 +885,19 @@ public sealed partial class Binding
             var actual = this.ArgumentType(source, completed); // An erased payload adapts as its erasure (AdaptInput, rule E; BU-83).
             var failure = default(ComparisonFailure);
 
-            // The acquisition and the fit are independent (PLAN G262): a failed acquisition is deferred, the fit judged on the Type it
-            // supplies, and the failure explains the payload where its structure fits, as a candidate's does (TryCandidate). A payload's
-            // located limits are judged first (JudgeSelectedInput): a Borrow of a static root fails it, its relations waiting for P42, and a
-            // Shortened Reborrow is recorded beside it, its fit judged.
-            var fits = this.AdaptInput(source, FixedPattern.Open(type), actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true) &&
-                (this.JudgeSelectedInput(source, kind, type.Semantics, actual, adaptedType) || this.FitsValueAt(adaptedType, type, source, source, out failure));
+            // SPEC 7.3.3, 15.6.1 (R7-M95 E4a-4, superseding PLAN G262's fit beside it): an acquisition is deferred, and a refused one
+            // whose structure fits fails the construction, as a candidate's does (TryCandidate): its lent Type is read for structure only,
+            // so neither its limits nor its fit are judged (rule W). Otherwise a payload's located limits are judged first
+            // (JudgeSelectedInput): a Borrow of a static root fails it, its relations waiting for P42, and a Shortened Reborrow is recorded
+            // beside it, its fit judged.
+            var adapts = this.AdaptInput(source, FixedPattern.Open(type), actual, scope, null, null, out var adaptedType, out var quality, out var kind, deferAcquisition: true);
+            if (adapts && this.acquisitionFailure is { } refused && this.FitsStructuralPartAt(adaptedType, type, source))
+            {
+                this.FailAcquisition(use, refused.Kind, source, refused.Object);
+                return false;
+            }
+
+            var fits = adapts && (this.JudgeSelectedInput(source, kind, type.Semantics, actual, adaptedType) || this.FitsValueAt(adaptedType, type, source, source, out failure));
             var acquisition = this.acquisitionFailure is { } deferred && (fits || this.FitsStructuralPartAt(adaptedType, type, source))
                 ? deferred : default(AcquisitionFailure?);
             if (acquisition is { } failed)
