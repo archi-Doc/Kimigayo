@@ -68,6 +68,11 @@ internal sealed partial class ModuleCodegen
         FormatInteger128 = 256,
     }
 
+    /// <summary>Gets the symbol the latest written module's start defines, its entry (IMPL 21.4.2, 21.5.2; the generation result's
+    /// Entry, the Tatara plan's B7b7): main on the C path, else the row's entry symbol, a test build's included; null for a Library.
+    /// Decided once, by the start the frame writes; no reader re-derives it from the libraries.</summary>
+    internal string? Entry { get; private set; }
+
     /// <summary>Requests a module part for the module being written.</summary>
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
@@ -120,13 +125,15 @@ internal sealed partial class ModuleCodegen
         }
 
         output.Write(this.functions.GetStringBuilder());
+        this.Entry = null;
         if (start is not null)
         {
-            this.WriteStart(output, frame.Layer, start);
+            this.Entry = this.WriteStart(output, frame.Layer, start);
         }
         else if (this.IsTestBuild)
         {
             Testing.TestRuntime.WriteEntry(output, this.Tests, this.caseCall);
+            this.Entry = this.row.EntrySymbol;
         }
 
         if ((this.needs & Needs.Objects) != 0)
@@ -141,8 +148,8 @@ internal sealed partial class ModuleCodegen
     // runtime's startup calls after initializing the C library and whose 0 its exit returns, running the C library's exit handlers;
     // otherwise the row's layer's start form, its module asm defining the entry, if any, then its start routine (the entry itself,
     // exported, or the body the asm calls, internal), which exits with 0. Either calls the layer's routines before the startup body, then
-    // the startup body, which takes no parameter (Binding's startup check).
-    private void WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
+    // the startup body, which takes no parameter (Binding's startup check). Returns the entry the start defines (Entry).
+    private string WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
     {
         var main = this.row.CRuntime is { } runtime && this.Requires(runtime);
         if (main)
@@ -169,12 +176,13 @@ internal sealed partial class ModuleCodegen
         if (main)
         {
             output.Write("  ret i32 0\n}\n");
-            return;
+            return RuntimeAbi.Main.Name;
         }
 
         output.Write("  call void @");
         output.Write(RuntimeAbi.Exit.Name);
         output.Write("(i32 0)\n  unreachable\n}\n");
+        return this.row.EntrySymbol;
     }
 
     // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test

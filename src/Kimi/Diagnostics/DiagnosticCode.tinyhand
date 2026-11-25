@@ -798,10 +798,10 @@
     Message="A Type formed here is higher than the implementation limit of {0}"
     Arguments="limit:Number"
 
-  + Name="PremiseClosureLimit_Kd"
+  + Name="AnalysisLimit_Kd"
     Category="Resource"
-    Message="The identities the premises supply for a Type judged here are not closed within the implementation limit of {0} rounds (a request's extension rounds, or one associated-Type binding's uses along a chain of completed bindings)"
-    Arguments="limit:Number"
+    Message="A judgment here is not decided within the implementation limit of {0} {1}"
+    Arguments="limit:Number,bound:Text"
 
   + Name="ResolutionWorkLimit_Kd"
     Category="Resource"

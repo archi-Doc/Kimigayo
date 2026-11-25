@@ -283,7 +283,7 @@ public sealed partial class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
         var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single();
-        var written = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0);
+        var written = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf(), []).Writes.ToArray().Single(static x => x.Output == 0);
         var (key, into) = (c.Types.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
         for (var i = 0; i < steps; i++)
         {
@@ -331,7 +331,7 @@ public sealed partial class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
         var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single(static x => x.Target.Name == "f");
-        var writes = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray();
+        var writes = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf(), []).Writes.ToArray();
         var outputs = expected.Count(static x => x == '|') + 1; // The outputs holding a kept part: the first one, or the first two.
         Assert.Equal(expected, string.Join(" | ", writes.Where(x => x.Output < outputs).Select(static x => $"{x.Output} {(x.Kept is null ? "instantiated" : $"kept: {Listed(x.Handed.ToArray())}")}")));
 
@@ -361,7 +361,7 @@ public sealed partial class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
         var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single(static x => x.Target.Name == "f");
-        var handed = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0).Handed.ToArray();
+        var handed = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf(), []).Writes.ToArray().Single(static x => x.Output == 0).Handed.ToArray();
         var (key, into) = (c.Types.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
         Assert.True(c.Types.OwnLayers(key, into));
         key = into.Single().Past; // Past slot's own layer: the Tuple holding both parts.
