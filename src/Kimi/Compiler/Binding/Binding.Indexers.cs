@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -14,8 +15,8 @@ public sealed partial class Binding
     private readonly IndexerCallRows indexerCalls;
 
     // The UniqIndexable side of each user or view index expression, the fact indexUniq's binding and SharedIndexNote read: whether
-    // indexUniq is available here, and the receiver's UniqIndexable conformance the check selected by declaration or by the key (none
-    // for a parameter's fact or a view).
+    // indexUniq is available here, the receiver's UniqIndexable conformance the check selected by declaration or by the key (none for a
+    // parameter's fact or a view), and the UniqIndexable reference it selected by when that selection by the key found no member (Key).
     private readonly UniqIndexingRows uniqIndexing;
 
     /// <summary>Gets the synthesized <c>index</c> (shared) or <c>indexUniq</c> (exclusive) call of a user index expression, or null.</summary>
@@ -41,7 +42,7 @@ public sealed partial class Binding
         return KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.uniqIndexing.GetValueOrDefault(index).Exclusive;
     }
 
-    // SPEC 4.7.1: the written Type of a key that selects a conformance (ConformanceForKey reads it below its layers); null for `null`
+    // SPEC 4.7.1: the written Type of a key that selects a conformance (KeyReference reads it below its layers); null for `null`
     // or an unfitted number literal, which could fit several keys.
     private static BoundType? KeyType(Koto keyNode)
     {
@@ -76,6 +77,7 @@ public sealed partial class Binding
 
         bool exclusiveAvailable;
         BoundConformance? uniq = null;
+        BoundType? key = null;
         if (core.Symbol is { Declaration: StructKoto or EnumKoto })
         {
             var conformance = this.SelectConformance(core, indexable, scope, source, out var candidates);
@@ -89,13 +91,22 @@ public sealed partial class Binding
                 // SPEC 4.7.1: several Key conformances are distinct; the key's own Type selects one, and the call then selects
                 // that conformance's index by the same key. An unfitted literal key could fit several and stays ambiguous.
                 this.BindNode(source.Right, scope);
-                if (this.ConformanceForKey(core, indexable, source.Right, scope) is null)
+                QuerySite site = source.Right;
+                var reference = this.KeyReference(indexable, source.Right, scope);
+                var byKey = 0;
+                if (reference is null || this.SelectConformance(core, indexable, reference, scope, site, out byKey) is null)
                 {
-                    result = this.Record(source, BindingFailure.Ambiguous, []);
+                    // Several by the key are the members its record names. None, and a key without a reference, keep the fact-less
+                    // record until PLAN G1252 chooses one record for every index no conformance fits and fits a literal key per conformance.
+                    result = byKey != 0 ? this.RecordKeyAmbiguity(source, core, indexable, reference!, scope, site) : this.Record(source, BindingFailure.Ambiguous, []);
                     return true;
                 }
 
-                uniq = this.Library.UniqIndexable is { } uniqByKey ? this.ConformanceForKey(core, uniqByKey, source.Right, scope) : null;
+                if (this.Library.UniqIndexable is { } uniqByKey && this.KeyReference(uniqByKey, source.Right, scope) is { } uniqReference)
+                {
+                    uniq = this.SelectConformance(core, uniqByKey, uniqReference, scope, site, out var uniqMembers);
+                    key = uniqMembers == 0 ? uniqReference : null;
+                }
             }
             else
             {
@@ -123,7 +134,7 @@ public sealed partial class Binding
             return true;
         }
 
-        this.uniqIndexing[source] = new(exclusiveAvailable, uniq);
+        this.uniqIndexing[source] = new(exclusiveAvailable, uniq, key);
         var shared = this.BindIndexerCall(source, scope, false);
         if (this.LentElement(shared) is not { } element)
         {
@@ -167,13 +178,35 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 4.7.1, 8.6.1: the one conformance of the receiver's declaration to a bound reference of `contract` that names the key's
-    // reference (`contract` with the key's Type below its safe value-reference layers as its argument, LayersTerminal; the key parameter
-    // is ref/Key) for `core` in `scope` (SelectConformance), or null for none or several.
-    private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
-        => KeyType(keyNode) is { } written
-            ? this.SelectConformance(core, contract, this.types.Rebuild(this.SelfType(contract), [this.LayersTerminal(written, scope)], null, []), scope, keyNode, out _)
-            : null;
+    // SPEC 4.7.1, 8.6.1: the bound reference of `contract` a typed key names, the reference the check selects by: `contract` with the
+    // key's Type below its safe value-reference layers as its argument (LayersTerminal; the key parameter is ref/Key), or null for `null`
+    // or an unfitted literal (KeyType).
+    private BoundType? KeyReference(BindingSymbol contract, Koto keyNode, BindingScope scope)
+        => KeyType(keyNode) is { } written ? this.types.Rebuild(this.SelfType(contract), [this.LayersTerminal(written, scope)], null, []) : null;
+
+    // SPEC 4.7.1, 8.9.1 (R7-C3 C3b-3): a typed key whose selection is ambiguous records AmbiguousBinding_Kd at the index expression with
+    // the members that selection weighed, SelectionMembers with the fold's own receiver, reference, scope and site: per member its first
+    // path's clause related as "conformance" (role 8) with the instance it stands for (Instance), through the candidate scratch. An
+    // ambiguous fold has two members or more, each with a path in this pass; anything else is a broken contract.
+    private BoundType? RecordKeyAmbiguity(IndexKoto source, BoundType core, BindingSymbol contract, BoundType reference, BindingScope scope, QuerySite site)
+    {
+        foreach (var member in new SelectionMembers(this, core, contract, reference, scope, site))
+        {
+            var clause = this.impls.PathsOf(member) is [var path, ..] ? this.FactSite(path.Declaration) :
+                throw new InvalidOperationException("A selection's member has a path in this pass (InternalInvariant; R7-C3 C3b-3).");
+            this.candidateFacts.Add(new(ProblemFactKind.Related, clause, 8));
+            this.candidateFacts.Add(new(ProblemFactKind.Instance, clause, this.report.Keep(member.Contract.Type!)));
+        }
+
+        if (this.candidateFacts.Count < 4)
+        {
+            throw new InvalidOperationException("An ambiguous selection has two members (InternalInvariant; R7-C3 C3b-3).");
+        }
+
+        var result = this.Record(source, BindingFailure.Ambiguous, CollectionsMarshal.AsSpan(this.candidateFacts));
+        this.candidateFacts.Clear();
+        return result;
+    }
 
     // SPEC 8.3.3: a registered conformance supplies its requirements to this instance only when its conditions hold here;
     // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.
@@ -216,7 +249,7 @@ public sealed partial class Binding
     }
 
     // A user or view index expression's UniqIndexable fact (uniqIndexing).
-    internal readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance);
+    internal readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance, BoundType? Key);
 
     /// <summary>The `uniqIndexing` family's one accessor (DECISIONS BU-220): a pass family, a user or view index expression's
     /// UniqIndexable fact (SPEC 4.7.1), kept in the expression's module's NodeColumns at its SyntaxId (the column's default, neither

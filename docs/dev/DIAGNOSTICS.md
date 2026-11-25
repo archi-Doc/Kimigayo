@@ -294,7 +294,7 @@ keeps `TypeMismatch_Kd` with actual/expected facts.
 A candidate removed by an argument checked against the expected Type (SPEC 10.5.1; DECISIONS BU-252) retains in
 `NoApplicableOverload_Kd` that argument, its expected Type and its own selection's outcome there (the candidate party's `Checked`
 fact, DECISIONS R7-M62, read into the candidate's related label, a Callable row's too); no Evidence change.
-Reference ambiguity retains only fitting candidates, their signatures and declaration locations.
+Reference ambiguity retains only fitting candidates, their signatures and declaration locations. Index ambiguity (SPEC 4.7.1; DECISIONS R7-M104) records the members of the failed selection by the key, each at its declaring clause with the Contract instance it stands for, the count in the primary label.
 
 Preparation's module count limit (IMPL A.4, 21.3.2, DECISIONS R8-M37) reports `ModuleCountLimit_Kd` (Error, Resource, `modules:Number`, `limit:Number`, the Input partition) at the root Project's project file, once, from `Compilation.PrepareModules`: a resolved dependency graph of more than 65,535 modules (`SyntaxTable.LibraryModule`). No module is established (`Compilation.AnalyzesNoModule`): each node's configuration, and the root's language version, settings and target, are still checked and their failures are their own records (a failure blocks the check as before; only a failed root configuration, which no resolved graph holds, leaves the graph unchecked), no source is established or parsed (the resolver has read them), no phase runs, and the result is Completed and rejected, with test presence Unknown.
 
