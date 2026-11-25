@@ -133,8 +133,8 @@ public sealed partial class Binding
         return null;
     }
 
-    // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
-    // failure only (FailExplained), so at most one table answers for a node.
+    // Publishes one direct failure with the facts its check recorded: a problem's own facts first (ReportProblem), then a fact table's,
+    // which holds the explanation of its node's one failure only (FailExplained), so at most one table answers for a node.
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
@@ -197,10 +197,6 @@ public sealed partial class Binding
         {
             // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
         }
-        else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
-        {
-            this.ReportContextualCapture(issue.Node, store, contextual, requirement, issue.Code);
-        }
         else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
         {
             // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
@@ -213,13 +209,9 @@ public sealed partial class Binding
         {
             this.ReportDuplicateBindingSet(bindingSet, store, reusedSet, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && this.captureRepeats?.TryGetValue(issue.Node, out var repeats) == true)
+        else if (this.captureFailures?.TryGetValue(issue.Node, out var late) == true)
         {
-            this.ReportCaptureRepeats(issue.Node, store, repeats, requirement, issue.Code);
-        }
-        else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
-        {
-            this.ReportCaptureEntry(issue.Node, store, entry, requirement, issue.Code);
+            ReportLateHelperSource(issue.Node, store, late, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {

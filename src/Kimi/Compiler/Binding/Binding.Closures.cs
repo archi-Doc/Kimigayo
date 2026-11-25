@@ -489,9 +489,9 @@ public sealed partial class Binding
         => owner is FunctionKoto && scope.Function is { IsAnonymous: true } literal && !ReferenceEquals(literal, owner) &&
             this.FormEnvironment(literal) == DeclState.NotStarted;
 
-    // SPEC 7.7.2: the written capture list's entries: Done; Error where an entry ends the binding (its record at the literal); NotStarted
-    // where an entry's source is pending (FormEnvironment's not-ready criterion). Each entry's source is demanded first (QueryValueType),
-    // so the entry is judged on its source's declared Type whenever the list is formed.
+    // SPEC 7.7.2: the written capture list's entries: Done; Error where the list repeats a name or an entry ends the binding (its record
+    // at the literal); NotStarted where an entry's source is pending (FormEnvironment's not-ready criterion). Each entry's source is
+    // demanded first (QueryValueType), so the entry is judged on its source's declared Type whenever the list is formed.
     private DeclState CaptureEntries(FunctionKoto function, BindingScope scope)
     {
         if (function.Captures is not { } captures)
@@ -499,9 +499,9 @@ public sealed partial class Binding
             return DeclState.Done;
         }
 
-        // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list. The other entries are
-        // still bound, and the first that fails on its own is reported beside the repeats (SPEC 23.1.2).
-        var repeats = this.RepeatedCaptures(function, captures);
+        // SPEC 7.7.2, 23.1.2: a repeated capture name and a collision with a parameter are recorded from the written list. The other
+        // entries are still bound, and the first that fails on its own is recorded beside the repeats.
+        var repeats = this.RecordRepeatedCaptures(function, captures);
         for (var i = 0; i < captures.Length; i++)
         {
             var capture = captures[i];
@@ -512,7 +512,7 @@ public sealed partial class Binding
 
             if (this.Lookup(capture.Name, scope.Parent!, function) is not { } source)
             {
-                this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null); // An unresolved name, without facts.
+                this.Record(function, BindingFailure.Capture, []); // An unresolved name, without facts.
                 return DeclState.Error;
             }
 
@@ -521,55 +521,58 @@ public sealed partial class Binding
             {
                 // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                 // which self is reached only through its Fields (Receiver).
-                this.FailCaptureEntry(function, repeats, BindingFailure.Capture, CaptureFailure.Of(capture, source));
+                this.CaptureFacts(function, CaptureProblem.Receiver, capture.Span, i, source);
+                this.RecordCapture(function, BindingFailure.Capture);
                 return DeclState.Error;
             }
 
             if (this.HelperCarrier(function, source) is { } helper)
             {
-                this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
+                this.RecordHelperCapture(function, capture.Span, i, source, helper); // SPEC 16.3.1: nor its helper borrow.
                 return DeclState.Error;
             }
 
             // SPEC 23.1.2: no environment holds a source whose Type failed (QueryValueType demanded it above, so Capture would bind
-            // nothing more); the entry rests on it.
+            // nothing more); the entry rests on it, and a list that repeats a name has its records.
             if (source.Type is null)
             {
-                if (repeats.Count == 0)
+                if (repeats)
                 {
-                    // The literal rests on the source's TypeSource: Error on a recorded failure, which derives the entry; not ready on a
-                    // pending source (F's G230H-10 C1).
-                    var cause = TypeSource(source) ?? source.Declaration;
-                    this.CompleteDependent(function, cause);
-                    return this.RecordedState(cause) == BindingState.Invalid ? DeclState.Error : DeclState.NotStarted;
+                    return DeclState.Error;
                 }
 
-                // A source whose binding failed adds nothing to the repeats.
-                this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
-                return DeclState.Error;
+                // The literal rests on the source's TypeSource: Error on a recorded failure, which derives the entry; not ready on a
+                // pending source (F's G230H-10 C1).
+                var cause = TypeSource(source) ?? source.Declaration;
+                this.CompleteDependent(function, cause);
+                return this.RecordedState(cause) == BindingState.Invalid ? DeclState.Error : DeclState.NotStarted;
             }
 
             if (this.Capture(function, source, scope, capture) is not { } environment)
             {
-                this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
-                return DeclState.Error;
+                return DeclState.Error; // Capture recorded its refusal.
             }
 
             environment.MutableCapture = capture.IsMutable;
             if (this.CaptureEntry(function, capture, source, environment) is { } failure)
             {
-                this.FailCaptureEntry(function, repeats, failure, CaptureFailure.Of(capture, source));
+                // SPEC 7.7.2, 8.14: a bare entry's Type and the cases its bare acquisition moves in, judged here for its Note.
+                var facts = this.CaptureFacts(function, CaptureProblem.Entry, capture.Span, i, source);
+                if (failure == BindingFailure.TransferRequired)
+                {
+                    facts.Add(new(ProblemFactKind.Actual, SourceRef.Of(function), this.report.Keep(source.Type)));
+                    if (this.BareAcquisition(source.Type, function, out _) is not SemanticsMask.None and var moving)
+                    {
+                        facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(function), (long)moving));
+                    }
+                }
+
+                this.RecordCapture(function, failure);
                 return DeclState.Error;
             }
         }
 
-        if (repeats.Count != 0)
-        {
-            this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
-            return DeclState.Error;
-        }
-
-        return DeclState.Done;
+        return repeats ? DeclState.Error : DeclState.Done;
     }
 
     // SPEC 11.6, 3.2.1, 7.7.1, 7.7.2, 10.5.4 (G812 rulings 174, 176): typing a Property's initializer needs a literal's Type, not its body,

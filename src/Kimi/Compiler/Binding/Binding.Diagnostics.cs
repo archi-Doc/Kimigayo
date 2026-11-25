@@ -703,8 +703,6 @@ public sealed partial class Binding
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
         this.captureFailures?.Clear();
-        this.captureRepeats?.Clear();
-        this.captureRepeatRows.Clear();
         this.pairCaseRows.Clear();
         this.ResetParameterShapes();
         this.duplicateOrder.Clear();

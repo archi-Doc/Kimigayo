@@ -32,6 +32,9 @@ public class CaptureDiagnosticTest
     // A method whose own premise validates the projection it captures; the capture is Unsupported for its own reason.
     private const string ValidatedCapture = "    public func good(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        T is Iter<i32>\n        let c = func [t@move] () -> () => ()\n        return";
 
+    // A function whose pair-layer parameter x a capture entry holds only as a located limit (SPEC 23.1.1; PLAN G1129's c2 header).
+    private const string PairLayer = "func f<s/T>(x: s/i32 during a, p: s/(i32, i32), q: uniq/(s/i32 during a), m: s/T) -> i32\n    s is owner or uniq\n";
+
     // SPEC 7.7.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
     [Theory]
@@ -49,8 +52,8 @@ public class CaptureDiagnosticTest
         Assert.Equal(("declaration", "capture entry", source.IndexOf("func [", StringComparison.Ordinal) + 6), (related.Role, related.Label, related.Span!.Value.Start));
     }
 
-    // PLAN G765: a list's repeats are rows reused between passes, so a warm rebind of a list that repeats an entry or a parameter
-    // allocates nothing (SPEC 7.7.2).
+    // PLAN G765: a list's repeats are records whose facts the report keeps in reused storage, so a warm rebind of a list that repeats
+    // an entry or a parameter allocates nothing (SPEC 7.7.2).
     [Theory]
     [Trait("Purpose", "Allocation")]
     [InlineData("public func main() -> ()\n    let x: i32 = 1\n    let g = func [x, x] () => x\n    require g() == 1 else => $abort(\"g\")\n")]
@@ -123,6 +126,26 @@ public class CaptureDiagnosticTest
         var alone = Assert.Single(DiagnosticCorpus.Check(source.Remove(repeat - 2, name.Length + 2)).Diagnostics);
         Assert.Equal((code, located.Start, output.Diagnostics[0].Note), (alone.Code, alone.Span!.Value.Start, alone.Note));
         Assert.Empty(DiagnosticCorpus.Check("let x: i32 = 1\nlet y: i32 = 2\nlet h = func [x, y] () => x + y\nrequire h() == 3 else => $abort(\"h\")").Diagnostics);
+    }
+
+    // SPEC 7.7.2, 23.1.1, 23.1.2 (PLAN G1129): a repeated name, or a parameter that repeats an entry, is its own record beside another
+    // entry's located limit, in either order of the entries (the limit took the Closure's one slot first and hid the repeat).
+    [Theory]
+    [InlineData("    let k: i32 = 1\n    var g = func [x, k, k] () -> i32 => x + 0\n    return g()\n", "[x, k, ", "func [x, ")]
+    [InlineData("    var g = func [x, k] (k: i32) -> i32 => x + k\n    return g(1)\n", "] (", "func [x, ")]
+    [InlineData("    let k: i32 = 1\n    var g = func [k, x, k] () -> i32 => x + k\n    return g()\n", "[k, x, ", "func [")]
+    public void ARepeatStandsBesideAnEntrysLimit(string body, string beforeRepeat, string beforeEntry)
+    {
+        var source = PairLayer + body + "public func main() -> ()\n    Console.writeLine(\"p\")\n";
+        var output = DiagnosticCorpus.Check(source);
+        Assert.Equal(
+            [(nameof(DiagnosticCode.Unsupported_Kd), "x"), (nameof(DiagnosticCode.DuplicateBinding_Kd), "k")],
+            output.Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span!.Value.Length))).ToArray());
+        var repeat = output.Diagnostics[1];
+        Assert.Equal(source.IndexOf(beforeRepeat, StringComparison.Ordinal) + beforeRepeat.Length, repeat.Span!.Value.Start);
+        Assert.Equal("'k' is declared again", repeat.Label);
+        var related = Assert.Single(repeat.Related!);
+        Assert.Equal(("declaration", "capture entry", source.IndexOf(beforeEntry, StringComparison.Ordinal) + beforeEntry.Length), (related.Role, related.Label, related.Span!.Value.Start));
     }
 
     // The entry's record and the repeat reach the command rendering and both language-server placements as two records.
