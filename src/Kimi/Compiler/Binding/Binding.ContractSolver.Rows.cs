@@ -55,7 +55,7 @@ public sealed partial class Binding
     // included.
     internal int ClosureIndexWork { get; private set; }
 
-    /// <summary>The greatest number of rounds, and of re-rootings, of one root's closure (SPEC 8.3.3 Limits; the class header's Closure).</summary>
+    /// <summary>The budget of one root's closure, its rounds past a root's first walk and its re-rootings together (SPEC 8.3.3 Limits; the class header's Closure).</summary>
     internal const int PremiseClosureLimit = 32;
 
     // R7-C2c2 c2-2: the extension rounds of this compilation (the scaling rows' measure of the loop's bound).
@@ -159,31 +159,31 @@ public sealed partial class Binding
     // (ExtendedClassesOf under `serial`, identity facts alone: C-e), never the view's table or what a use's supply or an earlier
     // request left. The first round reads T(G), kept per serial; each later round builds the table from the rows so far, and a round
     // that adds no row builds nothing (R3.4). When a round keys a root lower by Order, the root is that key and the closure starts
-    // again with no rows, and a restart onto a root filed in the publication ends it (CloseRoot files the entry with the filed key's
-    // re-rootings, G1406-16 C2). Otherwise
+    // again with no rows, and a restart onto a root filed in the publication ends it (CloseRoot files the entry with what the filed
+    // key spent, G1406-16 C2). Otherwise
     // the round reopens the view's entry as the closure's (OwnEntry) and returns its table, and CloseRoot walks each root and its key.
-    // Rows only grow from the same roots, so a round that adds none ends the closure (null). The rounds are counted from the roots'
-    // first walk and the re-rootings from the part; past PremiseClosureLimit of either the closure ends (null) and CloseRoot files it
-    // Limited, so the round refuses nothing: a reader of a Limited root refuses (ReadIdentityLimit). Each re-rooting lowers a root in
-    // Order, so the re-rootings' bound needs 33 roots each joined to a lower one only by its own closure: none is known. Returns the
-    // round's table, or null when the closure ended or the table's build answered none.
-    private IdentityClasses? ExtendRound(ref (int Applied, int Rounds, int Restarts) closure, BindingScope scope, int serial, EvidenceView view, ViewIndex index)
+    // Rows only grow from the same roots, so a round that adds none ends the closure (null). G1406-19: the closure has one budget,
+    // PremiseClosureLimit, that its rounds past a root's first walk and its re-rootings spend together (`closure.Spent`, counted from
+    // the part asked and never reset; `closure.Rooted`, what was spent when the last re-rooting started the current root's own
+    // rounds). Past it the closure ends (null) and CloseRoot files it Limited, so the round refuses nothing: a reader of a Limited root
+    // refuses (ReadIdentityLimit). So a closure builds at most PremiseClosureLimit round tables beside T(G), however often it re-roots.
+    // Returns the round's table, or null when the closure ended or the table's build answered none.
+    private IdentityClasses? ExtendRound(ref (int Applied, int Spent, int Rooted) closure, BindingScope scope, int serial, EvidenceView view, ViewIndex index)
     {
         while (true)
         {
-            if (closure.Applied < 0)
+            var first = closure.Applied < 0; // a root's first walk, which spends nothing
+            if (first)
             {
                 this.enumerateIdentities.Clear(); // the closure starts (again) from its roots with no rows
             }
-
-            if (this.enumerateIdentities.Count == closure.Applied)
+            else if (this.enumerateIdentities.Count == closure.Applied)
             {
                 return null;
             }
-
-            if (closure.Rounds > PremiseClosureLimit || closure.Restarts > PremiseClosureLimit)
+            else if (++closure.Spent > PremiseClosureLimit)
             {
-                return null; // the closure is Limited (CloseRoot reads the bound); its reader refuses (ReadIdentityLimit)
+                return null; // the budget is spent: the closure is Limited (CloseRoot reads it); its reader refuses (ReadIdentityLimit)
             }
 
             closure.Applied = this.enumerateIdentities.Count;
@@ -207,8 +207,8 @@ public sealed partial class Binding
 
             if (restarted)
             {
-                closure = (-1, 0, closure.Restarts + 1);
-                if (this.identityRoots.ContainsKey((scope, this.extendRoots[0])))
+                closure = (-1, closure.Spent + 1, closure.Spent + 1); // a re-rooting spends one; what was spent stays spent
+                if (closure.Spent > PremiseClosureLimit || this.identityRoots.ContainsKey((scope, this.extendRoots[0])))
                 {
                     return null; // G1406-11 C2: a restart onto a key filed in the publication reads its filing (FileClosure)
                 }
@@ -218,8 +218,7 @@ public sealed partial class Binding
 
             this.enumerateMemo.Clear();
             this.OwnEntry(index, view);
-            this.IdentityRounds += closure.Rounds == 0 ? 0 : 1; // the roots' first walk is no extension round
-            closure.Rounds++;
+            this.IdentityRounds += first ? 0 : 1; // a root's first walk is no extension round
             return extended;
         }
     }
@@ -228,11 +227,12 @@ public sealed partial class Binding
     // view under the reading's `serial`, CloseAsked's one closer (at the request boundary: no request is open). Its rounds
     // (ExtendRound) walk the root and its key over the table of the declaration's grounds and the rows so far, first T(G), whose key
     // enters it (a re-rooting); each walk records its supplies as rows (C-f). A lower key re-roots and restarts with no rows; a restart
-    // onto a root filed in the publication ends it. A round that adds no row ends it with its rows; past PremiseClosureLimit rounds it
-    // is Limited with the last round's rows, and its reader refuses (ReadIdentityLimit). Filed by FileClosure, which keeps E (the rows
-    // that join the key's class), the entry's pair row and the re-rootings (G1406-16 B1, C2). It records nothing: the scope's premise
-    // error is its validation step's (RecordIdentityPremiseError, R3.2). A closure is a function of (root, G): no use's ask or earlier
-    // request's rows enter it. Returns the closure.
+    // onto a root filed in the publication ends it. A round that adds no row ends it with its rows; past its one budget
+    // (PremiseClosureLimit, rounds and re-rootings together, G1406-19) it is Limited with the last round's rows, and its reader refuses
+    // (ReadIdentityLimit). Filed by FileClosure, which keeps E (the rows that join the key's class), the entry's pair row and what the
+    // entry and its key spent (G1406-16 B1, C2). It records nothing: the scope's premise error is its validation step's
+    // (RecordIdentityPremiseError, R3.2). A closure is a function of (root, G): no use's ask or earlier request's rows enter it.
+    // Returns the closure.
     private int CloseRoot(BindingScope scope, int serial, BoundType root)
     {
         var view = this.ViewOf(scope);
@@ -240,14 +240,14 @@ public sealed partial class Binding
         try
         {
             this.extendRoots.Add(root);
-            var closure = (Applied: -1, Rounds: 0, Restarts: 0);
+            var closure = (Applied: -1, Spent: 0, Rooted: 0);
             while (this.ExtendRound(ref closure, scope, serial, view, index) is { } table)
             {
                 var at = this.extendRoots[0];
                 this.EnumerateClosed(at, this.ClassKey(at, table), view, index);
             }
 
-            return this.FileClosure(scope, root, this.extendRoots[0], closure.Restarts, closure.Rounds > PremiseClosureLimit);
+            return this.FileClosure(scope, root, this.extendRoots[0], closure.Spent, closure.Spent - closure.Rooted);
         }
         finally
         {

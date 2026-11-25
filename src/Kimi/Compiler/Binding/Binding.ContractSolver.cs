@@ -78,8 +78,9 @@
 // - Closure (R7-C2e2 e2-7; SPEC 8.2.3, 8.3.3; G1406-11): a reader closes the roots it asks at entry (CloseRoot's rounds, ExtendRound,
 //   once per root and publication) over the declaration's grounds (ConstraintEnvironment.DeclaredIdentityFacts) and the root's own
 //   rows, every supply with its source (a deferred mate's walk keeps its rows: the cycle stop bounds them), a lower key of its own round
-//   table restarting it, at most PremiseClosureLimit rounds and restarts (an entry's restarts include a filed key's): its rows, its pair
-//   row to its key and whether it is Limited are a function of (grounds, root). Each reading reads one table, R(A) (Binding.TypeIdentity's
+//   table restarting it, at most PremiseClosureLimit rounds and restarts together, one budget that never resets (an entry spends a
+//   filed key's; G1406-19): its rows, its pair row to its key and whether it is Limited are a function of (grounds, root), and a
+//   Limited closure is filed for the publication as a Complete one is. Each reading reads one table, R(A) (Binding.TypeIdentity's
 //   ReadingOf: the grounds, the use supply and its asked closures' pair rows and rows joining their keys' classes, G1406-16 B1), Limited
 //   when an asked closure is: a judgment it leaves unproven is refused (RefuseProof: AnalysisLimit, Resource, at the use whose check
 //   asked, else at the scope's owner), one other evidence proves stands, and a query after the pass keeps Unknown; a kept entry is a

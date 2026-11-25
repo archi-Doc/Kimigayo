@@ -66,13 +66,16 @@ public sealed partial class Binding
     private readonly List<IdentityRow> identityRows = new(); // the readings' rows while their tables are built, a stack of ranges
 
     // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C2, G1406-16 B1, C2): the publication's closed roots (ContractSolver's CloseRoot), each
-    // closed part filed by FileClosure under its view scope and the part as asked: its closure (IdentityClosure). The readings' kept
-    // tables (ReadingOf), each under its view scope, closure set (a range of identityReadingClosures) and Limited bit, with the serial it
-    // is memoized for (-1: kept, not memoized). All are forgotten at each publication and each pass, capacity kept.
+    // closed part filed by FileClosure under its view scope and the part as asked: its closure (IdentityClosure), a Limited one as a
+    // Complete one (G1406-19). The readings' kept tables (ReadingOf), each under its closure set (a range of identityReadingClosures) and
+    // Limited bit, with the serial it is memoized for (-1: kept, not memoized), chained per view scope from its last reading
+    // (identityReadingHeads; G1406-18 N1: a key scan reads its scope's readings alone). All are forgotten at each publication and each
+    // pass, capacity kept.
     private readonly Dictionary<(BindingScope Scope, BoundType Key), int> identityRoots = new();
     private readonly List<IdentityClosure> identityClosures = new();
     private readonly List<IdentityRow> identityClosed = new();
-    private readonly List<(BindingScope Scope, int Serial, int Start, int Count, bool Limited, IdentityClasses Classes)> identityReadings = new();
+    private readonly Dictionary<BindingScope, int> identityReadingHeads = new(ReferenceEqualityComparer.Instance);
+    private readonly List<(int Next, int Serial, int Start, int Count, bool Limited, IdentityClasses Classes)> identityReadings = new();
     private readonly List<int> identityReadingClosures = new();
     private readonly List<int> identityAsked = new(); // ClassesOf's A(X) closures while it reads, a stack of ranges
     private readonly List<BoundType> identityParts = new(); // CloseAsked's parts of X, a stack of ranges
@@ -96,9 +99,9 @@ public sealed partial class Binding
     private readonly record struct IdentityRow(BoundConstraint Fact, ConstraintEnvironment? Environment, BindingSymbol? Source, IsKoto? Origin, Completion Availability);
 
     // A closed part's closure (FileClosure; G1406-11 C2, G1406-16 B1, C2): its final key; its pair row `part is Key` (an index of
-    // identityClosed) when the part is not the key, else -1; its rows E (a range of identityClosed, the key's); its re-rootings from the
-    // part to the key; and whether it is Limited.
-    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Restarts, bool Limited);
+    // identityClosed) when the part is not the key, else -1; its rows E (a range of identityClosed, the key's); what its closure spent of
+    // its one budget from the part (G1406-19: its rounds and re-rootings, a filed key's included); and whether it is Limited.
+    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Spent, bool Limited);
 
     // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
     private static bool HasTypeIdentity(BindingScope scope)
@@ -150,6 +153,7 @@ public sealed partial class Binding
         this.identityRoots.Clear();
         this.identityClosures.Clear();
         this.identityClosed.Clear();
+        this.identityReadingHeads.Clear();
         this.identityReadings.Clear();
         this.identityReadingClosures.Clear();
     }
@@ -245,20 +249,22 @@ public sealed partial class Binding
     }
 
     // Files a closed root for the publication (CloseRoot's one writer of the filing; G1406-11 C2, G1406-16 B1, C2) and returns the
-    // closure of `entry`, closed to `key` with `restarts` re-rootings by the open request (its last round: enumerateIdentities' rows,
-    // enumerateClasses' table, enumerateCompletion). An entry whose re-rootings, its own and the filed key's (a restart onto a filed key
-    // reads that filing), pass PremiseClosureLimit is filed alone, Limited, with no rows: its Limited bit is a function of the entry
-    // (SPEC 8.3.3). Otherwise the key, unless filed, is filed with E, its last round's rows that join its class in that round's table
-    // (R3.1: a prefix closure's E is empty), Limited when `limited` (its rounds passed the bound); and an entry other than the key
-    // with the key's rows and the pair row `entry is key`, read with the request's Completion: the link its re-rootings rest on, which
-    // the restart's cleared rows held (SPEC 8.3.3: the identities obtained before it are kept).
-    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, int restarts, bool limited)
+    // closure of `entry`, closed to `key` by the open request (its last round: enumerateIdentities' rows, enumerateClasses' table,
+    // enumerateCompletion) after spending `spent` of its one budget, `own` of it in the key's own rounds (G1406-19). A restart onto a
+    // filed key reads that filing, so the entry spends what the key spent as well. An entry other than its key past
+    // PremiseClosureLimit is filed alone, Limited, with no rows, and its key is not filed: the key's own closure has its own budget, so
+    // what is filed is a function of (entry, G) whichever reader closes first (SPEC 8.3.3). Otherwise the key, unless filed, is filed
+    // with E, its last round's rows that join its class in that round's table (R3.1: a prefix closure's E is empty), and its own
+    // spending, Limited past the budget; a Limited closure is filed for the publication as a Complete one is (G1406-19). An entry
+    // other than the key is filed with the key's rows and the pair row `entry is key`, read with the request's Completion: the link its
+    // re-rootings rest on, which the restart's cleared rows held (SPEC 8.3.3: the identities obtained before it are kept).
+    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, int spent, int own)
     {
         var known = this.identityRoots.TryGetValue((scope, key), out var closure);
-        restarts += known ? this.identityClosures[closure].Restarts : 0;
-        if (restarts > PremiseClosureLimit)
+        spent += known ? this.identityClosures[closure].Spent : 0;
+        if (spent > PremiseClosureLimit && !ReferenceEquals(entry, key))
         {
-            return File(entry, new(entry, -1, 0, 0, restarts, true));
+            return File(entry, new(entry, -1, 0, 0, spent, true));
         }
 
         if (!known)
@@ -272,7 +278,7 @@ public sealed partial class Binding
                 }
             }
 
-            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, 0, limited));
+            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, own, own > PremiseClosureLimit));
         }
 
         if (ReferenceEquals(entry, key))
@@ -282,7 +288,7 @@ public sealed partial class Binding
 
         var filed = this.identityClosures[closure];
         this.identityClosed.Add(new(this.InternConstraint(new(ConstraintKind.TypeIdentity, entry, filed.Key)), null, null, null, this.enumerateCompletion));
-        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Restarts = restarts });
+        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Spent = spent });
 
         int File(BoundType part, IdentityClosure filing)
         {
@@ -294,20 +300,21 @@ public sealed partial class Binding
     // e2-7 (R3.1; G1406-16 B1), the one keep step of a reading's table: R(A) = ClassesOver(G ∪ U ∪ the rows of A's closures, each pair
     // row and E), A the closures appended to identityAsked from `start` (CloseAsked), marked Limited when `limited` (a closure of A is).
     // It is keyed by (`serial`, A, the Limited bit), a function of (G, A, U), so the order of readers changes no reading; the key with
-    // no closure and the bit clear is the base table T(G ∪ U), one per view scope. Each key's table is rebuilt in place at its next
-    // read unless a build is nested in another (a reader may hold it), and memoized only when Final and the serial is unchanged across
-    // its build (Keeps). A re-entered build answers nothing (Provisional).
+    // no closure and the bit clear is the base table T(G ∪ U), one per view scope. The key is scanned among the scope's readings alone
+    // (identityReadingHeads' chain; G1406-18 N1). Each key's table is rebuilt in place at its next read unless a build is nested in
+    // another (a reader may hold it), and memoized only when Final and the serial is unchanged across its build (Keeps). A re-entered
+    // build answers nothing (Provisional).
     private IdentityClasses? ReadingOf(BindingScope scope, int serial, int start, bool limited, out Completion completion)
     {
         var count = this.identityAsked.Count - start;
         var based = count == 0 && !limited;
         var kept = based ? this.identityClasses.GetValueOrDefault(scope) : default;
         var at = -1; // the key's entry in identityReadings
-        for (var k = 0; !based && at < 0 && k < this.identityReadings.Count; k++)
+        for (var k = based ? -1 : this.identityReadingHeads.GetValueOrDefault(scope, -1); at < 0 && k >= 0; k = this.identityReadings[k].Next)
         {
             var reading = this.identityReadings[k];
             this.IdentityReadingWork++;
-            if (ReferenceEquals(reading.Scope, scope) && reading.Count == count && reading.Limited == limited && this.SameClosures(reading.Start, start, count))
+            if (reading.Count == count && reading.Limited == limited && this.SameClosures(reading.Start, start, count))
             {
                 (at, kept) = (k, (reading.Serial, reading.Classes));
             }
@@ -355,11 +362,13 @@ public sealed partial class Binding
             }
             else if (at >= 0)
             {
-                this.identityReadings[at] = (scope, memo, this.identityReadings[at].Start, count, limited, classes);
+                var reading = this.identityReadings[at];
+                this.identityReadings[at] = (reading.Next, memo, reading.Start, count, limited, classes);
             }
             else
             {
-                this.identityReadings.Add((scope, memo, this.identityReadingClosures.Count, count, limited, classes));
+                this.identityReadings.Add((this.identityReadingHeads.GetValueOrDefault(scope, -1), memo, this.identityReadingClosures.Count, count, limited, classes));
+                this.identityReadingHeads[scope] = this.identityReadings.Count - 1;
                 this.identityReadingClosures.AddRange(CollectionsMarshal.AsSpan(this.identityAsked).Slice(start, count));
             }
 

@@ -322,7 +322,9 @@ public partial class TypeDagScalingTest
     // function asks the closure of `T.(K).A`, whose Contract clause makes it `T.(K).B` (SPEC 8.2.3's grounds; `U is i32` is a written
     // identity), so its return reads R(A) with A not empty. The programs are valid (SPEC 8.2.3). Predicted before any run on 5c-3:
     // quadratic, about k^2 / 2 readings compared per pass (every reading of the pass is scanned, ForgetClosures clears them per pass
-    // and publication only), about 16 times per factor 4 of k, so the linear bound fails; keyed by scope first it is linear.
+    // and publication only), about 16 times per factor 4 of k, so the linear bound fails. Predicted on 5e (keyed by scope first,
+    // identityReadingHeads): linear, c * k + d, c the comparisons of one function's reads against its own scope's readings (about one
+    // per read after its first) and d >= 0 the readings outside the k functions, so w32 <= 4 * w8 and w128 <= 4 * w32 hold.
     [Fact]
     public void ReadingKeysAreScannedPerScope()
     {

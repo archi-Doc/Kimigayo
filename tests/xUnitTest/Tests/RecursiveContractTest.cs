@@ -624,6 +624,9 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "arg-a", SiblingArguments + "func probe<T>(t: ref/T, a: ref/T.(K).A) -> i32\n    T is K\n    let p: ref/T.(K).D.(Two<T.(K).A, T.(K).B>).P = a\n    let b: ref/T.(K).B = a\n    return 0\n", "")]
     [InlineData("e2-7", "arg-b", SiblingArguments + "func probe<T>(t: ref/T, a: ref/T.(K).A) -> i32\n    T is K\n    let b: ref/T.(K).B = a\n    let p: ref/T.(K).D.(Two<T.(K).A, T.(K).B>).P = a\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "mk-a", CycleMates + "func probe<T>(a: ref/T.(Mk).Next.(Mk).Next.(Mk).Up, b: ref/T.(Mk).Next.(Mk).Up) -> i32\n    T is Mk\n    let x: ref/T.(Mk).Next = a\n    let y: ref/T = b\n    return 0\n", "")]
+    // mk-b's bound (G1406-19; predicted on 5e before any run): each root closes once per publication within one budget,
+    // PremiseClosureLimit rounds and re-rootings together that a re-rooting never resets, so the row stays accepted in about commit
+    // 4's time (0.003 s); 5c restarted the rounds at each re-rooting (33 x 33 rounds) and did not finish in 10 minutes.
     [InlineData("guard", "mk-b", CycleMates + "func probe<T>(a: ref/T.(Mk).Next.(Mk).Next.(Mk).Up, b: ref/T.(Mk).Next.(Mk).Up) -> i32\n    T is Mk\n    let y: ref/T = b\n    let x: ref/T.(Mk).Next = a\n    return 0\n", "")]
     [InlineData("guard", "c4a", ChainedTakes + "func c4a<T>(n: ref/T.(KR).Next, x: ref/T.(KR).Next.(KR).A) -> i32\n    T is KR\n    return n.take(x)\n", "")]
     [InlineData("guard", "c4b", ChainedTakes + "func c4b<T>(n: ref/T.(KR).Next, x: ref/T.(KR).Next.(KR).A) -> i32\n    T is KR\n    let s: ref/string = x\n    return n.take(x)\n", "")]
