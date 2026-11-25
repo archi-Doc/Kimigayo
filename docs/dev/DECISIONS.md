@@ -7226,7 +7226,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - The owner's O-254 (2026-11-14, 「O-254 Q1 D Q2 A」; SPEC 5.7 Calls and 7.2.3 as clarified, f12328811). Q1 D: a Closure's
     environment bindings are Fields of its call receiver's referent, so a raw layer without an Origin in an environment binding's
     Type is `Any`, a layer the Closure states, at every depth (below a borrow layer and below a layer that states an Origin too);
-    Binding publishes it (the Front's A5-F, PLAN G938) with the mark of a `let` binding's own layer, which no call replaces (15.8.2:
+    Binding publishes it (the Front's A5-F, PLAN G938) with the mark of a `let` binding's own layer (BU-261, R4-M248; PLAN
+    G941), which no call replaces (15.8.2:
     'no Closure body can replace its environment'). Rule 4 (the call's own pointer) applies at every raw layer without an Origin of
     storage the call writes, whichever row the layer above has, at a `var` binding's own layer, never at a `let` binding's. Q2 A is
     R4-M203 (U9).
@@ -8171,8 +8172,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       (the declared step reads the holder), after that step and under the guard the node takes at any other key. The reason that
       no longer holds: a part that is no layer the walked Type expression writes stops rule 4 at the key, while 5.7 Calls decides
       per layer, so such a part does not stop it at the key's raw layers without an Origin (R-G841-5; xMixDeclBad, r4MixHopBad).
-  - O-254's "never at a `let` binding's" holds once G938 publishes the `let` mark; until then a Closure's `let` layer is `Its`
-    (cloLetPtrU8ThroughU stays accepted; cloLet*UsedBad are G941's).
+  - O-254's "never at a `let` binding's": R4-M248 (rule L, PLAN G941); the layer's class stays `Its`.
   - Records (Q13): invalid programs newly rejected only, with `ComparisonLoanConflict_Kd`: cloVarPtrU8Bad, cloVarPtrU8CellBad,
     cloVarPtrU8NullWriteBad, cloVarPtrU8OtherVarBad, cloVarTupPtrU8Bad, enumPayloadPtrU8Bad, r4MixHopBad, xMixDeclBad, xRawDeclBad;
     `MirBorrowsTest.Exposed`'s intPastComposedBad (was intPastOk), rvPastU64HolderBad, rvPastU8OwnBad; `MirBorrowsTest.Guard`'s er
@@ -8471,6 +8471,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a form SPEC accepts, against AGENTS' Diagnostics rule: placedStatedFirstNoneOk and its valid twins noneCopyOk and okLocalTOk get
     `ComparisonLoanConflict_Kd` at `kk = 2` without it, `labels-c1b.md`);
     a holder state per raw layer (per-part holder states: R4-M191, R4-M198, R4-M219; against O-230 Q1 (a)).
+- **R4-M248 G941 rule L: rule 4 never at a layer Binding marks `Let`; the class column unchanged** (2026-11-25; the Middle;
+  A5; G941 unit 1, Q-789, D-1292; Major, an acceptance mover; design `artifacts\units\g941\design.md` Revision 1 R1.4, its reviews)
+  SPEC 15.6.4, 15.8.2, 5.7 Calls; the owner's O-254 Q1 D.
+  - **Rule.** Rule 4 (15.6.4's composition: the call's own pointer at a raw layer without an Origin) applies only where the call
+    may write that layer, never at a layer Binding marks `OwnLayer.Let` (BU-261). `MirBorrows.PunKeys`' `punPastLayers` holds per
+    past entry `(PastLayer Class, bool Let)`, `Let` copied from the layer in `Key`'s fold; `OwnPointer` alone reads `Let`.
+    `Punned`, `Keyed`, `ReadLayers` and `ReadPart` read `.Class`: the mark is no class, so a `let`-held layer is read past by its
+    class (Its layer by layer, Any by the declared step). `KeepResult`'s `OwnPointer` at a result key is unchanged (no mark there).
+  - **Stays:** a `var` environment layer, a binding past another exclusive layer and a Closure's result keep rule 4 (pair L's
+    record at `let mk`); G939 keeps the holders' reading past every `Any` layer.
+  - **Supersedes** R4-M241's line "until then a Closure's `let` layer is `Its`" for rule 4; the reason that no longer holds: the
+    mark exists (BU-261).
+  - **Records (Q13):** the valid cloLetRefPtrOk moves from rejected (`ComparisonLoanConflict_Kd` at `var hop` and `kk = 2`) to
+    accepted (Q17 class 3). No other program moves (48 probes; the whole suite's diagnostic and semantic snapshots, 0 differences; the A5
+    corpus oracle, 0 of 1,764).
+  - **Rejected:** `PastLayer.ReadOnly` (revision 0: a class row that changed the declared step of `Any` layers).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -19182,6 +19198,30 @@ resumed by R4-M86 (2026-10-20).
     rounds); an early Unknown left unmemoized by its value alone (it loses g464's and c1fi's rest, whose Unknowns read no program
     path); a new dependence constant (the erasure's Owned owner would read the forgotten work as final); re-judging at the final pass
     (a late correction).
+- **BU-261 G941 (B2): Binding marks the layers of a `let` environment binding of a Closure call's receiver referent
+  (`OwnLayer.Let`) at the receiver key it publishes (`TyCtxt.ReceiverKey`)** (2026-11-25; the Front's producer, implemented in the
+  Middle's G941 unit 1, Q-789, D-1292; design `artifacts\units\g941\design.md` Revision 1 R1.3 and the reviews `review-design-f.md`,
+  `review-design-m.md`) SPEC 15.8.2, 7.7.2, 7.7.3, 5.7 Calls; the owner's O-254 Q1 D.
+  - **Mark.** `OwnLayer.Let`: the part lies within a `let` environment binding of the call receiver's referent, at any depth by
+    value, so the call never writes at it (15.8.2: "no Closure body can replace its environment"). A column like `Kept`, not a
+    closed-vocabulary entry; permanent.
+  - **Receiver key.** `TyCtxt.ReceiverKey(callee)` beside `ParameterKey`: the root key of the contract's receiver Type
+    `R/Env during ρ` (`Binding.ClosureReceiver` over `ClosureReceiverIn`; Env by value under `owner/Self`); a callee without a
+    receiver input is a broken contract (`InternalInvariant_Kd`). A5's `InputKey` takes it at a Closure call's receiver slot.
+  - **One test.** `Binding.ReceiverClosure(outer, type)`: the Closure literal whose call receiver a borrow is (outer Origin
+    `Projection` at `ClosureValueSlot`, Binder the literal, and the Type that literal's Closure); RetentionInput, RootWalk and
+    OwnLayers read it. Where a key's `Through` is such a layer, OwnLayers lists the environment by `BoundClosure.Captures[i]` and
+    marks every layer OwnParts adds under a capture without `var`; its seen-set is keyed by the mark, so a `let` and a `var` binding
+    of one Type are both listed.
+  - **Scope.** Nested by-value Closures keep the outermost binding's mark. Nothing is marked past any layer (a pointee, a borrow's
+    referent, a Closure past another exclusive layer: 7.7.3), at a result key, at a parameter key, or for a by-value `owner/Self`
+    receiver.
+  - **Reader.** A5's rule L alone (R4-M248); the mark changes no class (`PastLayer`). It implements R4-M219's O-254 bullet;
+    departs from none.
+  - **Open:** B1, rule A's rows for the storage past such a layer (`Hold`), PLAN G941.
+  - **Rejected:** a mark by the key's Type (a Closure Type with a `let` binding): it marks `mk()`'s result key and accepts the
+    invalid cloResultLetSharedOk (pair L; relabelled I, the name kept); the mark folded into the class (`PastLayer.ReadOnly`, revision 0): it changed the
+    declared step of `Any` layers.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
