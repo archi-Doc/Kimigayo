@@ -67,7 +67,8 @@ internal readonly record struct MirProblem(
         => new(code, requirement, subject, NoBody, NoBodyViews);
 }
 
-/// <summary>The class of a record that is no body's problem (R6-check H3-1), its value the record's <see cref="MirProblem.Body"/>.</summary>
+/// <summary>The class of a record that is no body's problem (R6-check H3-1), its value the record's <see cref="MirProblem.Body"/>. No
+/// member is 0 or -1: Body 0 is a body and -1 is <see cref="MirProblem.NoBody"/>.</summary>
 internal enum MirRecordClass
 {
     /// <summary>A construction record (MirProgram.Report): an Unsupported form, the default expansion limit or a broken HIR contract.</summary>
