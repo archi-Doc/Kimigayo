@@ -267,7 +267,7 @@ public partial class PairAnnotationBindingTest
         "InvalidOriginBinding_Kd: Holder<uniq/i32 during r> during static")]
     [InlineData(
         "struct Holder<s/T> {a}\n    s is owner or ref or uniq\n    public let item: s/T during a\nstruct Outer<U> {b}\n    public let h: Holder<U> during b\nfunc g() -> Outer<i32> during static => $abort(\"u\")",
-        "UnprovenConstraint_Kd: let h: Holder<U> during b | UnprovenConstraint_Kd: h | UnprovenConstraint_Kd: Holder<U>")]
+        "UnprovenConstraint_Kd: let h: Holder<U> during b | UnprovenConstraint_Kd: Holder<U>")] // the Field name `h` carries the written Holder<U>: its restating record goes (G1278-A, Q13; F's G1278-3)
     public void AStaticSlotArgumentIsJudgedInTheInstancesCase(string declarations, string records)
         => Assert.Equal(records, string.Join(" | ", RawPointerSyntaxTest.Records(declarations)));
 

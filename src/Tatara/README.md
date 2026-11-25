@@ -9,6 +9,12 @@ changes it. A worktree whose `tatara.h` differs from the shared root's `tatara.d
 base) gives itself a toolchain directory of its own, removing the junction alone (`cmd /c rmdir toolchain`, never `/s` or a recursive
 delete, which empties the shared root), and never runs setup through the junction.
 
+The compiler's supply files carry their stored inspections (`src/backend/<row>/<file>.facts`), which a native build reads instead of
+calling `tatara_inspect`. A unit that changes `src/Tatara` or updates LLVM runs `NativeToolchainTest` (its facts row,
+`EachCompilerSupplysFactsAreItsInspection`) on the `tatara.dll` built from its change, whether or not it means to change an inspection;
+when the row fails, it runs the row with `KIMI_SUPPLY_FACTS=write`, builds Kimi again, runs the row again and commits the regenerated
+files with its change.
+
 ## Operations
 
 `tatara_optimize` (`opt -passes=verify`, then `opt -S -passes=default<O2> -mtriple`), `tatara_emit` (`opt -passes=verify`, then

@@ -459,6 +459,25 @@ public sealed class TataraExecutorTest : IDisposable
     // A tool of the development toolchain run in the directory: its failure, empty on success (Launch); NativeToolchainTest's libraries too.
     internal static async Task<string> Tool(string name, string directory, params string[] arguments) => (await Launch(name, directory, arguments)).Failure;
 
+    // An inspection as the archive rows compare it: "archive" or "object", then ", default library" when a member names one; a line per
+    // member: its form, "<letter>:<name>" per undefined and per defined symbol, "comdat:<name>" per definition that admits copies and
+    // "include:<name>" or "alternatename:<from>=<to>" per directive reference; then "index" and its "<member>:<name>" entries.
+    // NativeToolchainTest's supply facts rows too (SupplyFacts).
+    internal static string Describe(ObjectFacts facts)
+    {
+        var lines = new List<string> { (facts.IsArchive ? "archive" : "object") + (facts.HasDefaultLibrary ? ", default library" : string.Empty) };
+        foreach (var member in facts.Members)
+        {
+            var parts = member.Undefined.Concat(member.DefinedExternal).Select(static s => s.Kind + ":" + s.Name)
+                .Concat(member.Comdats.Select(static name => "comdat:" + name))
+                .Concat(member.Directives.Select(static d => d.Kind == 'I' ? "include:" + d.Name : "alternatename:" + d.Name + "=" + d.Target));
+            lines.Add(member.Form + string.Concat(parts.Select(static part => " " + part)));
+        }
+
+        lines.Add("index" + string.Concat(facts.Index.Select(static entry => " " + entry.Member + ":" + entry.Name)));
+        return string.Join('\n', lines);
+    }
+
     // The module that owns the process's unhandled-exception filter (IntPtr.Zero: none), through kernel32's exports.
     private static IntPtr FilterOwner()
     {
@@ -660,24 +679,6 @@ public sealed class TataraExecutorTest : IDisposable
     {
         var member = Assert.Single(facts.Members);
         return string.Join(' ', member.Undefined) + " | " + string.Join(' ', member.DefinedExternal) + " | default library " + facts.HasDefaultLibrary;
-    }
-
-    // An inspection as the archive rows compare it: "archive" or "object", then ", default library" when a member names one; a line per
-    // member: its form, "<letter>:<name>" per undefined and per defined symbol, "comdat:<name>" per definition that admits copies and
-    // "include:<name>" or "alternatename:<from>=<to>" per directive reference; then "index" and its "<member>:<name>" entries.
-    private static string Describe(ObjectFacts facts)
-    {
-        var lines = new List<string> { (facts.IsArchive ? "archive" : "object") + (facts.HasDefaultLibrary ? ", default library" : string.Empty) };
-        foreach (var member in facts.Members)
-        {
-            var parts = member.Undefined.Concat(member.DefinedExternal).Select(static s => s.Kind + ":" + s.Name)
-                .Concat(member.Comdats.Select(static name => "comdat:" + name))
-                .Concat(member.Directives.Select(static d => d.Kind == 'I' ? "include:" + d.Name : "alternatename:" + d.Name + "=" + d.Target));
-            lines.Add(member.Form + string.Concat(parts.Select(static part => " " + part)));
-        }
-
-        lines.Add("index" + string.Concat(facts.Index.Select(static entry => " " + entry.Member + ":" + entry.Name)));
-        return string.Join('\n', lines);
     }
 
     // A COFF short import member (IMAGE_FILE_IMPORT_HEADER: Sig2 0xFFFF, machine x64, the data's size, code imported by name), then the
