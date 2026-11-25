@@ -2389,19 +2389,18 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
-    // Design §5 row 21's Linux programs as pairs at the level: Hello (libc-free) and Ffi, whose static codec.a's one member defines
-    // codec_add(int, short) and codec_pid, which calls musl's getpid (the C path; Kind's row 21).
+    // Design §5 row 21's Linux programs as pairs at the level, from their committed sources (tests/linux-elf, B7b9): Hello (libc-free)
+    // and Ffi, whose static codec.a's one member defines codec_add(int, short) and codec_pid, which calls musl's getpid (the C path;
+    // Kind's row 21).
     private async Task<ArtifactPaths> LinuxProgram(string program, string level)
     {
         if (program == "Hello")
         {
-            return LinuxPair.Publish(this.directory, "::Kimi.Console.writeLine(\"Hello, world!\")", level);
+            return LinuxPair.Publish(this.directory, LinuxPair.Program("Hello", "Hello.kimi"), level);
         }
 
-        await LinuxPair.Archive(this.directory, "codec", "rcs", ("m1", "int codec_add(int a, short b) { return a + b; }\nint getpid(void);\nint codec_pid(void) { return getpid(); }\n"));
-        const string Ffi = "group Codec\n    #LibraryImport(\"codec\", \"codec_add\")\n    public func add(a: i32, b: i16) -> i32\npublic func main()\n" +
-            "    require Codec.add(40, -2) == 38 else => $abort(\"add\")\n    Console.writeLine(\"ffi ok\")\n";
-        return LinuxPair.Publish(this.directory, Ffi, level, ("codec", "static", "codec.a"));
+        await LinuxPair.Archive(this.directory, "codec", "rcs", ("m1", LinuxPair.Program("Ffi", "native", "codec.c")));
+        return LinuxPair.Publish(this.directory, LinuxPair.Program("Ffi", "Ffi.kimi"), level, ("codec", "static", "codec.a"));
     }
 
     // LinkAmbiguity's and Kind's L rows (Dependency's Linux counterpart; labels copied from the designs) as pairs at O2: name is the row's
