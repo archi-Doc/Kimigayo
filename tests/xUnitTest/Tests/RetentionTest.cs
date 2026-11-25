@@ -1002,17 +1002,22 @@ public sealed partial class RetentionTest
     // Type argument was `result {0 Chain}` on dev c17bd1792: the component path's stated raw source), the unstated Field (D-933's Field
     // raw source) and Type argument by the chain. A `during self` Field layer past `it`'s borrow reads with that borrow's Origin (SPEC 5.7,
     // "Reading a Field"; G147 rulings 44 and 47): stated, it gives no result row, as its holder without the layer does, while its unstated
-    // twin keeps `result {0 Chain}` (fail-before: e0a190260 gave the `during self` row `result {0 Chain}` too; labels-r44.tsv). Both keep
-    // `reached {0 Content}`: the call may store through the layer (the delta read's O1, a pre-existing loan-conflict cause, rests on it).
+    // twin keeps `result {0 Chain}` (fail-before: e0a190260 gave the `during self` row `result {0 Chain}` too; labels-r44.tsv). Both reach
+    // past the layer: the call may store through it (the delta read's O1, a pre-existing loan-conflict cause, rests on it). SPEC 15.6.4
+    // counts a handed callable's writes by its signature, and `next` is no operation whose writes SPEC states, so its writes compose: it
+    // may store through It's declared raw Field `p` what a chain of reads through `it` carries (PLAN G941 unit 2; blind labels R5, R6).
+    // So `var p: raw/i32` gains store 0 (`reached {0 Chain}`), and the unstated `raw/(ref/i32 during inner)` reaches by the chain, Chain
+    // over its Content (was `reached {0 Content}`). Own's `0 Chain` at p itself and the untie are absent in both rows: an open issue of
+    // Binding's half (PLAN G941), not asserted here.
     [Theory]
     [InlineData("struct It {source}\n" + LentIterator + "    var p: raw/i32 during source\n    public init(keep: ref/i32 during source, p: raw/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
     [InlineData("struct It {source}\n" + LentIterator + "    var p: ref/i32 during source\n    public init(keep: ref/i32 during source, p: ref/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
-    [InlineData("struct It\n" + IntIterator + "    var p: raw/i32\n    public init(p: raw/i32) => self.p = p\n" + IntNext + NextOf + "func use(it: uniq/It) -> Option<i32> => nextOf(it)\n", "result {0 Chain}")]
+    [InlineData("struct It\n" + IntIterator + "    var p: raw/i32\n    public init(p: raw/i32) => self.p = p\n" + IntNext + NextOf + "func use(it: uniq/It) -> Option<i32> => nextOf(it)\n", "result {0 Chain}, store 0: own {}, reached {0 Chain}")]
     [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<raw/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
     [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<ref/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
     [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(it: uniq/It<raw/i32>) -> Option<i32> => nextOf(it)\n", "result {0 Chain}")]
     [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    var p: raw/(ref/i32 during inner) during self\n" + KeepNull + IntNext + NextOf + UseInner, "store 0: own {0 Content}, reached {0 Content}")]
-    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    var p: raw/(ref/i32 during inner)\n" + KeepNull + IntNext + NextOf + UseInner, "result {0 Chain}, store 0: own {0 Content}, reached {0 Content}")]
+    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    var p: raw/(ref/i32 during inner)\n" + KeepNull + IntNext + NextOf + UseInner, "result {0 Chain}, store 0: own {0 Content}, reached {0 Chain}")]
     [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    public init(keepIn: ref/i32 during inner) => self.keepIn = keepIn\n" + IntNext + NextOf + UseInner, "store 0: own {0 Content}, reached {}")]
     public void ARawLayerWithAnOriginRetainsThroughItsOrigin(string source, string expected)
         => Assert.Equal([expected], Calls(Bind(source), "nextOf"));
@@ -1239,15 +1244,31 @@ public sealed partial class RetentionTest
     // Fields, as a declaration does, never one a parameter's Type expression writes"; through it the call may store what a raw layer it
     // writes retains): the storage a call writes past such a layer is storage no Type states (RawReach's hold of no Type in a Closure's
     // environment, `Captured`), which keeps rule A's rows whole: v is kept past q from a `var` binding (the chain's varRefLeafBad), where
-    // a bounding reading kept only the receiver's chain, and past a `var` raw binding of the Closure's own (cloVarPtrU8Bad).
+    // a bounding reading kept only the receiver's chain, and past a `var` raw binding of the Closure's own (cloVarPtrU8Bad). A `let`
+    // binding's layer, which the call never writes (SPEC 15.8.2) and which unties nothing, addresses the same storage (PLAN G941's B1:
+    // rule A's rows there whether or not a layer the call writes steps Unstated; before, reached {}), for a `ref/u8` and a `u64` pointee.
     [Theory]
     [InlineData("var c = func [n, var q] (v: raw/u8)\n        unsafe => *q = *q\n", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("let m: raw/u8 = null\n    var c = func [var m] (v: raw/u8)\n        m = v\n", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("var c = func [n, q] (v: raw/u8)\n        unsafe => *q = *q\n", "store 0: own {}, reached {0 Chain, 1 Value Chain}")]
+    [InlineData("var z: u64 = 0\n    let qz: raw/u64 = z@raw\n    var c = func [qz] (v: raw/u8)\n        unsafe => *qz = 0@u64\n", "store 0: own {}, reached {0 Chain, 1 Value Chain}")]
     public void AClosureStatesTheRawLayersOfItsEnvironment(string closure, string expected)
     {
         var c = Bind("func h(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let n: u64 = 3\n    let q: raw/(ref/u8) = w@raw\n    " +
             closure + "    c(spare)\n");
         Assert.Equal([expected], ValueCalls(c));
+    }
+
+    // PLAN G941's B1 (a) (SPEC 5.7 Calls, 15.6.4; the design review's N4): a by-value input's layer a declaration states (ZHold.p, Holds
+    // Any) addresses storage no Type states, so put's call keeps rule A's rows there although no layer it writes steps Unstated: spare
+    // (1 Value Chain), never h's own value (the input written through: 15.6.4, a pointer is never part of its own pointee). A by-value
+    // input's storage past its first layer is its root, so the rows are its own storage's (`own`), not a reached one's. Before, no store.
+    [Fact]
+    public void AByValueInputsDeclaredLayerKeepsRuleAWhole()
+    {
+        var c = Bind("struct ZHold\n    public var p: raw/u64\n    public init(p: raw/u64) => self.p = p\nfunc put(h: ZHold, v: raw/u8) => ()\n" +
+            "func g(spare: raw/u8)\n    var z: u64 = 0\n    let h = ZHold.init(p: z@raw)\n    put(h@move, spare)\n");
+        Assert.Equal(["store 0: own {0 Chain, 1 Value Chain}, reached {}"], Calls(c, "put"));
     }
 
     // SPEC 5.7 Calls (D15; DECISIONS BU-24, the delta review's C4 item): a raw layer's Origin reaches its slot's keepers however deep the

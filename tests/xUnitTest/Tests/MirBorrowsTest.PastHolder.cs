@@ -953,6 +953,22 @@ public sealed partial class MirBorrowsTest
                 viaSlotR(s@ref, spare)
                 kk = 2
             """,
+        ["letRefLeafUseBad"] = """
+            func inspect<T>(value: ref/T) => ()
+            func letRefLeafUseBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let n: u64 = 3
+                let q: raw/(ref/u8) = w@raw
+                var c = func [n, q] (v: raw/u8)
+                    unsafe => *q = *q
+                c(spare)
+                kk = 2
+                inspect(w)
+            """,
         ["letRefLeafVarOtherOk"] = """
             func letRefLeafVarOtherOk()
                 var kk: u8 = 1
@@ -984,6 +1000,20 @@ public sealed partial class MirBorrowsTest
                 kk = 2
                 useu8(x)
             """,
+        ["cloLetU64Bad"] = """
+            func useu(z: u64) => ()
+            func cloLetU64Bad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let q: raw/u64 = z@raw
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = 0@u64
+                c(spare)
+                kk = 2
+                useu(z)
+            """,
         ["cloLetU64NoUseOk"] = """
             func cloLetU64NoUseOk()
                 var kk: u8 = 1
@@ -996,6 +1026,20 @@ public sealed partial class MirBorrowsTest
                 c(spare)
                 kk = 2
             """,
+        ["cloLetPtrU8ThroughUsedBad"] = """
+            func useu8(x: u8) => ()
+            func cloLetPtrU8ThroughUsedBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: u8 = 0
+                let m: raw/u8 = cell@raw
+                var c = func [m] (v: raw/u8)
+                    unsafe => *m = 0
+                c(spare)
+                kk = 2
+                useu8(cell)
+            """,
         ["cloLetPtrU8ThroughU"] = """
             func cloLetPtrU8ThroughU()
                 var kk: u8 = 1
@@ -1005,6 +1049,33 @@ public sealed partial class MirBorrowsTest
                 let m: raw/u8 = cell@raw
                 var c = func [m] (v: raw/u8)
                     unsafe => *m = 0
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetPtrU8OtherVarUsedBad"] = """
+            func useu8(x: u8) => ()
+            func cloLetPtrU8OtherVarUsedBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: u8 = 0
+                let m: raw/u8 = cell@raw
+                var n: i32 = 0
+                var c = func [m, var n] (v: raw/u8)
+                    n += 1
+                c(spare)
+                kk = 2
+                useu8(cell)
+            """,
+        ["cloLetRefMkBad"] = """
+            func mkq() -> raw/(ref/u8) => null
+            func cloLetRefMkBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let q: raw/(ref/u8) = mkq()
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = *q
                 c(spare)
                 kk = 2
             """,
@@ -1129,6 +1200,25 @@ public sealed partial class MirBorrowsTest
                 c(spare)
                 kk = 2
             """,
+        ["d4NestLetUseBad"] = """
+            func inspect<T>(value: ref/T) => ()
+            func d4NestLetUseBad()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let n: u64 = 3
+                let k: u64 = 5
+                let q: raw/(ref/u8) = w@raw
+                var inner = func [n, q] (v: raw/u8)
+                    unsafe => *q = *q
+                var outer = func [inner@move, var k] (v: raw/u8)
+                    k = 4
+                outer(spare)
+                kk = 2
+                inspect(w)
+            """,
         ["d4NestLetInnerVarOk"] = """
             func d4NestLetInnerVarOk()
                 var kk: u8 = 1
@@ -1146,6 +1236,36 @@ public sealed partial class MirBorrowsTest
                 outer(spare)
                 kk = 2
             """,
+        ["d4NestLetInnerVarUseBad"] = """
+            func inspect<T>(value: ref/T) => ()
+            func d4NestLetInnerVarUseBad()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let n: u64 = 3
+                let k: u64 = 5
+                let q: raw/(ref/u8) = w@raw
+                var inner = func [n, var q] (v: raw/u8)
+                    unsafe => *q = *q
+                var outer = func [inner@move, var k] (v: raw/u8)
+                    k = 4
+                outer(spare)
+                kk = 2
+                inspect(w)
+            """,
+        ["letU64ParamBad"] = """
+            func letU64ParamBad(pz: raw/u64)
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let q: raw/u64 = pz
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = 0@u64
+                c(spare)
+                kk = 2
+            """,
         ["letU64ParamSharedOk"] = """
             func useu(z: u64) => ()
             func letU64ParamSharedOk(pz: raw/u64)
@@ -1158,6 +1278,53 @@ public sealed partial class MirBorrowsTest
                 c(spare)
                 kk = 2
             """,
+        ["letStructU64UseBad"] = """
+            struct ZHold
+                public var p: raw/u64
+                public init(p: raw/u64) => self.p = p
+            func useu(z: u64) => ()
+            func letStructU64UseBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let h = ZHold.init(p: z@raw)
+                var c = func [h@move] (v: raw/u8)
+                    unsafe => *(h.p) = 0@u64
+                c(spare)
+                kk = 2
+                useu(z)
+            """,
+        ["letStructU64Ok"] = """
+            struct ZHold
+                public var p: raw/u64
+                public init(p: raw/u64) => self.p = p
+            func letStructU64Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let h = ZHold.init(p: z@raw)
+                var c = func [h@move] (v: raw/u8)
+                    unsafe => *(h.p) = 0@u64
+                c(spare)
+                kk = 2
+            """,
+        ["letTupEnvUseBad"] = """
+            func inspect<T>(value: ref/T) => ()
+            func letTupEnvUseBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let t: (raw/(ref/u8), u64) = (w@raw, 0)
+                var c = func [t] (v: raw/u8)
+                    unsafe => *(t.0) = *(t.0)
+                c(spare)
+                kk = 2
+                inspect(w)
+            """,
         ["letTupEnvOk"] = """
             func letTupEnvOk()
                 var kk: u8 = 1
@@ -1169,6 +1336,49 @@ public sealed partial class MirBorrowsTest
                 var c = func [t] (v: raw/u8)
                     unsafe => *(t.0) = *(t.0)
                 c(spare)
+                kk = 2
+            """,
+        ["byValDeclUseBad"] = """
+            struct ZHold
+                public var p: raw/u64
+                public init(p: raw/u64) => self.p = p
+            func put(h: ZHold, v: raw/u8) => ()
+            func useu(z: u64) => ()
+            func byValDeclUseBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let h = ZHold.init(p: z@raw)
+                put(h@move, spare)
+                kk = 2
+                useu(z)
+            """,
+        ["byValDeclOk"] = """
+            struct ZHold
+                public var p: raw/u64
+                public init(p: raw/u64) => self.p = p
+            func put(h: ZHold, v: raw/u8) => ()
+            func byValDeclOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let h = ZHold.init(p: z@raw)
+                put(h@move, spare)
+                kk = 2
+            """,
+        ["byValDeclMkBad"] = """
+            struct ZHold
+                public var p: raw/u64
+                public init(p: raw/u64) => self.p = p
+            func put(h: ZHold, v: raw/u8) => ()
+            func mkh() -> ZHold => ZHold.init(p: null)
+            func byValDeclMkBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                put(mkh(), spare)
                 kk = 2
             """,
         ["cloResultLetBad"] = """
@@ -1207,9 +1417,9 @@ public sealed partial class MirBorrowsTest
     // (a5v-r3ref-state.md): past a holder through a borrow layer, a punned read over a reference's or an `owner` Scalar's bytes reaches
     // storage the body does not own. PLAN G941's rows (artifacts/units/g941 labels.md, from SPEC 5.7 Calls, 15.6.4, 15.8.2 and the
     // owner's O-254 Q1 D): a `let` environment binding of the call receiver's referent, at any depth by value, is never written by the
-    // call, so no own pointer of the call is stored there (rule L; cloLetRefPtrOk, rejected before); a `var` binding, a binding past
-    // another exclusive layer and a Closure's result keep rule 4. Its rows of the storage such a layer addresses wait for PLAN G941's
-    // Binding half.
+    // call, so no own pointer of the call is stored there (rule L; cloLetRefPtrOk, rejected before), and the storage its raw layer
+    // addresses is storage no Type states, where the call may store what it writes (B1: rule A's rows whole), as past a by-value input's
+    // layer a declaration states; a `var` binding, a binding past another exclusive layer and a Closure's result keep rule 4.
     [Theory]
     [InlineData("zPairLayerBad", "zPairLayer: y = 5")] // I
     [InlineData("zPairLayerOk", "")] // V
@@ -1280,10 +1490,15 @@ public sealed partial class MirBorrowsTest
     [InlineData("xMixRawOk", "")] // V, the key of one kind: both layers the parameter's own, pointees u8 (oneLayer)
     [InlineData("xRawDeclBad", "xRawDeclBad: kk = 2")] // I, rule 4 (4) at a layer Slot states past a raw parameter layer (5.7 Calls; O-373 (a))
     [InlineData("xSharedDeclOk", "")] // V, the same past a shared borrow: no write authority past ref (5.2.1 condition 3)
-    [InlineData("letRefLeafVarOtherOk", "")] // V, G941: another `var` binding beside the `let` q changes nothing
+    [InlineData("letRefLeafUseBad", "letRefLeafUseBad: kk = 2")] // I, G941: w, which q's layer addresses, may retain spare (B1), used after
+    [InlineData("letRefLeafVarOtherOk", "")] // V, another `var` binding beside the `let` q changes nothing
     [InlineData("letRefLeafXUseOk", "")] // V, x is only read through w
-    [InlineData("cloLetU64NoUseOk", "")] // V, z past q's `let` layer is not used after
-    [InlineData("cloLetPtrU8ThroughU", "")] // V, the same through a raw/u8 binding m
+    [InlineData("cloLetU64Bad", "cloLetU64Bad: kk = 2")] // I, z past q's layer may retain spare (unbounded by u64, 5.7 Calls), used after
+    [InlineData("cloLetU64NoUseOk", "")] // V, its twin: z not used after
+    [InlineData("cloLetPtrU8ThroughUsedBad", "cloLetPtrU8ThroughUsedBad: kk = 2")] // I, the same through a raw/u8 binding m
+    [InlineData("cloLetPtrU8ThroughU", "")] // V, its twin
+    [InlineData("cloLetPtrU8OtherVarUsedBad", "cloLetPtrU8OtherVarUsedBad: kk = 2")] // I, the same beside a `var` binding of another Type
+    [InlineData("cloLetRefMkBad", "cloLetRefMkBad: kk = 2")] // I, q's value from mkq() carries storage the body does not own (Φ_E)
     [InlineData("cloLetRefMkSharedOk", "")] // V, a Shared call writes nothing (7.7.3)
     [InlineData("cloLetTupPtrBad", "cloLetTupPtrBad: kk = 2; cloLetTupPtrBad: var x: u8 = 0")] // I, past q the call may write its own pointer at pr.1 (rule 4 at an unmarked key)
     [InlineData("cloLetTupU64Ok", "")] // V, past q only a u64 beside the reference
@@ -1293,10 +1508,19 @@ public sealed partial class MirBorrowsTest
     [InlineData("cloLetVarSameTypeBad", "cloLetVarSameTypeBad: kk = 2; cloLetVarSameTypeBad: var x: u8 = 0")] // I, a `let` binding of the same Type beside `var q2` leaves q2 unmarked
     [InlineData("nestUniqLetBad", "nestUniqLetBad: kk = 2; nestUniqLetBad: var c = func [q](v: raw/u8); nestUniqLetBad: var x: u8 = 0")] // I, d's call may write c whole through cu (7.7.3, S7): c's `let q` past cu is unmarked
     [InlineData("cloLetPtrPtrU8ThroughBad", "cloLetPtrPtrU8ThroughBad: kk = 2")] // I, past m the call may write its own pointer at hop
+    [InlineData("d4NestLetUseBad", "d4NestLetUseBad: kk = 2")] // I, inner's `let q` within outer's `let inner`, at any depth (O-254 Q1 D)
     [InlineData("d4NestLetInnerVarOk", "")] // V, outer cannot call its `let inner` Exclusively, so inner's `var q` is not written
+    [InlineData("d4NestLetInnerVarUseBad", "d4NestLetInnerVarUseBad: kk = 2")] // I, its twin with w used after
+    [InlineData("letU64ParamBad", "letU64ParamBad: kk = 2")] // I, q's value from a parameter reaches storage the body does not own
     [InlineData("letU64ParamSharedOk", "")] // V, a Shared call
-    [InlineData("letTupEnvOk", "")] // V, t.0 in a `let` Tuple binding; w not used after
-    [InlineData("cloResultLetBad", "cloResultLetBad: let mk = func []()")] // I, mk's storage end: rule 4 at mk()'s result key (R4-M245); c's `kk = 2` waits for PLAN G941's Binding half
+    [InlineData("letStructU64UseBad", "letStructU64UseBad: kk = 2")] // I, h.p a layer ZHold states, in a `let` binding: z may retain spare, used after
+    [InlineData("letStructU64Ok", "letStructU64Ok: kk = 2")] // I (labels.md Revision 2; named before it), h.p from ZHold.init's untied result reaches storage the body does not own (15.6), where c's call stores spare
+    [InlineData("letTupEnvUseBad", "letTupEnvUseBad: kk = 2")] // I, t.0 in a `let` Tuple binding
+    [InlineData("letTupEnvOk", "")] // V, its twin
+    [InlineData("byValDeclUseBad", "byValDeclUseBad: kk = 2")] // I, B1 (a): past a by-value input's declared layer, z may retain spare, used after
+    [InlineData("byValDeclOk", "byValDeclOk: kk = 2")] // I (labels.md Revision 2; named before it), the same past a by-value input: put's call stores spare where h.p reaches
+    [InlineData("byValDeclMkBad", "byValDeclMkBad: kk = 2")] // I, mkh()'s untied result reaches storage the body does not own
+    [InlineData("cloResultLetBad", "cloResultLetBad: kk = 2; cloResultLetBad: let mk = func []()")] // I, c's call stores spare past q (B1); mk's storage end: rule 4 at mk()'s result key (R4-M245)
     [InlineData("cloResultLetSharedBad", "cloResultLetSharedBad: let mk = func []()")] // I, mk's storage end only (S11 at mk()'s result key)
     public void TheReadingKeyPastAHolderReadsEveryLayer(string form, string expected)
     {

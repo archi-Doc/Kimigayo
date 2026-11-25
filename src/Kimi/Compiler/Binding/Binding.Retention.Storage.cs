@@ -262,10 +262,13 @@ public sealed partial class Binding
     // layers an input holds at its own address by ByValue, as OwnLayers lists them. A layer whose content no Type states (Holds Any: one a
     // declaration wrote, TyCtxt.RawStated) addresses storage its pointee Type does not describe (SPEC 5.7 Calls, 5.2; DECISIONS BU-46), so
     // the storage it writes past it gets a hold of no Type, which the hold walk reads as a part no Type states (Held: Loans and Any, rule A's
-    // rows whole). So does a layer stating no Origin in a Closure's environment (`Captured`, at any depth of a
-    // binding's Type: SPEC 5.7 Calls, "one the Closure states in its own Fields, as a declaration does"; C-352's C10), which the walk's
-    // state, not the binding's Type, knows: the environment's Types are the MIR locals' (DECISIONS BU-50), and its layers stating an
-    // Origin keep their binder's step (RawStepAt, BU-113).
+    // rows whole; Hold's Untyped forms them whatever the output's written layers, PLAN G941; the hold names the layer's Signature, in the
+    // binding of the callee's kept Type that Type, where UntypedRows keeps only the inputs a handed callable writes there). So does a
+    // layer stating no Origin in a Closure's environment (`Captured`, at any depth of a binding's Type: SPEC 5.7 Calls, "one the Closure
+    // states in its own Fields, as a declaration does"; C-352's C10), which the walk's state, not the binding's Type, knows: the
+    // environment's Types are the MIR locals' (DECISIONS BU-50), and its layers stating an Origin keep their binder's step (RawStepAt,
+    // BU-113). The hold is formed only where the call's writes and reads compose: an operation whose writes SPEC states (StatesWrites,
+    // the walk's callee) stores nothing past such a layer (SPEC 15.6.4's exception, 5.2.1).
     private void RawReach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
         var (pointee, content) = (this.retentionHeld[run.Start].Part!, this.retentionHeld[run.Start].Holds);
@@ -288,9 +291,10 @@ public sealed partial class Binding
         // Routed unless the declaring code acts there (Routes), so no layer met there makes storage of no Type (PLAN G964).
         below = below with { Routed = at.Routed || this.Routes(at, this.retentionHeld[run.Start]) };
         var past = this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
-        if (!at.Routed && (content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage)
+        if (!at.Routed && (content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage &&
+            !this.StatesWrites(this.retentionCallee))
         {
-            this.storageHolds.Add((default, past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
+            this.storageHolds.Add((new(null, null, null, at.Signature), past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
         }
 
         if (step == HoldStep.Exclusive)
@@ -869,7 +873,7 @@ public sealed partial class Binding
     // an enum's Case payload declares there while it is a Tuple, a fixed array or a raw layer (Written), the instance holding it
     // (Holder, whose case a declared slot's step reads), and the walked signature's declared Type there (Signature, as StorageAt's:
     // DECISIONS BU-113; null where none pairs), and whether it is Routed (StorageAt's: no layer there is unbounded). A Type of null is
-    // storage no Type states.
+    // storage no Type states, past a raw layer whose Signature it names (RawReach; the kept Type in its binding, which UntypedRows reads).
     private readonly record struct HoldAt(BoundType? Type, BoundType? Written, BoundType? Holder, BoundType? Signature = null, bool Routed = false);
 
     // The input fold's state at a Type (StorageAt): the input (-1 in an output's walk), whether the Type is held by value from the input or

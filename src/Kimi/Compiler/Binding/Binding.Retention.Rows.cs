@@ -47,7 +47,7 @@ public sealed partial class Binding
     private bool retentionParametric; // The computation reads its callee's kept abstract Types in the callee's terms (Parametric).
     private bool retentionFilled; // A callable's write keeps a row in the Abstract storage of the walk made (FilledKinds), whose entry Written then forms.
     private (RetentionKind Raw, RetentionKind Free)[] retentionUndecided = []; // Per input, what the premise closure does not decide (FilledKinds), reused.
-    private FunctionKoto? retentionCallee; // Whose own abstract Types those are (Parametric): a Closure's enclosing function's are the caller's.
+    private FunctionKoto? retentionCallee; // Whose own abstract Types those are (Parametric): a Closure's enclosing function's are the caller's; whether its writes compose (RawReach).
     private RetentionKind[] retentionGate = []; // HiddenKinds' row in the callee's terms, which its fill's R gate reads (FilledKinds), reused.
     private RetentionKind[] retentionChained = []; // Rule A's rows of the output (Hold), which a Chained storage joins as it admits.
     private bool[] retentionAssigned = []; // Written's storages already in an entry, and the storages whose pairs Pairs reads, reused.
@@ -85,6 +85,7 @@ public sealed partial class Binding
         Lent = 4,
         Unbounded = 8,
         Loans = 16,
+        Untyped = 32, // A storage whose content no Type states (RawReach's hold of no Type): rule A's rows form whatever the output's written layers (Hold, UntypedRows).
         Any = 128,
         Chained = 256,
     }
@@ -1148,8 +1149,13 @@ public sealed partial class Binding
     // raw arguments at a lent one (R′: SPEC's "the raw arguments", the raw sources at their own layer, never a wrapped one), at a
     // stated layer the raw sources its Origin admits (StatedFits), and at an abstract part the walk met at no position rule 3's fill alone,
     // in the Abstract storage (HiddenFills; BU-225); whether it met a layer stepping Unstated or Static, not lent, which unties
-    // the output. A published transfer operation writes only its own outputs (TransferWrites, by the declaring-identity key: an Iterator's
-    // `next` writes each), so at another it neither forms rule A's rows nor unties it: the output has no record from these layers.
+    // the output. Rule A's rows form also, whatever the output's written layers, in a storage past a layer that states no Origin and whose
+    // content no Type states (RawReach's hold of no Type, formed only where the call composes, Holding.Untyped: a declaration's layer,
+    // Holds Any, or a Closure environment's, Captured), which the call writes through but not at (SPEC 5.7 Calls, 15.6.4; PLAN G941); in
+    // the binding of the callee's kept Type only for an input a handed callable writes there (UntypedRows, Filled's fact); Any
+    // from Rejected storage or a part that does not substitute forms none by itself (BU-36, dependent records only, SPEC 23.1.2). A
+    // published transfer operation writes only its own outputs (TransferWrites, by the declaring-identity key: an Iterator's `next` writes
+    // each), so at another it neither forms rule A's rows nor unties it: the output has no record from these layers.
     private bool Hold(
         OriginPremiseEnvironment environment,
         int output,
@@ -1165,7 +1171,7 @@ public sealed partial class Binding
         Array.Clear(met, 0, count);
         foreach (var (at, storage) in holds)
         {
-            met[storage] |= this.Held(at, output, storage, HeldIn.Storage);
+            met[storage] |= (at.Type is null ? Holding.Untyped : Holding.None) | this.Held(at, output, storage, HeldIn.Storage);
         }
 
         this.HiddenFills(output);
@@ -1186,7 +1192,7 @@ public sealed partial class Binding
             // Storage of the callee's kept Type takes no row of rule A: it holds no layer the call may write as one (its rows are
             // HiddenKinds', the callee's terms; SPEC 15.6.4, the owner's O-360 (a)), whatever the holders its binding addresses reach.
             var whole = ((met[s] & (Holding.Unstated | Holding.Any)) != 0 || (reach & Holding.Unbounded) != 0) && !(met[s] == Holding.None && this.KeptStorage(s));
-            if (writes && (reach & Holding.Unstated) != 0 && (whole || (met[s] & Holding.Loans) != 0))
+            if (writes && ((reach & Holding.Unstated) != 0 || (met[s] & Holding.Untyped) != 0) && (whole || (met[s] & Holding.Loans) != 0))
             {
                 if (!ruled)
                 {
@@ -1195,13 +1201,17 @@ public sealed partial class Binding
                     ruled = true;
                 }
 
-                if (whole)
+                if (!whole)
+                {
+                    met[s] |= Holding.Chained; // Through its Loan-carrying positions only: Storages joins the rows its Origin tests admit.
+                }
+                else if ((reach & Holding.Unstated) != 0)
                 {
                     Join(this.retentionKept[s], rows);
                 }
                 else
                 {
-                    met[s] |= Holding.Chained; // Through its Loan-carrying positions only: Storages joins the rows its Origin tests admit.
+                    this.UntypedRows(holds, s, rows); // Only its holds of no Type admit the rows (Holding.Untyped).
                 }
             }
             else if ((met[s] & Holding.Lent) != 0)
@@ -1236,6 +1246,30 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // Rule A's rows a storage's holds of no Type keep (Hold, where no written unstated layer of the output reaches the storage; PLAN G941
+    // unit 2, F1-a): a hold outside the binding of the callee's kept Type keeps every input's; one in it (its Signature, the kept Type
+    // at the layer it lies past, Parametric) keeps input i's only where a callable the contract hands the body takes i and writes that
+    // Type (Filled == Fill.Writes), since past the binding's hidden layer only such code writes (SPEC 15.6.4, 5.7 Calls' last sentence;
+    // Routes, PLAN G964). Filled owns the fact, per position and input, cached: this reads it and copies no part of its test. Storages
+    // are keyed by Type, so each hold of the storage keeps its own inputs. Storages applies Chain over Content.
+    private void UntypedRows(ReadOnlySpan<(HoldAt At, int Storage)> holds, int storage, RetentionKind[] rows)
+    {
+        var into = this.retentionKept[storage];
+        foreach (var (at, s) in holds)
+        {
+            if (s != storage || at.Type is not null)
+            {
+                continue;
+            }
+
+            var kept = this.Parametric(at.Signature) ? at.Signature : null;
+            for (var i = 0; i < into.Length; i++)
+            {
+                into[i] |= kept is null || this.Filled(null, kept, i) == Fill.Writes ? rows[i] : RetentionKind.None;
+            }
+        }
     }
 
     // SPEC 15.6.4 "with an Origin, as the borrow that Origin belongs to would", 5.7 Fits and claims (the owner's O-329 (a); C-352): at each

@@ -508,10 +508,17 @@ public sealed partial class MirBorrowsTest
     // condition 3). A generic caller whose own premise gives its X the form is read alike (idFormGenBad, idFormGenOk). A handed
     // callable's result under `T is U` is a T (retIdWBad: mk's RetW may hold w's address, so dst is used after `y = 5`; F's ruling 52,
     // fail-before on 5f22c9b6c: accepted), as it is under `mk: (E) -> T` (retPlainWBad); without the premise f cannot store mk's U in
-    // dst (retNoIdWOk). Identity is closed under replacement inside any Type: under `E is D` a writer `set: (uniq/T, BxI<D>)` takes
-    // `y: BxI<E>` (structIdBad; F's ruling 55, fail-before on a6e0d4be4: accepted), as `set: (uniq/T, BxI<E>)` does with no premise
-    // (structPlainBad); without the premise BxI<E> and BxI<D> are distinct and nothing keeps the pointer in dst (structNoIdOk). The view
-    // is the body the comparison stands in (F's ruling 57): in nested g's kept reading g's own `E is D` makes `(T, E)` `(T, D)` though T
+    // dst, but it may call `mk(p)`, and the handed mkRetW, read by its own signature, may store q through its own pointer at RetW's raw
+    // Field in storage the body does not own, as the direct call does, so `y = 5` conflicts (retNoIdWBad, formerly retNoIdWOk; the
+    // owner's O-530 (a), SPEC 15.6.4: a handed callable's writes count "for direct and indirect calls alike"; as rvNoIdReqOk's
+    // requirement route). It stays accepted, dev's verdict and expectation: no owner publishes a handed callable's own writes into
+    // storage the body does not own (Filled answers at the kept Type alone, which mkRetW neither writes nor returns), so its record
+    // `y = 5` comes with G941 unit 3 (PLAN G941, a class 1 open issue). Identity is closed under replacement inside any Type: under
+    // `E is D` a writer `set: (uniq/T, BxI<D>)` takes `y: BxI<E>` (structIdBad; F's ruling 55, fail-before on a6e0d4be4: accepted), as
+    // `set: (uniq/T, BxI<E>)` does with no premise (structPlainBad); without the premise BxI<E> and BxI<D> are distinct and nothing
+    // keeps the pointer in dst (structNoIdOk): past RetW's raw Field only a handed callable that takes an input and writes T keeps it
+    // (Filled; PLAN G941 unit 2, F1-a), and one that takes p but writes only through its own parameter keeps nothing there (ccOk). The
+    // view is the body the comparison stands in (F's ruling 57): in nested g's kept reading g's own `E is D` makes `(T, E)` `(T, D)` though T
     // is the outer function's (nestIdBad; fail-before on b826b8c05: accepted), the components swapped alike (nestId2Bad), as with no
     // premise (nestPlainBad), and without it too (nestNoIdBad; the owner's O-423 (i), 15.6.4 "decided per argument, never per Origin":
     // set takes a T, which g may take from y, and writes what T hides, so T's hidden storage may keep y's Loans, p's included, as a part
@@ -574,6 +581,9 @@ public sealed partial class MirBorrowsTest
             func fsPlain<T, E>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<E>) -> ()) -> ()
                 return
             func fsNo<T, E, D>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<D>) -> ()) -> ()
+                return
+            func cc(q: raw/u8) => ()
+            func fcN<T, E>(dst: uniq/T, p: E, c: (E) -> ()) -> ()
                 return
             func idFormBad()
                 var kk: u8 = 1
@@ -690,7 +700,7 @@ public sealed partial class MirBorrowsTest
                 fmkU(dst@uniq, w@raw@raw/u8, mkRetW)
                 y = 5
                 inspect(dst@ref)
-            func retNoIdWOk()
+            func retNoIdWBad()
                 var y: i32 = 1
                 let w: ref/i32 = y@ref
                 var dst = RetW.init(q: null)
@@ -716,6 +726,13 @@ public sealed partial class MirBorrowsTest
                 let w: ref/i32 = y@ref
                 var dst = RetW.init(q: null)
                 fsNo(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
+                y = 5
+                inspect(dst@ref)
+            func ccOk()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fcN(dst@uniq, w@raw@raw/u8, cc)
                 y = 5
                 inspect(dst@ref)
             func nestIdBad<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
