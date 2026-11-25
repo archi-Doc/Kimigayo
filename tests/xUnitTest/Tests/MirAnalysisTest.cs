@@ -891,37 +891,38 @@ public sealed class MirAnalysisTest
 
     // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
     // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem of its code at its subject in the body (one per key,
-    // MirReport.Add), or for an inline default copy's, which MirDrops.Problem does not add, its template's of that code and subject (R4-M69).
-    // The forms: A1's state rules and A2's incomplete layer (Requirements), A1's and A2's default copies (MirDropTest.Indices,
-    // MirDropTest.CopiedLayer) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
+    // MirReport.Add), or for an inline default copy's, which MirDrops.Problem does not add, its template's of that code and subject in a
+    // default template (R4-M69): MirDropTest.Owner's "own" and "copy". The forms: A1's state rules and A2's incomplete layer
+    // (Requirements) and A1's and A2's default copies (MirDropTest.Indices, MirDropTest.CopiedLayer); none merges a disagreement. A1's arena
+    // limit marks its own body (MirDropTest.OnlyA1sArenaLimitMarksItsBody). Every code A1 and A2 mark a body with is an Error in the catalog,
+    // DefaultArgumentMove_Kd (MirInitTest.ADefaultCannotMoveItsPreparedSlot) and a broken contract's InternalInvariant_Kd included.
     [Fact]
     public void AMarkedBodyHasAnError()
     {
-        var arena = "func f(flag: bool) -> i32\n" + string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    var v{n} = {n}\n")) +
-            string.Concat(Enumerable.Range(0, 13_500).Select(static n => $"    if flag => v{n} = 1\n")) + "    return 0\n";
+        Assert.All(
+            new[]
+            {
+                DiagnosticCode.UninitializedPlace_Kd, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.ReassignedLet_Kd, DiagnosticCode.StaticMovePathRequired_Kd,
+                DiagnosticCode.DefaultArgumentMove_Kd, DiagnosticCode.OwnershipStorageLimit_Kd, DiagnosticCode.InternalInvariant_Kd,
+            },
+            static x => Assert.True(DiagnosticEntries.TryGet(x, out var entry) && entry.Severity == DiagnosticSeverity.Error, x.ToString()));
         var marks = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var source in new[] { Requirements, MirDropTest.Indices, MirDropTest.CopiedLayer, arena })
+        foreach (var source in new[] { Requirements, MirDropTest.Indices, MirDropTest.CopiedLayer })
         {
             var program = MirBuildTest.Compile(source).BuildMir();
-            var problems = program.Problems.All.ToArray();
             foreach (var body in program.Bodies.ToArray())
             {
-                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at))
+                if (program.Drops.Incomplete(body.Ordinal) is (var code, _))
                 {
-                    var subject = body.Subject(at);
-                    var own = Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == (code, subject, body.Ordinal));
-                    var kept = own || Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
-                    var error = DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error;
-                    Assert.True(kept && error, $"{body.Key.Kind} {code}");
-                    marks.Add($"{body.Key.Kind} {code} {(own ? "own" : "copy")}");
+                    marks.Add($"{body.Key.Kind} {code} {MirDropTest.Owner(program, body.Ordinal)}");
                 }
             }
         }
 
         Assert.Equal(
             [
-                "DefaultTemplate MovedPlace_Kd own", "Fn MovedPlace_Kd copy", "Fn MovedPlace_Kd own", "Fn OwnershipStorageLimit_Kd own",
-                "Fn ReassignedLet_Kd own", "Fn StaticMovePathRequired_Kd own", "Fn UninitializedPlace_Kd own",
+                "DefaultTemplate MovedPlace_Kd own", "Fn MovedPlace_Kd copy", "Fn MovedPlace_Kd own", "Fn ReassignedLet_Kd own",
+                "Fn StaticMovePathRequired_Kd own", "Fn UninitializedPlace_Kd own",
             ],
             marks);
     }
