@@ -5664,7 +5664,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     its instantiated parameter Type. The walk reads no `PositionKind` row and changes no evidence or fit walk. A composite borrowed at
     `ref/T` (SPEC 10.2) is walked at its value Type, the operation's `SourceType` (b01_ref). The fit checked the literal's shape
     against that Type, so a child position whose parameter Type cannot be derived is a broken contract, `InternalInvariant_Kd` at the
-    argument, never a skip (U1d; U2's review N6).
+    argument, never a skip (U1d; U2's review N6). Amended by R7-M113 (PLAN G1379): S1 places the call's own records; an element's place fit inside an argument is the literal's, at
+    the element.
   - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
     B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
     Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
@@ -17141,14 +17142,17 @@ resumed by R4-M86 (2026-10-20).
   it stands, with no further full review, though its third design review was REVISE); F's J2 rulings (`front\notes\J2\ruling.md`);
   design `J2\design.md` and its fix `J2\design-fix.md` revision 3, Re-check 5 ACCEPT; the Middle's CONSENT on C-383) SPEC 10.5.1,
   10.8, 10.8.1, 15.2.2, 15.3.3, 15.3.6, 15.3.7, 15.6.1, 15.6.4 step 3, 8.3. Amends BU-104.
-  - Rule (O-358 (a), O-362 (a)): a callee variable, a Type slot's Origin or a written Origin parameter, that evidence binds at a
-    covariant position and a position without evidence also names is bounded by both, so it is a region of the call:
+  - Rule (O-358 (a), O-362 (a)): a callee variable, a Type slot's Origin, a written Origin parameter or a per-call input (SPEC
+    15.3.4), that evidence binds at a covariant position and a position without evidence also names is bounded by both, so it is a
+    region of the call:
     `same3<T>(x: Option<ref/T during c>, y: ref/T during c)` called as `same3(.Some(a@ref), b@ref)` over two `var` captures in a
     Closure gives T = `ref/i32 during (R_a and R_b)` (rc3v; o2v its written-Origin twin). In a candidate's late solve (`SolveLate`
     -> `SlotSolution.OpenWaited`), one walk of the retained F1 rows and the receiver (`CollectPositionNames`) records each callee
     variable as named by a position without evidence (a Signature leaf row, or a Signature root without child rows), by evidence at
     a covariant position (`EvidenceNames`' reading), or blocked: evidence at another variance, any position inside a Function Type,
-    and a Constraint of the candidate. A variable named by the first two and not blocked is opened.
+    and a Constraint of the candidate. A variable named by the first two and not blocked is opened. Amended by R7-M113 (PLAN G1379): a
+    per-call input is opened as `(E and ρ)` with ρ its `CallRegion` keyed as BU-104's unsolved input (`-1 - i`), one region per
+    (call, input); witnesses jc1 (`same3` with the per-call `b` for the written `c`) and jo4n.
   - Solution (D1): an opened variable is solved as any covariant variable, to its evidence candidate E (so a variable its clauses
     bound through it is solved as without the waiting part), and written as 15.3.6's covariant candidate `(E and ρ)`, ρ a region of
     the call standing for the bounds the waiting part gives after selection (ρ alone where E is `static`). A Type slot bound without
@@ -17156,7 +17160,7 @@ resumed by R4-M86 (2026-10-20).
     written (`OpenSlotOrigins`, in pre-order; ρ a `SlotRegion(call, slot, ordinal)`, keyed
     `SlotRegionKey - ((slot & 0x3FFF) << 14 | ordinal & 0x3FFF)` with `SlotRegionKey = UnsolvedKey / 2 - 1`, so `IsCallRegion` holds
     and every key lies above the `CallRegion` keys; past 2^14 slots or positions regions are shared, which only joins bounds). An
-    Origin parameter is published to the solve (`OriginInference.WaitingNamed`), which writes the meet with its `CallRegion` once
+    Origin parameter or a per-call input is published to the solve (`OriginInference.WaitingNamed`), which writes the meet with its `CallRegion` once
     its variables are solved. Kept as the evidence binds them: an open region, a raw anchor, a Constraint set's slot, a meet holding
     one, a raw layer's Origin. Every run of the candidate (the first, the re-run after `CompleteWaiting`, 10.8.1's fixed-binding
     re-check) writes the same spelling, so every reader (the formation proof, the re-check, the fill of open Origins, the solve of
@@ -27647,7 +27651,8 @@ Closure row of `MirCases.Branch`).
       by the fit's structural part (`FitsStructuralPartAt`) on the Type its adaptation gave, its misfit recorded at the element through
       `FailMismatch(.., ComparisonFailure.Shape)` (`RecordMismatch`'s Owned-conversion arm stays the one path); only fitting elements
       meet (`CommonOriginType`), for the Origin evidence a local's omitted Origins are inferred from. The element-to-element comparison
-      goes; a misfit names the expected element Type, never the first element's.
+      goes; a misfit names the expected element Type, never the first element's. Superseded in part by R7-M113 (PLAN G1379): the elements meet by `PlaceCommonType` (an invariant position included), and each
+      fitting element's adapted Type fits the place's Type once, at every site, forming its Origin rows.
     - **A failed destination's route (G502/G509 cause A; SPEC 13.7.1, 13.7.2, 23.1.2).** A compound assignment's or update's route,
       and the value fit of a plain write its destination check refuses, are judged by the path an admitted destination takes (the
       decision, the counterpart, `CompleteBinary`: the counterpart's fit, the shift count, the pointer offset, the arithmetic
@@ -29576,6 +29581,67 @@ Closure row of `MirCases.Branch`).
     related role now (Q2 (b), a catalog change: PLAN G1419); SPEC's `Stream` in this unit (Q4 (b): Unbounded Types along a projection
     path, a second structure; PLAN G563); the record at the forming clause, as SPEC's example marks it (C7: the text puts it "at each
     Contract on it"; the clause is a related location).
+- **R7-M113 A place's common Type meets its parts' Origins; each element's adapted Type fits the place once (PLAN G1379)** (Back,
+  2026-11-25; Q-796, D-1299; Major: design `back\notes\g1379\design.md` Revisions 1, 3 and 4, B's rulings 1, 7 and 10; the Front's
+  design review C-567, ACCEPT WITH CONDITIONS C1-C7, its consent to Revision 3 and, as BU-223's owner, to Revision 4 (C1-C4); the
+  Middle's consent to amend R4-M164 U2 S1 and its RP17 conditions on C-573) SPEC 4.3.1 Places, 14.9.2 steps 1-2, 10.5.1, 10.8,
+  15.3.4, 15.3.5, 15.3.6, 15.6.1, 15.6.4 steps 1-3, 23.1.2. Amends R4-M164 U2 S1 and BU-223. Supersedes in part R7-M75's E3d line
+  (array elements: "only fitting elements meet (`CommonOriginType`)").
+  - **Rule** (`Binding.TypeRelations.Origins.cs`, its contract). `PlaceCommonType` is the common Type of a place's parts whose
+    structural parts agree: each Origin is a place variable taking its candidate, the meet of the parts' Origins at a covariant and at
+    an invariant position (a bound a part's fit gives is no proven equality, so the invariant variable takes the covariant candidate
+    and each part's bound is checked against it: one record per failing part, independent of source order); differing raw Origins
+    stay unstated (5.7). The polarity is the canonical table's (`ComposeVariance`, `ComponentVariance`, `OriginArgumentVariance`),
+    entered covariant. The outer Origins follow the fit's one decision (`FitOuterOrigins`): two that relate take their candidate;
+    nothing to relate (equal Origins, an inactive slot, an unformed pair layer, whose formation record explains it) keeps only an
+    equal Origin; a presence difference no relation explains is structural. It forms no relation and no record.
+  - **Three failure kinds**: the meet succeeds; `Shape` (a structural difference: the Type mismatch); `Limit` (a contravariant
+    position whose Origins differ, whose candidate this search does not form: the located `Unsupported_Kd`, PLAN G1421). Each reader
+    records the failure at the part (`FailMismatch`), the Dictionary literal's included (it dropped it without a record).
+  - **A stated element Type (B's ruling 1; the Front's C4).** The contextual array literal's place Type is the elements' common Type
+    with the expected element Type's stated Origins (`StatedPlaceType`, through `TyCtxt.Rebuild`): only an omitted Origin (an
+    inference variable that is no local region) keeps the meet (15.3.6: only variables take candidates; 4.3.1: the stated element
+    Type is every element's expected Type). The literal's Type is `Array<place>`, so `InferLocalOrigins` reads the meet at the
+    omitted positions. The Dictionary literal's key and value places read `StatedPlaceType` the same way (B's ruling 10), so both
+    forms judge one place rule alike.
+  - **A per-call input is a region of the call (amends BU-223; B's ruling 10, R4a).** J2 names every abstract Origin of the callee
+    that a call gives a fresh region (15.3.4, 15.6.4 step 1): a Type slot's Origin, a written Origin parameter and a per-call input.
+    A waited per-call input is opened as `(E and ρ)`, ρ its `CallRegion` keyed `-1 - i` as BU-104's unsolved input, so BU-104's and
+    J2's region is one per (call, input) (`RegionKey`'s contract). `StatedPlaceType` reads the published form unchanged: an Origin
+    the call opened is no stated Origin. Witnesses: jc1 (BU-223's `same3` with the per-call `b` for the written `c`) and jo4n.
+  - **Each element's Origin fit is the literal's (B's ruling 7).** After the whole meet, `BindContextualArrayLiteral` fits each
+    fitting element's adapted Type (its binding's result at the expected element Type: a value read, an erasure, a completed Case)
+    to the place once (`FitsValueAt`), at every site, call arguments included, its failure recorded at the element. The enclosing
+    fit (a declaration's, a return's, an assignment's, or a call's `FitArgument`/`RequireType`) fits the literal's Type, and a call's
+    step 3 judges only the instantiated parameter's well-formedness. The independent literals fit each part by `RequireAtPosition`.
+  - **Readers.** The place readers (the contextual and independent array literals, an awaiting element's default, an element hole,
+    a waiting part's default, the Dictionary literal) read `PlaceCommonType`. `CommonOriginType` is `PlaceCommonType` whose result
+    both inputs fit, judged once at its root, for the readers that need a supertype (an equality's operands, a function reference's
+    bindings, a join, until PLAN G394/G443's unit fits each join source to the result). Where premises prove an invariant equality
+    between distinct atoms (an outlives cycle), the place's forms newly succeed (k1, k1u); the supertype readers keep their
+    verdicts, since the root `IsSubtype` reads no premise (k1j, PLAN G394/G443).
+  - **Amends R4-M164 U2 S1.** S1 places the call's own records; an element's place fit inside an argument is the literal's, at the
+    element. Reason: the element fit is no longer the call walk's: the walk judges the instantiated parameter's well-formedness at
+    each leaf (`RequireInputPremises`) and the completion fits the literal's whole Type, and neither fits an element's invariant
+    Origin to the place. Class 1 witness against keeping the element fit at the call: a2u (`func inner(x: Array<uniq/(ref/i32 during
+    p) during p>)`, `inner([a@move, b@move])` with b's inner Origin q) is accepted without the literal's fit. Where both fail, as in
+    a nested literal whose parameter is not well formed (cv3_n, a2n), the two records are independent checks (23.1.2).
+  - **Moves (Q13).** From `InternalInvariant_Kd`: two `UnprovenOriginRelation_Kd` (t17 and its place forms), one (a stated element
+    Type, g5; a call parameter's invariant element, a2u, a2uj), `Unsupported_Kd` (valid c1, c1c, c1v: PLAN G1421), the formation
+    record alone (p1), accepted (e1, e1c, k1, k1u). The contextual Dictionary's dependent `PrerequisiteUnavailable_Kd` goes (rule W;
+    g11, l_dict_stated). A rejected program's element record moves from the literal or the argument to the element (a2r, a2a, a2k,
+    x1), and beside a call's step-3 record at the argument the element's own is added (cv3_n, a2n). Newly accepted valid programs
+    with a per-call input or a slot a late join source bounds: jo4n, jo4o, jo4r, jg1 (from BU-156's interim `Unsupported_Kd` at the
+    source `[c]`) and jc1 (from a record at `c`); the invalid jo4s moves from the interim to one record at `c` ("requires c outlives
+    static"). BU-156 and PLAN G443 stand (jo1n, a Tuple source, keeps the interim). No order-free record is claimed at a call slot
+    or a per-call place (a_gen, a_pc2: PLAN G1208).
+  - **Rejected**: the consumer accepting a rowless position (`RecordComparisonFacts`); a fit to the running Type (order-dependent: the
+    record lands on whichever element comes second, a spurious row at a covariant position not yet met); no literal-owned fit, the
+    enclosing fit judging the meet (accepts g1, g13, g10 and a2u: the meet hides an invariant difference); skipping the literal's fit
+    where a call's walk fits the argument through a P1 Aggregate record (accepts a2u, for the same reason as the S1 amendment);
+    fitting the element's own Type before its adaptation (fails value reads, erasures and completed Cases); restating g5's records to
+    the meet's two (a record at `a@move` SPEC does not require; the array and Dictionary forms would differ); fresh local-region
+    variables at the place (new state for the same verdicts).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
