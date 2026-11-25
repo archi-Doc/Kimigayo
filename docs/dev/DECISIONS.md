@@ -29028,7 +29028,7 @@ Closure row of `MirCases.Branch`).
     atom's kind and subject; the row's Clause is the constraint as stated, so a `not Callable` fact and a Contract's `not Callable`
     clause instance at any depth are leaf rows of the Callable kind. Every other row reader is unchanged: each filters
     `Clause.Kind == Callable` or a Contract row, so a negated row reaches `PremiseCallable` alone.
-    Superseded in part by R7-M110 (c2-5b2, <head>): the operand of a negation of any atom, filed in the `Not` row by the fact's own kind.
+    Superseded in part by R7-M110 (c2-5b2, `claude/f-c25b2`@3f30fe1a2, 2026-11-25): the operand of a negation of any atom, filed in the `Not` row by the fact's own kind.
   - `PremiseCallable` answers both polarities in one rows request: an available row whose atom has the proposition atom's receiver
     and signature supplies the proposition where their polarities agree and its negation where they differ. `Supply` reads it for
     every proposition; its fact scan opens only for an environment with a projection fact or a view with an identity premise (the
