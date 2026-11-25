@@ -182,7 +182,7 @@ internal sealed unsafe partial class Tatara
     // "<llvm-nm's letter> <name>" (kinds 1 and 2).
     private static ObjectSymbol Symbol(string line) => new(line[2..], line[0]);
 
-    // "I <name>" or "A <from>=<to>" (kind 6; <from> holds no '=').
+    // "I <name>", "E <name>" or "A <from>=<to>" (kind 6; <from> holds no '=').
     private static ObjectDirective Directive(string line)
     {
         var equals = line.IndexOf('=', 2);
@@ -426,13 +426,14 @@ internal readonly record struct ObjectSymbol(string Name, char Kind);
 internal readonly record struct ObjectFacts(IReadOnlyList<ObjectMember> Members, IReadOnlyList<ArchiveSymbol> Index, bool IsArchive, bool HasDefaultLibrary);
 
 /// <summary>A member of an inspected input (an object is one): <c>Form</c> (text kind 4: <c>o</c> a relocatable object, <c>i</c> a COFF
-/// short import member, <c>s</c> a linked image); <c>Undefined</c> and <c>DefinedExternal</c>, its symbols in llvm-nm's order (kinds 1
-/// and 2); <c>Comdats</c>, the defined names whose section admits copies (kind 5); <c>Directives</c>, its .drectve's references in
-/// their order (kind 6).</summary>
+/// short import member, <c>s</c> a linked image, <c>b</c> LLVM bitcode); <c>Undefined</c> and <c>DefinedExternal</c>, its symbols in
+/// llvm-nm's order (kinds 1 and 2); <c>Comdats</c>, the defined names whose section admits copies (kind 5); <c>Directives</c>, its
+/// .drectve's references in their order (kind 6).</summary>
 internal readonly record struct ObjectMember(char Form, IReadOnlyList<ObjectSymbol> Undefined, IReadOnlyList<ObjectSymbol> DefinedExternal, IReadOnlyList<string> Comdats, IReadOnlyList<ObjectDirective> Directives);
 
-/// <summary>A reference a COFF member's .drectve makes (text kind 6): <c>Kind</c> <c>I</c>, /include:'s <c>Name</c> (no
-/// <c>Target</c>); <c>A</c>, /alternatename:'s <c>Name</c>=<c>Target</c>.</summary>
+/// <summary>A reference a COFF member's .drectve makes (text kind 6): <c>Kind</c> <c>I</c>, a <c>Name</c> lld-link roots (/include:'s or
+/// /export:'s; no <c>Target</c>); <c>E</c>, /entry:'s <c>Name</c> (no <c>Target</c>); <c>A</c>, /alternatename:'s
+/// <c>Name</c>=<c>Target</c>.</summary>
 internal readonly record struct ObjectDirective(char Kind, string Name, string? Target);
 
 /// <summary>An entry of an archive's symbol index (text kind 7): the <c>Member</c> it names, by position in

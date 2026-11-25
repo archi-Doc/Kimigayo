@@ -604,7 +604,10 @@ public sealed partial class Binding
 
     // The plan's one reading of its Subject Type's formation verdict, at its root position `syntax` (BindMatch; its recheck,
     // CompletePatternAcquisitions). The Subject carries that Type (PLAN G1278), so a refuted or unproven one records nothing here: its
-    // record is at the Type's formation site; the plan is Invalid or Pending.
+    // record is at the Type's formation site; the plan is Invalid or Pending. Invariant: this proof is never less decided than the
+    // judgment that records the Type's formation, a written site's in the same or an enclosing declaration, whose premises the match's
+    // scope includes, or, for a call result (its site is in the callee), the call's own proof at the call; so a Pending plan rests on an
+    // Unknown recorded at Final there, and a Pending plan with no record anywhere is a broken contract.
     private bool ReadSubjectTypeVerdict(BoundMatch plan, Koto syntax, BoundType type, BindingScope scope)
     {
         var proof = this.CheckTypeConstraints(type, scope, syntax);
