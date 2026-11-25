@@ -14524,8 +14524,9 @@ resumed by R4-M86 (2026-10-20).
 
   - Extended by R7-M97 (PLAN G651 a2): the InheritedConformances query's site frame at its declaration's base clause
     (unconditional), `PrepareInheritedScopes`' site frame at each inherited path's Use (run once, after the registrations, before
-    `ValidateBaseDeclarations`), and the selected call's two verdicts (the obligation outside any frame, the call's own Types in the
-    use's frame).
+    `ValidateBaseDeclarations`), the selected call's two verdicts (the obligation outside any frame, the call's own Types in the
+    use's frame), the override header's frame at its function (unconditional) and the F2 frames of BindDeclarations' remaining
+    steps (a2-2c: `OpenQuerySite` in the member that forms the Types).
 - **BU-168 A node-form pair layer's bare acquisition is one per-case plan; an omitted list reads "Copies in every case" (PLAN G748,
   G755's family part)** (2026-11-11; Front, Binding; Major; design reviews 1-2 REVISE, 3 ACCEPT, implementation review 1 REVISE, 2
   ACCEPT, the Middle's reviewer ACCEPT on the MIR hunks and RP17's A5 oracle (C-238); the owner's O-166 (a), narrowed by O-171 (a);
@@ -28437,9 +28438,23 @@ Closure row of `MirCases.Branch`).
   - **Rejected:** a no-partial-scope reader rule (the base part not stored answers it); a second premise formation; the member walk
     stopping at a failed clause (it drops R7-N3b's and R7-N2c's independent records); resting the base call on the storage fact;
     framing the whole call verdict (an independent refutation absorbed); the trial judging an invalid-context callee's own conjunction.
-  - **Open (PLAN G651 a2-2c, a3, a4).** The remaining frames of BindDeclarations' steps: Signature's, BindConstraint,
-    ResolveAssociated, CompleteProjections, SummarizeInlineStorage, PrepareVirtualOverrides, CompleteImplementationOrigins,
-    FillVTable, RecordIdentityPremiseError, PrepareSpecializations and SelectOmittedBaseConstructor's frame.
+  - **BindDeclarations' remaining frames (a2-2c, Q-776, D-1277; F's C8 ruling 32).** A step that forms Types outside a proof does
+    so in a site frame at the node its record names, opened by the member that forms them where none is open (`OpenQuerySite`) and
+    closed after them: `BindConstraint` at the clause; `PrepareAssociatedInference`'s resolve loop at each path's conformance;
+    `CompleteProjections` at its declaration; `SummarizeInlineStorage` at the summary's site; `PrepareVirtualOverrides` at the
+    override; `FillVTable` at the struct, around its base instance only; `CompleteImplementationOrigins` at the implementation;
+    `RecordIdentityPremiseError` at the scope's owner; `PrepareSpecializations`' candidates at the specialization;
+    `SelectOmittedBaseConstructor` at the base call; `ExpandScopeContractPremises` at the scope's owner, the Contract's own
+    premises at the Contract and `ValidateContractDeclarations`' element at its owner (C1). The override header's
+    `PrepareVirtualHeaderPremises` computes in a frame at the function, unconditionally (F1, as the InheritedConformances query).
+    A specialization's match reads its restated input before it forms the original's under the arguments (PrepareVirtualOverrides'
+    order), so a restated input refused at its written Type is not formed again (one Type, one record). A proof refusal inside
+    these frames attaches to the frame's node, for every Resource limit (RefuseProof's `Reach`). ResolveAssociated's site is
+    R7-M38's interim one, `path.Declaration`: for an inherited path the ancestor's clause, not the heir's base clause (`path.Use`)
+    whose instance forms the binding. CompleteProjections' frame also frames a3's `JudgeRawOrigin` (at the generic declaration)
+    until a3 frames it. Records moved (Q13): none within H; past H only a specialization's restated input, whose site-less
+    `InternalInvariant_Kd` is gone while the one `TypeHeightLimit_Kd` at its written Type stays. Open: PLAN G651 a3
+    (ValidateBoundDeclarations' steps) and a4 (Check's).
   - Amended by R7-M106 (PLAN G172, R7-C4, 2026-11-25): the call's Types frame applies the recorder's range rule (a use the obligation
     failed before the frame keeps that record; `RequireCallVerdicts`' own copy is gone). `RecordRead` and `FailBaseRule`'s held
     guard (d66230cec) are unchanged; the rule's frame-less half waits for PLAN G1391.
