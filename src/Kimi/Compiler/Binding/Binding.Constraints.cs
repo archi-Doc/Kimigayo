@@ -776,12 +776,19 @@ public sealed partial class Binding
         var contract = constraint.Contract;
         if (contract is not null && IsBoundContractReference(contract))
         {
-            var reference = this.NormalizedForm(contract.Type!, scope, out var part);
+            contract = this.NormalizedContract(contract, scope, out var part);
             completion = Meet(completion, part);
-            contract = ReferenceEquals(reference, contract.Type) ? contract : this.BoundContractReference(reference);
         }
 
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) && ReferenceEquals(contract, constraint.Contract) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
+    }
+
+    // J1's reading of a bound Contract reference (NormalizeProofConstraint's Contract arm): its arguments read as a proposition's Types
+    // (NormalizedForm), so a completed projection there is its binding (SPEC 8.2.3; R7-C2c2 c2-5a).
+    private BindingSymbol NormalizedContract(BindingSymbol reference, BindingScope scope, out Completion completion)
+    {
+        var form = this.NormalizedForm(reference.Type!, scope, out completion);
+        return ReferenceEquals(form, reference.Type) ? reference : this.BoundContractReference(form);
     }
 
     // J1's one reading of a proposition's Type (SPEC 8.3.1's normalized complete Types): normalized in the scope, a completed projection
