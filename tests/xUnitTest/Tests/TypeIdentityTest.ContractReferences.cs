@@ -192,12 +192,27 @@ public partial class TypeIdentityTest
 
     // SPEC 8.8.2, 8.6.1, 8.9.2 (PLAN G1300): a conditional block's specification selects under D and P, where its conformance is one with a
     // member declared outside the block, which then represents it; it specifies the block conformance's associated Type all the same, through
-    // either member's name, and its obligation is the block's (mg4m); a disagreement with the member outside is r6's (mg4n).
+    // either member's name, and its obligation is the block's (mg4m); a disagreement with the member outside lies within the block
+    // conformance's root path, whose one binding both specify, so it is that path's error at its declaring clause (mg4n).
     [InlineData("guard", "mg4", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool\n", "")]
     [InlineData("guard", "mg4c", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool and Copy\n", "")]
     [InlineData("guard", "mg4o", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<S.(HasItem).Item>.Tag is bool\n", "")]
-    [InlineData("guard", "mg4n", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is i64\n", "IncompatibleContractImplementation_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | InvalidConstraint_Kd: Self is Iter<S.(HasItem).Item>")]
+    [InlineData("guard", "mg4n", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
     [InlineData("guard", "mg4m", HasItem + Tagged + Direct + "contract Marker\n" + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool and Marker\n", "UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+
+    // SPEC 8.8.1, 8.8.2, 8.5.5 Completion, 8.6.1, 8.9.2 (PLAN G1385): without a block, the Type-level specification of the member outside
+    // specifies the block conformance's associated Type too, where P makes them one conformance (mg5, mg5c: the root path's premises prove
+    // the clause's), and its obligation is that conformance's (mg5m); where P does not identify them, the block conformance's Tag is
+    // undetermined (mg5f, mg5cf).
+    [InlineData("guard", "mg5", HasItem + Tagged + Direct + MergedWhen, "")]
+    [InlineData("guard", "mg5c", Tagged + Direct + "struct B<T>\n    Self is Iter<i32>\n    associate Iter<i32>.Tag is bool\n    Self is Q2<T> when T is i32\n", "")]
+    [InlineData("guard", "mg5f", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy\n", "AssociatedTypeInferenceFailed_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy")]
+    [InlineData("guard", "mg5cf", Tagged + Direct + "struct B<T>\n    Self is Iter<i32>\n    associate Iter<i32>.Tag is bool\n    Self is Q2<T> when T is i64\n", "AssociatedTypeInferenceFailed_Kd: Self is Q2<T> when T is i64")]
+    // The UnprovenConstraint_Kd is PLAN G1260's (a Contract's condition on its Self judged as a reference input condition at `Q2<..>`).
+    [InlineData("guard", "mg5m", HasItem + Tagged + "contract Marker\ncontract Q2<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\n" + MergedWhen, "UnprovenConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+    // The InvalidAssociatedType_Kd records rest on the unresolved name's record (PLAN G-new: a specification link settles only to an
+    // Invalid specified Type, SettleSpecificationLinks).
+    [InlineData("guard", "mg5u", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Undefined\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "InvalidAssociatedType_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | UnresolvedBinding_Kd: associate Iter<S.(HasItem).Item>.Tag is Undefined")]
 
     // SPEC 8.5.2, 8.5.1, 8.4.3, 8.2.3 (PLAN G722): inside a Contract a short name means its own or an inherited associated Type, and paths to one
     // declaration whose bindings are one under the Contract's premises count once, in either parent order; distinct bindings stay two (a01i).

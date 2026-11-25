@@ -610,7 +610,7 @@ public class UseLookupTest
     }
 
     // A bound Contract qualifier (SPEC 8.6.1, 9.7.1): at each level its Symbols entry is the name's selection, the declaration, and its
-    // Type is the bound reference its Type arguments form, which a reader takes the reference from (SpecifiesContract).
+    // Type is the bound reference its Type arguments form, which a reader takes the reference from (ContractReferenceOf).
     // PLAN G704 (SPEC 3.1.3, 22.1, 9.5, 18.2.1): `Never` is a Kimi declaration, so a Type position names it by ordinary lookup: a nearer
     // declaration shadows it (dev: the intrinsic won), `Kimi.Never` (stage 4) and `::Kimi.Never` name the declaration (dev:
     // UnresolvedBinding_Kd), `::Kimi` stays unshadowed where `Kimi` is, and an opening alias may open it. Invalid twins follow, each rejected by

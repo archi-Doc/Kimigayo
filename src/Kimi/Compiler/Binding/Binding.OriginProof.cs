@@ -315,14 +315,16 @@ public sealed partial class Binding
         => this.ProvesOriginOutlives(longer, shorter, use, default(CallableInstance), condition);
 
     // The request made in the Callable comparison `comparison`, which assumes its required signatures' own well-formedness too (the
-    // owner's (a)); outside a comparison it is the default instance.
-    private bool ProvesOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
+    // owner's (a)); outside a comparison it is the default instance. `excluded` is the premise rule the relation may not rest on
+    // (EntailsOrigin; a HeldResult row's, PublishedPremise).
+    private bool ProvesOriginOutlives(
+        BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0, OriginPremiseRule excluded = OriginPremiseRule.Target)
     {
         var version = this.originStateVersion;
         longer = this.OriginAtUse(longer, use, comparison);
         shorter = this.OriginAtUse(shorter, use, comparison);
         this.OriginProofMetrics?.Enter(this.originPremiseDepth);
-        var proven = this.EntailsOrigin(longer, shorter, use, comparison, condition);
+        var proven = this.EntailsOrigin(longer, shorter, use, comparison, condition, excluded);
         if (version != this.originStateVersion)
         {
             throw new InvalidOperationException($"The Origin proof of `{longer} outlives {shorter}` changed inference or obligation state (PLAN G74).");
