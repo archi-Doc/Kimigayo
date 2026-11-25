@@ -120,7 +120,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var source = ffi
             ? "group Codec\n    #LibraryImport(\"codec\", \"codec_add\")\n    public func add(a: i32, b: i16) -> i32\npublic func main()\n    require Codec.add(40, -2) == 38 else => $abort(\"add\")\n"
-            : "::Kimi.Console.writeLine(\"Hello, world!\")";
+            : LinuxPair.Program("Hello", "Hello.kimi");
         var paths = LinuxPair.Publish(this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;

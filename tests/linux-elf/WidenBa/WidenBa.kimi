@@ -1,0 +1,6 @@
+group Native
+    #LibraryImport("codec", "widen")
+    public func widen(x: i16) -> i32
+    #LibraryImport("codec", "widen")
+    public func widenBits(x: u16) -> i32
+Console.writeLine("\(Native.widen(-2))")
