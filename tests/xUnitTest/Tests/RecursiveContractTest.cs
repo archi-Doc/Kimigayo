@@ -311,6 +311,19 @@ public sealed partial class RecursiveContractTest
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }
 
+    // G1406-17 (e2-7 R3.5 form (ii); SPEC 8.2.3's grounds include the identities `T is AT2` supplies at every depth): AT2's associate
+    // bound `Self.(Tree).Child is AT3` reaches AT3's identity clause `Self.(Tree).Alias is Self.(Tree).Child`, so at T.Child, Alias is
+    // Child and the probe returns r as its result (at3, valid). The counterpart: no Contract holds an identity clause (Orders without
+    // AT3's), so Alias and Child are distinct associated Types and the return is a Type mismatch (none, invalid, SPEC 8.2.3).
+    [Theory]
+    [InlineData("at3", Orders, "")]
+    [InlineData("none", OrdersHead + OrdersTail, "TypeMismatch_Kd: return r")]
+    public void AContractsIdentityClauseIsAGroundThroughItsAssociatesBound(string row, string orders, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(
+            row,
+            orders + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias) -> ref/T.(Tree).Child.(Tree).Child\n    T is AT2\n    return r\npublic func main() => ()\n",
+            records);
+
     [Theory]
     // SPEC 8.3.2 (the refinement row), 8.3.3 (Finality): a Contract premise supplies each conformance its refinement clauses state, at any
     // depth, in any order of declarations and premises, through Contracts that supply each other, inside a Tuple or an Option, through an

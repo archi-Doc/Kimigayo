@@ -466,6 +466,7 @@ public sealed partial class Binding
             }
         }
 
+        this.PublishIdentityClauses();
         this.ExpandContractPremises();
         this.PublishSourceStates();
         this.PrepareAssociatedBindings();

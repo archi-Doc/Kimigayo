@@ -171,6 +171,7 @@ public sealed partial class Binding
             shape.ClauseStorage.Clear();
             shape.EffectBoundStorage.Clear();
             shape.EffectState = 0;
+            shape.HoldsIdentity = false;
             shape.Seen.Clear();
             shape.SeenRequirements.Clear();
             foreach (var members in shape.MembersByName.Values)
@@ -205,6 +206,58 @@ public sealed partial class Binding
                 this.contractShapes.Add(contract.BoundSymbol!.Contract!);
             }
         }
+    }
+
+    // G1406-17 (e2-7 R3.5 form (ii), G1406-16 C5; SPEC 8.2.3's grounds): each of the pass's Contract declarations publishes once
+    // whether it holds a Type-identity clause (BoundContract.HoldsIdentity), the least fixpoint over its edges: its own bound clauses
+    // (an identity clause holds; a Contract clause, an associate's bound included, holds where its Contract's declaration does; `and`
+    // through its parts), and its ancestors. Rounds over the pass's Contracts until none changes; an earlier pass's Contract keeps its
+    // own (a library or earlier-layer Contract never refers to a later one). Once per BindConstraints, after every Contract clause is
+    // bound and before the supply (ExpandContractPremises), so ConstraintEnvironment.Add reads it for every supplied fact; a written
+    // Contract premise added before it is read through its supply's facts.
+    private void PublishIdentityClauses()
+    {
+        for (var changed = true; changed;)
+        {
+            changed = false;
+            for (var c = 0; c < this.contractShapes.Count; c++)
+            {
+                var shape = this.contractShapes[c];
+                if (!shape.HoldsIdentity && Holds(shape))
+                {
+                    shape.HoldsIdentity = changed = true;
+                }
+            }
+        }
+
+        static bool Holds(BoundContract shape)
+        {
+            for (var i = 0; i < shape.Ancestors.Count; i++)
+            {
+                if (shape.Ancestors[i].Declaration.BoundSymbol?.Contract is { HoldsIdentity: true })
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < shape.ClauseStorage.Count; i++)
+            {
+                if (shape.ClauseStorage[i].BoundConstraint is { } clause && HoldsClause(clause))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool HoldsClause(BoundConstraint clause) => clause.Kind switch
+        {
+            ConstraintKind.TypeIdentity => clause.RequiredType is not null,
+            ConstraintKind.Contract => clause.Contract?.Declaration.BoundSymbol?.Contract is { HoldsIdentity: true },
+            ConstraintKind.And => HoldsClause(clause.Left!) || HoldsClause(clause.Right!),
+            _ => false,
+        };
     }
 
     private void DeclareAssociatedType(Koto declaration, ContractKoto contract)

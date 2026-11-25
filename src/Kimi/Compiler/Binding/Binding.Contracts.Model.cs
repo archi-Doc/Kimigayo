@@ -55,6 +55,10 @@ public sealed class BoundContract
     /// <summary>Gets or sets a value indicating whether this Contract or an ancestor declares a bound, once its table is built.</summary>
     internal bool HasEffectBounds { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether this Contract declaration holds a Type-identity clause, its own or through its
+    /// ancestors or its associates' bound Contracts (SPEC 8.2.3's grounds; Binding.PublishIdentityClauses, once per pass).</summary>
+    internal bool HoldsIdentity { get; set; }
+
     internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal HashSet<BoundRequirement> SeenRequirements { get; } = new();

@@ -219,7 +219,8 @@ internal sealed class ConstraintEnvironment
         if (added)
         {
             this.HasAssociatedProjection |= fact.HasAssociatedProjection;
-            this.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null };
+            this.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null } or
+                { Kind: ConstraintKind.Contract, Contract.Declaration.BoundSymbol.Contract.HoldsIdentity: true };
             if (fact is { Kind: ConstraintKind.TypeIdentity, Subject: not null, RequiredType: not null })
             {
                 this.IdentityFacts.Add(fact);
@@ -348,9 +349,10 @@ internal sealed class ConstraintEnvironment
         return made;
     }
 
-    /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
-    /// of the identity relation and the identity classes' input (Binding.TypeIdentity); G721's interim reads it until G170's identity
-    /// query answers which Types it makes identical.</summary>
+    /// <summary>Gets or sets a value indicating whether the grounds can hold an identity (SPEC 8.2.3; G1406-17, e2-7 R3.5 form (ii)): a
+    /// fact is a Type-identity premise `X is U` of any subject, a ground of the identity relation and the identity classes' input
+    /// (Binding.TypeIdentity), or a Contract premise whose Contract holds an identity clause (BoundContract.HoldsIdentity), which a
+    /// closure supplies; G721's interim reads it until G170's identity query answers which Types it makes identical.</summary>
     internal bool HasTypeIdentity { get; set; }
 
     internal void Reset()
