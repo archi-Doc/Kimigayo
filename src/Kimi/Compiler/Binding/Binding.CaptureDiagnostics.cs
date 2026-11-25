@@ -2,9 +2,9 @@
 
 // Capture failure facts and their publication (SPEC 7.7.2, 16.3.1, 23.1): the one recorder of a failed capture check (RecordCapture) with
 // the facts it records where the check fails (a written entry, a repeated capture name, an omitted list's use or capture, an implicit
-// capture of a contextual binding, a capture of the helper borrow), and the record each publishes (ReportCapture). The judgments stay with
-// their owners (Binding.Captures, Binding.Closures, Binding.Transfers, the receiver table in Binding.Structs); this file never re-runs one
-// to explain a failure.
+// capture of a contextual binding, a capture of the helper borrow, a later value that brings it into a captured var's region), and the
+// record each publishes (ReportCapture). The judgments stay with their owners (Binding.Captures, Binding.Closures, Binding.Transfers,
+// the receiver table in Binding.Structs); this file never re-runs one to explain a failure.
 
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
@@ -21,10 +21,6 @@ public sealed partial class Binding
     // A capture record's facts, a kept scratch (CaptureFacts), so a warm rebind of a rejected capture allocates none.
     private readonly List<ProblemFact> captureFacts = [];
 
-    // SPEC 16.3.1, 15.6.5: a late helper source's facts, recorded only when it fails (CaptureFailure), until each capture it reaches is
-    // its own record (R7-E4 E4b C3, which removes them).
-    private Dictionary<Koto, CaptureFailure>? captureFailures;
-
     // The walk that finds a capture's first occurrence in an omitted-list Closure (CaptureUse), kept so a warm judgment allocates none.
     private CaptureUse? captureUse;
 
@@ -35,33 +31,19 @@ public sealed partial class Binding
         Entry, // A written entry's own initialization (CaptureEntry): TransferRequired or InvalidAssignment.
         Receiver, // A written entry of a construction or destruction receiver (SPEC 7.7.2, 6.3).
         Helper, // A written entry or an omitted list's use of a value that carries the helper borrow (SPEC 16.3.1).
+        LateHelper, // A later value that brings the helper borrow into the region of a var a Closure captured, per capture (SPEC 16.3.1).
         Contextual, // A use of contextual self or a setter's value outside a written list (SPEC 7.7.2).
         Omitted, // An omitted list's capture that is not proven Copy (SPEC 7.7.2, S3).
         Repeat, // A later entry that repeats an earlier entry's name (SPEC 7.7.2).
         ParameterRepeat, // A parameter that repeats an entry's name (SPEC 7.7.2).
     }
 
-    // SPEC 7.7.2: the span a capture site shows for the capture of `name`: at a Closure with a written list, its entry of that name;
-    // at a use, the use itself. Null for a list without such an entry.
-    private static SourceSpan? CapturedAt(Koto site, string name)
-        => site is FunctionKoto { Captures: not null } list ? CaptureEntryOf(list, name)?.Span : site.Span;
-
-    // SPEC 16.3.1, 15.6.5: a later value of a captured var brings the helper borrow; each capture and the declaration are related.
-    private static void ReportLateHelperSource(Koto node, DiagnosticCollection? store, CaptureFailure capture, DiagnosticRequirement requirement, DiagnosticCode code)
-        => node.ReportIn(
-            store,
-            requirement,
-            code,
-            note: $"This value carries the helper borrow of the whole destruction receiver (self@ref) into {capture.Name}, which a Closure captures; " + HelperBorrowNote,
-            span: capture.At,
-            related: [("declaration", capture.Source.Declaration, null)],
-            relatedSpans: Array.ConvertAll(capture.Captured, span => ("capture", node, span, (string?)null)));
-
     // The scratch's first facts of a capture record (RecordCapture), cleared first: its Span, the part of `node` it is located at, and its
     // Reason: the problem, whether the capture is in a later default of the source's function (InLaterDefault, SPEC 7.2.3; never for a
     // record without a source) and, above them, `named` plus one: the written entry the Note names, or the omitted list's storage row,
-    // -1 for none. The caller appends its kind's further facts: Related by role (0 the source's declaration, 1 the helper's borrow),
-    // then an entry's Type (Actual) and the cases its bare acquisition moves in (a second Reason, read by position).
+    // -1 for none. The caller appends its kind's further facts: Related by role (0 the source's declaration, 1 the helper's borrow, 2 a
+    // late source's capture site, whose entry `named` is), then an entry's Type (Actual) and the cases its bare acquisition moves in (a
+    // second Reason, read by position).
     private List<ProblemFact> CaptureFacts(Koto node, CaptureProblem problem, SourceSpan at, int named, BindingSymbol? source)
     {
         var prepared = source is not null && InLaterDefault(node, source) ? 1L << 8 : 0;
@@ -106,10 +88,9 @@ public sealed partial class Binding
         var at = this.LocatedPart(index)!.Value;
         var reason = facts[1].Value;
         var (kind, prepared, named) = ((CaptureProblem)(byte)reason, ((reason >> 8) & 1) != 0, (int)(reason >> 16) - 1);
-        var name = kind == CaptureProblem.Omitted ? ((FunctionKoto)node).ClosureStorage!.Storage[named].Source.Name
-            : named >= 0 ? ((FunctionKoto)node).Captures![named].Name : node.ToString();
         Koto? declaration = null;
         Koto? borrow = null;
+        Koto? site = null;
         BoundType? type = null;
         var moving = SemanticsMask.None;
         for (var i = 2; i < facts.Length; i++)
@@ -119,8 +100,11 @@ public sealed partial class Binding
                 case ProblemFactKind.Related when facts[i].Value == 0:
                     declaration = this.compilation.SyntaxOf(facts[i].Site);
                     break;
-                case ProblemFactKind.Related:
+                case ProblemFactKind.Related when facts[i].Value == 1:
                     borrow = this.compilation.SyntaxOf(facts[i].Site);
+                    break;
+                case ProblemFactKind.Related:
+                    site = this.compilation.SyntaxOf(facts[i].Site);
                     break;
                 case ProblemFactKind.Actual:
                     type = this.report.Value(facts[i]);
@@ -131,6 +115,10 @@ public sealed partial class Binding
             }
         }
 
+        // The written entry `named` is the capture site's (a late source's) or the node's own; an omitted list names its storage row.
+        var list = site ?? node;
+        var name = kind == CaptureProblem.Omitted ? ((FunctionKoto)node).ClosureStorage!.Storage[named].Source.Name
+            : named >= 0 ? ((FunctionKoto)list).Captures![named].Name : list.ToString();
         var (requirement, code, condition) = (problem.Requirement, problem.Code, problem.Condition);
         switch (kind)
         {
@@ -179,6 +167,19 @@ public sealed partial class Binding
                 (string Role, Koto At, string? Label)[] related = borrow is null ? [("declaration", declaration!, null)] : [("declaration", declaration!, null), ("borrow", borrow, null)];
                 node.ReportIn(store, requirement, code, note: $"{name} carries the helper borrow of the whole destruction receiver (self@ref); {HelperBorrowNote}", span: at, related: related, condition: condition);
                 break;
+            case CaptureProblem.LateHelper:
+                // SPEC 16.3.1, 15.6.5 (O-D1 (a)): the later value, one record per capture it reaches: the captured var's declaration and
+                // the capture, the written entry or the binding's first occurrence, related.
+                node.ReportIn(
+                    store,
+                    requirement,
+                    code,
+                    note: $"This value carries the helper borrow of the whole destruction receiver (self@ref) into {name}, which a Closure captures; " + HelperBorrowNote,
+                    span: at,
+                    related: [("declaration", declaration!, null)],
+                    relatedSpans: [("capture", list, named >= 0 ? ((FunctionKoto)list).Captures![named].Span : list.Span, null)],
+                    condition: condition);
+                break;
             case CaptureProblem.Contextual:
                 // SPEC 7.7.2: an anonymous function without a capture list never captures contextual self or a setter's value; the use is
                 // the location, and the declaration of the binding is related (an accessor's, for a binding its function declares). In a
@@ -201,12 +202,14 @@ public sealed partial class Binding
 
     // SPEC 16.3.1, 15.6.5: a var a Closure captured before a later value bounding its region brought the helper borrow (H): that value
     // fails, a node no Closure value depends on, located at itself, the value whose bound enters H into the region graph that reaches
-    // the binding (LocalRegionSourceUse). Each capture it reaches is related: the written entry or the binding's first occurrence.
+    // the binding (LocalRegionSourceUse). Each capture it reaches is its own record (O-D1 (a)), numbered at the value, with the captured
+    // var's declaration and the capture site related: the written list, whose entry of the name is the capture, or the binding's first
+    // occurrence (named -1).
     private void FailLateHelperSource(FunctionKoto closure, BoundCapture capture, BoundOrigin carrier, BoundOrigin helper)
     {
-        var name = capture.Environment.Name;
         var site = closure.Captures is not null ? closure : (this.captureUse ??= new()).Find(closure, capture.Environment);
-        if (this.LocalRegionSourceUse(carrier, helper)?.Value is not { } late || site is null || CapturedAt(site, name) is not { } at)
+        var named = site is FunctionKoto { Captures: not null } list ? CaptureEntryIndex(list, capture.Environment.Name) : -1;
+        if (this.LocalRegionSourceUse(carrier, helper)?.Value is not { } late || site is null || named is not { } entry)
         {
             // The capture site judged every carrier but a region's later source, and CarrierOf found this one through the walk that finds
             // its use; the storage entry exists because of its entry or first occurrence. A broken contract, without recovery.
@@ -214,21 +217,14 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.captureFailures?.TryGetValue(late, out var reached) == true)
-        {
-            this.captureFailures[late] = reached with { Captured = [.. reached.Captured, at] };
-            return;
-        }
-
-        this.FailExplained(ref this.captureFailures, late, BindingFailure.Capture, new CaptureFailure(late.Span, name, capture.Source, [at]));
+        var facts = this.CaptureFacts(late, CaptureProblem.LateHelper, late.Span, entry, capture.Source);
+        facts.Add(new(ProblemFactKind.Related, this.FactSite(capture.Source.Declaration), 0));
+        facts.Add(new(ProblemFactKind.Related, this.FactSite(site), 2));
+        this.RecordCapture(late, BindingFailure.Capture);
     }
 
-    // A late helper source a Closure's capture fails at (SPEC 16.3.1): its span, the captured binding's name and outer binding, and each
-    // capture it reaches.
-    private readonly record struct CaptureFailure(SourceSpan At, string Name, BindingSymbol Source, SourceSpan[] Captured);
-
     // The first occurrence of an environment binding in its omitted-list Closure, in source order: a name that resolves to it, or, for
-    // a nested Closure that forwards it, that Closure when its list is written (CapturedAt narrows it to the entry) or else the nested
+    // a nested Closure that forwards it, that Closure when its list is written (its entry of the name is the capture) or else the nested
     // binding's first occurrence. One kept walk (Binding.captureUse): Find saves and restores the binding and the found node around a
     // nested Closure's walk, so the walk is reentrant and allocates nothing.
     private sealed class CaptureUse : KotoVisitor

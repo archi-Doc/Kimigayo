@@ -250,8 +250,12 @@ public sealed partial class Binding
             condition: condition);
     }
 
-    // The capture entry that names an environment binding, when the closure has a capture list.
+    // The capture entry that names an environment binding, when the closure has a capture list (CaptureEntryIndex).
     private static CaptureKoto? CaptureEntryOf(FunctionKoto closure, string name)
+        => CaptureEntryIndex(closure, name) is { } entry ? closure.Captures![entry] : null;
+
+    // The index of the written entry that names an environment binding; null when the closure has no such entry or no capture list.
+    private static int? CaptureEntryIndex(FunctionKoto closure, string name)
     {
         if (closure.Captures is { } captures)
         {
@@ -259,7 +263,7 @@ public sealed partial class Binding
             {
                 if (captures[i].Name == name)
                 {
-                    return captures[i];
+                    return i;
                 }
             }
         }
@@ -702,7 +706,6 @@ public sealed partial class Binding
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
-        this.captureFailures?.Clear();
         this.pairCaseRows.Clear();
         this.ResetParameterShapes();
         this.duplicateOrder.Clear();

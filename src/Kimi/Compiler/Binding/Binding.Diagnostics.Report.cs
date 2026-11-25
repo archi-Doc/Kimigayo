@@ -209,10 +209,6 @@ public sealed partial class Binding
         {
             this.ReportDuplicateBindingSet(bindingSet, store, reusedSet, requirement, issue.Code);
         }
-        else if (this.captureFailures?.TryGetValue(issue.Node, out var late) == true)
-        {
-            ReportLateHelperSource(issue.Node, store, late, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {
             // The subject stays the failed node; the location is the syntax that shows the two Types.
