@@ -105,12 +105,14 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     // reference's record. A part whose failed Type is nested in it (`Result<Box<string>, i32>`) is compared as a whole, so a mismatch
     // of its other component keeps the reference's record (7:38 with the failed Type first or second, 7:47 at a generic callee's
     // parameter). Controls: the reference without a Function Type (its Item's own records, unchanged), a valid callee (none), a valid
-    // callee under a failed annotation (the annotation's record and its dependent mismatch, unchanged).
+    // callee under a failed annotation (the annotation's record and its dependent mismatch, unchanged). PLAN G1278 (G1278-A, Q13; F's
+    // G1278-10 (2)): the Function `g` carries its written result, so the record is the written Type's alone (4:13; dev's second record
+    // of that Type at `g`, 4:6, goes: one Type, one record).
     [Theory]
-    [InlineData("() -> Box<string>", "", "    let f: () -> Box<string> = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:18")]
-    [InlineData("() -> Box<string>", "func take(f: () -> Box<string>) -> i32 => 0", "    return take(g)", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@5:20 | UnsatisfiedConstraint_Kd@7:17")]
-    [InlineData("() -> Box<string>", "", "    let f: () -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13")]
-    [InlineData("() -> Box<string>", "", "    let f = g\n    return 0", "UnsatisfiedConstraint_Kd@4:6 | UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:13")]
+    [InlineData("() -> Box<string>", "", "    let f: () -> Box<string> = g\n    return 0", "UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:18")]
+    [InlineData("() -> Box<string>", "func take(f: () -> Box<string>) -> i32 => 0", "    return take(g)", "UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@5:20 | UnsatisfiedConstraint_Kd@7:17")]
+    [InlineData("() -> Box<string>", "", "    let f: () -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:13")]
+    [InlineData("() -> Box<string>", "", "    let f = g\n    return 0", "UnsatisfiedConstraint_Kd@4:13 | UnsatisfiedConstraint_Kd@7:13")]
     [InlineData("(x: Box<string>) -> i32", "/// - safety: none.\nunsafe func g(x: string) -> i32 => 0\n", "    let f: (string) -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:11 | DirectCallFunctionValue_Kd@9:30")]
     [InlineData("(x: Box<string>) -> i32", "func g(x: bool, y: bool) -> i32 => 0\n", "    let f: (i32) -> i32 = g\n    return 0", "UnsatisfiedConstraint_Kd@4:11")]
     [InlineData("(x: Box<string>) -> i32", "func g<U>(x: U) -> i32 => 0\n", "    let f: (i32) -> i32 = g<bool>\n    return 0", "UnsatisfiedConstraint_Kd@4:11 | NoApplicableOverload_Kd@8:27")]

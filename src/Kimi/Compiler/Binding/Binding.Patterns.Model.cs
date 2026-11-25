@@ -9,10 +9,10 @@ namespace Kimi.Compiler;
 public enum BoundPatternKind : byte
 {
     /// <summary>A leaf that tests, selects and binds nothing: its Pattern failed with its own record, a payload Pattern of its Case was not
-    /// read, or it rests on the failed Subject or on the Subject Type BindMatch refuted (<see cref="BoundPattern.MatchedType"/> null;
-    /// SPEC 14.8.1, 23.1.2). Every other position is buildable: a Case position has a child for each payload of its selected Case, whose
-    /// Type was read at the position, and a Tuple position one for each element; a position whose Subject Type the late recheck refutes
-    /// keeps its kind and its test.</summary>
+    /// read, or it rests on the failed Subject (<see cref="BoundPattern.MatchedType"/> null; SPEC 14.8.1, 23.1.2). Every other position
+    /// is buildable: a Case position has a child for each payload of its selected Case, whose Type was read at the position, and a Tuple
+    /// position one for each element; a position whose Subject Type is refuted (BindMatch's reading or its late recheck) keeps its kind
+    /// and its test.</summary>
     Invalid,
     Wildcard,
     Binding,
@@ -95,8 +95,8 @@ public sealed class BoundMatch
 
     internal List<byte> CaseCoverage { get; } = new();
 
-    /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure: the match's
-    /// coverage is not computed (<see cref="MatchCoverageState.Invalid"/>), and the plan is still built (a failed position is an Invalid
+    /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure, or its Subject
+    /// Type is refuted (recorded at that Type's formation site, PLAN G1278): the match's coverage is not computed (<see cref="MatchCoverageState.Invalid"/>), and the plan is still built (a failed position is an Invalid
     /// leaf or keeps its test); <see cref="Pending"/> keeps it unbuilt.</summary>
     internal bool Invalid { get; set; }
 

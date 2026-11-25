@@ -1,8 +1,8 @@
 # The native fixture check: each selected fixture built at O0 and O2 by the configuration's compiler, then run against its sidecars.
 # Builds: a fixture's IR becomes two IR/manifest pairs, Name.ll beside Name.link.json as emit writes them (the O2 pair in the output
 # directory, the O0 pair in its O0 folder). Their manifest is the one kimi emit writes for a one-line program (one emit per run: this
-# compiler's fixed fields and supplies' entries) with the pair's IR, hash and optimization, and every kernel32 import in its dllimport
-# form as the external declarations. Every pair is written, and an earlier run's record removed, before the first round. Up to
+# compiler's fixed fields and supplies' entries) with the pair's IR, hash and optimization, and every kernel32 import, each naming
+# kernel32, as the external declarations. Every pair is written, and an earlier run's record removed, before the first round. Up to
 # -Parallel lanes, each fixture's lines in one lane, send their build --Manifest lines, one at a time, to a kimi tatara session of
 # their own: one process doing the lines' LLVM and LLD work through Tatara, as kimi build does (NativeBuild: optimize, emit, inspect,
 # link). A line whose pair has no record after its session was not attempted (Tatara's refusal ends a session after its line) and goes
@@ -114,7 +114,7 @@ if ($pending.Count -gt 0) {
     $head.irFile = '@IR@'; $head.irSha256 = '@SHA256@'; $head.optimization = '@LEVEL@'
     $head.PSObject.Properties.Remove('input') # The template's source, no pair's input.
     $head.externalDeclarations = @((Get-KimiKernel32Definition).Split("`n") | Select-Object -Skip 2 | ForEach-Object { $_.Trim() } | Where-Object { $_ } |
-        ForEach-Object { [ordered]@{ symbol = $_; dllimport = $true } })
+        ForEach-Object { [ordered]@{ symbol = $_; library = 'kernel32' } })
     $head = $head | ConvertTo-Json -Depth 10
     # Each pending fixture's two pairs, written before the first round (a record is this run's build): its O2 pair in the output
     # directory, its O0 pair in O0/, the IR copied, the manifest written and an earlier run's record removed, in up to -Parallel

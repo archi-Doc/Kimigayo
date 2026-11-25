@@ -61,9 +61,9 @@ internal sealed partial class MirBorrows
 
     // A write's verdict at a Place of these facts, `write` what the Place's Type makes of it (SPEC 5.2, 5.7): none where every raw layer
     // there states an Origin other than `static` (Own, Shared or Exclusive: a pun or none, the pointer promises that Origin's storage);
-    // undecided where one has no answer (Unsupported), and where the layers are partly stated (PartlyStated: a pointer at a stated layer is
-    // judged by its Origin, one at an unstated layer may reach storage the body does not own, and A5 keeps one state per holder, so it
-    // cannot say which: the located Unsupported_Kd, never a Language record); else the Type's.
+    // undecided where one has no answer (Unsupported); else the Type's. A write the call may make at any raw layer it reaches (OwnWrite,
+    // UnknownWrite) takes this verdict at partly stated layers too: a pointer it leaves at one stating no Origin reaches storage the body
+    // does not own, and every value read from any part of the holder carries it (SPEC 15.6 Holders; O-230 Q1 (a)).
     private static PunWrite PunAt(PunWrite write, in PunKey facts)
     {
         if (write == PunWrite.Typed || facts.Stated)
@@ -71,8 +71,15 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
-        return facts.Unsupported || facts.PartlyStated ? PunWrite.Undecided : write;
+        return facts.Unsupported ? PunWrite.Undecided : write;
     }
+
+    // A placed write's verdict (StoreWrite, CallWrite: the designation judge places the written Type at the pointer's Position, SPEC 5.2,
+    // IMPL 21.1): PunAt's, but undecided where the pun lands among partly stated layers (PunKey.PartlyStated). The layout decides whether it
+    // covers a stated layer, whose pointer promises its Origin's storage, or another one (R4-M198's undecided class: the located
+    // Unsupported_Kd where a check rests on it, never a Language record).
+    private static PunWrite PlacedAt(PunWrite write, in PunKey facts)
+        => write == PunWrite.Pun && facts.PartlyStated ? PunWrite.Undecided : PunAt(write, facts);
 
     // The worse of two writes at one Place: a pun, else an undecided write.
     private static PunWrite Worse(PunWrite a, PunWrite b)
@@ -370,7 +377,7 @@ internal sealed partial class MirBorrows
 
             if (i == count - 1)
             {
-                return PunAt(this.Designated(held, at, on), facts);
+                return PlacedAt(this.Designated(held, at, on), facts);
             }
 
             on = on && (this.Selected(i + 1, count) is not { } field || this.Step(held, at, field));
@@ -392,7 +399,7 @@ internal sealed partial class MirBorrows
             result = Worse(result, this.Within(place, write, on));
         }
 
-        return PunAt(result, facts);
+        return PlacedAt(result, facts);
     }
 
     // What a call writing at Types an abstract part leaves unknown does at the Place entry `entry` names: a pun through a raw address
@@ -411,7 +418,8 @@ internal sealed partial class MirBorrows
 
     // What a call that may leave its own pointer in the Place entry `entry` names does there (SPEC 15.6.4: a pointer the call may write at
     // a raw layer without an Origin, its own included, may address storage the body does not own; 5.7 Calls: one at a layer stating an
-    // Origin is judged by that Origin, R4-M183): a pun where the Place may hold a raw pointer, as the Place's layers keep it (PunAt).
+    // Origin is judged by that Origin, R4-M183): a pun where the Place may hold a raw pointer, at any raw layer it reaches, as the Place's
+    // layers keep it (PunAt).
     private PunWrite OwnWrite(int entry) => this.Holder(entry, out var facts) is null ? PunWrite.Typed : PunAt(PunWrite.Pun, facts);
 
     // The Type of the Place entry `entry` names where a write there may pun a raw pointer, else null: a raw layer at the Place's own
