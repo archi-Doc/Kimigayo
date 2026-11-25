@@ -5361,6 +5361,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - (2026-11-04) A1 does not apply in a whole-contract comparison (a Callable proof, or a Closure's or Function Item's conversion
     (erasure, SPEC 7.7.4); SPEC 15.6.1, 15.3.7): there the Origin part is judged from premises alone, so a body-local region decides
     nothing and a failing member keeps its Proof-category record (G404, BU-93).
+  - s4 superseded in part by R7-M80 as amended by G1278-A (the owner, verbatim 「1 2 3は推奨通り」, 2026-11-25, item 1 = option (b)):
+    a Closure body's returned value carries the written result Type, which is judged once where it is written; the body keeps no
+    record of its own for the result's clause.
 - **R4-M156 G161, A5's part of SPEC 6.3.4's completion rule: a raw Place borrow's Loan is its fresh anchor's, and the result is live
   after a Return** (2026-10-30; design revision 3) SPEC 5.2.2, 15.6.2, 15.6.3, 5.2.1, 5.7, 6.3.4, 16.2.2, 16.2.3.
   - (1) The raw anchor. A Loan whose Place passes a raw Deref is a raw Place borrow's: its referent is a fresh anchor that "recovers no
@@ -18676,6 +18679,17 @@ resumed by R4-M86 (2026-10-20).
     is. Reason: under rule W (SPEC 23.1.2) every arm's Pattern reads the one Subject
     Type the plan judges at its root, so its refutation is one failed input of every arm, recorded once. Removal condition: D1
     (PLAN G1387, after G1278's relation) rests no arm on a refuted Subject Type and replaces this line.
+  - Amended by G1278-A (Q-780, D-1282, 2026-11-25; F's G1278-1 Q-B (a), G1278-3 F1 (a); D1's arm form, PLAN G1387 closed): a match
+    never judges its Subject Type, which the Subject carries (R7-M80 as amended). The plan reads that Type's formation verdict
+    once, at its root position, with no record (`ReadSubjectTypeVerdict`, which replaces `ValidatePatternType`; BindMatch and its
+    late recheck); a refuted one is the coverage's prerequisite (`BoundMatch.Invalid`, the coverage Invalid; an unproven one
+    `Pending`) and rests no arm: every position keeps its kind and test and every binding its part's Type (SPEC 15.1.6), and the
+    late recheck leaves a root-level Binding the Check acquires unacquired, as G1321 states. So G1321's resting under a refuted
+    Subject Type goes (a record-less root leaves nothing to rest on) and D3's leaf list reads again "... or it rests on the failed
+    Subject". R4-M179's "`BoundMatch.Invalid` means a located failure at a Pattern position or a guard" reads "... or a Subject
+    Type refuted at its formation site". Records (Q13): the root's restating UnsatisfiedConstraint_Kd/UnprovenConstraint_Kd go;
+    the arms' own records return (a body's member record, a `try` operand's TransferRequired_Kd); an arm binding typed with a part
+    of the refuted Subject Type is compared as any binding (F's G1278-3 F2 (a): drain's TypeMismatch_Kd 7:42, gtrymin's 6:18).
 - **BU-252 A part checked against the expected Type is checked at each candidate's Type, closed or open, once per distinct Type
   (PLAN G924 AF-3b)** (Front, 2026-11-24; Binding; Major, an acceptance mover (Q-731, D-1215); designs
   `front\notes\ArgFlow\design-af3.md` Revision 2 with its short check ACCEPT WITH NOTES (C1-C3, F's ArgFlow ruling 42),
@@ -27710,6 +27724,75 @@ Closure row of `MirCases.Branch`).
   wrapper-only skip test (phase 3: it lost a failed wrapper's occurrence and kept one record per parenthesis, the two halves reading
   different nodes); a list of transparent syntax kinds (phase 4: `owner/` kept its own record, one more case of an open family).
   Records at other nodes resting on the same failure: PLAN G1278.
+  - Amended by G1278-A (Q-780, D-1282, 2026-11-25; F's G1278-1 to G1278-12; the owner, verbatim 「1 2 3は推奨通り」, 2026-11-25, item 1
+    = option (b); Major, a record mover, no acceptance move; the Back's design review REVISE (B1, C1-C4) answered by Revision 1;
+    the Middle's C-563 BuildMir read: consent with conditions)
+    SPEC 9.7, 9.7.1, 12.4, 6.5.2, 8.3.1, 23.1.2: the walk judges
+    formation sites only. A constructed Type with clauses is judged once, at the node that forms it; every other node holding the
+    Type (a declaration at its written Type, a read, a call result, whose call proves its callee's clauses (8.3.1), a Pattern
+    position, a binding, a `try` and its synthesized nodes, an acquisition or a literal at its expected Type) carries it and is
+    neither judged nor rested: by induction its Type rests on a site's record or a call's own, so its record only restated one
+    (SPEC 9.7, 9.7.1, 8.6.3, 23.1.2). A declaration carries its written Type (F's Q-A (i)): a Function with a refuted result Type
+    stays Resolved, as one with a refuted parameter Type was.
+    - **`FormedTypes`, the site fact (F's G1278-6, G1278-7).** A Kept family of `NodeColumns` in BU-220's published-column form: a
+      `PagedColumn<bool>` at the node's SyntaxId, kept across passes (a node bound in an earlier pass keeps it), with the family's
+      Grow, Renumbered, Retire and Move rows in `HirTables`; one accessor, `Binding.FormedTypeRows`. A row reads "this node forms
+      its Type". Owner: Binding's Type binding. Producers, each where it completes the node's Type: BindType's completion of a
+      written occurrence (whatever names it: a declaration, a `Self`, an alias, a Type parameter); the rooted name's operand;
+      `EnumQualifierType`, for a construction or Case qualifier that writes its own list or is its declaration's `Self`;
+      `ConstructionTargetType`, for a qualifier with no own parameters (its path forms the whole Type); `BindContractReference`,
+      the one path from a written Contract reference, at each node it completes (a root-name form's levels, the unwrapped node and
+      the reference; F's G1278-9); the Dictionary literal's binder (SPEC 12.4). A qualifier whose own arguments the expected Type
+      supplies and an inferred construction target (`inferredConstructionTargets`) have no row: the acquisition or the construction
+      forms that Type and judges it once. Reader: `ConstrainedType`, ValidateConstraintUses' site test, at the occurrence's Type node
+      (`OccurrenceTypeNode`). Removal: none; it is the canonical site fact.
+    - **`BoundEnumConstruction.FormsType` (F-2).** Set by the Enum binder with the plan: the acquisition inferred an own slot or an
+      Origin (a slot left null or open after `FixConstructionSlots`, an Origin left null, or an open Origin slot variable), so it
+      forms its Type (SPEC 6.5.2). Readers: the construction's clause proof (BindEnumConstruction) and `CompleteEnumAcquisitions`'
+      formation; an acquisition whose qualifier and expected Type fixed every slot and Origin carries its Type and judges nothing.
+      `BoundEnumConstruction.IsValid` no longer implies a formed Type: the readers of a resolved use's plan (HasFacts, the HIR
+      adjust, MirBuilder's Aggregate, the lints) may read the plan of a refuted Type, on a rejected program only: there
+      `MirBuilder.Aggregate` builds the Case value of the refuted Type, a payload move included, and no check reads it (no MIR
+      Finding, construction record, InternalInvariant_Kd, A5 record or lint; the Middle's C-563). Removed: `CarriesExpectedEnum` (a
+      syntax test of a contextual Case) and `EnumFormation` (its one use reads `FormsType`). Records (Q13, C-563: every record only
+      the earlier rule gave is a carrier's restatement): EnumGenericConstraintBindingTest's `.Empty` rows (renamed
+      AnInvalidNestedArgumentIsRecordedAtItsWrittenSites) and RebindingReturnArgumentReusesThePlanAfterRecovery lose
+      UnsatisfiedConstraint_Kd at `.Empty` and publish the plan; the qualified `E<Box<string>>.Empty` keeps its two written sites
+      and no plan (its `.Empty` rests on the qualifier); AssociatedSubjectConstraintBindingTest's rejected EnumConstruction keeps
+      the one record at the written `Box<Source>` (`make` and `.Empty` lose theirs) and publishes the plan.
+    - **A value call's contextual argument carries the call's input (F-2; F's G1278-10 (1)).** A contextual Case argument of a
+      value call (`h(.None)` with `h: (Option<T during s>) -> i32`) takes the call's instantiated nested input (SPEC 12.3) and fixes
+      no own slot or Origin, so it carries that Type; the call proves its input at the argument (SPEC 15.6.1, 15.6.4), its one
+      record. Records (Q13): CallableOriginForwardingTest g464c and ResultPremiseTest o6i, o6ri lose UnprovenConstraint_Kd at
+      `.None`, the same clause's second record at that node; UnprovenOriginRelation_Kd at `.None` stays.
+    - **A Function carries its written result (F's Q-A (i); G1278-10 (2)).** A Function whose written result Type is refuted
+      stays Resolved and the written Type is the site: one Type, one record. Records (Q13, rule W, Q-770's rows):
+      FunctionReferenceConditionTest's four `() -> Box<string>` rows lose UnsatisfiedConstraint_Kd at the Function `g` (4:6); the
+      written `Box<string>` (4:13) keeps it.
+    - **A record resting only on a reported inline-layout failure is dependent (F's G1278-10 (3)).** `var next = (Option<Node>.None`
+      in `struct Node`: `Option<T>` requires nothing of T, so the acquisition carries `Option<Node>` and judges nothing; dev's
+      InvalidConstraint_Kd there came from the acquisition's own formation judgment, which read the invalid subject Node (SPEC
+      23.1.2). Records (Q13): the corpus case `supplied-closer-keeps-operand` loses that InvalidConstraint_Kd and keeps
+      InvalidInlineLayout_Kd and MissingSyntax_Kd; its `.None` member access is now Resolved (HIR Aggregate Variant, MIR a built
+      block), which shows the operand kept.
+    - **A Closure body's returned value carries its written result (the owner's answer on s4u/s4c, 2026-11-25, verbatim 「1 2 3は推奨
+      通り」, item 1 = option (b) of F's question; F's G1278-8).** A nested signature's written result is formed where it is written
+      (`FormNestedResult`, R4-M162 as amended by O-397 (A)) and is its Type's one formation site; a body's returned value (the `.None`
+      of `func [] () -> Option<T during q> => .None`) carries that Type and restates nothing, and no returned-value check is added to
+      any body (SPEC 15.3.4, 15.6.1, 23.1.2). Supersedes in part the owner's s4 (2026-10-31, verbatim 「すべて推奨の内容でお願いします」,
+      PLAN 7f3e61b1b; R4-M155), which kept the Closure body's record as a body obligation: its reason, that the written result had no
+      record of its own, no longer holds since O-397 (A) gave the written result its own record. Records (Q13):
+      OriginRelationDiagnosticTest s4u and s4c lose UnprovenConstraint_Kd at `.None`; UnprovenOriginRelation_Kd at
+      `Option<T during q>` stays, their one record.
+    - Open (PLAN G1278, N2): a Dictionary literal at an expected Type keeps its row and still judges a carried Type (removal: the
+      literal's binder writes the row only where no expected Type reaches it, SPEC 12.4.1, 4.3.1).
+    - Rejected: syntax proxies for the fact (the occurrence's BoundSymbol naming the declaration: it missed a written `Self` and
+      lost an independent TransferRequired_Kd, the Back's B1; `node is DictionaryLiteralKoto`; a contextual Case's syntax kind: a
+      consumer deciding what the binders know); a per-pass site list the binders register (R-b: BindType returns early for a node
+      bound in an earlier pass, and it could not absorb `inferredConstructionTargets`, which four readers keep); a Node-keyed table
+      member in Binding (the ratchet `NodeKeyedTablesStayAtTheirSites` must not grow); a declaration-to-Type-node relation (Q-A
+      (ii): a new relation, the same records); a BoundSymbol on a literal (a semantic model change for every literal); judging the
+      literal in its binder (a bind-time proof before BU-124's final conformances).
 - **R7-M81 A Loan found in E is witnessed by its store on a path to the access** (Middle, 2026-11-22; R7 plan stream Z, Z18b (PLAN
   G396 (4)'s E1; T-29a review N2), Q-675, D-1118; Major; Z18 design review 1's B1-B3) SPEC 15.6.2, 14.8.3, 7.2.3.
   - **Owner.** `MirBorrows.Flow`'s E stores (`eStores`): per location, from its last plan, the sets its entries put into E, `Sure`
