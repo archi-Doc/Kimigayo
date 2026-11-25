@@ -1506,7 +1506,9 @@ public sealed class NativeToolchainTest : IDisposable
     // defines (28's twin) are no ambiguous dependency: each builds and runs. NamedProvider's p24a (provider-design.md §1 row 24's first
     // half): codec's m2 and m3 define codec_add and its pick, the member its index names (m3), defines it, so codec defines its import.
     // LinkRoots' valid rows (LinkRoots design §1): 31b's carrier alone, whose loaded member defines the foo it exports (31t), one
-    // library's load configuration (33t), and an /entry: member and a bitcode member that no reference loads (34t, 35t: KR1).
+    // library's load configuration (33t), and an /entry: member and a bitcode member that no reference loads (34t, 35t: KR1). G1378:
+    // no build leaves an import library beside its executable (lld-link writes <stem>.<guid>.lib beside an image that exports a
+    // symbol, 31t's, unless /noimplib; the staged copies are in <stem>.native\).
     [Theory]
     [InlineData("10")]
     [InlineData("11")]
@@ -1525,7 +1527,9 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var project = await this.Dependency(row, "alpha", "O2");
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
-        await RunsOk(ArtifactPaths.Create(project).Executable);
+        var paths = ArtifactPaths.Create(project);
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(paths.Executable)!, Path.GetFileName(paths.Stem) + ".*.lib"));
+        await RunsOk(paths.Executable);
     }
 
     // T's ruling 79 (c), design §3.11: the ELF line on both start paths, from the catalog's places: the libc-free path's -e and the

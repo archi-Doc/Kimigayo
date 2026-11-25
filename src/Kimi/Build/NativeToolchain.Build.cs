@@ -650,12 +650,13 @@ internal static partial class NativeToolchain
             this.record["objectUndefinedSymbols"] = undefined;
         }
 
-        // COFF's line (lld-link): the object, the libraries in the manifest's order, the row's entry and subsystem. LLD reads no
-        // environment (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds
-        // no VC or Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1).
+        // COFF's line (lld-link): the object, the libraries in the manifest's order, the row's entry and subsystem, and no import
+        // library (/noimplib: lld-link writes none beside an image that exports a symbol; G1378). LLD reads no environment
+        // (/lldignoreenv: no LINK or _LINK_) and detects no toolchain (/winsysroot: the build's own inputs folder, which holds no VC or
+        // Windows Kits tree), so the link uses only its absolute inputs (IMPL 20.3.2, 20.4; LC3 D1).
         private string[] CoffLine(string obj, List<StagedLibrary> libraries, string executable)
         {
-            var link = new string[libraries.Count + 9];
+            var link = new string[libraries.Count + 10];
             link[0] = "lld-link";
             link[1] = obj;
             for (var i = 0; i < libraries.Count; i++)
@@ -663,9 +664,10 @@ internal static partial class NativeToolchain
                 link[i + 2] = libraries[i].Held.Name;
             }
 
-            link[^7] = "/entry:" + this.row.EntrySymbol;
-            link[^6] = "/subsystem:" + this.row.Subsystem;
-            link[^5] = "/nodefaultlib";
+            link[^8] = "/entry:" + this.row.EntrySymbol;
+            link[^7] = "/subsystem:" + this.row.Subsystem;
+            link[^6] = "/nodefaultlib";
+            link[^5] = "/noimplib";
             link[^4] = "/Brepro";
             link[^3] = "/lldignoreenv";
             link[^2] = "/winsysroot:" + this.paths.Native;
