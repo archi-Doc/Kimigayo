@@ -148,9 +148,8 @@ public partial class KimiLibraryShapeTest
         // `Storage.clockFailure` and `Time.readCounterFrequency`; O-412 (1)'s Array.sort(by:), which destroys `by` inside the operation;
         // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970; OSF2's Raw.writeVolatile,
         // whose pair Raw.readVolatile is cataloged for its NoStore row); the Linux row's library adds Time.monotonicNanoseconds (B7b6).
-        // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`. The Tatara plan's B9a adds Platform and Boot, on
-        // every target.
-        Assert.Equal(124, KimiLibraryCatalog.Entries.Length);
+        // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`. Platform (SPEC 22.4.5) is cataloged on every target.
+        Assert.Equal(123, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             Assert.NotNull(c.Library.GetSymbol(entry.Id));
@@ -163,7 +162,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf(c));
         }
 
-        Assert.Equal((124, unnamed), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((123, unnamed), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -619,7 +618,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
     [InlineData("Text.InvalidUtf8", "public struct InvalidUtf8")]
-    // SPEC 6.1, 22.1: no Field initializer, so neither has a constructor; only the runtime creates a Boot (IMPL 21.6.2).
+    // SPEC 6.3.6, 22.1: no Field initializer, so neither has a constructor; only the runtime creates a Boot (IMPL 21.6).
     [InlineData("Boot", "public struct Boot\npublic let directMapOffset: usize\npublic let regions: raw/raw/Boot.Region\npublic let regionCount: isize")]
     [InlineData("Boot.Region", "public struct Region\npublic let address: u64\npublic let length: u64\npublic let kind: u64")]
     public void RecordFieldsAreFixed(string path, string shape)
@@ -697,8 +696,10 @@ public partial class KimiLibraryShapeTest
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
     [InlineData("Storage.BufferRepr", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
-    // IMPL 21.1.2, 21.6.2: the C layouts the boot template stores the loader's answers at.
+    // IMPL 21.1.2, 21.6: Boot's by the runtime's boot template, which stores the loader's answers in its three Fields.
     [InlineData("Boot", 24, "directMapOffset", 0, "regions", 8, "regionCount", 16)]
+    // IMPL 21.1.2, 21.6: Boot.Region's equals the loader's memory-map entry (three u64), which the loader writes and the program reads
+    // through Boot.regions.
     [InlineData("Boot.Region", 24, "address", 0, "length", 8, "kind", 16)]
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {

@@ -1,9 +1,11 @@
 /// The platform a freestanding program supplies (SPEC 22.4.5): one root-level struct of the Application conforms;
 /// the runtime calls `start` once and the other members as its platform operations (IMPL 21.6). The requirements'
-/// order is the order the startup check publishes and the runtime's adapters read.
+/// order is the order the startup check publishes and the runtime's adapters read. `mapPages`, `releasePages` and
+/// `write` return the platform's raw results, which the runtime's adapters check.
 #Lang("Platform")
 public contract Platform
     Self is Copy
+
     /// Called once by the runtime before the startup body, with what the loader described.
     func start(boot: Boot) -> Self
     /// A page-aligned run of at least `bytes`, or null.
@@ -17,8 +19,7 @@ public contract Platform
     /// Ends the program: status 0 after the startup body and shutdown, 1 after an Abort's report.
     func terminate(self: uniq/Self, status: i32) -> Never
 
-/// What the loader described (IMPL 21.6.2), built by the runtime before `Platform.start`; it declares no constructor.
-#Lang("Boot")
+/// What the loader described (IMPL 21.6), built by the runtime before `Platform.start`; it declares no constructor.
 #Layout("C")
 public struct Boot
     Self is Copy

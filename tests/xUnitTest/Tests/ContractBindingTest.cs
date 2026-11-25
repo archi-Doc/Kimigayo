@@ -80,8 +80,8 @@ public class ContractBindingTest
         "    return need(v) + need(s.0)\npublic func main() -> ()\n    let p = dup<S1>(P.init(x: 3))\n    let n = read<S1>(S3.init(5))\n" +
         "    let m = cap<S1>(P.init(x: 4))\n    if p.0.x + p.1.x == 6 and n == 10 and m == 2 => Console.writeLine(\"ok\")\n    else => Console.writeLine(\"bad\")\n";
 
-    // The Tatara plan's B9 owner question (design §5's Kernel): Board.kimi without its comments, its Contract members `public` (SPEC
-    // 8.6.3's Access row, 9.4.6), before `terminate`; BoardTerminate is `terminate`.
+    // A freestanding Kernel's platform (SPEC 22.4.5), Board.kimi without its comments: its Contract members `public` (SPEC 8.6.3's
+    // Access row, 9.4.6), before `terminate`; BoardTerminate is `terminate`.
     private const string Board = """
         struct Board
             Self is Copy
@@ -1298,9 +1298,9 @@ public class ContractBindingTest
             => identities.Where(x => x.Type.Name == type && x.Contract.Name == contract).Select(static x => (x.Type, x.Contract)).Single();
     }
 
-    // SPEC 8.4-8.6, 22.4.5 (the Tatara plan's B9a): the Kernel's Board (Hello.kimi's body beside Board.kimi) conforms to the library's
-    // Platform on windows-x64, whose startup check does not read it yet (B9c1); without `terminate` (design §5 row 5), the clause's
-    // one missing-requirement record (SPEC 8.6.3) and nothing else.
+    // SPEC 8.4-8.6, 22.4.5: Binding verifies the conformance of the Kernel's Board (Hello.kimi's body beside Board.kimi) to the
+    // library's Platform; without `terminate`, Binding's issues are the clause's one missing-requirement record (SPEC 8.6.3). Bind
+    // runs no startup check, so neither fact depends on a target's startup rule.
     [Theory]
     [InlineData(BoardTerminate, "")]
     [InlineData("", "MissingContractImplementation_Kd")]
