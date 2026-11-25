@@ -712,34 +712,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < prefix.Count; i++)
             {
-                if (prefix[i].Symbol?.Contract is not { } shape)
-                {
-                    continue;
-                }
-
-                foreach (var (_, _, premise, _) in new ContractSupply(this, shape, root, view.Premises))
-                {
-                    // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
-                    // deferred mate's walk keeps none (EnumerateClosed; the class header's Extension).
-                    if (premise is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } && this.enumerateDepth == 1 &&
-                        prefix[i].Available && !this.enumerateIdentities.Contains((left, right)))
-                    {
-                        this.enumerateIdentities.Add((left, right)); // c2-2: an identity row (SPEC 8.2.3 grounds), for the request's classes
-                    }
-
-                    // A clause instance stating the subject or a Type of its class is a row whose Source is its prefix row's scope; a
-                    // negated clause states its atom's subject (RowAtom).
-                    if (premise is not null && RowAtom(premise) is { Subject: { } stated } &&
-                        ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
-                    {
-                        var contract = premise.Kind == ConstraintKind.Contract;
-                        var available = prefix[i].Available && (!contract || this.WalkAvailable(this.AvailableContractPremise(premise.Contract!, out var premiseRead), premiseRead));
-                        PremiseRow row = contract
-                            ? new(this.RowContract(premise, subject, states), available) { Stated = prefix[i].Stated }
-                            : new(null, available) { Clause = premise, Stated = prefix[i].Stated };
-                        AddRow(rows, 0, row);
-                    }
-                }
+                this.AddSupplyRows(rows, prefix[i], root, subject, view);
             }
         }
 
@@ -764,6 +737,41 @@ public sealed partial class Binding
         }
 
         return rows;
+    }
+
+    // Row (2) for one source row: each item of the supply of `source`'s Contract at `root` (ContractSupply, Self being `root`) that
+    // states `subject` or a Type of its class is a row of `subject`, its availability and Stated `source`'s; an identity item of an
+    // available source is an identity row (c2-2). A leaf source (no Contract) supplies nothing.
+    private void AddSupplyRows(List<PremiseRow> rows, PremiseRow source, BoundType root, BoundType subject, EvidenceView view)
+    {
+        if (source.Symbol?.Contract is not { } shape)
+        {
+            return;
+        }
+
+        foreach (var (_, _, premise, _) in new ContractSupply(this, shape, root, view.Premises))
+        {
+            // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A deferred
+            // mate's walk keeps none (EnumerateClosed; the class header's Extension).
+            if (premise is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } && this.enumerateDepth == 1 &&
+                source.Available && !this.enumerateIdentities.Contains((left, right)))
+            {
+                this.enumerateIdentities.Add((left, right)); // c2-2: an identity row (SPEC 8.2.3 grounds), for the request's classes
+            }
+
+            // A clause instance stating the subject or a Type of its class is a row whose Source is its source row's scope; a negated
+            // clause states its atom's subject (RowAtom).
+            if (premise is not null && RowAtom(premise) is { Subject: { } stated } &&
+                ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
+            {
+                var contract = premise.Kind == ConstraintKind.Contract;
+                var available = source.Available && (!contract || this.WalkAvailable(this.AvailableContractPremise(premise.Contract!, out var premiseRead), premiseRead));
+                PremiseRow row = contract
+                    ? new(this.RowContract(premise, subject, states), available) { Stated = source.Stated }
+                    : new(null, available) { Clause = premise, Stated = source.Stated };
+                AddRow(rows, 0, row);
+            }
+        }
     }
 
     // Row (5) (PLAN G881; SPEC 8.2.3): the link is one Type with each member of its class in the request's classes, so their rows
