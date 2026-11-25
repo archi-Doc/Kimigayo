@@ -500,7 +500,12 @@ public sealed partial class RecursiveContractTest
     // supplied Constraint passes through every operand whatever its connective, so MG<Option<A>> under an `and`, an `or` or a `not`
     // makes MG erroneous (r2b-and, r2b-or, rv.not-grow), as does MG<[2 of A]> in an `and` inside an `or`, the one recursion
     // (it3.or-in-and, the Middle's C-562 twin; labels p1/twins.txt, review/labels-rv.md). Only the `and` clause is related: its
-    // operand is a premise of its own, an `or`'s or a `not`'s is not (the forming base's open issue).
+    // operand is a premise of its own, an `or`'s or a `not`'s is not (the forming base's open issue). F's G563C-8: a projection's
+    // qualifier in a supplied premise's Type is such a reference too, so HasY<Wrap<A>> in MQ's identity premise (g6-ident-qual) or in a
+    // Contract premise's subject (g6-subj-qual) passes MQ.A to HasY.B expandingly and `associate Y is MQ<B>` passes it back; HasY<A>
+    // is flat (g6-ident-flat), and HasZ<Wrap<A>> lies on no cycle (g6-ident-open). F's G563C-9: so does a qualifier inside a Contract
+    // premise's argument (g6-arg-qual; its flat twin g6-arg-flat), and DQ<Option<U>> in n.qual's subject makes DQ erroneous beside its
+    // unproven qualifier (SPEC 8.5.2).
     [Theory]
     [InlineData("x.mg-decl", G563Mg, G563MgRecord)]
     [InlineData("m.r-expand-q", G563Mg + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MG<i32>\n    needMark<T.(Tree).Child, Option<i32>>(c)\n", G563MgRecord + " | ...")]
@@ -532,8 +537,14 @@ public sealed partial class RecursiveContractTest
     [InlineData("r2b-or", G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is MG<Option<A>> or Mark<A>\n", "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A>")]
     [InlineData("rv.not-grow", G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is not MG<Option<A>>\n", "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A>")]
     [InlineData("it3.or-in-and", G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is (MG<[2 of A]> and Tree) or Mark<A>\n", "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A>")]
+    [InlineData("g6-ident-qual", G563Tree + "contract HasY<B>\n    associate Y is MQ<B>\ncontract R\n    associate V\n    associate W is HasY<Self.(R).V>\ncontract MQ<A>: Tree\n    associate X\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is Wrap<A>\n    Self.(MQ<A>).X is Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "InvalidConstraint_Kd: contract MQ<A>: Tree <- Self.(MQ<A>).X is Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y | InvalidConstraint_Kd: contract HasY<B> <- associate Y is MQ<B>")]
+    [InlineData("g6-subj-qual", G563Tree + "contract HasY<B>\n    associate Y is MQ<B>\ncontract R\n    associate V\n    associate W is HasY<Self.(R).V>\ncontract MQ<A>: Tree\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is Wrap<A>\n    Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y is Tree\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "InvalidConstraint_Kd: contract MQ<A>: Tree <- Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y is Tree | InvalidConstraint_Kd: contract HasY<B> <- associate Y is MQ<B>")]
+    [InlineData("g6-ident-flat", G563Tree + "contract HasY<B>\n    associate Y is MQ<B>\ncontract R\n    associate V\n    associate W is HasY<Self.(R).V>\ncontract MQ<A>: Tree\n    associate X\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is A\n    Self.(MQ<A>).X is Self.(Tree).Child.(R).W.(HasY<A>).Y\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "")]
+    [InlineData("g6-ident-open", G563Tree + "contract HasZ<B>\n    associate Y\ncontract R\n    associate V\n    associate W is HasZ<Self.(R).V>\ncontract MQ<A>: Tree\n    associate X\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is Wrap<A>\n    Self.(MQ<A>).X is Self.(Tree).Child.(R).W.(HasZ<Wrap<A>>).Y\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "")]
+    [InlineData("g6-arg-qual", G563Tree + "contract HasY<B>\n    associate Y is MQ<B>\ncontract R\n    associate V\n    associate W is HasY<Self.(R).V>\ncontract Mark<C>\ncontract MQ<A>: Tree\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is Wrap<A>\n    Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y>\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "InvalidConstraint_Kd: contract MQ<A>: Tree <- Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y> | InvalidConstraint_Kd: contract HasY<B> <- associate Y is MQ<B>")]
+    [InlineData("g6-arg-flat", G563Tree + "contract HasY<B>\n    associate Y is MQ<B>\ncontract R\n    associate V\n    associate W is HasY<Self.(R).V>\ncontract Mark<C>\ncontract MQ<A>: Tree\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is A\n    Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<A>).Y>\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "")]
     [InlineData("n.scc", G563Tree + "contract E<A>: Tree\n    Self.(Tree).Child is E<Option<A>>\n    Self.(Tree).Child is F<A>\ncontract F<B>: Tree\n    Self.(Tree).Child is E<B>\n", "InvalidConstraint_Kd: contract E<A>: Tree <- Self.(Tree).Child is E<Option<A>>; Self.(Tree).Child is F<A> | InvalidConstraint_Kd: contract F<B>: Tree <- Self.(Tree).Child is E<B>")]
-    [InlineData("n.qual", "contract DQ<U>\n    associate M\n    Self.(DQ<Option<U>>).M is i32\n", "*: * | ...")]
+    [InlineData("n.qual", "contract DQ<U>\n    associate M\n    Self.(DQ<Option<U>>).M is i32\n", "InvalidConstraint_Kd: contract DQ<U> | *: Self.(DQ<Option<U>>).M is i32 | ...")]
     public void AnExpandingContractCycleIsItsContractsError(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [G563-C]", program + "()\n", records);
 
