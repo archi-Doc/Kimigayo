@@ -25415,11 +25415,11 @@ R8-M* and R9-M* by the stage of the recording unit.
   - `FirstRows` is the request boundary of a reader that demands no Contract: the first walk's rows of the subject and its key, each
     once, no extension, no Alias, no identity judged; `PremiseRows` (name discovery, R7-M30) forms its Alias column over it.
     `TryCallable`, `SelectValueCall`, `AvailableCallableEffects`, `AvailableEffectBounds` and the premise evidence of a Callable
-    atom (`PremiseCallable`, read by `Supply` for the proposition and, under `not`, its negation) read `FirstRows`' available rows
+    atom (`PremiseCallable`, read by `Supply` for the proposition and, under `not`, its negation; superseded by R7-M107: one request
+    answers both polarities) read `FirstRows`' available rows
     instead of scanning the scope's facts, so their answers no longer depend on which projections the scope's syntax wrote.
-  - Staged: `Supply`'s fact scan keeps its two Callable gate terms for a `not Callable` premise until R7-C2c2 c2-5's Not rows; c2-5
-    removes them after its probes show that the scan's positive adds nothing over the rows (`IndexNormalized` reads Contract facts
-    only).
+  - Staged: `Supply`'s fact scan kept its two Callable gate terms for a `not Callable` premise until R7-C2c2 c2-5's Not rows
+    (superseded by R7-M107, c2-5b at <head>: a negated leaf atom is its kind's row and the gate terms are removed).
   - Rejected: a depth or identity rule per reader, merging Callable rows by signature, a side table of effect clauses, a kind
     argument or a mode on the rows' request, a second walk inside `Supply`, a Source rule in the walk (the index's order gives it).
   - `HandedSignatures` reads the scope's closure and moves to R7-C2e2 (e2-2c) (superseded by R7-M32, c2-3c: it reads `FirstRows`).
@@ -25756,6 +25756,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Temporary** (removed at c2-4b; PLAN G170): atoms read `Member` while the fits, `NormalizeProofType` and ContractTypeCore's loop
     substitute by the first premise, and the capability judge keeps its parametersOnly substitution, `Reading` and
     SymbolicCapability's TypeIdentity arm (F's C2 ruling 128 moved the arm to c2-4b).
+    Superseded in part by R7-M107 (c2-5b): `Reading`'s removal stage is postponed from c2-4b to R7-C2c3 (three readers remain after
+    c2-5b), the owner's approval of 2026-11-25 (「1 2 3は推奨通り」, item 2 = option (a) of `artifacts/units/r7-c25b/owner-q-reading.md`).
 - **R7-M42 An override's inherited premises, its signature check and its Origin completion run once the proofs answer** (Front,
   2026-11-19; R7-C2c2 c2-4a, Q-514; Major; the settle-point review `review-c24a-settle.md` REVISE, F's C2 ruling 164, and its
   re-check of f58fd8745 ACCEPT WITH NOTES, ruling 170; its B1's outcome is the owner's O-370 (S), BU-217) SPEC 6.4.2, 6.4.3.
@@ -28850,6 +28852,48 @@ Closure row of `MirCases.Branch`).
     before its selection names the call as its cause (`MarkOmittedHeaders`), so the earlier check's empty range stood and a record
     resting on the failed selection (SPEC 7.7.1) was reported; the cause is the header binder's provisional failure (PLAN G1391); a
     published "waiting header" fact the dependent writer consults (a who-wrote predicate under another name).
+- **R7-M107 A negated leaf atom is its kind's row; the Callable reader answers both polarities** (Front, 2026-11-25; R7-C2c2 c2-5b;
+  Major, an acceptance mover; `artifacts/units/r7-c25b/plan.md`, `design.md`, F's CC-8, CC-9, CC-12, CC-13, CC-17, CC-18 and CC-20;
+  supersedes in part R7-M31's Staged bullet and its "under `not`" sentence, and R7-M41's Temporary bullet for `Reading`). SPEC 8.3.2
+  (Contract refinement at every depth; Exact assumption; Negation; contradictory evidence), 8.10, 10.1.
+  - Moves (Q13), at depth 2 or more, through any Contract chain, alias or ranking; each form a row. Valid forms accepted,
+    `UnprovenConstraint_Kd` before (class 3): nd2, nd3, nd2i, ndr2, tw17-sel, run-meth (a `not Callable` clause two or three links
+    up, through an identity premise, through another Contract's associated-Type requirement (run-meth, also instantiated concretely),
+    against an overload's refuted candidate, and selecting the candidate that requires the negation (tw17-sel)); the twins tw01-nd4
+    (depth 4), tw02-ndx, vv-alias and vv-pickneg move by the same rule. Invalid forms rejected with `InvalidConstraint_Kd` at `func
+    probe`, accepted before (class 1): ncp2s, ncp3s, ncp2i, mc-nocall, tw15-midc (a written `Callable` premise against the supplied
+    `not Callable` clause, with or without a use (mc-nocall), through `U is T` and through a mid-chain identity `T.(Holder).Next is
+    U` (tw15-midc)); the twins mc-d4, mc-alias and mc-mixed move by the same rule. Record selection on a program both reject:
+    nd2-apply, `UnprovenConstraint_Kd` -> `NoApplicableOverload_Kd` at `return apply(g)` (the refuted requirement leaves no
+    candidate). Dependent records on programs both reject (Q13, counted by code, no row; F's CC-13, CC-17): rule W removals,
+    `UnprovenConstraint_Kd` 2, at `return needD(g)` (twin tw09-failneg, a written `not Callable` premise) and at `return a +
+    needD(g)` (twin mc-lostrec, a written `Callable` premise at depth 2, whose `InvalidConstraint_Kd` at `func probe` is the class-1
+    rule's on a program dev rejects): each proof reads the Failed premise directly, row (1) -> `AvailableConstraintFact` ->
+    `ScopeReads.Limit`, and that premise's `InvalidConstraint_Kd` at `func probe` is reported; the walk's reading of a Failed fact for
+    an unrelated proof is the shared solver's, dev's tw10-failpos1 too: PLAN G1398. And one added, `InvalidConstraint_Kd` 1 at
+    `return apply(g)` (twin tw04-h2, beside the unchanged two at `contract H2` and `func deep`). Twins:
+    `artifacts/units/r7-c25b/review/twins.txt`, `twins2.txt`; the Middle's `artifacts/handoff/2026-11-16-pause/middle/notes/c564/`.
+  - `RowAtom(constraint)` replaces `RowKind` as the one row predicate: a RowKinds atom (a Contract one naming its Contract), or the
+    operand of a negation of a leaf kind's atom; else none. The index files, and the walk matches, a fact or clause instance by its
+    atom's kind and subject; the row's Clause is the constraint as stated, so a `not Callable` fact and a Contract's `not Callable`
+    clause instance at any depth are leaf rows of the Callable kind. Every other row reader is unchanged: each filters
+    `Clause.Kind == Callable` or a Contract row, so a negated row reaches `PremiseCallable` alone.
+  - `PremiseCallable` answers both polarities in one rows request: an available row whose atom has the proposition atom's receiver
+    and signature supplies the proposition where their polarities agree and its negation where they differ. `Supply` reads it for
+    every proposition; its fact scan opens only for an environment with a projection fact or a view with an identity premise (the
+    two Callable gate terms are removed: where they alone opened the scan, `Reading` is the fact itself and the scan's match is a row
+    (1) of the same subject, availability and tests). The shadow run over P0's 34 programs and two conformance-scope programs with a
+    `Callable` and a `not Callable` premise and no projection fact passes: no scan-only line, and every rows-only line is a
+    Contract's Callable clause the rows supply, in the A/B programs and in four C/E programs whose records do not move.
+  - Not in the rule: a negated Contract, identity or Semantics atom gives no row (a Contract row is a positive premise's refinement
+    closure, which `not C` does not supply; identity facts feed the classes and the validators' written-subject buckets; Semantics has
+    no leaf row before c2-3e). Their exact assumption stays `Supply`'s exact match and scan, the eager supply's one level, until
+    R7-C2c2 c2-5b2 (F's CC-8; nc2, nts2 and the class-1 form nc2c Explicit). `Reading` stays (three readers: `Supply`'s gated
+    scan, `SpokenVerdict`, `IndexNormalized`) until R7-C2c3: its removal stage moves from c2-4b (R7-M41) to C2c3 with the owner's
+    approval (2026-11-25, 「1 2 3は推奨通り」, item 2 = option (a) of `artifacts/units/r7-c25b/owner-q-reading.md`; F's CC-18).
+  - Rejected: a clause or a second reader for `not Callable`; a polarity flag or mode on `PremiseCallable` or the rows' request; a second
+    `ContractSupply` instantiation for negated clauses; widening to every kind's negation now (F's CC-8: RP8 risk on every program, P1
+    beyond the hour); removing `Reading` in c2-5b (the owner's option (b): C2c3's request-by-class work for its three readers).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
