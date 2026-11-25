@@ -9,10 +9,13 @@ rules that result from them.
 
 Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the pre-compaction text of every entry is at commit 4fb6fcdb1.
 
-- An entry gives its id, date and decider, the decision, the options rejected and why, and the stage that removes a
-  temporary structure. It is added in the commit that first implements it. A superseded entry stays and names its replacement.
-  A fully superseded entry becomes a short line naming its replacement and the commit with its full text; review rounds,
-  measurements and evidence paths stay in commits, not entry bodies.
+- An entry gives its id, date and decider, the decision in force, its reason, the options rejected and why, and the
+  stage that removes a temporary structure. It is added in the window that lands the unit first implementing it, in one
+  commit with the rewrite of each earlier entry it changes: an entry still partly in force keeps its sentences still in
+  force, verbatim or merged, never paraphrased into something weaker, and ends with one "Changed by <new id> (<date>;
+  earlier text: commit <sha>)." sentence per later change; an entry wholly superseded becomes the one line "- **<id>
+  <title>** superseded by <new id> (<date>; full text: commit <sha>)." Each <sha> is a dev commit that holds the earlier
+  text. History, review rounds, measurements, evidence paths and superseded wording stay in commits, not entry bodies.
 - This log is the authority. Planning and handoff files under `artifacts/` (ignored by Git) cite entries by id instead of
   restating them; a decision recorded only there is not in force.
 - Open questions belong in PLAN until decided.
@@ -34049,7 +34052,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `string? TestRuntime`: Windows' layer `Testing.TestRuntime.Resource` (`"Kimi.Testing.TestRuntime.ll"`, one constant, which
     `TestRuntime`'s reader uses), Linux's null (the test runtime calls kernel32). The frame builds the runtime's test variant only where
     the layer names one (Linux's `ModuleFrame.TestRuntime` is null), and a test build reaching `WriteRuntime` on such a row throws (a
-    broken contract; B7b8 refuses a Linux `test` before any build). Rejected: a `bool Tests` capability flag (the first commit's; a
+    broken contract; B7b8 refuses a Linux `test` before any build). It is removed when a Linux test runtime lands; the Linux test entry then goes through the layer's start form (`ModuleCodegen.WriteStart` with the test dispatcher as its body, with the layer's `StartCalls`, `__kimi_platform_start`), never a plain function defined under the row's `EntrySymbol` (C-575, the Back's N1). Rejected: a `bool Tests` capability flag (the first commit's; a
     `Supports*`-shaped gate). `WriteExternals` reads the runtime's declarations from `Runtime` (its test variant adds calls only).
   - **`bcmp` (Reading 9):** the unit's probe found none: a Linux module whose string comparisons run in a loop (a == b over two
     runtime strings), and a second whose 16-field struct comparison chain runs in a loop, emitted by Tatara at O2 and inspected,
@@ -34719,3 +34722,27 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     - `_load_config_used` in `RuntimeReferences` (`Inspect` would allow it unjudged);
     - a `Format` test in the step;
     - the root on every row (a false error on linux-x64).
+
+- **T-M51 The table's host and the artifact target selected once** (Tatara, 2026-11-25; PLAN G1416, G1417, Q-793, D-1296; Major; design
+  Revision 2.5.x §3.12; implementation review C-575 (the Back ACCEPT; the Middle REVISE on B1, fixed by commit 3); T's rulings 85, 97,
+  104, 106-112).
+  - **The host from the table:** `TargetProfile.ExecutionHost` (the host whose processes run a row's executables, spelled as
+    `HostName` spells one: Windows `"windows x64"`, Linux null until B8, O1), `TargetProfile.HostName` (this process's `"<os> <arch>"`,
+    read once) and `TargetProfile.Host` (the one row whose `ExecutionHost` is `HostName`, or null). The column is `ExecutionHost`, not
+    `Host` (C# CS0102: the static `Host`; ruling 109). The second host rule (`WorkspaceCheck.HostTarget`) is gone.
+  - **The artifact target, published once (C-575 N1, ruling 112):** `Project.ArtifactTarget(out NoArtifactTarget reason)`: the row of
+    the one selected target, or none with why (`Selection`, `Several`, `NoRow`; a nested internal enum). Readers, each with its own
+    text: the gate (several: `ProjectPreparationFailed_Kd` "Artifact production requires one selected target; select one with
+    --Target."; no row: the location-only `Unsupported_Kd` at the project, D3), `Project.Build` (before the output's paths: no lock and
+    no record without one), `Solution.PrepareRun` (several: the command input error, ruling 85 (2)), `PrepareTests` (several: "Select
+    --Target when a test project has more than one configured target."; no row: `Unsupported_Kd`, brief site 8) and
+    `NativeToolchain.RunProject` (the row its build used, on any host; none: no build).
+  - **The host rule of run and test (D2):** `Project.RunsOnHost`, before any build, generation or record write: the selected targets
+    are `TargetProfile.Host`'s, else the location-only `Unsupported_Kd` at the project (ruling 97 Q3 (a)). `run` calls it from
+    `PrepareRun` (with or without `--no-build`); `test` after `--list` returns, before the run directory. Test preparation keeps only
+    the table rule, so every Test-mode check reads the same unit on every host. JobProcess keeps the launch's own Win32 precondition
+    (D5).
+  - **Rejected:** the host rule in test preparation, which every Test-mode check shares (D2); a Linux `ExecutionHost` before B8 (O1);
+    the design's text as a `ProjectPreparationFailed_Kd` note for a target without a row (D3); `RunProject` reading the host's row with
+    a broken-contract throw off a host with one (commit 2; C-575 B1: the public `Project.Run` became host-dependent); three counts of
+    "one selected target" (C-575 N1); a new not-started reason for the host refusal (vocabulary; PLAN G1416).
