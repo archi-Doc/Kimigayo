@@ -6615,6 +6615,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       `MirBorrows.Scalar`; behaviour unchanged.
   - Superseded in part by BU-236 (D-940): the amendment's "On the written fold, a Holdings Unsupported entry is undecided" is
     removed.
+  - Amended by R4-M247 (G1106, 2026-11-25): at `StoreWrite` and `CallWrite` the judge's verdict is composed by `PlacedAt` (its
+    partly stated arm stays undecided); `PunAt` composes the may-write sites (`OwnWrite`, `UnknownWrite`).
 - **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
   one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
   gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
@@ -7449,8 +7451,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`MirBorrows.Puns`) = `PunAt(PunWrite.Pun, facts)` over `Holder(entry)`, the fact the pun rule already reads there (`PunKeys`'
     fold of `OwnLayers`; no copy of a Type or Binding rule): none where every raw layer at the Place states an Origin other than
     `static` (5.7 Calls; R4-M183); undecided (Φ_M, the located `Unsupported_Kd`'s path, never a Language error) where a layer has
-    no stated-Origin answer or the Place's raw layers are partly stated (`PunKey.PartlyStated`: a layer stating an Origin other
-    than `static` beside one stating none, which A5's one state per holder cannot place); else {Φ_E, Φ_W}. `HiddenCarried` gives it
+    no stated-Origin answer; else {Φ_E, Φ_W}, at partly stated layers too (RN6's partly stated clause here is superseded by
+    R4-M247: the call may leave its own pointer at any raw layer it reaches). `HiddenCarried` gives it
     to each local holder it names where the call composes, its own pointer reading `PunEntry` (no own-step entry, never E);
     `CarriedInput`'s targets receive only Φ_N, as Keep's do.
   - The walk composes as the plan whose output it stores through (R7.7, RN1): `Keep` takes the retention its writes belong to and
@@ -7465,8 +7467,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     caseOwnValueBad and rvGenCaseBad are rejected at `kk = 2` as on dev; caseOwnElseOk (valid) stays rejected, as on dev, until
     Binding's per-Case result record (D-733, PLAN G956) replaces (e).
   - Rows: c1's true records (keeperBorrowedBad, statedBad, statedSlotBad); intPastBad and intPastPunBad2 rejected (c1's (b2));
-    hidRawParamBad, hidRawParamRootBad and hidRawParamDeclBad rejected; viaCarriedMixedPOk (valid) and viaCarriedMixedBad at the
-    located `Unsupported_Kd` (`var slot`, `kk = 2`: dev's records); the valid programs RC1 leaves rejected as on dev are PLAN
+    hidRawParamBad, hidRawParamRootBad and hidRawParamDeclBad rejected; viaCarriedMixedPOk and viaCarriedMixedBad at the located
+    `Unsupported_Kd` (`var slot`, `kk = 2`: dev's records; R4-M247 relabels viaCarriedMixedPOk invalid and
+    decides both); the valid programs RC1 leaves rejected as on dev are PLAN
     G1091.
   - Rejected: the rule at every wholly hidden key (a03Call, hidPunStatedS02, hidStatedUseBad, hidStatedUnusedOk, idEnclNoPremOk
     newly accepted, all invalid); `Handed` read as one fact per output (handedOtherOk, valid, newly rejected) or by W alone
@@ -8424,6 +8427,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
     target in a pair slot forms no Type under the caller's premises, BU-240, so `tests\mir\cases.kimi`'s valid `peek(x)` got a Limit)
     and (P), a pair-slot branch in `CaseSubst` through `PairBinding` (`PairBinding` of `Form` is `Form`: it moves nothing); a new key
     representation for the view (`CaseSubst` already tells views apart exactly where a Type changes).
+- **R4-M247 G1106: a call's write at any layer of partly stated raw layers takes its own verdict; a placed pun there stays undecided**
+  (2026-11-25; the Middle; A5; records only, no acceptance mover; design `artifacts\units\g1106\design.md` Revision 1 and its reviews)
+  SPEC 15.6 Holders, 15.6.4, 5.2, 5.2.2, 5.7 Calls; IMPL 21.1.
+  - **Rule.** At a Place whose raw layers are partly stated (`PunKey.PartlyStated`: a raw layer stating an Origin other than
+    `static` beside a raw layer or an abstract part stating none), a write's verdict depends on which layer it covers. Where the
+    layout places the write (`StoreWrite`, `CallWrite`: the designation judge at the pointer's Position), the layout decides whether a
+    pun covers the stated layer, so the pun is undecided (`MirBorrows.Puns`' `PlacedAt`; R4-M198's undecided class: the located
+    `Unsupported_Kd` where a check rests on it). Where the call may write at any raw layer it reaches (`OwnWrite`: its own pointer,
+    15.6.4 route 1, O-312 (a), O-230 Q2 (a); `UnknownWrite`, at every planned call, `exchange` and `swap` included: Types an abstract part leaves
+    unknown, a pun wherever the Place surely holds a raw pointer's byte, since some binding of the part covers it, 8.15 and R4-M198), the write keeps its own verdict (`PunAt`): a pun gives the
+    holder {Φ_E, Φ_W}, and `UnknownWrite` stays undecided where the Place's bytes are Open. Every value read from any part of the
+    holder carries it (15.6 Holders; 5.2.2 as clarified under O-232 (a); O-230 Q1 (a), R4-M219).
+  - **Departs from R4-M221's RC2 bullet:** "or the Place's raw layers are partly stated (`PunKey.PartlyStated` ...), which A5's
+    one state per holder cannot place". That reason, that A5's one state per holder cannot place the layer, no longer holds where the
+    call chooses the layer (`OwnWrite`, `UnknownWrite`): one state per holder is SPEC's own answer there, since a pointer read at a
+    stated layer also carries what its holder reaches (15.6 Holders), so there is no layer to place. The clause is kept where the
+    layout chooses it (`StoreWrite`, `CallWrite`: R4-M198's undecided class); a valid program reaches
+    that site: placedStatedFirstNoneOk (a C-layout holder whose first Field is the stated p, beside a non-zero-sized `keep` stating
+    `a` and `t: Option<T>` = `.None` under `T is PrimitiveInteger`) gets a Language record there without the clause, while its
+    no-pun control is accepted (`artifacts\units\g1106\labels-c1b.md`).
+  - **Amends R4-M198:** its "The judge's verdict is composed once with the Place's layers (`PunAt`: ...)" now holds at the
+    may-write sites; at `StoreWrite` and `CallWrite` the judge's verdict is composed by `PlacedAt`, which adds the partly stated arm.
+  - **Label corrected:** R4-M221's Rows bullet held viaCarriedMixedPOk valid. Its reason was the landing hunk design's row label
+    (`a5v-landhunk\r7\r7rows.txt` line 76): "whatever f leaves in mx.p is judged by a (5.7 Calls; R4-M183)". That bounds f's write at
+    p, not what a read of mx.p derives from mx.q (15.6 Holders), so the program is invalid; so are its QFirst, S and T twins and
+    viaParamQPOk.
+  - **Records (Q13):** invalid programs only, from the located `Unsupported_Kd` to `ComparisonLoanConflict_Kd` at `kk = 2` and at
+    the subject where dev records the located one beside it (`var slot`; `var hop` for viaCarriedDeepBad): viaCarriedMixedPOk,
+    viaCarriedMixedBad, viaCarriedMixedQFirstPOk, viaCarriedMixedQFirstBad, viaCarriedMixedSPOk (`kk = 2` only),
+    viaCarriedMixedTPOk, viaCarriedDeepBad, viaCarriedMixedQCopyBad. unknownMixedBad stays at the located `Unsupported_Kd`
+    (`var slot`, `kk = 2`): `UnknownWrite` gives mx its pun, but take's `u8` write through `c.w`, off mx's Position, is the
+    designation judge's undecided answer at `CallWrite` (R4-M198's undecided class: the layout decides, before `PlacedAt`), so mx
+    keeps Φ_M and the Loan check rests on it. viaParamQBad and viaParamQPOk keep `ComparisonLoanConflict_Kd` at `var slot` and
+    `kk = 2`, and viaCarriedMixedReplacedOk (invalid) at `var slot`, `var slot2` and `kk = 2`; viaCarriedPinOk and viaParamQPinOk
+    stay accepted. The new rows placedStatedFirstNoneOk (valid) and placedUnstatedFirstBad (invalid) keep the located `Unsupported_Kd`
+    at `kk = 2` (and `var slot` for the invalid one) on dev and the head. No valid program moves; the A5 oracle's 1,764 programs move none.
+  - **Rejected:** removing the clause at every site (RN6 reverted whole: at a placed write the layout decides which layer the store
+    covers, SPEC 6.7.1 and IMPL 21.1.2, which A5 does not read, so a decided verdict there would be a conservative Language record on
+    a form SPEC accepts, against AGENTS' Diagnostics rule: placedStatedFirstNoneOk and its valid twins noneCopyOk and okLocalTOk get
+    `ComparisonLoanConflict_Kd` at `kk = 2` without it, `labels-c1b.md`);
+    a holder state per raw layer (per-part holder states: R4-M191, R4-M198, R4-M219; against O-230 Q1 (a)).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
