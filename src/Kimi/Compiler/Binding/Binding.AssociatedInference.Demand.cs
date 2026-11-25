@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // determines the inferred bindings and publishes them.
 // - Inputs: discovery's components in emission order (Binding.AssociatedInference.Discovery), each inferring definition's paths.
 // - Outputs: each hole's binding (AssociatedBinding.Inferred, InferenceConflict, Problem, EvidenceSources), published when its component's
-//   request ends; then the paths' AssociatedStorage and InferenceStorage, and the inherited paths' inference.
+//   request ends; then the paths' AssociatedStorage and InferenceStorage, each path's resolved in a site frame at its conformance where
+//   none is open (OpenQuerySite; PLAN G651 a2, F2), and the inherited paths' inference.
 // - The rule (SPEC 8.5.5, 8.3.3 Finality): Value(v | P) is pending when v is held; else a source position supplies its Type when the
 //   collection with v held and the collection with v's definition's bindings held give it the same complete Type (HeldValue). A
 //   collection under a hold is a run (a batch's run object, InferenceRun): identification, extraction and the usable positions, every
@@ -108,6 +109,9 @@ public sealed partial class Binding
 
         foreach (var path in this.impls.InPass.Paths)
         {
+            // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the conformance (PrepareAssociatedBindings' site, R7-M38) is the site of a Type its
+            // bindings form past the limit, in a site frame where none is open.
+            var site = this.OpenQuerySite(path.Declaration);
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
                 if (this.ResolveAssociated(path, identity, out _) is { } result && !this.PendingAssociatedType(result))
@@ -123,6 +127,8 @@ public sealed partial class Binding
                     }
                 }
             }
+
+            this.CloseQuerySite(site);
         }
 
         foreach (var path in this.impls.InPass.Paths)

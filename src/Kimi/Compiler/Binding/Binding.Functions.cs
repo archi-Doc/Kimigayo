@@ -218,7 +218,12 @@ public sealed partial class Binding
     private bool BindFunctionHeader(BindingSymbol symbol, FunctionKoto function)
     {
         var scope = this.scopes[function];
+        // PLAN G651 a2 (F1, BU-161; IMPL 21.3.2): the header is its declaration's, never the demander's (SPEC 23.1.2): the premises it forms
+        // outside its parameters' walks are in a site frame at the function whatever frame the demander holds, so a Type past the limit
+        // formed there is refused at the function.
+        var frame = this.BeginConsultation(function);
         var header = this.PrepareVirtualHeaderPremises(function, scope); // An override's inputs and result bind under its header layer.
+        this.DropConsultation(frame);
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
