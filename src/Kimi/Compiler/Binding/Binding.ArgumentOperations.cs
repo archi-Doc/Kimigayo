@@ -142,10 +142,12 @@ public sealed partial class Binding
     // spelling (SPEC 15.1.5), the Place that needs it and, for an exclusive borrow, whether the Place is an object handle (@objuniq)
     // (SPEC 23.1.3), or the access the lending rule denies an implicit exclusive acquisition of it (OwnedLending,
     // ExclusiveAcquisitionDenial; SPEC 7.3.3, 15.6.2), or a limit located at it. Only a deferring caller writes it (RequireAcquisition):
-    // a trial's receiver and arguments, ValueCalls and Enums, which read it, and ResultPremises, whose writes the enclosing trial takes as
-    // its candidate's acquisition. Structs, ShapeEvidence and BindCall save and restore it, a selection query restores it at its end
-    // (EndSelectionQuery), and each trial (TryCandidate) and SelectAt start from none. A caller that does not defer refuses the input
-    // and records its own failure, so it never leaves the channel set for an enclosing trial (a closure body bound per candidate).
+    // a trial's receiver and arguments, ValueCalls, Enums and a fixed destination's selected adaptation (ExpectedAdaptation), which read
+    // it, and ResultPremises, whose writes the enclosing trial takes as its candidate's acquisition. Structs, ShapeEvidence, BindCall and
+    // ExpectedAdaptation save and restore it, a selection query restores it at its end (EndSelectionQuery), and each trial (TryCandidate)
+    // and SelectAt start from none. A caller that does not defer (an explicit borrow, a property update, an accessor receiver, a probe of a
+    // fixed destination) refuses the input and records its own failure, so it never leaves the channel set for an enclosing trial (a
+    // closure body bound per candidate).
     private AcquisitionFailure? acquisitionFailure;
 
     private bool RequireAcquisition(Koto source, BindingFailure failure, bool @object, bool deferAcquisition)
@@ -166,7 +168,8 @@ public sealed partial class Binding
     // fails the input, before its Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged
     // (BorrowFailure). Otherwise a Reborrow whose supplied Type `supplied` no one Type carries (BareReborrowLimit on `read`, the Type the
     // operation adapted) is the bare Reborrow rule's limit, recorded beside its Resolved source (RecordLocatedLimit), so every other case's
-    // verdict stands (SPEC 8.15.2). True when the input fails.
+    // verdict stands (SPEC 8.15.2). A refused acquisition's operation is not final, so its limits are never judged: each reader of the
+    // channel takes the refusal first (ExpectedAdaptation, Enums, ValueCalls; R7-M95 E4a-4). True when the input fails.
     private bool JudgeSelectedInput(Koto source, ArgumentOperationKind kind, SemanticsKind mode, BoundType? read, BoundType? supplied)
     {
         if (this.BorrowsStaticRoot(source, kind, mode))
@@ -185,8 +188,12 @@ public sealed partial class Binding
 
     // SPEC 10.2: fixed destinations and candidate result filtering use the argument adaptation rules. Returns the Type the node delivers
     // at the destination: its operation's, or `actual` itself where the common adaptation forms none (it does not apply, or adapts by
-    // Value). The selected destination is the one writer of its record consumed by later phases (its limits and its adaptation row); a
-    // probe records no row and no pair-follow plan.
+    // Value). The selected destination is the one writer of its record consumed by later phases (its acquisition, its limits and its
+    // adaptation row); a probe defers nothing and records no row and no pair-follow plan.
+    // SPEC 7.3.3, 15.1.5, 15.6.1, 23.1.2 (R7-M95 E4a-4): the selected destination defers its acquisition, on a channel of its own, so an
+    // enclosing trial's (a closure body bound per candidate) is left as it was found. A refused one whose structure fits fails the Place,
+    // which delivers no Type (null), as its written twin does: its lent Type is read for structure only, and its operation, never formed,
+    // has no row and no limit. The node's readers rest on it by the prerequisite rule.
     private BoundType? ExpectedAdaptation(Koto node, BoundType actual, BoundType expected, bool recordPair = true)
     {
         if (IsTransfer(node) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
@@ -194,36 +201,50 @@ public sealed partial class Binding
             return actual; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if (!this.AdaptInput(node, FixedPattern.Open(expected), actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
-            !this.FitsStructuralPartAt(adapted, expected, node))
+        var enclosing = this.acquisitionFailure;
+        this.acquisitionFailure = null;
+        try
         {
-            return actual;
-        }
+            if (!this.AdaptInput(node, FixedPattern.Open(expected), actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair, deferAcquisition: recordPair) ||
+                !this.FitsStructuralPartAt(adapted, expected, node))
+            {
+                return actual;
+            }
 
-        if (recordPair)
-        {
-            _ = this.JudgeSelectedInput(node, operation, adapted.Semantics, actual, adapted); // The selected destination's limits; a probe adapts a call result.
-        }
+            if (this.acquisitionFailure is { } refused)
+            {
+                return this.FailAcquisition(node, refused.Kind, refused.Place, refused.Object); // Null: the Place fails.
+            }
 
-        ExpectedAdaptationKind? formed = operation switch
-        {
-            ArgumentOperationKind.CopyRead => ExpectedAdaptationKind.ReferentRead,
-            ArgumentOperationKind.Borrow => ExpectedAdaptationKind.SharedBorrow,
-            ArgumentOperationKind.Reborrow => ExpectedAdaptationKind.Reborrow,
-            ArgumentOperationKind.ReferenceRead => ExpectedAdaptationKind.ReferenceRead,
-            _ => null,
-        };
-        if (formed is not { } adaptation)
-        {
-            return actual;
-        }
+            if (recordPair)
+            {
+                _ = this.JudgeSelectedInput(node, operation, adapted.Semantics, actual, adapted); // The selected destination's limits; a probe adapts a call result.
+            }
 
-        if (recordPair)
-        {
-            this.adaptations[node] = new(adaptation, adapted);
-        }
+            ExpectedAdaptationKind? formed = operation switch
+            {
+                ArgumentOperationKind.CopyRead => ExpectedAdaptationKind.ReferentRead,
+                ArgumentOperationKind.Borrow => ExpectedAdaptationKind.SharedBorrow,
+                ArgumentOperationKind.Reborrow => ExpectedAdaptationKind.Reborrow,
+                ArgumentOperationKind.ReferenceRead => ExpectedAdaptationKind.ReferenceRead,
+                _ => null,
+            };
+            if (formed is not { } adaptation)
+            {
+                return actual;
+            }
 
-        return adapted;
+            if (recordPair)
+            {
+                this.adaptations[node] = new(adaptation, adapted);
+            }
+
+            return adapted;
+        }
+        finally
+        {
+            this.acquisitionFailure = enclosing;
+        }
     }
 
     // SPEC 3.5.3 value read: the safe value-reference layers of an operand are followed to their terminal Type, which is

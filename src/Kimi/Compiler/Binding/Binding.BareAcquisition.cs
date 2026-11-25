@@ -11,7 +11,9 @@ namespace Kimi.Compiler;
 //   nested capture entry and G721's interim row (1) read too (Binding.Captures).
 // - Inputs: the node, its bound Type, its Place (IsBarePlace), its position and Discard Context (IsValueContext), the common
 //   adaptation (ExpectedAdaptation), which names the Reborrow, and the reach of the Place (its containment walk under a case assignment).
-// - Outputs: the recorded adaptation and its Type, the Reborrow's Type or the stored Type, and ReborrowLimit (no one Type carries the
+// - Outputs: the recorded adaptation and its Type, the Reborrow's Type or the stored Type, none where the acquisition is refused (a
+//   stored `uniq` or `objuniq` reached through a shared path, recorded at the Place at binding time by ExpectedAdaptation, so H1
+//   finds the node failed; R7-M95 E4a-4), and ReborrowLimit (no one Type carries the
 //   Reborrow: Possible by the Type and plan, Shortened by this reach), whose Shortened Reborrow at a selected input is that input's located
 //   limit (BareReborrowLimit, read by JudgeSelectedInput); the bare entries of pair layers per Semantics case are Binding.PairCases'; how a
 //   consumer takes each child is the Adjust rule's (Binding.Hir.Adjust.cs).
@@ -194,7 +196,8 @@ public sealed partial class Binding
 
     // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference Reborrows it in its own Semantics, exactly as an
     // annotation of the same complete Type would; the Reborrow's Type is Binding's name for it (DECISIONS BU-27), which a join's common
-    // Type takes from each such source. Returns the Type the node delivers: that Type, or its own where it is acquired otherwise.
+    // Type takes from each such source. Returns the Type the node delivers: that Type, none where its acquisition is refused (recorded at
+    // the Place), or its own where it is acquired otherwise.
     private BoundType? StoredReborrow(Koto node, BoundType? actual)
         => actual is not null && this.StoresExclusiveReference(node, actual) && IsBareAcquisitionPosition(node) ? this.ExpectedAdaptation(node, actual, actual)
             : node.ErasedFunctionType ?? actual;
