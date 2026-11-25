@@ -40,13 +40,14 @@ public sealed partial class MirOriginsTest
     private const string ClosureHeader = "func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n";
 
     // PLAN G216 (b)'s r1 and r2: a Closure's and a local Function Type's result `ref/(ref/i32 during q)` lies during the per-call Origin of
-    // the input the row writes next, well formed only where that input names `q` (SPEC 15.3.4).
+    // the input the row writes next, well formed only where that input's well-formedness gives `q` outliving its per-call Origin
+    // (SPEC 15.3.4).
     private const string NestedResult = "func k(q: ref/i32) -> i32\n    let n = 1\n    let h = func [q] (p: ";
 
     private const string NestedFunctionType = "func k(q: ref/i32) -> i32\n    let n = 1\n    var h: (";
 
-    // PLAN G216 (b)'s p4 (p3's Closure twin): a value call whose argument's inner Origin `b` meets the input's `a`, after a head with or
-    // without the clause ordering them.
+    // PLAN G216 (b)'s p4 (p3's Closure twin): a value call whose argument's inner Origin `b` must outlive the input's `a`, after a head
+    // with or without the clause ordering them.
     private const string ValueCall = "    let h = func [] (p: ref/(ref/i32 during a)) -> i32 => p@follow@follow\n    return h(s)\n";
 
     // A holder of one shared reference and a callee whose result meets its two arguments' Origins (the 2a-1c design review's m7).
