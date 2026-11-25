@@ -43,7 +43,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("mixdok", SolvedMix + "func k(q: ref/i32) -> ref/i32 during q\n    return d(.None, q)\n", "")]
     [InlineData("mixw", SolvedMix + "func k(q: ref/i32, r: ref/i32) -> ref/i32 during r\n    return d(.None, q, .None)\n", "UnprovenOriginRelation_Kd d(.None, q, .None)")]
     [InlineData("mixwok", SolvedMix + "func k(q: ref/i32) -> ref/i32 during q\n    return d(.None, q, .None)\n", "")]
-    [InlineData("recv", SolvedRecv + "func k(q: ref/i32) -> i32\n    let h = H.init()\n    let r: ref/i32 during q = h.m(.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd let r: ref/i32 during q = h.m(.None)")]
+    [InlineData("recv", SolvedRecv + "func k(q: ref/i32) -> i32\n    let h = H.init()\n    let r: ref/i32 during q = h.m(.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd h.m(.None)")]
     [InlineData("recvok", SolvedRecv + "func k(q: ref/i32, h: ref/H during q) -> i32\n    let r: ref/i32 during q = h.m(.None)\n    return 0\n", "")]
     [InlineData("z2w", SolvedZ2 + "func bad(p: ref/i32) -> ref/i32 during p\n    let short = 2\n    return z2(short@ref, .None)\n", "UnsatisfiedOriginRelation_Kd z2(short@ref, .None)")]
     [InlineData("z2okw", SolvedZ2 + "func ok(p: ref/i32) -> ref/i32 during p\n    return z2(p, .None)\n", "")]
