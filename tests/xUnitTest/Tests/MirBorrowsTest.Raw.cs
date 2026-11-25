@@ -2334,6 +2334,44 @@ public sealed partial class MirBorrowsTest
         Assert.All(new[] { calls, depth, cycle, vacuous, escaped, fan, sparse }, static x => Assert.True(Grows(x, 2.1), string.Join(", ", x)));
     }
 
+    // G415-N3 P1 (SPEC 15.6.4 item 1 and its composition, 5.7 Calls; DECISIONS R4-M249): a store writes storage the body does not own (E)
+    // past a holder only where what it reads was reached through no shared layer (Φ_W), and the declared step keeps dev's E at a target
+    // it cannot place. A sibling part's raw layer is no storage a call through another part writes (r3SibAddrArrOk, r2SibArrOk); a call
+    // through the whole may write its own pointer there (r3SibAddrWholeBad, r2SibArrWholeBad); a stated layer's pointee is a declared-step
+    // target (r3Stated*); a raw layer at a reading key composes (p1rKeyedAddrBad, p1rOwnStepAddrBad, r2ArrRawBad), never past a shared
+    // one (r2ArrRawSharedOk, r2SibPastSharedOk). Labels from SPEC before any run (artifacts/units/g415n3/p1-labels.md, Revision 2 and the
+    // reviewers' twins; the p1rOwnStep and p1dProbe records as Revision 1 corrected them after its run); "var v" is the conflict that ends
+    // v's Loan.
+    [Theory]
+    [InlineData("r3SibAddrArrOk", P1Sibling + "|p1PutArr(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("r3SibAddrArrUseBad", P1Sibling + "|p1PutArr(t.1@uniq, z@ref)|z = 3|inspect(t@ref)", "z = 3")]
+    [InlineData("r3SibAddrWholeBad", P1Sibling + "|p1PutArrT2(t@uniq, z@ref)|z = 3", "var y: i32 = 1|var y2: i32 = 5|z = 3")]
+    // SPEC labels {var y, z = 3}; var y2 is dev's, kept: a holder's state carries no positions, so the store through t.0 reads t's state
+    // whole (R4-M249's kept clause; its removal condition, U5).
+    [InlineData("r3SibAddrDerefBad", P1Sibling + "|p1PutRR(t.0@uniq, z@ref)|z = 3", "var y: i32 = 1|var y2: i32 = 5|z = 3")]
+    [InlineData("r3StatedCellBad", P1Cell + "|var c = P1Cell<raw/(ref/i32)>.init(a@ref, h@raw)|c.put(z@ref)|z = 3", "var a: i32 = 1|var y: i32 = 1|z = 3")]
+    [InlineData("r3StatedCellOk", P1Cell + "|var c = P1Cell<ref/i32>.init(a@ref, x@raw)|c.put(z@ref)|z = 3", "")]
+    [InlineData("r3StatedSubOk", P1Sub + "|c.put(z@ref)|z = 3", "")]
+    [InlineData("r3StatedSubUseBad", P1Sub + "|c.put(z@ref)|z = 3|inspect(t@ref)", "z = 3")]
+    [InlineData("r2SibArrOk", P1SiblingRaw + "|var a: Array<ref/i32> = [y2@ref]|var t = (h, a@move)|p1PutArr(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("r2SibArrUseBad", P1SiblingRaw + "|var a: Array<ref/i32> = [y2@ref]|var t = (h, a@move)|p1PutArr(t.1@uniq, z@ref)|z = 3|inspect(t@ref)", "z = 3")]
+    [InlineData("r2SibArrWholeBad", P1SiblingRaw + "|var a: Array<ref/i32> = [y2@ref]|var t = (h, a@move)|p1PutArrT(t@uniq, z@ref)|z = 3", "var y: i32 = 1|var y2: i32 = 5|z = 3")]
+    [InlineData("r2ArrRawBad", P1Addr + "|var arr: Array<raw/(ref/i32)> = [h]|p1PutA(arr@uniq, z@ref)|z = 3", "var y: i32 = 1|z = 3")]
+    [InlineData("r2ArrRawSharedOk", P1Addr + "|var arr: Array<raw/(ref/i32)> = [h]|p1PutAr(arr@ref, z@ref)|z = 3", "")]
+    [InlineData("r2SibStatedOk", P1SiblingRaw + "|var t = (h, y2@ref)|p1PutR2(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("r2SibPastSharedOk", P1SiblingRaw + "|var t = (h@ref, y2@ref)|p1PutR2(t.1@uniq, z@ref)|z = 3", "")]
+    [InlineData("p1rKeyedAddrBad", P1Addr + "|p1Put(h@uniq, z@ref)|z = 3", "var y: i32 = 1|z = 3")]
+    [InlineData("p1rOwnStepAddrBad", P1Addr + "|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = x@raw|var y: i32 = 1|z = 3")]
+    // h read from a parameter past a shared layer: its pointee keeps the parameter's Origin o, so the store of z's borrow is refuted at the
+    // read (UnsatisfiedOriginRelation_Kd), and h is still a node through the Array element's Borrow layer.
+    [InlineData("p1rOwnStepShLoanBad", "var z: i32 = 2|let r = s@ref|var h: raw/(ref/i32) = r@follow@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = r@follow@follow|r@follow@follow UnsatisfiedOriginRelation_Kd|z = 3", "s: uniq/(raw/(ref/i32 during o))")]
+    [InlineData("p1rOwnStepParamBad", "var z: i32 = 2|var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = s@follow|s@follow UnsatisfiedOriginRelation_Kd|z = 3", "s: ref/(raw/(ref/i32 during o))")]
+    // P1-d's row, at dev's records: a Deep holder d with Φ_W beside h. Once c3 gives s's slot {Φ_E}, E is reached only by h's own pointer
+    // with its layer's record, and d's left-out step adds p1St2(t@uniq)'s limit by reading, a record added on a program dev rejects.
+    [InlineData("p1dProbe", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var t = (arr@uniq, d@uniq)|p1St2(t@uniq)", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var d = (w, " + P1Nest + ") OwnershipDepthLimit_Kd", "s: ref/(raw/(ref/i32 during o)), w: uniq/i32 during k")]
+    public void AStoreWritesUnownedStorageOnlyPastWhatNoSharedLayerReaches(string id, string lines, string expected, string parameters = "")
+        => Assert.Equal(OwnStepExpected(id, expected), P1Problems(id, parameters, lines));
+
     // The Work a shape's body adds beside its twin's, both over the raw and chain shapes.
     private long Added(string shape, string twin)
         => Measured(Prelude + RawShapes + ChainShapes + shape).Work - Measured(Prelude + RawShapes + ChainShapes + twin).Work;
@@ -2628,4 +2666,49 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(LentShapes + EnclosingShapes + $"func {id}(fresh: raw/u8)\n" + string.Concat(lines.Split('|').Select(static x => "    " + x + "\n")));
         return string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnStepDeparture_Kd]).Order(StringComparer.Ordinal));
     }
+
+    // A5's Loan conflicts, Origin refutations, located Unsupported_Kd and depth limits of a function `id` of `parameters` over P1Callees,
+    // in order.
+    private static string P1Problems(string id, string parameters, string lines)
+    {
+        var c = MirBuildTest.Compile(Prelude + P1Callees + $"func {id}({parameters})\n" + string.Concat(lines.Split('|').Select(static x => "    " + x + "\n")));
+        return string.Join(" | ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.Unsupported_Kd, DiagnosticCode.OwnershipDepthLimit_Kd]).Order(StringComparer.Ordinal));
+    }
+
+    // P1's rows' bodies (AStoreWritesUnownedStorageOnlyPastWhatNoSharedLayerReaches): y's address h (P1Addr); beside it y2 (P1SiblingRaw);
+    // h behind g in t's raw part beside y2's Loan in t's Array part (P1Sibling); a cell stating its slot, with a's Loan (P1Cell); and one
+    // whose slot addresses t.1 beside h in t.0 (P1Sub).
+    private const string P1Addr = "var z: i32 = 2|var y: i32 = 1|var x: ref/i32 = y@ref|var h: raw/(ref/i32) = x@raw";
+    private const string P1SiblingRaw = "var z: i32 = 2|var y: i32 = 1|var y2: i32 = 5|var x: ref/i32 = y@ref|var h: raw/(ref/i32) = x@raw";
+    private const string P1Sibling = P1SiblingRaw + "|var g: raw/(raw/(ref/i32)) = h@raw|var a: Array<ref/i32> = [y2@ref]|var t = (g, a@move)";
+    private const string P1Cell = "var a: i32 = 1|" + P1Addr;
+    private const string P1Sub = "var a: i32 = 1|" + P1SiblingRaw + "|var x2: ref/i32 = y2@ref|var t = (h, x2)|var c = P1Cell<ref/i32>.init(a@ref, t.1@raw)";
+
+    // p1dProbe's NEST(40), the DepthLimit rows' Nested("0", 40) and NestedType("i32", 40).
+    private const string P1Nest = "((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39)";
+    private const string P1NestType = "((((((((((((((((((((((((((((((((((((((((i32, i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32), i32)";
+
+    // P1's callees (p1-labels.md Revision 1, Revision 2 and the reviewers' twins): stores of v through a part or the whole, a cell whose
+    // slot is a Field's raw layer stating `self` (Stated: the declared step reaches its pointee), and a store through a Deep holder's
+    // sibling (p1St2).
+    private const string P1Callees = """
+        func p1PutArr(p: uniq/(Array<ref/i32 during o>), v: ref/i32 during o) => ()
+        func p1PutArrT(p: uniq/((raw/(ref/i32 during o), Array<ref/i32 during o>)), v: ref/i32 during o) => ()
+        func p1PutArrT2(p: uniq/((raw/(raw/(ref/i32 during o)), Array<ref/i32 during o>)), v: ref/i32 during o) => ()
+        func p1PutRR(p: uniq/(raw/(raw/(ref/i32 during o))), v: ref/i32 during o) => ()
+        func p1Put(p: uniq/(raw/(ref/i32 during o)), v: ref/i32 during o) => ()
+        func p1Put7(a: uniq/(Array<uniq/(raw/(ref/i32 during o)) during q>), v: ref/i32 during o) => ()
+        func p1PutA(a: uniq/(Array<raw/(ref/i32 during o)>), v: ref/i32 during o) => ()
+        func p1PutAr(a: ref/(Array<raw/(ref/i32 during o)>), v: ref/i32 during o) => ()
+        func p1PutR2(p: uniq/(ref/i32 during o), v: ref/i32 during o) => ()
+        struct P1Cell<T> {o}
+            internal var slot: raw/T during self
+            internal let keep: Loan<ref/i32 during o>
+            public init(k: ref/i32 during o, s: raw/T)
+                self.keep = Loan.init(k)
+                unsafe => self.slot = s@(raw/T during self)
+            public func put(self: uniq/Self, v: ref/i32 during o) => ()
+
+        """ + "func p1St2(t: uniq/((uniq/(Array<uniq/(raw/(ref/i32 during o)) during q>) during b, uniq/((uniq/i32 during k, " + P1NestType +
+        ")) during c)) during e) => ()\n";
 }

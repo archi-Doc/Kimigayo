@@ -15,15 +15,14 @@ internal enum MirWrites : byte
     None,
 
     /// <summary>No part gives the write fact, and an abstract part in the value's own storage writes by provenance (SPEC 15.6.4; DECISIONS
-    /// R4-M170): past it only the holders its exclusive Loans and addresses name, and E where its state carries Φ_W (MirBorrows' named
-    /// step).</summary>
+    /// R4-M170): past it only the holders its exclusive Loans and addresses name, and E where its state carries Φ_W, as Through.</summary>
     Named,
 
     /// <summary>Some part gives the write fact (decided): past no shared layer, an exclusive reference to storage that may hold a Loan (a
     /// raw layer whose step lets a call write past it counting as one), an abstract part past an exclusive reference, a pair layer, or a
     /// Function value, which may be one (the guard); a Closure value by its environment's parts (DECISIONS R4-M148). Past it the holders
-    /// its exclusive Loans and addresses name, never one only a shared Loan names, and E where its state carries Φ_E (SPEC 15.6.4 item 1;
-    /// DECISIONS R4-M177).</summary>
+    /// its exclusive Loans and addresses name, never one only a shared Loan names, and E where its state carries Φ_W (SPEC 15.6.4 item 1;
+    /// DECISIONS R4-M177, R4-M249).</summary>
     Through,
 
     /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not answer
@@ -179,7 +178,7 @@ internal static partial class MirTypes
         => new((mode & ~LoanOnly) == Own, mode == Exclusive ? MirOutcome.Decided : MirOutcome.None);
 
     // The guard rule W reads, read off the walk's answer: decided is the write fact (Through), Limit and Deep leave it undecided, else the
-    // named fact (Named) where an abstract part gave it. Deep's step check compares W's full step, which covers the named one.
+    // named fact (Named) where an abstract part gave it. Deep's step check compares W's one step.
     private static MirWrites Guard(Facts found)
     {
         var writes = found.Writes;
