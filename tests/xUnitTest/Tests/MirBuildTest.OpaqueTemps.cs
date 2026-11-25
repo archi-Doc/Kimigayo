@@ -27,7 +27,9 @@ public sealed partial class MirBuildTest
     // B1). Each row: f's lending rvalues and derived values in order, a lent root by name, `opaque` for a temp an Opaque is assigned to,
     // else `temp`; `derived` for an Opaque naming one such temp. The lists of the `Missing` key are the MIR build's, read from G1278-A's
     // run (F3; F's G1278-7, G1278-9 (4)): each holds only `derived` values (two to four; `w.inner.mutate()` none), so no row lends a
-    // Place in the temp.
+    // Place in the temp. Under that key a method call over the temp rests whole (its receiver has no Type, so no method is selected, and
+    // its Opaque keeps only its arguments): its receiver is never lowered, so `w.inner.mutate()` lends nothing and `w.inner.pick()`'s
+    // derived value is its `let`'s, the match row's its Subject's (the Middle's C-563; F's G1278-12).
     [Theory]
     [InlineData("let p = w.v@ref", "derived | derived | derived", "Shared w")]
     [InlineData("let p = w.inner.n@uniq", "derived | derived | derived | derived", "Uniq w")]
