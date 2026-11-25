@@ -158,7 +158,7 @@ public sealed partial class Binding
     // (E > R > L > U), read where the trial left it and never proven again (AGENTS Diagnostics). None when the trial left no fact, as for
     // a candidate that failed before its Constraints were judged, or when the clause did not bind (its binding failure is its own record).
     private static ReferenceConstraintFailure? ClauseFailure(ClauseFact? fact, BindingSymbol? declaration)
-        => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration) : null;
+        => fact is { Constraint: { } constraint } clause ? new(clause.Clause, constraint, clause.Outcome, declaration, clause.Conformance) : null;
 
     // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
     // any other row), which no other argument or tie-breaker rescues.

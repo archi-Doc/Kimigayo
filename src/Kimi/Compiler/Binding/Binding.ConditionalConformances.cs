@@ -395,6 +395,7 @@ public sealed partial class Binding
         try
         {
             this.BeginProof(site); // The paths are one disjunction (DECISIONS BU-22).
+            this.ScopeReads.Conformance = identity; // The R fact a Refuted answer hands on (PLAN G1386), before any its paths' proofs read.
             var result = ConstraintProof.Refuted;
             for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
