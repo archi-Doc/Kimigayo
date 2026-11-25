@@ -19,7 +19,7 @@
 // 1. per judged program body, A3;
 // 2. per program body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program, in rounds;
-// 4. per judged body, a layer body's included (DECISIONS R7-M114), A5: the Origin stratum's judgment, which adds its problems, then the
+// 4. per judged body, a layer body's included (DECISIONS R7-M115), A5: the Origin stratum's judgment, which adds its problems, then the
 //    Loan stratum per view;
 // 5. A6 inside MirReport.
 // Steps 1 and 2 have one path (Step): the version's bodies built since the last step, in build order, a body a lookup builds

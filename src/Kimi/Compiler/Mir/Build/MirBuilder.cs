@@ -187,7 +187,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         _ => false,
     };
 
-    // SPEC 6.3.3, 6.3.6, 23.1.2 (DECISIONS R7-M114): whether a struct's Field initializers are a layer body of their own: no constructor of
+    // SPEC 6.3.3, 6.3.6, 23.1.2 (DECISIONS R7-M115): whether a struct's Field initializers are a layer body of their own: no constructor of
     // the struct, declared or synthesized, is Published (none exists, or its Body is missing, 14.2.1, or a Kimi one has no definition), and
     // some own Field has an initializer the HIR publishes (HasInitializer), Initialize's test for placing a value, so the two cannot drift.
     // It forms no Type and allocates nothing, since the module walk asks it of every struct (a warm rebuild allocates nothing).
@@ -243,7 +243,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 return (new(executing, kind), executing, executing.Type, accessor.Body!);
             case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
                 return (new(symbol, MirBodyKind.StaticInit), null, symbol!.Type, ((PropertyKoto)node).InitializerKoto!);
-            case BindingSymbolKind.Type: // A struct's layer body (Layered): _0 of its Self Type (DECISIONS R7-M114).
+            case BindingSymbolKind.Type: // A struct's layer body (Layered): _0 of its Self Type (DECISIONS R7-M115).
                 return (new(symbol, MirBodyKind.Layer), null, compilation.Types.SelfType(symbol!), node);
             default:
                 return null;
@@ -389,7 +389,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // constructor builds its object in _0, its self (MirLocalRole.Receiver), in the fresh storage its caller's construction expression
     // made (SPEC 6.3.2-6.3.4): the base constructor into the base subobject, this layer's Field initializers in declaration order, then the
     // body, whose Unit value is set aside (6.3.5); a layer body only places the initializers into its _0, also its receiver, and returns
-    // (DECISIONS R7-M114). A default template's (plan 5.6.2), a generic body of its function, takes the slots its
+    // (DECISIONS R7-M115). A default template's (plan 5.6.2), a generic body of its function, takes the slots its
     // call prepared for the earlier parameters as shared references p_i: ref/P_i in slot order (PreparedInput), which its names read
     // through (Bound), and gives the parameter's value. A parameter has no syntax node of its own: it, a template's p_i included, is located
     // at its written Type node, the one a fact about the slot names (DECISIONS R4-M90 D6, BU-48), and a function's result at its written
@@ -495,7 +495,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.
         if (layered)
         {
-            // SPEC 6.3.3 (DECISIONS R7-M114): a layer body is the constructor step alone, then a Return at the declaration: no base step,
+            // SPEC 6.3.3 (DECISIONS R7-M115): a layer body is the constructor step alone, then a Return at the declaration: no base step,
             // body value or exit request (SPEC 6.3.5 is a constructor body's rule), so a Field without an initializer is not judged unset.
             this.Initializers(self!);
             body.Terminate(this.current, MirTerminator.Return(this.Info(declaration)));

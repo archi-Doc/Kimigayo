@@ -4061,7 +4061,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "func good2() -> bool\n    let s = \"a\"\n    let other = \"b\"\n    return s == other\n"));
     }
 
-    // SPEC 15.6.2, 15.6.5 (PLAN G215, G403; DECISIONS R7-M114): a Field initializer's Loans are judged in its constructor's body and in a
+    // SPEC 15.6.2, 15.6.5 (PLAN G215, G403; DECISIONS R7-M115): a Field initializer's Loans are judged in its constructor's body and in a
     // constructorless layer's body alike: a write under a live shared Loan (l_; accepted before), and a Guard built from a block's local
     // into the layer's Origin, Refuted in each branch (d_); the valid twins read the value before the write and drop the Guard in the block.
     [Theory]

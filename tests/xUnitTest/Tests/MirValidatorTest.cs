@@ -345,7 +345,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
     }
 
-    // DECISIONS R7-M114: a layer body's _0, its Receiver, is its struct's Self Type, which its Return gives; an _0 of another Type (an
+    // DECISIONS R7-M115: a layer body's _0, its Receiver, is its struct's Self Type, which its Return gives; an _0 of another Type (an
     // i32) is a Type finding at the Return.
     [Theory]
     [InlineData(false)]

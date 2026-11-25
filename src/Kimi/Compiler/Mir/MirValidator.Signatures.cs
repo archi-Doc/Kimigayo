@@ -17,7 +17,7 @@ internal sealed partial class MirValidator
     private partial struct Checker
     {
         // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's, a static's or a
-        // layer body's struct's Self Type (DECISIONS R7-M114); none for the top-level statements, which have no symbol.
+        // layer body's struct's Self Type (DECISIONS R7-M115); none for the top-level statements, which have no symbol.
         private readonly BoundType? Result(MirDefKey key)
         {
             if (key.Decl is not { } decl)

@@ -558,7 +558,7 @@ public sealed partial class MirBuildTest
         Assert.Equal(field.StartsWith("i32", StringComparison.Ordinal), body.TypeOf(place) is not null);
     }
 
-    // SPEC 6.3.3, 6.3.6 (DECISIONS R7-M114): a constructorless layer's body has the Receiver _0 of its Self Type, places each Field
+    // SPEC 6.3.3, 6.3.6 (DECISIONS R7-M115): a constructorless layer's body has the Receiver _0 of its Self Type, places each Field
     // initializer into its Field of _0 and returns, with no base step and no FakeRead of _0 (a constructor's completion request); a Field
     // without an initializer (p) is not placed.
     [Fact]
