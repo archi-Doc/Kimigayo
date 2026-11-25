@@ -951,7 +951,8 @@ public sealed class MirAnalysisTest
     // the validator or A1-A5 runs it. PLAN G950's row M3 (design §R1.4, re-review RN4): the check, the checked set's records included
     // (A3b), runs in two versions of one compilation through one builder, analysis and collector and finds none in either, and each version
     // judges every body with A3 and A5 and collects the same checked set again: a library segment kept across versions (G950-K) is still
-    // judged in each.
+    // judged in each. MirCensusTest.TheLibraryHasNoProblems reads the library check's build as a census set, which adds the census's
+    // classification by the A6 pairs and its TSV (PLAN G396 (7) N10: both kept).
     [Theory]
     [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("i686-unknown-linux-gnu")]
