@@ -56,6 +56,9 @@ public sealed partial class RecursiveContractTest
 
     private const string Both = "contract E\ncontract D<U>\ncontract C<A>\n    A is E and D<Self>\n";
 
+    // c2-5a's B3 rows: Src.(HasItem).Item is a completed projection identical with i32 (SPEC 8.2.3).
+    private const string SrcItem = "contract HasItem\n    associate Item\nstruct Src\n    Self is HasItem\n    associate HasItem.Item is i32\n    public var tag: i32 = 0\n";
+
     private const string KArgs = "contract K<A>\n    associate X\n";
 
     private const string KTwice = "group H\n    public func twice<T>(x: T.(K<i32>).X) -> (T.(K<i32>).X, T.(K<i32>).X)\n";
@@ -456,6 +459,13 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "an-n1", Both + "func probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) <- T is C<i32> | InvalidConstraint_Kd: T is C<i32>")]
     [InlineData("guard", "sc-n1", "contract D<U>\ncontract C\n    i32 is D<i64>\nfunc probe<T>(t: ref/T)\n    T is C\n    ()\n", "*: i32 is D<i64> | ...")]
     [InlineData("guard", "er-n1", KArgs + "contract C<A>: K<A>\n    Self.(K<A>).X is Missing\nfunc probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: contract C<A>: K<A> | UnresolvedBinding_Kd: Self.(K<A>).X is Missing")]
+    // B3: a Contract argument written as a completed projection is interpreted at the proof's intake, so the premise and its supply
+    // meet the instantiated own reference; dev's collapsed reference read any `R<X>` and hid the gap.
+    [InlineData("guard", "sr-alias-v", "contract R<A>\n    A is R<A>\ncontract HasItem\n    associate Item\nstruct Src<V>\n    Self is HasItem\n    associate HasItem.Item is V\n    public var tag: i32 = 0\nfunc probe<T, U>(t: ref/T)\n    T is R<Src<U>.(HasItem).Item>\n    ()\n", "")]
+    [InlineData("guard", "rc2-alias-v", MarkTree + Put + SrcItem + "func probe<T, U>(t: ref/T, u: ref/U) -> i32\n    T is MT<i32>\n    U is MT<Src.(HasItem).Item>\n    return t.put(u)\n", "")]
+    [InlineData("guard", "sr-alias-n", "contract R<A>\n    A is R<A>\n" + SrcItem + "func probe<T>(t: ref/T)\n    T is R<Src.(HasItem).Item>\n    ()\n", "InvalidConstraint_Kd: T is R<Src.(HasItem).Item> | ...")]
+    [InlineData("guard", "gs2-alias-v", MarkTree + SrcItem + "struct S<T>\n    T is MT<Src.(HasItem).Item>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "")]
+    [InlineData("guard", "gs2-alias-n", MarkTree + "contract HasItem\n    associate Item\nstruct Src\n    Self is HasItem\n    associate HasItem.Item is i64\n    public var tag: i32 = 0\nstruct S<T>\n    T is MT<Src.(HasItem).Item>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT<i32> | ...")]
     // Closedness does not read a clause's Contract arguments (pre-existing; c2-5a's PLAN row for unit C2, review N3): `Q is F<U>` is a
     // reference input condition judged at the declaration, and `i32 is D<Self>` (an implementation requirement) a closed obligation.
     [InlineData("C2", "cl-v1", "contract F<W>\nstruct S\n    public var tag: i32 = 0\nstruct Q\n    Self is F<S>\n    public var tag: i32 = 0\ncontract D<U>\n    Q is F<U>\nfunc probe<T>(t: ref/T)\n    T is D<S>\n    ()\n", "", Explicit = true)]
