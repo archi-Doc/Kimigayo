@@ -134,6 +134,9 @@ public partial class TypeIdentityTest
     [InlineData("guard", "k4", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
     [InlineData("C3", "k4c", HasItem + Tagged + Base + "func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return x.size()\n", "", Explicit = true)]
     [InlineData("guard", "k4d", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
+    // SPEC 8.2.3 (R7-C2c2 c2-5a; c2-5c's kq1x): `T is Seq<SrcI.(HasItem).Item>` supplies Iter<i32> through the completed binding, so
+    // `T is not Iter<i32>` is contradictory evidence, the function's premise error.
+    [InlineData("guard", "kq1x", HasItem + TagSeq + "func f<T>(x: ref/T) -> ()\n    T is Seq<SrcI.(HasItem).Item>\n    T is not Iter<i32>\n    ()\n", "InvalidConstraint_Kd: func f<T>(x: ref/T) -> ()")]
 
     // SPEC 8.9, 12.3.1: a refinement substitutes its bindings, so the requirement takes the substituted Type.
     [InlineData("guard", "sh1", HasItem + Shape + "func g<T>(x: ref/T) -> i32\n    T is Q<SrcI>\n    return x.size(1)\n", "")]
@@ -209,8 +212,12 @@ public partial class TypeIdentityTest
     [InlineData("guard", "mg5f", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy\n", "AssociatedTypeInferenceFailed_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy")]
     [InlineData("guard", "mg5cf", Tagged + Direct + "struct B<T>\n    Self is Iter<i32>\n    associate Iter<i32>.Tag is bool\n    Self is Q2<T> when T is i64\n", "AssociatedTypeInferenceFailed_Kd: Self is Q2<T> when T is i64")]
     // SPEC 6.1.4 (R7-C2c2 c2-5a): forming `Q2<..>` judges only its reference input conditions, and Q2's clause names its Self, so the
-    // conformance's unsatisfied requirement is the one record (PLAN G1260's UnprovenConstraint_Kd at `Q2<..>` is gone).
+    // conformance's unsatisfied requirement is the one record (PLAN G1260's UnprovenConstraint_Kd at `Q2<..>` is gone), and a Tag that
+    // meets it is accepted (mg5mv); the same for a direct conformance (mg6, mg6m). B's G1384 probes c2, c7, c8 and c8i.
     [InlineData("guard", "mg5m", HasItem + Tagged + "contract Marker\ncontract Q2<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\n" + MergedWhen, "UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+    [InlineData("guard", "mg5mv", HasItem + Tagged + "contract Marker\nstruct Tg\n    Self is Marker\ncontract Q2<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\nstruct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Tg\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "")]
+    [InlineData("guard", "mg6", Tagged + "contract Marker\nstruct Tg\n    Self is Marker\ncontract Q3<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\nstruct B<T>\n    Self is Q3<T>\n    associate Iter<T>.Tag is Tg\n", "")]
+    [InlineData("guard", "mg6m", Tagged + "contract Marker\ncontract Q3<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\nstruct B<T>\n    Self is Q3<T>\n    associate Iter<T>.Tag is bool\n", "UnsatisfiedConstraint_Kd: Self is Q3<T>")]
     // The InvalidAssociatedType_Kd records rest on the unresolved name's record (PLAN G-new: a specification link settles only to an
     // Invalid specified Type, SettleSpecificationLinks).
     [InlineData("guard", "mg5u", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Undefined\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "InvalidAssociatedType_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | UnresolvedBinding_Kd: associate Iter<S.(HasItem).Item>.Tag is Undefined")]

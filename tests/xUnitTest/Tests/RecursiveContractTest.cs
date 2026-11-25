@@ -514,6 +514,11 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "cc-v1", "contract E\nstruct S\n    Self is E\n    public var n: i32 = 0\n" + KArgs + "contract CK<A>: K<A>\n    A is E\n    Self.(K<A>).X is Copy\nfunc probe<T>(t: ref/T)\n    T is CK<S>\n    ()\n", "")]
     [InlineData("guard", "cc-n1", "contract E\n" + KArgs + "contract CK<A>: K<A>\n    A is E\n    Self.(K<A>).X is Copy\nfunc probe<T>(t: ref/T)\n    T is CK<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) <- T is CK<i32> | InvalidConstraint_Kd: T is CK<i32>")]
     [InlineData("guard", "cc-n2", "contract E\ncontract D<U>\n    U is E\nfunc probe<T>(t: ref/T)\n    T is D<i32>\n    ()\n", "*: T is D<i32> | ...")]
+    // SPEC 6.1.4, 8.2.3 (PLAN G1260's e1t and e1): A's clauses all name its Self, so forming `A<U, i32>` judges none of them; the identity
+    // they derive between P and Q is a supplied ground, here U is Option<i32>. In e1 that supply makes U identical with Option<U>: one
+    // premise error at its clause and no second record at `A<U, U>`.
+    [InlineData("guard", "e1t", "contract A<P, Q>\n    associate X\n    associate Y\n    Self.X is P\n    Self.Y is Option<Q>\n    Self.X is Self.Y\nfunc f<T, U>(value: T) -> i32\n    T is A<U, i32>\n    return 0\n", "")]
+    [InlineData("guard", "e1", "contract A<P, Q>\n    associate X\n    associate Y\n    Self.X is P\n    Self.Y is Option<Q>\n    Self.X is Self.Y\nfunc f<T, U>(value: T) -> i32\n    T is A<U, U>\n    return 0\n", "InvalidConstraint_Kd: T is A<U, U>")]
     [InlineData("guard", "p05", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "")]
     [InlineData("guard", "p05-n1", "contract CT<A>: GTree<A>\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
     [InlineData("guard", "p05-n2", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is GTree<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
