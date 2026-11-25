@@ -254,26 +254,29 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     }
 
     // IMPL 20.6.1 (the Tatara plan's B7b8): the test unit's target is the first product target with a row in the target table, so a
-    // linux-x64 project's test unit is checked, and a target without a row leaves none (TestTargetUnavailable_Kd). Fail-before: the
-    // linux-x64 row is TestTargetUnavailable_Kd too (the Windows x64 comparison).
+    // linux-x64 project's test unit is checked, and a target without a row leaves none (TestTargetUnavailable_Kd). The staged none-x64
+    // row is a row (B9b), whose test preparation is the location-only Unsupported_Kd until B9g lists it in Rows, as the CLI's Test-mode
+    // check records. Fail-before: the linux-x64 row is TestTargetUnavailable_Kd too (the Windows x64 comparison), and so is none-x64
+    // before B9b.
     [Theory]
-    [InlineData("x86_64-unknown-linux-musl")]
-    [InlineData("x86_64-unknown-linux-gnu")]
-    public async Task ATestUnitTakesATargetWithARow(string target)
+    [InlineData("x86_64-unknown-linux-musl", null)]
+    [InlineData("x86_64-unknown-linux-gnu", "TestTargetUnavailable_Kd")]
+    [InlineData("x86_64-unknown-none", "Unsupported_Kd")]
+    public async Task ATestUnitTakesATargetWithARow(string target, string? code)
     {
         var source = Valid + "#Test\nfunc check()\n    $expect(true)\n";
         var project = this.WriteProject("App", ("main.kimi", source), $"Targets={{\"{target}\"}}");
         await using var client = new LspTestClient();
         await client.InitializeAsync();
         await client.OpenAsync(this.PathOf("App", "main.kimi"), source);
-        if (TargetProfile.Find(target) is not null)
+        if (code is null)
         {
             await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Test {target}): Completed"));
             return;
         }
 
         var diagnostics = await client.PublishAsync(project);
-        Assert.Contains(diagnostics.EnumerateArray(), static x => x.GetProperty("code").GetString() == "TestTargetUnavailable_Kd");
+        Assert.Contains(diagnostics.EnumerateArray(), x => x.GetProperty("code").GetString() == code);
     }
 
     [Fact]

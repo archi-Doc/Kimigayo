@@ -461,18 +461,20 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // IMPL 20.3: a build records its one selected target's output; several selected targets or one without a row (the Tatara plan's
-    // B7b8: Unsupported) fail before the output's paths, so no record is written under any bin\ directory. Fail-before (B7b8, the design's
-    // fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete") whatever target was selected.
+    // B7b8: Unsupported), the staged none-x64 row included until B9g (B9b), fail before the output's paths, so no record is written under
+    // any bin\ directory. Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated
+    // ("incomplete") whatever target was selected.
     [Theory]
     [InlineData("", false)]
     [InlineData("aarch64-pc-windows-msvc", false)]
     [InlineData("x86_64-unknown-linux-gnu", false)]
+    [InlineData("x86_64-unknown-none", false)]
     [InlineData("x86_64-pc-windows-msvc", true)]
     public async Task LibraryBuildRequiresOneSelectedSupportedTarget(string selected, bool accepted)
     {
         var project = this.Create("public group Example");
         project.ProjectFile.OutputKind = OutputKind.Library;
-        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", "x86_64-unknown-linux-gnu", TargetProfile.Windows.Target];
+        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-unknown-none", TargetProfile.Windows.Target];
         project.KimiOptions.Target = selected;
         Assert.Equal(accepted, await project.Build(TestContext.Current.CancellationToken));
         var bin = Path.Combine(this.directory, "bin");

@@ -59,6 +59,7 @@ public class TimeLibraryTest
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", WindowsCounter, "")]
     [InlineData("x86_64-unknown-linux-musl", WindowsCounter, "UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
+    [InlineData("x86_64-unknown-none", WindowsCounter, "UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
     [InlineData("x86_64-pc-windows-msvc", SelectedCounter, "")]
     [InlineData("x86_64-unknown-linux-musl", SelectedCounter, "")]
     public void WindowsIsDeclaredWhereWindowsHolds(string triple, string source, string errors)

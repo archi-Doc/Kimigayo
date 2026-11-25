@@ -116,10 +116,12 @@ public sealed class CommandExecutionTest : IDisposable
     // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1, ruling 85; design row 19's run half): run of a target whose executables this host
     // does not run is refused before any build or record write, with or without --no-build: the location-only Unsupported_Kd at the
     // project, exit 1, no bin\ directory. Several selected targets are run's input error. Every host: no host runs linux-x64's
-    // executables until B8. Fail-before: the build's "Artifact production currently requires exactly one configured Windows x64
-    // target." (a record under bin\x86_64-pc-windows-msvc\), or with --no-build "Run requires the Windows x64 target.".
+    // executables until B8, nor the staged none-x64 row's (B9b's guard row). Fail-before: the build's "Artifact production currently
+    // requires exactly one configured Windows x64 target." (a record under bin\x86_64-pc-windows-msvc\), or with --no-build "Run requires
+    // the Windows x64 target.".
     [Theory]
     [InlineData("\"x86_64-unknown-linux-musl\"", false, null)]
+    [InlineData("\"x86_64-unknown-none\"", false, null)]
     [InlineData("\"x86_64-unknown-linux-musl\"", true, null)]
     [InlineData("\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-musl\"", true, "Run requires one selected target; select one with --Target.")]
     public async Task RunRefusesATargetThisHostDoesNotRunBeforeAnyBuild(string targets, bool noBuild, string? message)
