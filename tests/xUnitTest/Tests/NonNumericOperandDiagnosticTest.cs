@@ -94,6 +94,7 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(n: bool) -> ()\n    n += 1\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f() -> ()\n    let s = \"a\"\n    s += \"b\"\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(n: i32, b: bool) -> ()\n    n += b\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")] // PLAN G1356, Q13: was TypeMismatch_Kd
+    [InlineData("func f(s: Slice<i64>) -> ()\n    s[0] += true\n", "SharedPathAccess_Kd", "NonNumericOperand_Kd")] // PLAN G1356, Q13 (new): E3d's s2cd, was TypeMismatch_Kd at `true`
     [InlineData("func f(b: bool) -> ()\n    b <<= 1\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(b: bool) -> ()\n    b++\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(x: f64) -> ()\n    x++\n", "InvalidAssignment_Kd", "NonIntegerOperand_Kd")]

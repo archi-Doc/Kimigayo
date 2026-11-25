@@ -216,7 +216,9 @@ public sealed partial class Binding
             this.JudgeHolderPlace(binary.Left, binary.Right, binary);
         }
 
-        if (decision.Failure == BindingFailure.None && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
+        // SPEC 13.3.4: a decision made without the right's Type, over a left that is Never (it fits the right) or missing (the right's own
+        // verdict), is made with it; one that read TryArithmetic's independent Type judged the same terminal Types, so it is made once.
+        if (decision.Failure == BindingFailure.None && independent is null && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
         {
             decision = this.OperatorApplicabilityOf(binary, left, right, scope);
         }
