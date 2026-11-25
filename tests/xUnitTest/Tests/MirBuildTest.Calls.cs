@@ -577,7 +577,7 @@ public sealed partial class MirBuildTest
     [InlineData("", "let b = Box.init()\n    _ = WRITE\n    return 0", "do => return 7", "\\(b)", "")]
     [InlineData("", "let r = WRITE\n    match r\n        .Ok(_) => return 1\n        .Err(_) => return 2", "do => return 7", "\\(42)", "")]
     [InlineData("w: uniq/Utf8Writer", "let b = Box.init()\n    _ = WRITE\n    return 0", "w", "\\(b)x\\(b)", "")]
-    public void ANeverWritersWritesAreBuiltForTheChecks(string parameters, string statements, string writer, string literal, string problems)
+    public void ATryWritesWritesAreBuiltWithANeverOrARealWriter(string parameters, string statements, string writer, string literal, string problems)
     {
         var c = Compile("struct Box\n    Self is Utf8Format\n    public init() => ()\n" +
             "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => $tryWrite(writer, \"v\")\n" +
