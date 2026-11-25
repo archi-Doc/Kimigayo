@@ -36,7 +36,7 @@ namespace Kimi.Compiler.Mir;
 // Invariants: a CallRetention.Limit, a genuine limit (Binding's storage bounds or a keeper cycle), retains nothing the stratum follows;
 // another terminator, an intrinsic without a declaration and a default template's call have no CallRetention.
 // Must not read a state or apply a record (MirBorrows.Calls), derive retention (TyCtxt.Retains) or record a problem: the checks record the
-// Limit as a located Unsupported_Kd at the call (R4-M51, MirBorrows.Locations).
+// Limit as OwnershipDepthLimit_Kd at the call (R4-M51, R4-M153, MirBorrows.Locations).
 internal sealed partial class MirBorrows
 {
     private readonly List<int> covering = []; // By operand position: the inputs whose storage the store being kept also writes (Cover).
@@ -185,7 +185,8 @@ internal sealed partial class MirBorrows
     // its substitution's case (TyCtxt.CaseSubst). So a Closure callee's call receiver input is the receiver its case admits
     // (TyCtxt.ClosureReceiverIn), and an input of a pair layer is its case's Type, by value in the owner case, so the call writes nothing
     // through it there (SPEC 15.6.4); none for another terminator, an intrinsic without a declaration or a default template's call. Its
-    // Limit, a genuine limit, retains nothing the stratum follows: the checks record a located Unsupported_Kd at the call (R4-M51); a call
+    // Limit, a genuine limit, retains nothing the stratum follows: the checks record it as OwnershipDepthLimit_Kd at the call (R4-M51,
+    // R4-M153, MirBorrows.Locations); a call
     // over storage Binding rejected has its rows (G240).
     private CallRetention? Retaining(in MirTerminator call)
     {
