@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 
 // Call retention, atoms (SPEC 15.6.4 steps 1-4; contract in TyCtxt.Retention.cs): each input's and the result's Origin atoms and
 // carriers (RetentionInput, RetentionWalk), a Closure contract's call receiver input (ClosureReceiver) and every Closure part read as
-// its body sees it (ClosureEnvironment; DECISIONS R4-M148), the content a raw layer's Origin lets the call write (RawContent) and the
-// borrow a Type refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
+// its body sees it (ClosureEnvironment; DECISIONS R4-M148), the content a raw layer's Origin lets the call write (RawContent), the
+// borrow a Type refers through (BorrowReferent) and the Closure whose call receiver a borrow is (ReceiverClosure); Binding.Retention.cs
+// reads them into premises, Binding.Retention.Rows.cs into rows.
 public sealed partial class Binding
 {
     // SPEC 15.6.4 (DECISIONS R4-M116, BU-40, BU-66): the raw sources of the contract and of each erased signature being walked, each input
@@ -52,6 +53,14 @@ public sealed partial class Binding
     private static bool SharedLayer(BoundType type)
         => type.Kind == BoundTypeKind.Slice ||
             (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
+
+    // SPEC 15.8.2 (DECISIONS R4-M148; PLAN G941): the Closure literal whose call receiver a borrow is, given the borrow's outer Origin
+    // (BorrowReferent's) and the Type past it (its referent, or a key's Type past it): the outer Origin is the literal's receiver atom ρ
+    // (ClosureReceiver's, at ClosureValueSlot) and the Type is that literal's Closure (its symbol declares the literal); null for any other.
+    // The one test of a receiver: RetentionInput, RootWalk and OwnLayers read it.
+    private static FunctionKoto? ReceiverClosure(BoundOrigin? outer, BoundType? closure)
+        => outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver } &&
+            ReferenceEquals(closure?.Symbol?.Declaration, receiver) ? receiver : null;
 
     // BU-225's one predicate at a layer (PLAN G963): whether a walk that meets `type` through no shared layer and outside a callable meets
     // what lies past it so: past a pair layer only where its binder admits an exclusive Semantics (IsInvariantLayer, BU-3); past no
@@ -133,7 +142,7 @@ public sealed partial class Binding
             var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer, place, written, HiddenWritable: exclusive);
             var captured = content with { Place = place | RetentionPlace.Captured, Signature = Below(written, null) };
             var variance = exclusive ? OriginVariance.Invariant : OriginVariance.Covariant;
-            if (outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
+            if (ReceiverClosure(outer, referent) is { } receiver)
             {
                 var (captures, environment) = (receiver.ClosureDefinition!.Captures, this.ClosureEnvironment(referent));
                 for (var i = 0; i < environment.Components.Count; i++)

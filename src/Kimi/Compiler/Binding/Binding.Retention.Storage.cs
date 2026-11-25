@@ -112,11 +112,11 @@ public sealed partial class Binding
     // The storage walk from input j's value (DECISIONS R4-M154): the value itself is the callee's, not storage; what its first exclusive
     // layers refer to is its root (Own), a borrowed input's referent among them. A Closure's call receiver's referent holds its environment
     // bindings as Fields where the receiver is exclusive (past a shared one the call writes nothing, SPEC 5.2.1): a `var` binding is a
-    // position, a `let` binding never, and what an exclusive layer in either refers to lies past it (SPEC 15.8.2, DECISIONS R4-M148).
+    // position, a `let` binding never, and what an exclusive layer in either refers to lies past it (SPEC 15.8.2, DECISIONS R4-M148); the
+    // receiver by the one test (ReceiverClosure), each binding by its component index.
     private void RootWalk(OriginPremiseEnvironment environment, BoundType input, BoundType? declared)
     {
-        if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent &&
-            outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
+        if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent && ReceiverClosure(outer, referent) is { } receiver)
         {
             var (captures, bindings) = (receiver.ClosureDefinition!.Captures, this.ClosureEnvironment(referent));
             for (var i = 0; exclusive && i < bindings.Components.Count; i++)
