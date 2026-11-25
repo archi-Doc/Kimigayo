@@ -8,10 +8,12 @@ namespace XunitTest;
 // is storage the call may write wherever an input's walk meets the part through no shared layer and outside a callable, so a callable
 // the contract hands the body, writing through such a part, may keep an argument there, used after every point: a by-value abstract
 // part (a bare T, a Field, a Tuple element, an Option payload, a nested Type argument, a Closure's capture), a writer that takes the
-// T by value (`set: (T, E)`, also called directly), and a `during self` layer's AnyOf content of a by-value holder. Each invalid row
-// has A5's one record at its later write; each valid twin (a writer through `ref/T` only or past a shared layer, a writer handed
-// nothing of y, none, a holder admitting nothing) has none. Rows: G963's coverage table, labelled from SPEC before any output; the
-// writable `x: uniq/T` controls of writerFn and writerReq are MirBorrowsTest.Wk's. Fails on 0658a2b82: every invalid row but the
+// T by value (`set: (T, E)`, also called directly), and a `during self` layer's AnyOf content of a by-value holder or of one passed by
+// `uniq` whose state reaches storage the body does not own only through a `ref/` parameter (the content holds the holder's Origins'
+// values, not the state's). Each invalid row has A5's one record at its later write; each valid twin (a writer through `ref/T` only or
+// past a shared layer, a writer handed nothing of y, none, a holder admitting nothing, a holder of another Origin, a holder passed by
+// `ref`, a holder with no content) has none. Rows: G963's coverage table, labelled from SPEC before any output; the writable
+// `x: uniq/T` controls of writerFn and writerReq are MirBorrowsTest.Wk's. Fails on 0658a2b82: every invalid row but the
 // `x: uniq/T` controls, rawUniqTFnBad and anyUniqBad is accepted. What a by-value part hides takes rule 3's fill alone, never a hold
 // walk of the part (C-386's F2): a by-value associated projection whose Contract argument holds a raw layer, with no callable handed,
 // keeps nothing (SPEC 15.6.4: a raw layer the abstract Type does not show adds no reach of its own; the proj*Ok rows, rejected on
@@ -69,6 +71,10 @@ public sealed partial class MirBorrowsTest
         ["anyUniqBad"] = "struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n    public init(peer: ref/i32 during a)\n        self.data = null\n        self.peer = peer\nfunc f(h: uniq/(H during o), y: uniq/i32 during o) => ()\nfunc anyUniqBad(value: uniq/i32 during o, p: ref/i32 during o) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    var h = H.init(peer: p)\n    f(h@uniq, child@move)\n    v@follow = 5\n",
         ["anyByValueNoOriginOk"] = "struct H2\n    public var data: raw/i32 during self\n    public var n: i32\n    public init()\n        self.data = null\n        self.n = 0\nfunc f(h: H2, y: uniq/i32 during o) => ()\nfunc anyByValueNoOriginOk(value: uniq/i32 during o) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f(H2.init(), child@move)\n    v@follow = 5\n",
         ["anyByValueCopyOk"] = "struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n    public init(peer: ref/i32 during a)\n        self.data = null\n        self.peer = peer\nfunc f(h: H during o, y: i32) => ()\nfunc anyByValueCopyOk(value: uniq/i32 during o, p: ref/i32 during o) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f(H.init(peer: p), 3)\n    v@follow = 5\n",
+        ["anyRefOriginOk"] = "struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n    public init(peer: ref/i32 during a)\n        self.data = null\n        self.peer = peer\nfunc f(h: uniq/(H during m), y: uniq/i32 during o) => ()\nfunc anyRefOriginOk(value: uniq/i32 during o, p: ref/i32 during m) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    var h = H.init(peer: p)\n    f(h@uniq, child@move)\n    v@follow = 5\n",
+        ["anyRefHolderOk"] = "struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n    public init(peer: ref/i32 during a)\n        self.data = null\n        self.peer = peer\nfunc f(h: ref/(H during o), y: uniq/i32 during o) => ()\nfunc anyRefHolderOk(value: uniq/i32 during o, p: ref/i32 during o) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    var h = H.init(peer: p)\n    f(h@ref, child@move)\n    v@follow = 5\n",
+        ["anyNoContentOk"] = "struct HN {a}\n    public var n: i32\n    public var peer: ref/i32 during a\n    public init(peer: ref/i32 during a)\n        self.n = 0\n        self.peer = peer\nfunc f(h: uniq/(HN during o), y: uniq/i32 during o) => ()\nfunc anyNoContentOk(value: uniq/i32 during o, p: ref/i32 during o) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    var h = HN.init(peer: p)\n    f(h@uniq, child@move)\n    v@follow = 5\n",
+        ["anyDeclaredRawBad"] = "struct HA {a}\n    public var data: raw/i32\n    public var peer: ref/i32 during a\n    public init(peer: ref/i32 during a)\n        self.data = null\n        self.peer = peer\nfunc f(h: uniq/(HA during o), y: uniq/i32 during o) => ()\nfunc anyDeclaredRawBad(value: uniq/i32 during o, p: ref/i32 during o) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    var h = HA.init(peer: p)\n    f(h@uniq, child@move)\n    v@follow = 5\n",
         ["byVUniqRefFnOk"] = "func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, E) -> ()) -> ()\n    return\nfunc byVUniqRefFnOk<T>(value: uniq/i32 during o, other: T, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(other@move, child@move, ka, ku, set@move)\n    v@follow = 5\n",
         ["byVUniqUniqFnBad"] = "func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, E) -> ()) -> ()\n    return\nfunc byVUniqUniqFnBad<T>(value: uniq/i32 during o, other: T, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(other@move, child@move, ka, ku, set@move)\n    v@follow = 5\n",
         ["uniqTUniqUniqFnBad"] = "func f<T, E>(x: uniq/T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, E) -> ()) -> ()\n    return\nfunc uniqTUniqUniqFnBad<T>(value: uniq/i32 during o, other: T, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n    var s = other@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(s@uniq, child@move, ka, ku, set@move)\n    v@follow = 5\n",
@@ -132,6 +138,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("anyUniqBad", "ComparisonLoanConflict_Kd v@follow = 5")]
     [InlineData("anyByValueNoOriginOk", "")]
     [InlineData("anyByValueCopyOk", "")]
+    [InlineData("anyRefOriginOk", "")]
+    [InlineData("anyRefHolderOk", "")]
+    [InlineData("anyNoContentOk", "")]
+    [InlineData("anyDeclaredRawBad", "ComparisonLoanConflict_Kd v@follow = 5")]
     [InlineData("byVUniqRefFnOk", "")]
     [InlineData("byVUniqUniqFnBad", "ComparisonLoanConflict_Kd v@follow = 5")]
     [InlineData("uniqTUniqUniqFnBad", "ComparisonLoanConflict_Kd v@follow = 5")]

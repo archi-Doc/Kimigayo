@@ -2366,9 +2366,10 @@ public sealed partial class MirBorrowsTest
     // read (UnsatisfiedOriginRelation_Kd), and h is still a node through the Array element's Borrow layer.
     [InlineData("p1rOwnStepShLoanBad", "var z: i32 = 2|let r = s@ref|var h: raw/(ref/i32) = r@follow@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = r@follow@follow|r@follow@follow UnsatisfiedOriginRelation_Kd|z = 3", "s: uniq/(raw/(ref/i32 during o))")]
     [InlineData("p1rOwnStepParamBad", "var z: i32 = 2|var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|p1Put7(arr@uniq, z@ref)|z = 3", "var h: raw/(ref/i32) = s@follow|s@follow UnsatisfiedOriginRelation_Kd|z = 3", "s: ref/(raw/(ref/i32 during o))")]
-    // P1-d's row, at dev's records: a Deep holder d with Φ_W beside h. Once c3 gives s's slot {Φ_E}, E is reached only by h's own pointer
-    // with its layer's record, and d's left-out step adds p1St2(t@uniq)'s limit by reading, a record added on a program dev rejects.
-    [InlineData("p1dProbe", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var t = (arr@uniq, d@uniq)|p1St2(t@uniq)", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var d = (w, " + P1Nest + ") OwnershipDepthLimit_Kd", "s: ref/(raw/(ref/i32 during o)), w: uniq/i32 during k")]
+    // P1-d's row: a Deep holder d with Φ_W beside h. s's slot is {Φ_E} (a `ref/` parameter), so E is reached only by h's own pointer with
+    // its layer's record, and d's left-out step would write E with all it carries: p1St2(t@uniq)'s limit, a record added on a program dev
+    // rejects (dev wrote E past h through s's Φ_W).
+    [InlineData("p1dProbe", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var t = (arr@uniq, d@uniq)|p1St2(t@uniq)", "var h: raw/(ref/i32) = s@follow|var arr: Array<uniq/(raw/(ref/i32))> = [h@uniq]|var d = (w, " + P1Nest + ")|var d = (w, " + P1Nest + ") OwnershipDepthLimit_Kd|p1St2(t@uniq) OwnershipDepthLimit_Kd", "s: ref/(raw/(ref/i32 during o)), w: uniq/i32 during k")]
     public void AStoreWritesUnownedStorageOnlyPastWhatNoSharedLayerReaches(string id, string lines, string expected, string parameters = "")
         => Assert.Equal(OwnStepExpected(id, expected), P1Problems(id, parameters, lines));
 

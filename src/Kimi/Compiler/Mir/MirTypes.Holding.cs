@@ -22,7 +22,8 @@ internal enum MirWrites : byte
     /// raw layer whose step lets a call write past it counting as one), an abstract part past an exclusive reference, a pair layer, or a
     /// Function value, which may be one (the guard); a Closure value by its environment's parts (DECISIONS R4-M148). Past it the holders
     /// its exclusive Loans and addresses name, never one only a shared Loan names, and E where its state carries Φ_W (SPEC 15.6.4 item 1;
-    /// DECISIONS R4-M177, R4-M249).</summary>
+    /// DECISIONS R4-M177, R4-M249), or Φ_E where the holder's Type holds storage it does not state (<see cref="MirHolding.Unstated"/>;
+    /// MirBorrows.Reach's declared step).</summary>
     Through,
 
     /// <summary>No part gives the write fact, and a stored raw layer stepping Exclusive whose members Binding does not answer
@@ -60,11 +61,14 @@ internal readonly record struct MirHoldingKey(BoundType Type, bool Stored, Bound
 /// may write past it, and whether it reaches storage past its own writable (SPEC 15.6.4 item 1, 5.2.1 condition 3): from a position of
 /// its own storage a step that is no shared dereference (<see cref="HoldStep.Shared"/>) leads past it, or it holds an abstract part, an
 /// erased environment, a declaration-written content or a part past the walk's bound; a Type argument's part gives nothing (SPEC
-/// 15.3.5).</summary>
+/// 15.3.5); and whether its own storage holds storage its Type does not state.</summary>
 /// <param name="Loan">Whether a value may hold a Loan.</param>
 /// <param name="Writes">What a call may write past it (None where it holds no Loan).</param>
 /// <param name="Writable">Whether it reaches storage past its own writable.</param>
-internal readonly record struct MirHolding(bool Loan, MirWrites Writes, bool Writable);
+/// <param name="Unstated">Whether its own storage, within the walk's bound, holds storage its Type does not state (Past's arms that
+/// decide by what an entry holds: an erased environment, a layer a declaration wrote without an Origin, a `during self` layer's values
+/// of Origins that may keep an exclusive Loan; SPEC 5.7 Calls, 15.6.4; the owner's O-13 Q3 (a); DECISIONS BU-46, BU-225).</param>
+internal readonly record struct MirHolding(bool Loan, MirWrites Writes, bool Writable, bool Unstated);
 
 // What a value may hold: raw authority (HoldsRaw) and Loans with what a call may write past them (HoldsLoans), each a walk of its parts.
 internal static partial class MirTypes
@@ -112,19 +116,21 @@ internal static partial class MirTypes
     /// its key is never entered within the bound in that mode (for a LoanOnly part, nor in its full mode). The same walk answers whether
     /// the value reaches storage past its own writable (<see cref="MirHolding.Writable"/>): every step of its own storage that is no
     /// shared dereference, an abstract part, an erased environment, a declaration-written content and a part past the bound give it, a
-    /// Type argument's part never (A5's mode where a parameter forms its reach, MirBorrows.Solve).</summary>
+    /// Type argument's part never (A5's mode where a parameter forms its reach, MirBorrows.Solve); and whether its own storage holds
+    /// storage its Type does not state (<see cref="MirHolding.Unstated"/>): Past's content arms give it (A5's declared step).</summary>
     /// <param name="type">The Type.</param>
     /// <param name="types">The Type context, whose holdings and stored raw layers' members the walk reads.</param>
     /// <param name="seen">Scratch for the depth each key was entered at in each mode (<see cref="MirModeDepths"/>), cleared first.</param>
     /// <param name="members">Scratch for a stored layer's members, used in stack order and left as given.</param>
     /// <param name="entries">Scratch for the entries the walk is reading, used in stack order and left as given.</param>
-    /// <returns>Whether the value may hold a Loan, what a call may write past it, and whether it reaches past its own writable.</returns>
+    /// <returns>Whether the value may hold a Loan, what a call may write past it, whether it reaches past its own writable and whether
+    /// its own storage holds storage its Type does not state.</returns>
     internal static MirHolding HoldsLoans(
         BoundType? type, TyCtxt types, Dictionary<MirHoldingKey, MirModeDepths> seen, List<RawMember> members, List<Hold> entries)
     {
         seen.Clear();
         var found = Bounded(new Holding(types, seen, members, entries).Holds(type, null, null, Own, 0), seen);
-        return new(found.Loan, found.Loan ? Guard(found) : MirWrites.None, found.Writable);
+        return new(found.Loan, found.Loan ? Guard(found) : MirWrites.None, found.Writable, found.Unstated);
     }
 
     /// <summary>Gets what a call may write past the values at Places' keys, the one walk of <see cref="HoldsLoans"/> entered at each
@@ -256,7 +262,8 @@ internal static partial class MirTypes
             _ = types.Holdings(type, written, holder, entries);
             var last = entries.Count;
             var found = default(Facts);
-            var done = (mode & ~LoanOnly) == Own ? new Facts(true, mode == Own ? MirOutcome.Decided : MirOutcome.None) : Met(mode);
+            var done = (mode & ~LoanOnly) == Own
+                ? new Facts(true, mode == Own ? MirOutcome.Decided : MirOutcome.None, unstated: mode == Own) : Met(mode);
             for (var i = first; i < last && !found.Covers(done); i++)
             {
                 found = found.Join(this.Entry(entries[i], type, written, holder, mode, depth + 1));
@@ -319,8 +326,9 @@ internal static partial class MirTypes
         // own step passes its Part's answer on, and a shared one gives nothing.
         private Facts Past(in Hold entry, BoundType layer, BoundType? written, BoundType? holder, int depth) => (entry.Step, entry.Holds) switch
         {
-            (HoldStep.Erased, _) or (_, HoldContent.Any) => new(false, MirOutcome.Decided, writable: true),
-            (_, HoldContent.AnyOf) => (entry.Flags & HoldFlags.ExclusiveOrigin) != 0 ? new(false, MirOutcome.Decided, writable: true) : default,
+            (HoldStep.Erased, _) or (_, HoldContent.Any) => new(false, MirOutcome.Decided, writable: true, unstated: true),
+            (_, HoldContent.AnyOf) => (entry.Flags & HoldFlags.ExclusiveOrigin) != 0
+                ? new(false, MirOutcome.Decided, writable: true, unstated: true) : default,
             (HoldStep.Shared, _) => default,
             (HoldStep.Own, _) => this.Holds(entry.Part, null, null, Own, depth),
             (_, HoldContent.Members) when holder is not null => this.Members(entry, layer, written, holder, depth).Join(Writable),
@@ -347,10 +355,11 @@ internal static partial class MirTypes
     }
 
     // What the holding walk finds in a part: Loan (in the value's own storage), the guard's outcome where the mode reads the write fact,
-    // Named, an abstract part in the value's own storage there (SPEC 15.6.4), and Writable (MirHolding's), composed only by Join
-    // (MirOutcome's). Covers needs no Writable: the walk stops only at the write fact, and every arm that gives it in the value's own
-    // storage gives Writable.
-    private readonly struct Facts(bool loan, MirOutcome writes, bool named = false, bool writable = false)
+    // Named, an abstract part in the value's own storage there (SPEC 15.6.4), and Writable and Unstated (MirHolding's), composed only by
+    // Join (MirOutcome's). Covers needs no Writable: the walk stops only at the write fact, and every arm that gives it in the value's own
+    // storage gives Writable. It needs Unstated, which no other fact implies: a value's own storage is walked on past the write fact
+    // until a content is found.
+    private readonly struct Facts(bool loan, MirOutcome writes, bool named = false, bool writable = false, bool unstated = false)
     {
         internal bool Loan => loan;
 
@@ -360,10 +369,13 @@ internal static partial class MirTypes
 
         internal bool Writable => writable;
 
-        internal Facts Join(Facts other)
-            => new(loan || other.Loan, writes.Join(other.Writes), named || other.Named, writable || other.Writable);
+        internal bool Unstated => unstated;
 
-        // Whether these facts include `done`'s: Loan, and the write fact (the outcome's top) where `done` has it.
-        internal bool Covers(Facts done) => (loan || !done.Loan) && (writes.IsDecided || !done.Writes.IsDecided);
+        internal Facts Join(Facts other) => new(
+            loan || other.Loan, writes.Join(other.Writes), named || other.Named, writable || other.Writable, unstated || other.Unstated);
+
+        // Whether these facts include `done`'s: Loan, the write fact (the outcome's top) and Unstated where `done` has them.
+        internal bool Covers(Facts done)
+            => (loan || !done.Loan) && (writes.IsDecided || !done.Writes.IsDecided) && (unstated || !done.Unstated);
     }
 }

@@ -296,7 +296,7 @@ public partial class TypeDagScalingTest
     private static string Holding(Compilation c, BoundType type, out Dictionary<MirHoldingKey, MirModeDepths> seen)
     {
         seen = new();
-        var (holds, writes, _) = MirTypes.HoldsLoans(type, c.Types, seen, [], []);
+        var (holds, writes, _, _) = MirTypes.HoldsLoans(type, c.Types, seen, [], []);
         return $"{holds} {writes}"; // HoldsLoans gives None where the value holds no Loan.
     }
 

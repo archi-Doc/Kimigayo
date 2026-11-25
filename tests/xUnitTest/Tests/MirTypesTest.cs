@@ -125,6 +125,29 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         static string Nested(int levels) => new string('(', levels) + "i32" + string.Concat(Enumerable.Repeat(", i32)", levels));
     }
 
+    // SPEC 15.6.4, 5.7 Calls (the owner's O-13 Q3 (a); DECISIONS BU-46, BU-225): whether a value's own storage holds storage its Type
+    // does not state (MirHolding.Unstated, A5's E past such a holder): a `during self` layer's values of the holder's Origins (selfOrigin),
+    // also after a part that gives the write fact first (uniqFirst), a layer a declaration wrote without an Origin (declared) and a
+    // Function value's environment (action); not a `during self` layer of a holder with no Origin argument (selfNoOrigin), a holder past a
+    // shared (sharedHolder) or an exclusive reference (uniqHolder), a raw layer the parameter's Type expression writes (rawByte) or an
+    // abstract part (value).
+    [Fact]
+    public void TheHoldingWalkSaysWhetherAValueHoldsStorageItsTypeDoesNotState()
+    {
+        var (body, c) = Probe(
+            "struct HS {a}\n    var data: raw/i32 during self\n    var peer: ref/i32 during a\n" +
+            "struct HN\n    var data: raw/i32 during self\n" +
+            "struct HD\n    var data: raw/i32\n" +
+            "struct HU {a}\n    var u: uniq/(uniq/i32 during a) during a\n    var data: raw/i32 during self\n" +
+            "func probe<T>(selfOrigin: HS during a, uniqFirst: HU during a, declared: HD, action: () -> (), selfNoOrigin: HN, " +
+            "sharedHolder: ref/(HS during a), uniqHolder: uniq/(HS during a), rawByte: raw/u8, value: T)\n    return\n");
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
+        Assert.Equal(
+            [("selfOrigin", true), ("uniqFirst", true), ("declared", true), ("action", true), ("selfNoOrigin", false),
+                ("sharedHolder", false), ("uniqHolder", false), ("rawByte", false), ("value", false)],
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], []).Unstated)).ToArray());
+    }
+
     // SPEC 23.1.1, IMPL 21.3.2 (DECISIONS R4-M153): a part past the walk's bound where the write fact would be read is the guard's own
     // outcome, Deep, never the write fact: past an exclusive reference (unique40) and in the value's own storage (value40), while a decided
     // write elsewhere in the value outranks it (mixed40); past a shared reference nothing is read (shared40), and at depth 10 the walk is
