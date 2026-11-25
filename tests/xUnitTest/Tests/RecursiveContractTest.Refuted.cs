@@ -495,7 +495,11 @@ public sealed partial class RecursiveContractTest
     // G563C-2 twins (p1/twins.txt): a base on no cycle whose clause K inherits stays clean, and so does a use of it (r2-base); a refiner
     // with a clause of its own rests on the erroneous Contract's record, with no record of its own (r2-refiner-rest). F's G563C-3 (the
     // Middle's C-562 re-read B4; labels p2/labels-p2.md): an argument is read as a proposition's is (NormalizedForm), so a completed
-    // projection is its binding (8.2.3): `Src<A>.(HasItem).Item` is A, a flat pass (vt.alias-flat, -assoc, -second: valid).
+    // projection is its binding (8.2.3): `Src<A>.(HasItem).Item` is A, a flat pass (vt.alias-flat, -assoc, -second: valid). F's
+    // G563C-6 (8.3.3 read literally: "each reference ... in what `Self is K` supplies ... (an ancestor conformance or a Constraint)"): a
+    // supplied Constraint passes through every operand whatever its connective, so MG<Option<A>> under an `and`, an `or` or a `not`
+    // makes MG erroneous (r2b-and, r2b-or, rv.not-grow; labels p1/twins.txt, review/labels-rv.md). Only the `and` clause is related:
+    // its operand is a premise of its own, an `or`'s or a `not`'s is not (the forming base's open issue).
     [Theory]
     [InlineData("x.mg-decl", G563Mg, G563MgRecord)]
     [InlineData("m.r-expand-q", G563Mg + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MG<i32>\n    needMark<T.(Tree).Child, Option<i32>>(c)\n", G563MgRecord + " | ...")]
@@ -523,6 +527,9 @@ public sealed partial class RecursiveContractTest
     [InlineData("n.refiner", G563Mg + "contract Sub: MG<i32>\n", G563MgRecord + " | ...")]
     [InlineData("r2-base", G563Tree + "contract Mark<A>\ncontract Base<A>: Tree\n    Self.(Tree).Child is Mark<A>\ncontract MG<A>: Base<A>\n    Self.(Tree).Child is MG<Option<A>>\nfunc useBase<T>(t: ref/T) -> i32\n    T is Base<i32>\n    return 0\n", "InvalidConstraint_Kd: contract MG<A>: Base<A> <- Self.(Tree).Child is MG<Option<A>>")]
     [InlineData("r2-refiner-rest", G563Mg + "contract Sub3<B>: MG<B>\n    Self.(Tree).Child is Mark<B>\n", G563MgRecord)]
+    [InlineData("r2b-and", G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is MG<Option<A>> and Mark<A>\n", "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A> <- Self.(Tree).Child is MG<Option<A>> and Mark<A>")]
+    [InlineData("r2b-or", G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is MG<Option<A>> or Mark<A>\n", "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A>")]
+    [InlineData("rv.not-grow", G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is not MG<Option<A>>\n", "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A>")]
     [InlineData("n.scc", G563Tree + "contract E<A>: Tree\n    Self.(Tree).Child is E<Option<A>>\n    Self.(Tree).Child is F<A>\ncontract F<B>: Tree\n    Self.(Tree).Child is E<B>\n", "InvalidConstraint_Kd: contract E<A>: Tree <- Self.(Tree).Child is E<Option<A>>; Self.(Tree).Child is F<A> | InvalidConstraint_Kd: contract F<B>: Tree <- Self.(Tree).Child is E<B>")]
     [InlineData("n.qual", "contract DQ<U>\n    associate M\n    Self.(DQ<Option<U>>).M is i32\n", "*: * | ...")]
     public void AnExpandingContractCycleIsItsContractsError(string form, string program, string records)

@@ -11,8 +11,11 @@ namespace Kimi.Compiler;
 //   another", linear).
 // - Inputs: the pass's Contract shapes (contractShapes: a library or earlier-layer Contract never refers to a later one, so every cycle
 //   lies inside one pass); each Contract's supply (ContractSupply, the one enumeration of what `Self is K` supplies, SPEC 8.3.2: its
-//   ancestors and its own and inherited clauses; an `and` split, 8.3.1; an `or`, a `not` or an identity premise supplies no conformance);
-//   the Contract's parameters and each reference's arguments in the Contract's view, read as a proposition's are (NormalizedForm: SPEC's
+//   ancestors and its own and inherited clauses, each a Constraint whole). SPEC 8.3.3 counts "each reference ... in what `Self is K`
+//   supplies ... (an ancestor conformance or a Constraint)", so every Contract premise about Self or a projection of Self among a
+//   supplied Constraint's operands passes, whatever the connective (`and`, `or`, `not`; F's G563C-6). A Contract reference inside a
+//   Type of an identity premise (a projection's qualifier) is not walked (G563C-6 leaves it out; its twin is labelled). The Contract's
+//   parameters and each reference's arguments are read in the Contract's view as a proposition's are (NormalizedForm: SPEC's
 //   "normalized under K's premises", a completed projection interpreted, 8.2.3; F's Q1 (a) and G563C-3: one interpretation).
 // - Outputs: one InvalidConstraint_Kd at each erroneous Contract (DECISIONS R4-M115: the 8.3.3 errors use existing codes), after
 //   admission point 3, where the arguments' normalization exists (a binding is admitted only from there; F's G563C-5). Every use and
@@ -22,7 +25,8 @@ namespace Kimi.Compiler;
 //   moves and the failed-context read rests every later read. Each premise that forms a pass of such a set failed in the view of the
 //   Contract whose supply holds it (FailPremise), so the adapter's InvalidConstraint row relates the Contract's own clauses among them
 //   (FailedPremiseClauses, F's Q2 (a)). A forming ancestor reference is a base, not a clause, and is not related (PLAN G563's open
-//   issue: a "reference" role).
+//   issue: a "reference" role). Nor is the clause of a reference under an `or` or a `not`: its forming premise is an operand, which
+//   is no fact of the environment, and FailPremise fails a fact only (the same open issue).
 // - Invariants: the pass graph (a node per Contract parameter; a pass with its expanding flag and the premise that forms it) is call
 //   scratch in pooled fields, built and emptied in one call (warm 0 B), never published: no IR form, no vocabulary entry. Linear in the
 //   supplies' references, their arguments' parts (each once) and the passes; the strongly connected sets by an iterative Tarjan walk with
@@ -98,7 +102,7 @@ public sealed partial class Binding
     }
 
     // The passes from a Contract's parameters (its own reference's components, SelfType's, in its view): each ancestor of its supply,
-    // and each Contract premise of it whose subject is Self or a projection of Self (OfSearchSelf), an `and` operand by operand.
+    // and each Contract premise among a supplied Constraint's operands whose subject is Self or a projection of Self (OfSearchSelf).
     private void AddContractPasses(BoundContract shape)
     {
         if (shape.Symbol.Schema is not { GenericSlots.Count: > 0 })
@@ -130,18 +134,25 @@ public sealed partial class Binding
         this.expansionForms.Clear();
     }
 
-    // A supplied premise: a Contract premise about Self or a projection of Self passes through its reference; an `and` through each
-    // operand (SPEC 8.3.1); any other premise supplies no conformance.
+    // A supplied premise, a Constraint SPEC 8.3.3 counts whole: "each reference ... in what `Self is K` supplies ... (an ancestor
+    // conformance or a Constraint)" (F's G563C-6). A Contract premise about Self or a projection of Self passes through its reference,
+    // and every operand (Left, and Right where present) is walked whatever the connective: `and`, `or` and `not` alike, since the
+    // Disjunction and Negation rows decide proof results, not what is supplied.
     private void AddPremisePasses(BoundConstraint premise, BoundType self, BindingScope scope, int from)
     {
-        if (premise.Kind == ConstraintKind.And)
-        {
-            this.AddPremisePasses(premise.Left!, self, scope, from);
-            this.AddPremisePasses(premise.Right!, self, scope, from);
-        }
-        else if (premise is { Kind: ConstraintKind.Contract, Contract: { } reference, Subject: { } subject } && OfSearchSelf(subject, self))
+        if (premise is { Kind: ConstraintKind.Contract, Contract: { } reference, Subject: { } subject } && OfSearchSelf(subject, self))
         {
             this.AddReferencePasses(reference, scope, from, premise);
+        }
+
+        if (premise.Left is { } left)
+        {
+            this.AddPremisePasses(left, self, scope, from);
+        }
+
+        if (premise.Right is { } right)
+        {
+            this.AddPremisePasses(right, self, scope, from);
         }
     }
 
