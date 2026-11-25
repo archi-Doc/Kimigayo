@@ -25420,7 +25420,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     answers both polarities) read `FirstRows`' available rows
     instead of scanning the scope's facts, so their answers no longer depend on which projections the scope's syntax wrote.
   - Staged: `Supply`'s fact scan kept its two Callable gate terms for a `not Callable` premise until R7-C2c2 c2-5's Not rows
-    (superseded by R7-M107, c2-5b at <head>: a negated leaf atom is its kind's row and the gate terms are removed).
+    (superseded by R7-M107, c2-5b at d45cf671d: a negated leaf atom is its kind's row and the gate terms are removed).
   - Rejected: a depth or identity rule per reader, merging Callable rows by signature, a side table of effect clauses, a kind
     argument or a mode on the rows' request, a second walk inside `Supply`, a Source rule in the walk (the index's order gives it).
   - `HandedSignatures` reads the scope's closure and moves to R7-C2e2 (e2-2c) (superseded by R7-M32, c2-3c: it reads `FirstRows`).
