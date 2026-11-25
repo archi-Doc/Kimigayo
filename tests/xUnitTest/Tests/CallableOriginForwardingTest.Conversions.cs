@@ -1216,7 +1216,8 @@ public partial class CallableOriginForwardingTest
     // result (g464v, g464v2), a Type slot bound to its Type (g464u, g464u2) and a Case payload (g464e) are valid, as through a value
     // (g464vv), beside an input premise (g464s) and in a local annotation (g464l); g464 keeps host's record at its written
     // `Option<T during s>` and k's clause record at `s`, and the call's UnprovenConstraint_Kd that restated the first goes (DECISIONS
-    // Q13, rule W); a value call proves its input (g464c, with the construction's own UnprovenConstraint_Kd at `.None`, PLAN's open issue).
+    // Q13, rule W); a value call proves its input (g464c: its UnprovenOriginRelation_Kd at `.None`, which carries the call's instantiated
+    // input, so its UnprovenConstraint_Kd, the same clause's second record there, goes: PLAN G1278, G1278-A, Q13, F-2, as r4 below).
     // A Case construction is a call (PLAN G418 (2)): after a failed payload it still judges its Constraints over the solution it fixed,
     // so its own UnprovenConstraint_Kd stays beside the payload's record where it infers an Origin (c_closure, c_first, the inner one of
     // c_nested); where the expected Type fixes every Origin (r4, r4v, c_expected and the no-failure twin r4n) it carries that Type and
@@ -1233,7 +1234,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("g464u", SlotK + NestedInputHost + "    return ku(s, h@move)\n", "")]
     [InlineData("g464u2", SlotK + NestedBothHost + "    return ku(s, h@move)\n", "")]
     [InlineData("g464l", NestedT + NestedInputHost + "    let g: (Option<T during s>) -> i32 = h@move\n    return 0\n", "")]
-    [InlineData("g464c", NestedT + NestedInputHost + "    return h(.None)\n", "UnprovenConstraint_Kd .None; UnprovenOriginRelation_Kd .None")]
+    [InlineData("g464c", NestedT + NestedInputHost + "    return h(.None)\n", "UnprovenOriginRelation_Kd .None")]
     [InlineData("g464e", NestedT + "enum E {q}\n    C(ref/i32 during q, (Option<T during q>) -> i32)\n    N\n\n" + NestedInputHost + "    let e = E.C(s, h@move)\n    return 0\n", "")]
     [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten + "; UnprovenOriginRelation_Kd Option<T during s>; UnprovenOriginRelation_Kd s")]
     [InlineData("pk_nonid", ClauseK + "func host(s: ref/i32, t: ref/i32 during static) -> i32\n    return k(s, func [] (g: () -> Option<T during t>) -> i32 => 5)\n", "UnprovenOriginContract_Kd func [] (g: () -> Option<T during t>) -> i32 => 5; UnprovenOriginRelation_Kd s")]
