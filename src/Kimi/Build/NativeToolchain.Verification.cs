@@ -12,10 +12,12 @@ internal static partial class NativeToolchain
 {
     // toolchain verify (IMPL 20.3; Tatara decision 20 Q3 (a)): a self-check of what the compiler carries, which reads no directory and
     // runs no tool. Two steps: its Tatara (Tatara.Instance: loaded, bound, its start check); each compiler supply's file's embedded
-    // bytes against the catalog's SHA-256 (VerifySupply), every row's in one form (the Tatara plan's B7b7, C-469 n1). A load or start-check
-    // failure and a supply's mismatch are the toolchain's InvalidDataException (the catalog row test owns the supplies' invariant; a
-    // mismatch means a defective build of Kimi). Each statement is reported as an Information line. The report (--Report) is written first as incomplete; at the end it is passed, or failed with the error for the
-    // toolchain's failure or a cancellation, and a fault leaves it incomplete.
+    // bytes against the catalog's SHA-256 and, once they match, its stored facts against those bytes (VerifySupply), every row's in one
+    // form (the Tatara plan's B7b7, C-469 n1; SupplyFacts). A load or start-check failure and a supply's mismatch, of its bytes or its
+    // facts, are the toolchain's InvalidDataException (the catalog row and facts row tests own the supplies' invariants; a mismatch means
+    // a defective build of Kimi). Each statement is reported as an Information line. The report (--Report) is written first as
+    // incomplete; at the end it is passed, or failed with the error for the toolchain's failure or a cancellation, and a fault (a
+    // malformed facts file among them) leaves it incomplete.
     internal static void Verify(string? reportPath, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         var timer = Stopwatch.StartNew();
@@ -42,7 +44,7 @@ internal static partial class NativeToolchain
             {
                 foreach (var file in supply.Files)
                 {
-                    report(DiagnosticSeverity.Information, $"{Subject(supply, file)}: {VerifySupply(supply, file, supplies)} (the catalog's)");
+                    report(DiagnosticSeverity.Information, $"{Subject(supply.Row, supply.Supply.Name, file)}: {VerifySupply(supply, file, supplies)} (the catalog's), facts matched");
                 }
             }
 
@@ -64,8 +66,11 @@ internal static partial class NativeToolchain
         }
     }
 
-    // One file of a compiler supply: the SHA-256 of its embedded bytes against its catalog's, its entry naming the supply, the row and
-    // the file added to the report's supplies before a mismatch throws. Returns the hash.
+    // One file of a compiler supply: the SHA-256 of its embedded bytes against its catalog's, then, once they match, its stored facts
+    // loaded with that hash through the build's loader (SupplyFacts, never LinkInputs: verify states facts it opened and keeps no
+    // entry); its entry naming the supply, the row and the file is added to the report's supplies with factsMatched false before either
+    // check can throw, and set true once the facts load ("facts matched": they name these bytes and parse; that they are the current
+    // Tatara's reading is NativeToolchainTest's facts row's). Returns the hash.
     internal static string VerifySupply(CompilerSupply supply, SupplyFile file, JsonArray supplies)
     {
         string hash;
@@ -74,14 +79,23 @@ internal static partial class NativeToolchain
             hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         }
 
-        supplies.Add((JsonNode)new JsonObject
+        var entry = new JsonObject
         {
             ["name"] = supply.Supply.Name, ["row"] = supply.Row.Name, ["file"] = file.Name, ["sha256"] = hash, ["expectedSha256"] = file.Sha256,
-            ["hashMatched"] = hash == file.Sha256,
-        });
-        return hash == file.Sha256 ? hash : throw new InvalidDataException($"The compiler's {Subject(supply, file)} does not match its catalog SHA-256.");
+            ["hashMatched"] = hash == file.Sha256, ["factsMatched"] = false,
+        };
+        supplies.Add((JsonNode)entry);
+        var subject = Subject(supply.Row, supply.Supply.Name, file);
+        if (hash != file.Sha256)
+        {
+            throw new InvalidDataException($"The compiler's {subject} does not match its catalog SHA-256.");
+        }
+
+        SupplyFacts(subject, file, hash);
+        entry["factsMatched"] = true;
+        return hash;
     }
 
     // A file's subject in the statements: its row, supply and catalog name.
-    private static string Subject(CompilerSupply supply, SupplyFile file) => $"{supply.Row.Name} {supply.Supply.Name} {file.Name}";
+    private static string Subject(TargetProfile row, string supply, SupplyFile file) => $"{row.Name} {supply} {file.Name}";
 }

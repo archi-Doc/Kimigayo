@@ -1,0 +1,130 @@
+1659d7ee924948faee51de6931404d58d6087ed03f499ff172134169fe829441
+flags 0 1
+1 69
+U __NULL_IMPORT_DESCRIPTOR
+U KERNEL32_NULL_THUNK_DATA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2 576
+I __IMPORT_DESCRIPTOR_KERNEL32
+
+I __NULL_IMPORT_DESCRIPTOR
+
+I KERNEL32_NULL_THUNK_DATA
+
+T GetStdHandle
+T __imp_GetStdHandle
+
+T WriteFile
+T __imp_WriteFile
+
+T GetLastError
+T __imp_GetLastError
+
+T ExitProcess
+T __imp_ExitProcess
+
+T VirtualAlloc
+T __imp_VirtualAlloc
+
+T VirtualProtect
+T __imp_VirtualProtect
+
+T VirtualFree
+T __imp_VirtualFree
+
+T GetEnvironmentVariableA
+T __imp_GetEnvironmentVariableA
+
+T SetHandleInformation
+T __imp_SetHandleInformation
+
+T QueryPerformanceCounter
+T __imp_QueryPerformanceCounter
+
+T QueryPerformanceFrequency
+T __imp_QueryPerformanceFrequency
+
+4 28
+o
+o
+o
+i
+i
+i
+i
+i
+i
+i
+i
+i
+i
+i
+5 14
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+6 14
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+7 570
+6 ExitProcess
+10 GetEnvironmentVariableA
+5 GetLastError
+3 GetStdHandle
+12 QueryPerformanceCounter
+13 QueryPerformanceFrequency
+11 SetHandleInformation
+7 VirtualAlloc
+9 VirtualFree
+8 VirtualProtect
+4 WriteFile
+0 __IMPORT_DESCRIPTOR_KERNEL32
+1 __NULL_IMPORT_DESCRIPTOR
+6 __imp_ExitProcess
+10 __imp_GetEnvironmentVariableA
+5 __imp_GetLastError
+3 __imp_GetStdHandle
+12 __imp_QueryPerformanceCounter
+13 __imp_QueryPerformanceFrequency
+11 __imp_SetHandleInformation
+7 __imp_VirtualAlloc
+9 __imp_VirtualFree
+8 __imp_VirtualProtect
+4 __imp_WriteFile
+2 KERNEL32_NULL_THUNK_DATA
