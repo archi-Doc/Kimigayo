@@ -179,6 +179,16 @@ public sealed partial class RecursiveContractTest
 
     private const string PathEquation = "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\n";
 
+    // The limited root's order pairs (review-rev1's B1, G1406-9 B1 (a)): Pq of stride 1 supplies P.(Pq).Up is P.Next^34.(Pq).Up with
+    // P = T.(D).P, D's clause names the deep end (SPEC 8.2.3, 8.3.2), and g(t.p().far()) closes the root P.Next^34; the rows append
+    // the clause's right side.
+    private const string LimitedOrders = "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Up\n    func far(self: ref/Self) -> ref/Self.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next\ncontract D\n    associate P is Pq\n    Self.(D).P.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is ";
+
+    private const string LimitedReaders = "\n    func p(self: ref/Self) -> ref/Self.(D).P\nfunc g<Y>(y: ref/Y) -> i32\n    Y is Pq\n    return 0\n";
+
+    // A cycle's mate beside a value two links further (review-rev1's N1 twins): T.Next^3.(Mk).Up is T.Next^2, T.Next^3.(Mk).V is string.
+    private const string CycleValues = "contract Mk\n    associate Next is Mk\n    associate Up\n    associate V\n    Self.(Mk).Next.(Mk).Up is Self\n    Self.(Mk).V is string\n    func d3v(self: ref/Self) -> ref/Self.(Mk).Next.(Mk).Next.(Mk).Next.(Mk).V\n    func up2(self: ref/Self) -> ref/Self.(Mk).Next.(Mk).Next.(Mk).Next.(Mk).Up\n";
+
     // The Middle's C-313 B1 views (c2-2): AT2 supplies `T.(Tree).Child is AT3`, whose identity clause makes `T.(Tree).Child.(Tree).Alias`
     // identical with `T.(Tree).Child.(Tree).Child`, an AT3 (SPEC 8.2.3), so it is Copy; the view has no identity premise, so it keeps rows.
     private const string Orders = OrdersHead + "    Self.(Tree).Alias is Self.(Tree).Child\n" + OrdersTail;
@@ -605,6 +615,20 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "c4a", ChainedTakes + "func c4a<T>(n: ref/T.(KR).Next, x: ref/T.(KR).Next.(KR).A) -> i32\n    T is KR\n    return n.take(x)\n", "")]
     [InlineData("guard", "c4b", ChainedTakes + "func c4b<T>(n: ref/T.(KR).Next, x: ref/T.(KR).Next.(KR).A) -> i32\n    T is KR\n    let s: ref/string = x\n    return n.take(x)\n", "")]
     [InlineData("e2-7", "pqlet-i32", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let y: ref/i32 = x\n    return 0\n", "AnalysisLimit_Kd: let y: ref/i32 = x", Explicit = true)]
+    // The re-review's twins (artifacts/units/r7-c2-next/review-rev1.md and rr1/, labelled from SPEC first; G1406-9). At a limited
+    // root the reading is a function of the declaration, never of the order of checks (8.2.3, 8.3.3): ordl through a proof, ordf
+    // through a form and a mismatch, each AnalysisLimit_Kd alone at its use in both orders, the mismatch resting on the limit
+    // dependent (23.1.2); ordl-a and ordl-b already hold on the head (guards). An error class the limited root's own rounds form
+    // before the limit stands (8.3.3): pqerr once at its clause, and pqerr-use's reader adds nothing (8.2.3, 23.1.2). A cycle's mate
+    // and a deeper value in either order (mkv).
+    [InlineData("guard", "ordl-a", "contract Inner\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\n" + LimitedOrders + "Inner" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    need(x)\n    let n = g(t.p().far())\n    return\n", "AnalysisLimit_Kd: need(x)")]
+    [InlineData("guard", "ordl-b", "contract Inner\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\n" + LimitedOrders + "Inner" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let n = g(t.p().far())\n    need(x)\n    return\n", "AnalysisLimit_Kd: need(x)")]
+    [InlineData("e2-7", "ordf-a", LimitedOrders + "string" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let s: ref/string = x\n    let n = g(t.p().far())\n    return\n", "AnalysisLimit_Kd: let s: ref/string = x", Explicit = true)]
+    [InlineData("e2-7", "ordf-b", LimitedOrders + "string" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let n = g(t.p().far())\n    let s: ref/string = x\n    return\n", "AnalysisLimit_Kd: let s: ref/string = x", Explicit = true)]
+    [InlineData("e2-7", "pqerr", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is string\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32\n    return 0\n", "InvalidConstraint_Kd: T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32", Explicit = true)]
+    [InlineData("e2-7", "pqerr-use", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is string\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32\n    let s: ref/i32 = x\n    return 0\n", "InvalidConstraint_Kd: T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32", Explicit = true)]
+    [InlineData("e2-7", "mkv-a", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let s: ref/string = t.d3v()\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    return 0\n", "", Explicit = true)]
+    [InlineData("e2-7", "mkv-b", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    let s: ref/string = t.d3v()\n    return 0\n", "", Explicit = true)]
 
     // SPEC 8.3.2 Contract refinement, 8.4.1, 8.4.3 (R7-C2c2 c2-5a; PLAN G402, G837, G849): `T is C<i32>` supplies C's own and
     // inherited Constraints with T for Self and i32 for C's parameter, at every projection a query needs: a clause naming the Contract's
