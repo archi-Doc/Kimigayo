@@ -635,8 +635,10 @@ public partial class TypeIdentityTest
     {
         { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x()" },
         {
-            "c5c-sel", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(2)}.(Pq).Up is Callable<() -> i32>\n    T{Next(3)}.(Pq).Up is Callable<(i32) -> i32>\n" +
-            $"    T{Next(40)}.(Pq).Up is Callable<(bool) -> i32>\n    return x(true)\n"),
+            "c5c-sel", Called(
+                string.Empty,
+                "x: ref/T.(Pq).Up) -> i32",
+                $"    T{Next(2)}.(Pq).Up is Callable<() -> i32>\n    T{Next(3)}.(Pq).Up is Callable<(i32) -> i32>\n    T{Next(40)}.(Pq).Up is Callable<(bool) -> i32>\n    return x(true)\n"),
             "AnalysisLimit_Kd: return x(true)"
         },
         {
