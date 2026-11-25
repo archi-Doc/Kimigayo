@@ -101,7 +101,8 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 
 // A scope's premises. Its state (the three fact sets, the two flags they set and Failed) is written only by its own members (Add, Fail,
 // Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf); the mark of
-// the declaration's own supply (Declared) only by MarkDeclared and Reset; the recorded Statements only by AddStatement and Reset, with
+// the declaration's own supply (Declared) only by MarkDeclared and Reset, and the declared identity facts (DeclaredIdentityFacts) only by Add,
+// MarkDeclared and Reset; the recorded Statements only by AddStatement and Reset, with
 // no Version change, AddStatement's callers being the two writers that hold another declaration's premise under a substitution
 // (ArchitectureRulesTest): InheritVirtualConstraints (an override's inherited premises) and CompatibleRequirement (a requirement's
 // premises at Self). The other copying writers need none: a Contract's supply and inherited conformance premises copy no bounded clause
@@ -163,9 +164,15 @@ internal sealed class ConstraintEnvironment
     internal List<(BoundConstraint Fact, BindingSymbol Source, IsKoto? Origin)> DerivedFacts { get; } = new();
 
     // e2-7 (G1406-11 C-e): the environment's Type-identity facts with both sides, in Facts' order: the identity tables' one walk of
-    // an environment (Binding.ClassesOver, AddViewRows, PremiseErrorSupplier), which reads no other fact. Written only by Add and Reset,
+    // an environment's facts (Binding.AddViewRows, PremiseErrorSupplier), which reads no other fact. Written only by Add and Reset,
     // as Facts is, so it holds exactly Facts' identity facts.
     internal List<BoundConstraint> IdentityFacts { get; } = new();
+
+    // e2-7 (R3.4, C-e; SPEC 8.2.3's grounds): the identity facts the declaration Declares, in IdentityFacts' order: the grounds G every
+    // identity table's build walks (Binding.ClassesOver, OwnClasses), so no build scans Declares. Invariant: it is exactly IdentityFacts
+    // filtered by Declares, kept so by the writers of Declares' inputs (Add: a new direct fact is appended, an existing fact made direct
+    // republishes; MarkDeclared republishes; Reset clears). Cost: a republish is O(|IdentityFacts| * Declared), once per mark.
+    internal List<BoundConstraint> DeclaredIdentityFacts { get; } = new();
 
     // R7-C2c2 c2-4b (DECISIONS R4.13): the first Declared of DerivedFacts are the declaration's own supply (Declares).
     internal int Declared { get; private set; }
@@ -216,7 +223,15 @@ internal sealed class ConstraintEnvironment
             if (fact is { Kind: ConstraintKind.TypeIdentity, Subject: not null, RequiredType: not null })
             {
                 this.IdentityFacts.Add(fact);
+                if (source is null)
+                {
+                    this.DeclaredIdentityFacts.Add(fact); // direct, so declared, and last in IdentityFacts
+                }
             }
+        }
+        else if (source is null && availability && fact is { Kind: ConstraintKind.TypeIdentity, Subject: not null, RequiredType: not null })
+        {
+            this.PublishDeclared(); // a supplied fact made direct is now declared, at its place in IdentityFacts
         }
 
         if (added || availability)
@@ -225,8 +240,13 @@ internal sealed class ConstraintEnvironment
         }
     }
 
-    // The declaration's own supply ends here (ExpandScopeContractPremises' end). No Version change: no view-keyed table reads the mark.
-    internal void MarkDeclared() => this.Declared = this.DerivedFacts.Count;
+    // The declaration's own supply ends here (ExpandScopeContractPremises' end), and its declared identity facts are published
+    // (DeclaredIdentityFacts). No Version change: no view-keyed table reads the mark.
+    internal void MarkDeclared()
+    {
+        this.Declared = this.DerivedFacts.Count;
+        this.PublishDeclared();
+    }
 
     /// <summary>Records a Statement of a direct fact (SPEC 6.4.2 step 3): `owner` writes the premise this environment holds as `fact`.
     /// Once: an equal Statement is already in the set. No Version change: no view-keyed table reads one, as with MarkDeclared.</summary>
@@ -250,33 +270,6 @@ internal sealed class ConstraintEnvironment
     /// <returns>Whether the clause states the fact.</returns>
     internal bool States(BoundConstraint fact, Koto scopeOwner, Koto owner, BoundConstraint written)
         => (ReferenceEquals(owner, scopeOwner) && ReferenceEquals(written, fact)) || this.Recorded(fact, owner, written);
-
-    // R7-C2c2 c2-4b (DECISIONS R4.13; SPEC 8.3.3 Limits, "the closure of a declaration's premises"): whether `fact` is a ground of
-    // the declaration's closure, the one fact a closure's round table reads (ExtendedClassesOf): written, or derived by the
-    // declaration's own supply of its written Contract premises; never a use's supply alone. Invariant: the declaration's expansion
-    // (ExpandContractPremises) runs before any use supply (Binding.AssociatedTypes holds its supply while bindingConstraintTypes,
-    // until after the expansion; Binding.ContractCalls' is body time), so every derived fact written after the mark is a use's
-    // (the syntax-triggered supply, staged until C3). Known exception (read, not measured): an override's implementation premises are
-    // expanded again after its signature is bound (PrepareVirtualOverridePremises), so there the mark also covers that signature's
-    // use supply. Temporary: C3 removes the syntax-triggered supply, after which every derived fact is the declaration's and this
-    // split goes. Cost: a linear scan of the declared derived facts, asked only for an identity fact (RP8's spm rows measure it).
-    internal bool Declares(BoundConstraint fact)
-    {
-        if (this.DirectFacts.Contains(fact))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < this.Declared; i++)
-        {
-            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     /// <summary>Gets a value indicating whether a premise of this environment failed (R7-C3, F's C2 rulings 272-273): its one state, read
     /// by the one consult (Binding.AvailableConstraintFact).</summary>
@@ -371,6 +364,7 @@ internal sealed class ConstraintEnvironment
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
         this.IdentityFacts.Clear();
+        this.DeclaredIdentityFacts.Clear();
         this.statements?.Clear();
         this.Declared = 0;
         this.FailedPremises?.Clear();
@@ -378,6 +372,46 @@ internal sealed class ConstraintEnvironment
         this.origins?.Clear();
         this.HasAssociatedProjection = false;
         this.HasTypeIdentity = false;
+    }
+
+    // R7-C2c2 c2-4b (DECISIONS R4.13; SPEC 8.3.3 Limits, "the closure of a declaration's premises"): whether `fact` is a ground of
+    // the declaration's closure, the one fact a closure's round table reads (ExtendedClassesOf): written, or derived by the
+    // declaration's own supply of its written Contract premises; never a use's supply alone. Invariant: the declaration's expansion
+    // (ExpandContractPremises) runs before any use supply (Binding.AssociatedTypes holds its supply while bindingConstraintTypes,
+    // until after the expansion; Binding.ContractCalls' is body time), so every derived fact written after the mark is a use's
+    // (the syntax-triggered supply, staged until C3). Known exception (read, not measured): an override's implementation premises are
+    // expanded again after its signature is bound (PrepareVirtualOverridePremises), so there the mark also covers that signature's
+    // use supply. Temporary: C3 removes the syntax-triggered supply, after which every derived fact is the declaration's and this
+    // split goes. Cost: a linear scan of the declared derived facts, asked only by PublishDeclared (RP8's spm rows measure it).
+    private bool Declares(BoundConstraint fact)
+    {
+        if (this.DirectFacts.Contains(fact))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < this.Declared; i++)
+        {
+            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Rebuilds DeclaredIdentityFacts from IdentityFacts and Declares, in IdentityFacts' order (the writers' one rebuild).
+    private void PublishDeclared()
+    {
+        this.DeclaredIdentityFacts.Clear();
+        foreach (var fact in this.IdentityFacts)
+        {
+            if (this.Declares(fact))
+            {
+                this.DeclaredIdentityFacts.Add(fact);
+            }
+        }
     }
 
     private void NoteOrigin(BoundConstraint fact, IsKoto origin)

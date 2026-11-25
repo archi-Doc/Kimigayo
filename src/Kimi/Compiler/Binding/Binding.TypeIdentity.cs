@@ -409,34 +409,27 @@ public sealed partial class Binding
     }
 
     // The one identity table builder (SPEC 8.2.3; e2-7's T(G ∪ rows)): `classes` opened for `scope`, its premises the declaration's
-    // grounds (each identity fact of the chain, ConstraintEnvironment.IdentityFacts, that Declares; no other fact is walked: C-e) and
-    // `rows` from `start`, each
-    // read by its Source (IdentityRow), then closed; its nodes are counted in IdentityClassWork. Input invariant: the rows that are facts
-    // of the chain come first, in the chain's order (innermost scope first, each environment in its order), as AddViewRows gives them. So
-    // a ground that is a row is applied once, as the row, and a table is built in its premises' order, which Members' index order and
-    // the premise error's groups read. The caller holds the re-entry guard (identityBuilding) and owns the table; no mode: what a table
-    // holds beyond the grounds is its rows.
+    // grounds (each declared identity fact of the chain, ConstraintEnvironment.DeclaredIdentityFacts; no other fact is walked: C-e) and
+    // `rows` from `start`, each read by its Source (IdentityRow), then closed; its nodes are counted in IdentityClassWork. Input
+    // invariant: rows that are facts of the chain come first and are all of them, in the chain's order (innermost scope first, each
+    // environment in its order), as AddViewRows gives them; then the grounds are among those rows, and are not walked again. So a ground
+    // is applied once, and a table is built in its premises' order, which Members' index order and the premise error's groups read.
+    // The caller holds the re-entry guard (identityBuilding) and owns the table; no mode: what a table holds beyond the grounds is its
+    // rows.
     private IdentityClasses ClassesOver(IdentityClasses classes, BindingScope scope, List<IdentityRow> rows, int start)
     {
         classes.Open(scope);
-        var row = start;
-        for (var current = scope; current is not null; current = current.Parent)
+        var grounds = start == rows.Count || rows[start].Environment is null ? scope : null; // the chain's facts as rows hold the grounds
+        for (var current = grounds; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { } environment)
             {
                 continue;
             }
 
-            foreach (var fact in environment.IdentityFacts)
+            foreach (var fact in environment.DeclaredIdentityFacts)
             {
-                if (row < rows.Count && ReferenceEquals(rows[row].Fact, fact) && ReferenceEquals(rows[row].Environment, environment))
-                {
-                    row++; // a row, applied in the rows' order below
-                }
-                else if (environment.Declares(fact))
-                {
-                    this.ApplyIdentityPremise(classes, environment, fact);
-                }
+                this.ApplyIdentityPremise(classes, environment, fact);
             }
         }
 
@@ -460,7 +453,8 @@ public sealed partial class Binding
 
     // A view's rows (ClassesOf): each TypeIdentity fact of its chain, in the chain's order (innermost scope first, each environment in
     // its order), read in its environment: the declaration's grounds and a use's supply alike, so the view's table holds every available
-    // identity premise of its chain in that order (ApplyIdentityPremise). Appended to identityRows; the caller removes its range.
+    // identity premise of its chain in that order (ApplyIdentityPremise). Appended to identityRows; the caller removes its range. A row
+    // with an Environment gives no Availability of its own (e2-7 fact (e)): its availability is the fact's, read where it is applied.
     private void AddViewRows(BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
@@ -472,7 +466,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.IdentityFacts)
             {
-                this.identityRows.Add(new(fact, environment, null, null, Completion.Complete));
+                this.identityRows.Add(new(fact, environment, null, null, default));
             }
         }
     }
@@ -555,13 +549,10 @@ public sealed partial class Binding
     private IdentityClasses? OwnClasses(BindingScope scope, ConstraintEnvironment environment)
     {
         var start = this.identitySides.Count;
-        foreach (var fact in environment.IdentityFacts)
+        foreach (var fact in environment.DeclaredIdentityFacts)
         {
-            if (environment.Declares(fact))
-            {
-                this.identitySides.Add(fact.Subject);
-                this.identitySides.Add(fact.RequiredType);
-            }
+            this.identitySides.Add(fact.Subject);
+            this.identitySides.Add(fact.RequiredType);
         }
 
         try
