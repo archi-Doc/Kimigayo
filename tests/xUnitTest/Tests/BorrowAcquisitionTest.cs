@@ -93,14 +93,16 @@ public class BorrowAcquisitionTest
     [Fact]
     public void ACaptureEntryExplainsOnlyItsOwnFailure()
     {
-        // The closure already failed for its duplicate parameter, so the rejected entry records nothing: the duplicate is not
-        // reported at the capture entry as if it were the entry's problem.
+        // SPEC 23.1.2, 15.1.5 (F's R7-E4 ruling 40): the entry fails on its own, since "Storage rooted in a `let` binding or an
+        // owned-Type parameter ... cannot be exclusively acquired", and its check reads no failed input (the duplicate parameter is
+        // not its input). So each record stands at its own site: the duplicate at the literal, never at the entry.
         const string Source = "let n: i32 = 1\nlet f = func [n@uniq] (a: i32, a: i32) -> i32 => a";
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
-        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
-        Assert.Equal(nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), error.Code);
-        Assert.NotEqual("n@uniq", error.Text);
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
+        Assert.Equal([nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd)], errors.Select(static x => x.Code));
+        Assert.Equal("func [n@uniq] (a: i32, a: i32) -> i32 => a", errors[0].Text);
+        Assert.Equal("n@uniq", errors[1].Text);
     }
 
     [Theory]
