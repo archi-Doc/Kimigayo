@@ -75,9 +75,9 @@
 //   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a leaf row's fact (a Callable fact,
 //   a negation) whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), and
 //   the clause kinds without a leaf row at depth (the eager supply's one level until c2-3c and d). A missing row rejects, but where it
-//   is the evidence against a written premise it accepts: an identity premise putting a constructed Type in the subject's class (the
-//   proposition asks that Type's rows, which no clause instance states: nts2c) and a positive identity clause at depth, which is no
-//   row (nts2c-rev); PLAN's open issue against c2-5c's constructed roots.
+//   is the evidence against a written premise it accepts: a positive identity clause at depth is no row (TypeIdentity is no row kind;
+//   c2-2's identity rows reach only an extending refinement request) and the identity judge reads the view's classes, so a written
+//   negated identity premise against it is accepted (nts2c-rev); PLAN's open issue against c2-5c's constructed roots.
 // - Extension (R7-C2c2 c2-2; SPEC 8.2.3's grounds include the identity Constraints a Contract premise supplies at every depth): the
 //   walk records the TypeIdentity clause instances of its available Contract rows, but a deferred mate's walk (PLAN G881b: a
 //   cycle's mate, walked from the top) records none, so an extension rests on the chains a request walks without a cycle, as
@@ -194,7 +194,8 @@
 //   read ends. A Kept entry serves a read as it is.
 // - Retained memory is the pool's high water: an entry keeps the largest buckets and lists any view gave it, flat across warm
 //   rebinds. Temporary: the readings go when R7-C2c3 removes Reading's binding completion. A view whose identity table is not
-//   Final (a derived identity fact whose sources are not all final in the publication, W6) has its entry formed per request.
+//   Final has its entry formed per request. It has two causes: a derived identity fact whose sources are not all final in the
+//   publication (W6), and an identity premise whose read consulted a failure (ApplyIdentityPremise, W7's table).
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)), a column of the view's Kept entry in Closure(view) (R7-C2e2 e2-3a).
 // - What and key: the rows of each link an outermost request walked, in the entry of its (view scope, requirement Contract) at the
