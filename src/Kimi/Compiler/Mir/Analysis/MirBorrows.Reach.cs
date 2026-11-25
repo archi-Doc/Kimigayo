@@ -61,7 +61,7 @@ internal sealed partial class MirBorrows
     private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
     private readonly List<Hold> holds = []; // HoldsLoans' scratch for the entries it reads.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
-    private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, MirHolding> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     // W's reading nodes: a holder (with its root local) read on at a reading Type's key.
     private readonly List<(int Slot, int Root, BoundType Type, int Key)> nodes = [];
     private readonly HashSet<(int Slot, int Key)> nodeSeen = []; // The walk's nodes, each once.
@@ -358,11 +358,11 @@ internal sealed partial class MirBorrows
         ref var known = ref CollectionsMarshal.GetValueRefOrAddDefault(this.holding, type, out var exists);
         if (!exists)
         {
-            known.Holds = MirTypes.HoldsLoans(type, types, this.walked, this.members, this.holds, out known.Writes);
+            known = MirTypes.HoldsLoans(type, types, this.walked, this.members, this.holds);
         }
 
         writes = known.Writes;
-        return known.Holds;
+        return known.Loan;
     }
 
     // Clears the Type memos (Holds, Reading) at a new program version, whose case Types and holdings they answer (DECISIONS R4-M140).
@@ -470,8 +470,7 @@ internal sealed partial class MirBorrows
         var (limited, deeps) = (false, false);
         for (int i = 0, n = 0; i < this.targets.Count; i++)
         {
-            var (guard, pun) = (this.Guard(this.targetRoots[i]), this.PunGuard(this.targets[i], punned));
-            guard = guard == MirWrites.None && this.RecordSteps(this.targetRoots[i], output) ? MirWrites.Through : guard; // (b2) at the declared step
+            var (guard, pun) = (this.DeclaredGuard(i, output), this.PunGuard(this.targets[i], punned));
             var held = state[this.targets[i]];
             limited |= guard == MirWrites.Limit || pun == MirWrites.Limit;
             deeps |= guard == MirWrites.Deep || pun == MirWrites.Deep;
@@ -782,6 +781,12 @@ internal sealed partial class MirBorrows
             this.OwnPointer(node.Key, output);
         }
     }
+
+    // The guard the declared step reads target i at (Writes): its root Type's, Through where that does not step but the record does
+    // ((b2), RecordSteps).
+    private MirWrites DeclaredGuard(int i, OutputRetention output)
+        => this.Guard(this.targetRoots[i]) is var guard && guard == MirWrites.None && this.RecordSteps(this.targetRoots[i], output)
+            ? MirWrites.Through : guard;
 
     // (b2): whether the declared step from a holder steps by the record: its root Type's guard does not step, but the walk output's entry
     // for the storage past one of its root Type's layers, the entry Binding names it by, retains an input (NamedRetains at the root Type's
