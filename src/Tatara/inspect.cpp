@@ -314,20 +314,53 @@ bool listable(StringRef text, StringRef name, raw_ostream& message)
     return false;
 }
 
-// A .drectve's references (tatara.h's text kind 6), its text split as lld-link splits it (the Windows command-line tokenizer): "I
-// <name>" per /include: and "A <from>=<to>" per /alternatename:, in its order. A reference missing a name is skipped (LLD reports it
-// when it links the member); every other option is LLD's. LLD's own parser (lld::coff) is not in the archive's headers. False when a
-// name cannot be listed.
+// A .drectve's references (tatara.h's text kind 6), its text split as lld-link splits it (the Windows command-line tokenizer), in its
+// order: "I <name>" per name lld-link roots, /include:'s and /export:'s; "E <name>" per /entry:; "A <from>=<to>" per /alternatename:.
+// /export: as LLD's .drectve fast path reads it: the prefixes / and - only, any case; its spec's text before the first ',', and of
+// "<x>=<y>" y, none when y holds '.' (a forwarder). The others after optionValue's four prefixes. A directive naming no symbol is
+// skipped (LLD reports it when it links the member); every other option is LLD's, and of LLD 22.1.8's options that spell a symbol the
+// others root and load nothing on windows-x64 (LinkRoots design 2.1a). LLD's own parser (lld::coff) is not in the archive's headers.
+// False when a name cannot be listed.
 bool readDirectives(StringRef text, StringRef name, std::string& references, raw_ostream& message)
 {
     BumpPtrAllocator allocator;
     StringSaver saver(allocator);
     SmallVector<StringRef, 16> tokens;
     cl::TokenizeWindowsCommandLineNoCopy(text, saver, tokens);
+    auto single = [&](char kind, StringRef symbol) {
+        if (symbol.empty()) {
+            return true;
+        }
+
+        references += kind;
+        references += " " + symbol.str() + "\n";
+        return listable(symbol, name, message);
+    };
     for (StringRef token : tokens) {
-        if (std::optional<StringRef> include = optionValue(token, "include:"); include && !include->empty()) {
-            references += "I " + include->str() + "\n";
-            if (!listable(*include, name, message)) {
+        if (std::optional<StringRef> include = optionValue(token, "include:")) {
+            if (!single('I', *include)) {
+                return false;
+            }
+
+            continue;
+        }
+
+        if (token.starts_with_insensitive("/export:") || token.starts_with_insensitive("-export:")) {
+            StringRef spec = token.drop_front(8).split(',').first;
+            if (spec.contains('=')) {
+                auto [external, internal] = spec.split('=');
+                spec = internal.contains('.') ? StringRef() : internal;
+            }
+
+            if (!single('I', spec)) {
+                return false;
+            }
+
+            continue;
+        }
+
+        if (std::optional<StringRef> entry = optionValue(token, "entry:")) {
+            if (!single('E', *entry)) {
                 return false;
             }
 
@@ -490,10 +523,11 @@ bool readBitcode(const IRObjectFile& file, StringRef name, StringSet<>& copies, 
     return readDirectives(options, name, outcome.directives, message);
 }
 
-// One member (an object is one): its block of each per-member text (kinds 1, 2, 4, 5 and 6) and its flag. name: the input's path, or
-// "<path>(<member>)" for an archive's member, as llvm-nm names it in a message. Its copies by format: an object's symbols in its copy
-// sections, a bitcode member's in its copy comdats (readBitcode), a short import member's none. False with the tool's message; a broken
-// short import member with LLD's.
+// One member (an object is one): its block of each per-member text (kinds 1, 2, 4, 5 and 6) and its flag; its form (kind 4) i a short
+// import member, s a linked image, b LLVM bitcode (an IRObjectFile), else o. name: the input's path, or "<path>(<member>)" for an
+// archive's member, as llvm-nm names it in a message. Its copies by format: an object's symbols in its copy sections, a bitcode
+// member's in its copy comdats (readBitcode), a short import member's none. False with the tool's message; a broken short import
+// member with LLD's.
 bool readMember(const SymbolicFile& file, StringRef name, TataraResult& outcome, raw_ostream& message)
 {
     if (isBrokenImport(file)) {
@@ -503,7 +537,7 @@ bool readMember(const SymbolicFile& file, StringRef name, TataraResult& outcome,
 
     const auto* object = dyn_cast<ObjectFile>(&file);
     const auto* bitcode = dyn_cast<IRObjectFile>(&file);
-    outcome.forms += isa<COFFImportFile>(&file) ? 'i' : object && !object->isRelocatableObject() ? 's' : 'o';
+    outcome.forms += isa<COFFImportFile>(&file) ? 'i' : object && !object->isRelocatableObject() ? 's' : bitcode ? 'b' : 'o';
     outcome.forms += '\n';
     DenseSet<uint64_t> sections;
     StringSet<> names;

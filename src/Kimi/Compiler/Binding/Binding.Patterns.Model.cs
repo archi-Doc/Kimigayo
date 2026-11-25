@@ -96,8 +96,9 @@ public sealed class BoundMatch
     internal List<byte> CaseCoverage { get; } = new();
 
     /// <summary>Gets or sets a value indicating whether a Pattern position or a guard of the match has a located failure, or its Subject
-    /// Type is refuted (recorded at that Type's formation site, PLAN G1278): the match's coverage is not computed (<see cref="MatchCoverageState.Invalid"/>), and the plan is still built (a failed position is an Invalid
-    /// leaf or keeps its test); <see cref="Pending"/> keeps it unbuilt.</summary>
+    /// Type is refuted (recorded at that Type's formation site, PLAN G1278): the match's coverage is not computed
+    /// (<see cref="MatchCoverageState.Invalid"/>), and the plan is still built (a failed position is an Invalid leaf or keeps its
+    /// test); <see cref="Pending"/> keeps it unbuilt.</summary>
     internal bool Invalid { get; set; }
 
     internal bool Pending { get; set; }
