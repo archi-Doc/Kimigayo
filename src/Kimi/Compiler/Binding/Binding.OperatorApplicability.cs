@@ -12,7 +12,13 @@ public sealed partial class Binding
 {
     private readonly record struct OperatorApplicability(
         Koto? ExpectedOperand, BoundType? Counterpart, BindingFailure Failure, BoundConstraint? Requirement,
-        ConstraintProof? Proof, BoundType? Operand, BoundType? Terminal);
+        ConstraintProof? Proof, BoundType? Operand, BoundType? Terminal)
+    {
+        // The cause an Error proof left (TakeFailedCause), taken raw at the decision (OperatorRequirement); read only by FailOperator, whose
+        // RestOnCause rests the operation's record on it when it is a failed node other than the operation. None for a composite
+        // comparison's proof (ComparisonProof).
+        internal Koto? Cause { get; init; }
+    }
 
     private static KotoKind OperatorKind(Koto operation)
         => operation.Akind is >= KotoKind.PlusEquals and <= KotoKind.GreaterThanGreaterThanEquals
@@ -244,25 +250,9 @@ public sealed partial class Binding
 
     // SPEC 13.3.3, 13.3.4: any other Type is built-in numeric only as a parameter with proven PrimitiveInteger; else no row applies (a
     // non-numeric primitive or a string NonNumericOperand, an unproven query UnprovenConstraint, a raw pointer, Tuple, fixed array or
-    // Never no provider: a Never operand proves no direction, 3.1.3). A user provider's routes are TryArithmetic's, first. SPEC 8.2.3,
-    // 23.1.2 (rule W): an Error proof read a failed premise or Type context whose record is reported, so the operation's record rests on
-    // the cause the proof left (TakeFailedCause), taken at the decision as RequireClauses takes it (R7-C3 B1) and as a Type mismatch over
-    // a premise error rests on that premise (RecordTypeMismatch): IsDerived's InvalidConstraint row derives it.
+    // Never no provider: a Never operand proves no direction, 3.1.3). A user provider's routes are TryArithmetic's, first.
     private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope, QuerySite site)
-    {
-        if (type.IsNumeric)
-        {
-            return default;
-        }
-
-        var integer = this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
-        if (integer.Proof == ConstraintProof.Error && site.Node is { } node && this.TakeFailedCause().Use is { } cause)
-        {
-            this.AddPrerequisite(node, cause);
-        }
-
-        return integer;
-    }
+        => type.IsNumeric ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
 
     private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
@@ -326,6 +316,11 @@ public sealed partial class Binding
             proof == ConstraintProof.Proven ? null : type);
     }
 
+    // The one decision of every single-requirement operator (arithmetic, integer, shift count, negation, a non-composite comparison).
+    // SPEC 8.2.3, 23.1.2 (rule W; PLAN G1356, B's ruling 7): an Error proof read a failed premise or Type context whose record is
+    // reported, so the decision takes the cause the proof left (TakeFailedCause) at once and carries it (Cause): FailOperator rests the
+    // record on it (RestOnCause, RequireClauses' rule, R7-C3 B1) and IsDerived's InvalidConstraint row derives it. A decision its caller
+    // discards (ComparisonApplicability's PrimitiveInteger probe) drops the cause it took, so none stays in the channel.
     private OperatorApplicability OperatorRequirement(BoundType subject, BindingSymbol contract, BindingScope scope, QuerySite site, BindingFailure refuted)
     {
         var requirement = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract));
@@ -337,6 +332,9 @@ public sealed partial class Binding
             requirement,
             proof,
             proof == ConstraintProof.Proven ? null : subject,
-            proof == ConstraintProof.Proven ? null : subject);
+            proof == ConstraintProof.Proven ? null : subject)
+        {
+            Cause = proof == ConstraintProof.Error ? this.TakeFailedCause().Use : null,
+        };
     }
 }
