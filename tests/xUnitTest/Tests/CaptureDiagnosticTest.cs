@@ -32,8 +32,9 @@ public class CaptureDiagnosticTest
     // A method whose own premise validates the projection it captures; the capture is Unsupported for its own reason.
     private const string ValidatedCapture = "    public func good(self: ref/Self, t: T.(Iter<i32>).Tag) -> ()\n        T is Iter<i32>\n        let c = func [t@move] () -> () => ()\n        return";
 
-    // A function whose pair-layer parameter x a capture entry holds only as a located limit (SPEC 23.1.1; PLAN G1129's c2 header).
-    private const string PairLayer = "func f<s/T>(x: s/i32 during a, p: s/(i32, i32), q: uniq/(s/i32 during a), m: s/T) -> i32\n    s is owner or uniq\n";
+    // A function whose parameter x, of a pair target under an identity premise, a capture entry holds only as a located limit (SPEC
+    // 23.1.1; Captures' interim row (2), PLAN G170; ConditionalCaptureTest's premise-target row with t named x).
+    private const string PremiseTarget = "func f<s/T, r/U>(m: s/T, n: r/U, x: T, w: ref/i32 during a) -> i32\n    s is owner or ref\n    r is owner or ref\n    T is r/i32 during a\n";
 
     // SPEC 7.7.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
@@ -129,14 +130,15 @@ public class CaptureDiagnosticTest
     }
 
     // SPEC 7.7.2, 23.1.1, 23.1.2 (PLAN G1129): a repeated name, or a parameter that repeats an entry, is its own record beside another
-    // entry's located limit, in either order of the entries (the limit took the Closure's one slot first and hid the repeat).
+    // entry's located limit, in either order of the entries (the limit took the Closure's one slot first and hid the repeat). The limit
+    // is x's interim row (2) (PremiseTarget, F ruling 32; a pair-layer Parameter is captured and reaches none).
     [Theory]
     [InlineData("    let k: i32 = 1\n    var g = func [x, k, k] () -> i32 => x + 0\n    return g()\n", "[x, k, ", "func [x, ")]
-    [InlineData("    var g = func [x, k] (k: i32) -> i32 => x + k\n    return g(1)\n", "] (", "func [x, ")]
+    [InlineData("    let k: i32 = 1\n    var g = func [x, k] (k: i32) -> i32 => x + k\n    return g(1)\n", "] (", "func [x, ")]
     [InlineData("    let k: i32 = 1\n    var g = func [k, x, k] () -> i32 => x + k\n    return g()\n", "[k, x, ", "func [")]
     public void ARepeatStandsBesideAnEntrysLimit(string body, string beforeRepeat, string beforeEntry)
     {
-        var source = PairLayer + body + "public func main() -> ()\n    Console.writeLine(\"p\")\n";
+        var source = PremiseTarget + body + "public func main() -> ()\n    Console.writeLine(\"p\")\n";
         var output = DiagnosticCorpus.Check(source);
         Assert.Equal(
             [(nameof(DiagnosticCode.Unsupported_Kd), "x"), (nameof(DiagnosticCode.DuplicateBinding_Kd), "k")],
