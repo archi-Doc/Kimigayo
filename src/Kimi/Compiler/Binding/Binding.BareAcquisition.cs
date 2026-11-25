@@ -194,16 +194,8 @@ public sealed partial class Binding
 
     // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference Reborrows it in its own Semantics, exactly as an
     // annotation of the same complete Type would; the Reborrow's Type is Binding's name for it (DECISIONS BU-27), which a join's common
-    // Type takes from each such source. Returns that Type, null when the node is acquired otherwise.
+    // Type takes from each such source. Returns the Type the node delivers: that Type, or its own where it is acquired otherwise.
     private BoundType? StoredReborrow(Koto node, BoundType? actual)
-    {
-        if (actual is not null && this.StoresExclusiveReference(node, actual) && IsBareAcquisitionPosition(node) &&
-            this.ExpectedAdaptation(node, actual, actual) is { } reborrow)
-        {
-            this.adaptations[node] = reborrow;
-            return reborrow.Type;
-        }
-
-        return null;
-    }
+        => actual is not null && this.StoresExclusiveReference(node, actual) && IsBareAcquisitionPosition(node) ? this.ExpectedAdaptation(node, actual, actual)
+            : node.ErasedFunctionType ?? actual;
 }
