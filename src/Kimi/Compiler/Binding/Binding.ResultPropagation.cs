@@ -767,12 +767,7 @@ public sealed partial class Binding
             return this.ErasePart(part, actual, type);
         }
 
-        if (this.ExpectedAdaptation(part, actual, type) is { } adaptation)
-        {
-            this.adaptations[part] = adaptation;
-        }
-
-        return true;
+        return this.ExpectedAdaptation(part, actual, type) is not null; // The selected destination writes its own row.
     }
 
     // A bound part that awaits its position takes `type` when it fits it, before its consumer checks it; its Type, null when unbound.
@@ -805,7 +800,7 @@ public sealed partial class Binding
         if (!IsUnfittedLiteral(part) && this.Deferred(part) && this.SuppliesDefault(part) && this.BindWaiting(part, null) is { } type &&
             !ReferenceEquals(type, BoundType.Never))
         {
-            literalDefault = literalDefault is null ? type : this.CommonOriginType(literalDefault, type, part, out _) ?? literalDefault;
+            literalDefault = literalDefault is null ? type : this.PlaceCommonType(literalDefault, type, part, out _) ?? literalDefault;
         }
     }
 
@@ -856,10 +851,13 @@ public sealed partial class Binding
             return this.SuppliedType(node);
         }
 
-        var adapted = this.ErasureSignatureFits(actual, target, node) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
-        if (adapted is null)
+        // As at the probes, a delivered Type that is `actual` itself means no operation only where the structural part misfits, as a formed
+        // one then delivers another Type; where it fits, a formed Reborrow may deliver its input (its Origin unchanged: Shortened, a
+        // Temporary's), so the part takes the target.
+        var adapted = this.ErasureSignatureFits(actual, target, node) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false);
+        if (!this.FitsStructuralPartAt(actual, target, node) && ReferenceEquals(adapted, actual))
         {
-            return actual;
+            return actual; // No implicit operation.
         }
 
         this.lateAdaptations.Add((node, target));

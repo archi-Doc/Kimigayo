@@ -208,7 +208,8 @@ public sealed partial class Binding
     }
 
     // J2 (SPEC 10.5.1, 10.8, 15.3.6, 15.3.7; the owner's O-358 (a), O-362 (a); PLAN G936): the callee variables that the candidate's
-    // positions name, a Type slot g at index g and an Origin parameter k at index CallSlotCount + k, by what each position contributes
+    // positions name, a Type slot g at index g, an Origin parameter k at CallSlotCount + k and a per-call input i at CallSlotCount +
+    // CallOriginCount + i (SPEC 15.3.4: both are abstract Origins of the callee, the call's fresh regions), by what each position contributes
     // and the variance there (SlotComponentPolarity), in one walk of the retained rows: a position without evidence (a Signature leaf
     // row, or a Signature root without child rows) names into `waiting`; an evidence position (an Evidence leaf row, an Evidence root
     // without child rows, the receiver: EvidenceNames' reading) at a covariant position into `covariant`; an evidence position at another
@@ -312,7 +313,8 @@ public sealed partial class Binding
         }
     }
 
-    // The callee's own Origin parameters `origin` names (a meet's operands included), at CallSlotCount + its slot.
+    // The callee's own Origin parameters and per-call inputs `origin` names (a meet's operands included), at CallSlotCount + its slot,
+    // an input after the Origin parameters.
     private void AddOriginNames(BoundOrigin? origin, int polarity, in SlotSolution solution, ref SlotSet covariant, ref SlotSet other, ref SlotSet contract)
     {
         if (origin is null)
@@ -320,9 +322,9 @@ public sealed partial class Binding
             return;
         }
 
-        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, solution.Binder))
+        if (origin.Kind is OriginKind.Parameter or OriginKind.Input && ReferenceEquals(origin.Binder, solution.Binder))
         {
-            AddName(CallSlotCount(solution.Binder) + origin.Slot, polarity, ref covariant, ref other, ref contract);
+            AddName(CallSlotCount(solution.Binder) + (origin.Kind == OriginKind.Input ? CallOriginCount(solution.Binder) : 0) + origin.Slot, polarity, ref covariant, ref other, ref contract);
         }
 
         for (var i = 0; i < origin.Operands.Count; i++)
