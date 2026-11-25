@@ -27,7 +27,7 @@
 // new, so a version's stepping starts at the library list's length, a position of the build-order list (MirProgram.Bodies). A consumer of
 // step-2 facts meets a body built since then (MirDropTable.Holds): A4's round here misses and commits nothing, and its driver steps and
 // runs it again until a round is clean; a collector run stops before it, and its driver (Compilation.Collect) steps and runs it again,
-// resuming there, until a run reaches its end (PLAN G337 U2). While step 4 judges, the program's demand table is Judging: no lookup may build a body.
+// resuming there, until a run reaches its end (PLAN G337 U2).
 // Input rule (DECISIONS R5-M168, PLAN G951): steps 1 and 4 judge the bodies of the root modules (Judged), step 3 the obligations whose
 // subject is in them and MirOrigins.Findings their layers' rows, whose problems are the program's; a body or declaration outside them is
 // built from its library definition alone, so its verdicts are the same in every program. Steps 2 and 3 visit every body without a
@@ -40,6 +40,7 @@
 // store where a version starts, F18): its library store per library segment, which only the library step writes (MirDropTable.LibraryHolds;
 // a new segment's step clears both stores first, a kept segment's continues the library store). The library state is keyed on the program whose library
 // segment it holds and on that segment (MirProgram.LibrarySegment), so any other program or a segment built again takes the library step.
+// Invariants: while step 4 judges, the program's demand table is Judging: no lookup may build a body.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
 // (MirEffects.Views), also as a static's initializer a site's row composes (MirEffects.Spread, Without), so its keys decide no effect conflict.
