@@ -6,24 +6,17 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // Owns an operator failure's record and its diagnostic projection. A failed decision supplies Types, the location and any actual requirement;
-// its fields are the problem's facts (Binding.Problems), and publication renders them without deciding applicability; a decision whose
-// proof rests on a reported failure records nothing. The immutable operation key owns the written operator. No inference or proof runs here.
+// its fields are the problem's facts (Binding.Problems), and publication renders them without deciding applicability.
+// The immutable operation key owns the written operator. No inference or proof runs here.
 public sealed partial class Binding
 {
     // SPEC 12.4.2, 13.3.1: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.4.2, 13.3.1)";
 
     // The facts: the operand and its judged Type, and the proposition of a proof that is Unknown or Refuted. An Unknown proof is the
-    // UnprovenConstraint failure, so the code tells the two. SPEC 8.2.3, 23.1.2 (rule W): an Error proof read a failed premise or Type
-    // context whose record is reported, so the operation rests with no record of its own, as over a failed operand (RestsOn), on the
-    // cause the proof left where it left one (TakeFailedCause).
+    // UnprovenConstraint failure, so the code tells the two.
     private BoundType? FailOperator(Koto node, Koto at, OperatorApplicability decision)
     {
-        if (decision.Proof == ConstraintProof.Error)
-        {
-            return this.TakeFailedCause().Use is { } cause ? this.CompleteDependent(node, cause) : Complete(node, null);
-        }
-
         var site = this.FactSite(at);
         var judged = decision.Proof is ConstraintProof.Unknown or ConstraintProof.Refuted ? decision.Requirement : null;
         ReadOnlySpan<ProblemFact> facts =

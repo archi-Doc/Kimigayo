@@ -140,6 +140,16 @@ public class NeverContinuationTest
         Assert.Empty(output.ToString());
     }
 
+    // SPEC 13.3.4, 13.7.2 (PLAN G1356, F's C1, B's ruling 5): a compound assignment performs its operation in the destination's read
+    // Type and never swaps sides, so a Never destination has no provider whatever its right is: the operation's record is its own, beside
+    // the right's independent one (Q13: dev gave TypeMismatch_Kd at `b` and at `1`, and no record at `y += missing`).
+    [Theory]
+    [InlineData("bool", "func f(x: Never, b: bool)\n    var y = x\n    y += b", "OperatorNotDefined_Kd: y += b")]
+    [InlineData("literal", "func f(x: Never)\n    var y = x\n    y += 1", "OperatorNotDefined_Kd: y += 1")]
+    [InlineData("missing", "func f(x: Never)\n    var y = x\n    y += missing", "OperatorNotDefined_Kd: y += missing | UnresolvedBinding_Kd: y += missing")]
+    public void ANeverDestinationHasNoProviderWhateverItsRightIs(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
+
     // SPEC 3.8: a Never element of a Tuple literal fits its expected element Type, which the literal's Type takes, so the literal fits its
     // expected Type, also as an enum Case's payload.
     [Theory]

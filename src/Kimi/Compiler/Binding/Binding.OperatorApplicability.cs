@@ -244,9 +244,25 @@ public sealed partial class Binding
 
     // SPEC 13.3.3, 13.3.4: any other Type is built-in numeric only as a parameter with proven PrimitiveInteger; else no row applies (a
     // non-numeric primitive or a string NonNumericOperand, an unproven query UnprovenConstraint, a raw pointer, Tuple, fixed array or
-    // Never no provider: a Never operand proves no direction, 3.1.3). A user provider's routes are TryArithmetic's, first.
+    // Never no provider: a Never operand proves no direction, 3.1.3). A user provider's routes are TryArithmetic's, first. SPEC 8.2.3,
+    // 23.1.2 (rule W): an Error proof read a failed premise or Type context whose record is reported, so the operation's record rests on
+    // the cause the proof left (TakeFailedCause), taken at the decision as RequireClauses takes it (R7-C3 B1) and as a Type mismatch over
+    // a premise error rests on that premise (RecordTypeMismatch): IsDerived's InvalidConstraint row derives it.
     private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope, QuerySite site)
-        => type.IsNumeric ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
+    {
+        if (type.IsNumeric)
+        {
+            return default;
+        }
+
+        var integer = this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
+        if (integer.Proof == ConstraintProof.Error && site.Node is { } node && this.TakeFailedCause().Use is { } cause)
+        {
+            this.AddPrerequisite(node, cause);
+        }
+
+        return integer;
+    }
 
     private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
