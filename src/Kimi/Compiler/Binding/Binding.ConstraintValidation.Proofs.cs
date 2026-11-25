@@ -110,8 +110,6 @@ public sealed partial class Binding
         {
             Array.Resize(ref this.proofScopes, this.proofNesting * 2);
         }
-
-        this.proofScopes[this.proofNesting] = default;
     }
 
     // SPEC 8.3.3, 23.1.1, 23.1.2 (DECISIONS BU-22): closes a proof scope with its answer and pops its slot. Inside another scope or the
@@ -124,7 +122,7 @@ public sealed partial class Binding
         var fact = this.ProofFact(proof);
         var origin = proof == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
         var conformance = proof == ConstraintProof.Refuted ? this.ScopeReads.Conformance : null;
-        this.ScopeReads.Conformance = null; // Taken: no R fact outlives its scope in the popped slot (the library layer's proofScopes).
+        this.ScopeReads = default; // The pop: the slot is left clear, so no read outlives its scope (BeginProof pushes it as it is).
         if (--this.proofNesting == 0)
         {
             this.CloseFrame(this.judgmentEnclosing);
