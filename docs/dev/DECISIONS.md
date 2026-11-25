@@ -28425,7 +28425,7 @@ Closure row of `MirCases.Branch`).
     reference binding's update (O-A2: Operators 181, 192, 280); E4a-3 G453/G486; E4b captures; E4c Origin formation; E4e Owned and
     Callable; E4d the Origin records, O-R), each listing the stores it deletes. E4's parts total about +296/-474 against the plan's
     +100/-500: E4a-3 (G453/G486, given to E4 by plan revision 69 (B)) and the per-part regression rows are the difference.
-  - **E4a-2 (Q-<n>, D-<n>; F's R7-E4 rulings 5-10 and 15-18). Acquisition, the Take, the written Borrow and the reference
+  - **E4a-2 (Q-752, D-1249; F's R7-E4 rulings 5-10 and 15-18). Acquisition, the Take, the written Borrow and the reference
     binding's write record their facts; one form per requirement.**
     - **The write row** (`RecordWrite`, ReportWrite at role 0) takes every sender of a denied write or written Borrow and of a
       reference binding's write: the denied write (E4a-1), the object authority, the written Borrow's denial
