@@ -4,101 +4,38 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The Origin part of the Type relation (SPEC 8.1.2, 15.6.1): the common Type of two Types that differ only in Origins (CommonOriginType)
-// and the one decision on the outer Origins of a fit (FitOuterOrigins).
+// The Origin part of the Type relation (SPEC 8.1.2, 15.6.1): the common Type of a place's parts (PlaceCommonType, StatedPlaceType), the
+// common supertype of two Types that differ only in Origins (CommonOriginType) and the one decision on the outer Origins of a fit
+// (FitOuterOrigins).
+// Contract (PLAN G1379): the place's common Type is decided here once; its readers (the array, Dictionary and element hole places, a
+// waiting part's default) record its failure at the part and fit each part to it, and none decides an Origin of it. Only Origins are
+// met: no Core conversion or common base search is introduced, and the walk forms no relation and no record.
 public sealed partial class Binding
 {
-    // Only Origin restriction is inferred here. No Core conversion or common base search is
-    // introduced; every invariant position stays identical and both inputs must fit the result.
-    // SPEC 14.9.2, 15.6.1: a search that fails gives its failure, the only record of a failed common Type: Shape for a structural difference,
-    // else the first position whose Origins have no common Origin (a presence difference at a pair layer relates its slots, an invariant
-    // position or Origin argument its Origins), whose relation the fit's record judges.
+    // SPEC 4.3.1 Places, 14.9.2 step 2, 10.8, 15.3.6: the common Type of two parts whose structural parts agree. Its Origins are the place's
+    // variables, each taking its candidate: the meet of the parts' Origins at a covariant position and at an invariant one (a bound a
+    // part's fit gives is no proven equality, so the invariant variable takes the covariant candidate); differing raw Origins stay
+    // unstated (5.7). The polarity is the canonical table's (ComposeVariance, ComponentVariance, OriginArgumentVariance), entered
+    // covariant. It forms no relation: each part's use-site fit to the result does, which its reader runs (FitsValueAt, RequireAtPosition).
+    // A failure is the only record of a failed place: Shape for a structural difference (a presence difference FitOuterOrigins finds
+    // included), Limit for a contravariant position whose Origins differ, whose candidate (a lower bound proven to outlive the others) this
+    // search does not form: the located Unsupported_Kd until the place forms it (PLAN's contravariant-candidate row, from G1379).
+    internal BoundType? PlaceCommonType(BoundType left, BoundType right, QuerySite site, out ComparisonFailure failure)
+        => this.PlaceCommonType(left, right, OriginVariance.Covariant, site, out failure);
+
+    // SPEC 15.6.1: a common supertype of two Types that differ only in Origins, for a reader that needs one both fit (an equality's
+    // operands, a function reference's bindings, a join): the place's common Type, which both must fit, judged once at its root, so an
+    // invariant difference fails unless the premises prove its Origins equal.
     internal BoundType? CommonOriginType(BoundType left, BoundType right, QuerySite site, out ComparisonFailure failure)
     {
-        failure = default;
-        if (ReferenceEquals(left, right))
+        var result = this.PlaceCommonType(left, right, site, out failure);
+        if (result is null || (this.IsSubtype(left, result) && this.IsSubtype(right, result)))
         {
-            return left;
+            return result;
         }
 
-        if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
-            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.InstanceContext, right.InstanceContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
-            left.OriginArguments.Count != right.OriginArguments.Count)
-        {
-            failure = ComparisonFailure.Shape;
-            return null;
-        }
-
-        // SPEC 8.1.2: a pair layer's slot is its OuterOrigin, the original's implicit `o` included (PLAN G758).
-        var (leftSlot, rightSlot) = (this.OuterOrigin(left), this.OuterOrigin(right));
-        if ((leftSlot is null) != (rightSlot is null) && !this.InactiveOuterOrigin(left, this, null, site, default))
-        {
-            failure = Unmet(rightSlot, leftSlot);
-            return null;
-        }
-
-        var components = this.RentTypes(left.Components.Count);
-        var origins = this.originScratch.Rent(left.OriginArguments.Count);
-        try
-        {
-            for (var i = 0; i < left.Components.Count; i++)
-            {
-                var covariant = !IsInvariantLayer(left, this, null, default) &&
-                    !(left.Kind == BoundTypeKind.Function && i == 0) &&
-                    (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
-                var (l, r) = (left.Components[i], right.Components[i]);
-                var part = ReferenceEquals(l, r) ? l : null;
-                if (covariant)
-                {
-                    part = this.CommonOriginType(l, r, site, out failure);
-                }
-                else if (part is null)
-                {
-                    failure = TyCtxt.StorageMatches(l, r) ? Unmet(null, null) : ComparisonFailure.Shape;
-                }
-
-                if (part is null)
-                {
-                    return null;
-                }
-
-                components[i] = part;
-            }
-
-            for (var i = 0; i < left.OriginArguments.Count; i++)
-            {
-                if (!ReferenceEquals(left.OriginArguments[i], right.OriginArguments[i]) && this.OriginArgumentVariance(left, i, this) != OriginVariance.Covariant)
-                {
-                    failure = Unmet(right.OriginArguments[i], left.OriginArguments[i]);
-                    return null;
-                }
-
-                origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
-            }
-
-            // SPEC 5.7 (Q-O6): differing raw Origins have the unstated common Type, never a meet.
-            var origin = ReferenceEquals(left.RawOrigin, right.RawOrigin) ? left.RawOrigin : null;
-            if (!this.InactiveOuterOrigin(left, this, null, site, default) && leftSlot is { } a)
-            {
-                origin = this.Meet(a, rightSlot!);
-            }
-
-            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.InstanceContext, left.LengthArguments, left.Binder);
-            if (this.IsSubtype(left, result) && this.IsSubtype(right, result))
-            {
-                return result;
-            }
-
-            failure = Unmet(right.Origin, result.Origin);
-            return null;
-        }
-        finally
-        {
-            this.originScratch.Return(origins, clearArray: true);
-            this.typeScratch.Return(components, clearArray: true);
-        }
-
-        static ComparisonFailure Unmet(BoundOrigin? longer, BoundOrigin? shorter) => new(ComparisonFailureKind.Position, longer, shorter, false, default);
+        failure = new(ComparisonFailureKind.Position, right.Origin, result.Origin, false, default);
+        return null;
     }
 
     // How a fit treats the outer Origins of two Types of one shape (FitOuterOrigins).
@@ -149,7 +86,7 @@ public sealed partial class Binding
     // a borrow case is admitted is unformed: its formation failure is recorded where it is declared, so the fit derives from that failure
     // instead of adding a mismatch. Any other difference in presence is structural.
     // It reads this Binding's premises, the binder's, whether or not the walk asking has a premises reader (PLAN G758).
-    // RelationWalk, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision; each states the comparison
+    // RelationWalk, CheckTypeUse, CollectCallRelations, FailedOriginRelation and a place (PlaceOuterOrigin) share this one decision; each states the comparison
     // its relation belongs to (InactiveOuterOrigin), `default` outside any comparison. A placing fit's walk passes its raw-fit sink
     // (`fits`, Binding.ValueFits.cs' rawFits; null where the fit places no value) and whether the position is invariant: at a raw layer,
     // outside a Callable comparison, the decision appends the raw fit by its one entry rule (AddRawFit; G147 rulings 75, 76); it is
@@ -192,5 +129,127 @@ public sealed partial class Binding
         // As InactiveOuterOrigin: `o` is the binder's (PairOuterOrigin), interned when its binder was bound, so a walk after publication
         // reads the atom and adds none.
         return this.OuterOrigin(actual) is { } slot && this.OuterOrigin(expected) is { } other ? (OuterOriginFit.Relation, slot, other) : (OuterOriginFit.None, null!, null!);
+    }
+
+    // SPEC 4.3.1, 15.3.6 (PLAN G1379, B's ruling 1): the place's Type at an expected element Type: the parts' common Type `common`, whose
+    // Origin at each position `expected` states is that stated Origin, fixed (only a variable takes a candidate); an omitted one, a
+    // variable, keeps the meet. A node `expected` does not share (another kind, arity or binder, as an adapted part's) states none.
+    private BoundType StatedPlaceType(BoundType common, BoundType expected)
+    {
+        if (!expected.CarriesOrigin || common.Kind != expected.Kind || common.Symbol != expected.Symbol || !ReferenceEquals(common.Binder, expected.Binder) ||
+            common.Components.Count != expected.Components.Count || common.OriginArguments.Count != expected.OriginArguments.Count)
+        {
+            return common;
+        }
+
+        var components = this.RentTypes(common.Components.Count);
+        var origins = this.originScratch.Rent(common.OriginArguments.Count);
+        try
+        {
+            for (var i = 0; i < common.Components.Count; i++)
+            {
+                components[i] = this.StatedPlaceType(common.Components[i], expected.Components[i]);
+            }
+
+            for (var i = 0; i < common.OriginArguments.Count; i++)
+            {
+                origins[i] = Stated(expected.OriginArguments[i]) ?? common.OriginArguments[i];
+            }
+
+            return this.types.Rebuild(common, components.AsSpan(0, common.Components.Count), Stated(expected.Origin) ?? common.Origin, origins.AsSpan(0, common.OriginArguments.Count));
+        }
+        finally
+        {
+            this.originScratch.Return(origins, clearArray: true);
+            this.typeScratch.Return(components, clearArray: true);
+        }
+
+        // SPEC 15.4.2, 15.4.4: an omitted Origin is an inference variable (a local region is a written one).
+        static BoundOrigin? Stated(BoundOrigin? origin) => origin is { Kind: OriginKind.Inference } && !IsLocalRegion(origin) ? null : origin;
+    }
+
+    // The place's common Type at a position of variance `polarity` within the place's Type.
+    private BoundType? PlaceCommonType(BoundType left, BoundType right, OriginVariance polarity, QuerySite site, out ComparisonFailure failure)
+    {
+        failure = default;
+        if (ReferenceEquals(left, right))
+        {
+            return left;
+        }
+
+        if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
+            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.InstanceContext, right.InstanceContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
+            left.OriginArguments.Count != right.OriginArguments.Count)
+        {
+            failure = ComparisonFailure.Shape;
+            return null;
+        }
+
+        // SPEC 5.7 (Q-O6): differing raw Origins have the unstated common Type, never a meet.
+        var origin = left.IsPointer ? (ReferenceEquals(left.RawOrigin, right.RawOrigin) ? left.RawOrigin : null) : this.PlaceOuterOrigin(left, right, polarity, site, ref failure);
+        if (failure.Kind != ComparisonFailureKind.None)
+        {
+            return null;
+        }
+
+        var components = this.RentTypes(left.Components.Count);
+        var origins = this.originScratch.Rent(left.OriginArguments.Count);
+        try
+        {
+            for (var i = 0; i < left.Components.Count; i++)
+            {
+                if (this.PlaceCommonType(left.Components[i], right.Components[i], ComposeVariance(polarity, ComponentVariance(left, i, this)), site, out failure) is not { } part)
+                {
+                    return null;
+                }
+
+                components[i] = part;
+            }
+
+            for (var i = 0; i < left.OriginArguments.Count; i++)
+            {
+                if (this.PlaceCandidate(left.OriginArguments[i], right.OriginArguments[i], ComposeVariance(polarity, this.OriginArgumentVariance(left, i, this)), ref failure) is not { } met)
+                {
+                    return null;
+                }
+
+                origins[i] = met;
+            }
+
+            return this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.InstanceContext, left.LengthArguments, left.Binder);
+        }
+        finally
+        {
+            this.originScratch.Return(origins, clearArray: true);
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
+    // SPEC 8.1.2, 15.6.1: a place's outer Origin by the fit's one decision (FitOuterOrigins; a pair layer's slot, the original's implicit `o`
+    // included, PLAN G758): two that relate take their candidate; nothing to relate (equal Origins, an inactive slot, or an unformed pair
+    // layer, whose formation record explains it) keeps only an equal Origin; a difference in presence no relation explains is Shape.
+    private BoundOrigin? PlaceOuterOrigin(BoundType left, BoundType right, OriginVariance polarity, QuerySite site, ref ComparisonFailure failure)
+    {
+        var (fit, longer, shorter) = this.FitOuterOrigins(left, right, null, site, default, null, false);
+        if (fit == OuterOriginFit.Relation)
+        {
+            return this.PlaceCandidate(longer, shorter, polarity, ref failure);
+        }
+
+        failure = fit == OuterOriginFit.Mismatch ? ComparisonFailure.Shape : failure;
+        return ReferenceEquals(left.Origin, right.Origin) ? left.Origin : null;
+    }
+
+    // SPEC 15.3.6: a place variable's candidate from two parts' Origins: their meet at a covariant or invariant position; at a contravariant
+    // one whose Origins differ, the Limit (null).
+    private BoundOrigin? PlaceCandidate(BoundOrigin left, BoundOrigin right, OriginVariance polarity, ref ComparisonFailure failure)
+    {
+        if (polarity == OriginVariance.Contravariant && !ReferenceEquals(left, right))
+        {
+            failure = new(ComparisonFailureKind.Limit, left, right, false, default);
+            return null;
+        }
+
+        return this.Meet(left, right);
     }
 }
