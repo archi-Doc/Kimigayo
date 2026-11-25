@@ -167,6 +167,10 @@ public sealed partial class RecursiveContractTest
     // supplied identity, and a path equation to a deeper projection (SPEC 8.3.3).
     private const string IdentityOrders = "contract KA\n    associate V\n    Self.(KA).V is string\ncontract K\n    associate A is KA\n    associate X\n    associate Y\n    Self.(K).X is Option<Self.(K).A.(KA).V>\n    Self.(K).Y is Option<string>\n    func x(self: ref/Self) -> ref/Self.(K).X\n    func v(self: ref/Self) -> ref/Self.(K).A.(KA).V\n";
 
+    // The request pair (G1406-8): X and Y are abstract; K's clauses make Option<X> the projection R and Option<Y> the projection S at the
+    // link T.(K).A, where KA supplies R is S (SPEC 8.3.2), so X is Y by decomposition (8.2.3) and `T.(K).Y is Marker` proves X is Marker.
+    private const string RequestOrders = "contract KA\n    associate R\n    associate S\n    Self.(KA).R is Self.(KA).S\ncontract Marker\ncontract K\n    associate A is KA\n    associate X\n    associate Y\n    Self.(K).A.(KA).R is Option<Self.(K).X>\n    Self.(K).A.(KA).S is Option<Self.(K).Y>\n    func x(self: ref/Self) -> ref/Self.(K).X\n    func p(self: ref/Self) -> ref/Self.(K).A.(KA).R\n";
+
     private const string SiblingArguments = "contract Two<E, F>\n    associate P\n    Self.(Two<E, F>).P is E\n    Self.(Two<E, F>).P is F\ncontract K\n    associate A\n    associate B\n    associate D\n    Self.(K).D is Two<Self.(K).A, Self.(K).B>\n";
 
     private const string CycleMates = "contract Mk\n    associate Next is Mk\n    associate Up\n    Self.(Mk).Next.(Mk).Up is Self\n";
@@ -582,15 +586,18 @@ public sealed partial class RecursiveContractTest
     // e2-7 (R7-C2e2, the view's identity closure; design-p0.md R1.5, labelled from SPEC first). An identity the grounds supply at depth
     // conflicts with a written or a Contract's own clause (tconf2, tdec through decomposition, hc-use once at HC's clause and nothing at
     // the use: SPEC 8.2.3, 23.1.2); a let reads it (u2-let); the meaning does not depend on the order of checks (8.2.3), so each pair
-    // (ord, arg through a sibling link's Contract arguments, mk through a cycle's mate) is valid in either order; a premise's grounds
-    // do not depend on the check asking (c4a, c4b); a refuted identity under a path equation rests on the limited closure (pqlet-i32,
-    // 8.3.3). hc-use, arg-a, mk-a, mk-b, c4a and c4b already hold on the head (guards).
+    // (ord, ordr through a request, arg through a sibling link's Contract arguments, mk through a cycle's mate) is valid in either
+    // order; a premise's grounds do not depend on the check asking (c4a, c4b); a refuted identity under a path equation rests on the
+    // limited closure, and the mismatch resting on it is dependent (pqlet-i32, 8.3.3, 23.1.2). hc-use, ordr-a, ordr-b, arg-a, mk-a, mk-b,
+    // c4a and c4b already hold on the head (guards).
     [InlineData("e2-7", "tconf2", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is i32\n    return 0\n", "InvalidConstraint_Kd: T.(KP).Next.(KP).V is i32", Explicit = true)]
     [InlineData("e2-7", "tdec", "contract KS\n    associate V\n    Self.(KS).V is string\ncontract K\n    associate A\n    associate B\n    associate C is KS\n    Self.(K).A is Option<Self.(K).C.(KS).V>\n    Self.(K).B is Option<i32>\nfunc probe<T>(t: ref/T) -> i32\n    T is K\n    T.(K).A is T.(K).B\n    return 0\n", "InvalidConstraint_Kd: T.(K).A is T.(K).B", Explicit = true)]
     [InlineData("guard", "hc-use", "contract HC\n    associate Next is HC\n    associate V\n    Self.(HC).V is string\n    Self.(HC).Next.(HC).V is i32\n    func deep(self: ref/Self) -> ref/Self.(HC).Next.(HC).V\nfunc probe<T>(t: ref/T) -> i32\n    T is HC\n    let s: ref/i32 = t.deep()\n    return 0\n", "InvalidConstraint_Kd: Self.(HC).Next.(HC).V is i32")]
     [InlineData("e2-7", "u2-let", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let s: ref/string = t.deep()\n    return 0\n", "", Explicit = true)]
     [InlineData("e2-7", "ord-a", IdentityOrders + "func probe<T>(t: ref/T) -> i32\n    T is K\n    let s: ref/string = t.v()\n    let y: ref/T.(K).Y = t.x()\n    return 0\n", "", Explicit = true)]
     [InlineData("e2-7", "ord-b", IdentityOrders + "func probe<T>(t: ref/T) -> i32\n    T is K\n    let y: ref/T.(K).Y = t.x()\n    let s: ref/string = t.v()\n    return 0\n", "", Explicit = true)]
+    [InlineData("guard", "ordr-a", RequestOrders + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is K\n    T.(K).Y is Marker\n    let q: ref/T.(K).A.(KA).S = t.p()\n    return needMark(t.x())\n", "")]
+    [InlineData("guard", "ordr-b", RequestOrders + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is K\n    T.(K).Y is Marker\n    let m = needMark(t.x())\n    let q: ref/T.(K).A.(KA).S = t.p()\n    return m\n", "")]
     [InlineData("guard", "arg-a", SiblingArguments + "func probe<T>(t: ref/T, a: ref/T.(K).A) -> i32\n    T is K\n    let p: ref/T.(K).D.(Two<T.(K).A, T.(K).B>).P = a\n    let b: ref/T.(K).B = a\n    return 0\n", "")]
     [InlineData("e2-7", "arg-b", SiblingArguments + "func probe<T>(t: ref/T, a: ref/T.(K).A) -> i32\n    T is K\n    let b: ref/T.(K).B = a\n    let p: ref/T.(K).D.(Two<T.(K).A, T.(K).B>).P = a\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "mk-a", CycleMates + "func probe<T>(a: ref/T.(Mk).Next.(Mk).Next.(Mk).Up, b: ref/T.(Mk).Next.(Mk).Up) -> i32\n    T is Mk\n    let x: ref/T.(Mk).Next = a\n    let y: ref/T = b\n    return 0\n", "")]
