@@ -167,6 +167,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
         => PlaceKey.Root(input) with { Signature = this.Signature(function, null, slot, out _) };
 
+    // SPEC 15.8.2, 7.7.3 (DECISIONS R4-M148; PLAN G941): a Closure call's receiver key: the root key of its contract's call receiver input
+    // (input 0, HasReceiverInput) as Retains forms it, `R/Env during ρ` (Binding.ClosureReceiver over ClosureReceiverIn; Env by value under
+    // `owner/Self`), so that OwnLayers at the key past its borrow lists the environment bindings with their `let` mark (OwnLayer.Let); the
+    // root key of `callee` for a callee without that input.
+    internal PlaceKey ReceiverKey(BoundType callee)
+        => Closure(callee) is { } closure
+            ? PlaceKey.Root(binding.ClosureReceiver((FunctionKoto)closure.Symbol!.Declaration!, this.ClosureReceiverIn(closure), closure)) : PlaceKey.Root(callee);
+
     // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);

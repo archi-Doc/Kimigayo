@@ -12,9 +12,11 @@ namespace Kimi.Compiler;
 // Inputs: Holdings' entries and the stored parts Binding's instances keep (Instance, WrittenAt); a path's dereference is PathOrigin's one
 // rule (Dereferenced over Reached, Binding.PlaceAuthority.Raw.cs), a `during self` layer read as ReadHolder reads it (ReplaceHolder); the
 // declaring function's identity classes (Binding.TypeIdentity, the one judge: View).
-// Outputs: a key per Place (Types only), and per key its layers with their steps, their kept Type (Kept) and the key past each; rows are listed
-// once per walked key (Type, Written, Holder, Signature and the Loan mark: a part reached both through a Loan's Type argument and directly
-// is listed both ways), so a parameter key may list a part a root key of the same Type lists once.
+// Outputs: a key per Place (Types only), and per key its layers with their steps, their kept Type (Kept), their `let` mark (OwnLayer.Let,
+// at the key past a Closure call's receiver borrow, TyCtxt.ReceiverKey) and the key past each; rows are listed once per walked key (Type,
+// Written, Holder, Signature, the Loan mark and the Let mark: a part reached both through a Loan's Type argument and directly, or both
+// within a `let` and a `var` environment binding, is listed both ways), so a parameter key may list a part a root key of the same Type
+// lists once.
 // Invariants: a function of the key (and of the selected part); every producer of a key (Select, Base, Leading, a Past key) steps the
 // Signature by the one rule (View, then Binding.Retention.Declared.cs's pairing and Below); Hidden only where the declared counterpart, in the declaring
 // function's view, is an abstract Type of that function itself; total over what Binding accepts (an unbound part: Type null, one
@@ -87,18 +89,28 @@ internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceK
     /// Loan's Type argument by value until G416 U3a (D4), so a reader takes no write Type and no key past it. Removal: G416 U3a, when ByValue
     /// stops walking a Loan's Type argument and no such part is listed.</summary>
     internal bool Loan { get; init; }
+
+    /// <summary>Gets a value indicating whether the part lies within a `let` environment binding of a Closure call receiver's referent,
+    /// at any depth by value: the call never writes at it (SPEC 15.8.2, 7.7.2; the owner's O-254 Q1 D, DECISIONS R4-M219; PLAN G941).
+    /// Only at the key past the receiver borrow (TyCtxt.ReceiverKey), each binding by its component (BoundClosure.Captures); a part a
+    /// nested by-value Closure holds keeps the outermost binding's mark. Never at a key past any other layer, a result key, a parameter key
+    /// or a by-value (`owner/Self`) receiver's root key.</summary>
+    internal bool Let { get; init; }
 }
 
 public sealed partial class Binding
 {
-    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature, bool Loan)> ownSeen = new(); // OwnLayers' walked keys, reused.
+    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature, bool Loan, bool Let)> ownSeen = new(); // OwnLayers' walked keys, reused.
     private int ownLoans; // OwnParts' depth past a Loan's Type argument (OwnLayer.Loan; until G416 U3a).
+    private bool ownLet; // OwnParts' walk state within a `let` environment binding of a call receiver's referent (OwnLayer.Let).
 
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a
     // Place's key holds at its own address, by ByValue at any holder, each part as the body sees it (BodySees, as the storage walk's
     // BodyRun): a raw layer met there with its step at the Place (LayerStep), not gone past; any other part that reaches storage with no
     // layer; nothing for a part with no entry or a Type argument. A Case key walks the payload's components with the Case's written Types,
-    // as Holdings does. False at Binding's Limit, the storage walk's.
+    // as Holdings does. A Closure call receiver's referent (the key past the receiver borrow, ReceiverClosure) walks its environment
+    // bindings as OwnParts walks a Closure's, each in the walk state of its binding's mark (ownLet: BoundClosure.Captures by component
+    // index, as RootWalk reads them). False at Binding's Limit, the storage walk's.
     internal bool OwnLayers(PlaceKey at, List<OwnLayer> into)
     {
         this.ownSeen.Clear();
@@ -114,6 +126,19 @@ public sealed partial class Binding
         {
             var signature = Below(payload, DeclaredComponent(payload, at.Type, j));
             complete = this.OwnParts(at.Type.Components[j], WrittenAt(at.Holder!, at.Case, [j], out _), at.Holder, signature, at, into);
+        }
+
+        if (at.Through is { } through && this.BorrowReferent(through, out var outer, out _) is not null && ReceiverClosure(outer, at.Type) is { } receiver)
+        {
+            var (captures, bindings, signature) = (receiver.ClosureDefinition!.Captures, this.BodySees(at.Type), Below(this.View(at.Signature), null));
+            for (var i = 0; complete && bindings is not null && i < bindings.Components.Count; i++)
+            {
+                this.ownLet = !captures[i].Environment.MutableCapture;
+                complete = this.OwnParts(bindings.Components[i], null, null, signature, at, into); // Holdings' Closure entries: no Written, no Holder.
+            }
+
+            this.ownLet = false;
+            return complete && bindings is not null;
         }
 
         return at.Case >= 0 ? complete : this.OwnParts(at.Type, at.Written, at.Holder, at.Signature, at, into);
@@ -196,13 +221,14 @@ public sealed partial class Binding
 
     // OwnLayers from a part (Type, Written, Holder) and the Type the called function's declaration writes there (Signature, read in the
     // function's view, View; paired by the storage walk's rule, DeclaredRun and SignaturePast; kept inside a hidden binding, Below), each
-    // (Type, Written, Holder, Signature) once per call and per whether it lies past a Loan's Type argument (OwnLayer.Loan, marked on
-    // every part listed there: ByValue's Loan row, until G416 U3a); retentionHeld is read as a stack (each run removed). It reads Holdings
-    // only, never HeldRun, so it sets no storage-walk state (retentionLimit).
+    // (Type, Written, Holder, Signature) once per call, per whether it lies past a Loan's Type argument (OwnLayer.Loan, marked on
+    // every part listed there: ByValue's Loan row, until G416 U3a) and per its walk state's `let` mark (OwnLayer.Let, stamped on every part
+    // listed); retentionHeld is read as a stack (each run removed). It reads Holdings only, never HeldRun, so it sets no storage-walk state
+    // (retentionLimit).
     private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, BoundType? signature, in PlaceKey at, List<OwnLayer> into)
     {
         signature = this.View(signature);
-        if (!this.ownSeen.Add((type, written, holder, signature, this.ownLoans > 0)))
+        if (!this.ownSeen.Add((type, written, holder, signature, this.ownLoans > 0, this.ownLet)))
         {
             return true;
         }
@@ -215,7 +241,7 @@ public sealed partial class Binding
         {
             var layer = this.retentionHeld[start];
             var past = new PlaceKey(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at), this.SignaturePast(signature, type, layer));
-            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Kept = kept, Loan = this.ownLoans > 0 });
+            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Kept = kept, Loan = this.ownLoans > 0, Let = this.ownLet });
         }
 
         var declared = raw || !complete ? default : this.DeclaredRun(signature, type, run);
@@ -232,7 +258,7 @@ public sealed partial class Binding
             else if (entry.Step != HoldStep.Loan || entry.Part is null)
             {
                 var (through, reached) = (this.PastThrough(type, entry, at), this.SignaturePast(signature, type, entry));
-                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Kept = kept, Loan = this.ownLoans > 0 });
+                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Kept = kept, Loan = this.ownLoans > 0, Let = this.ownLet });
             }
         }
 

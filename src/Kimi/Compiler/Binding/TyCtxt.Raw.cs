@@ -178,17 +178,19 @@ internal sealed partial class TyCtxt
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, Reading and Writing a Field, 15.6.4 (PLAN G583, G598, C-189): the parts the value at a
     // Place's key holds at its own address, Binding's one reading (Binding.OwnLayers), so that the storage walk's output fold and A5's
     // covering and pun rule enumerate the same raw layers by one criterion. Input: a PlaceKey: a call input's PlaceKey.Root(input) (a
-    // contract slot's declared Type under a call's substitution, no Written, no Holder, no dereference), or a Place's key, Select's fold of
-    // its path from its root. At its own address means the storage walk's by-value relation (Binding.ByValue) applied recursively at any
-    // holder: Tuple and fixed-array elements, a struct's Fields and base, an enum's Case payloads (a Case key: its payload's components with
-    // the Case's written Types), a Closure's environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`,
+    // contract slot's declared Type under a call's substitution, no Written, no Holder, no dereference), a Closure call's receiver key
+    // (ReceiverKey), or a Place's key, Select's fold of its path from its root. At its own address means the storage walk's by-value
+    // relation (Binding.ByValue) applied recursively at any holder: Tuple and fixed-array elements, a struct's Fields and base, an enum's
+    // Case payloads (a Case key: its payload's components with the Case's written Types), a Closure's environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`,
     // Array, Dictionary, `string`) and a `Loan<T>`'s argument (each part listed past it marked OwnLayer.Loan: a Type argument has no address,
     // SPEC 15.3.5, so a reader takes no write Type or key past it; until G416 U3a); any other Type argument adds nothing. Each part is
-    // read once per call and walked key (its Type, Written, Holder, Signature and whether it lies past a Loan's Type argument: a part
-    // reached both through a Loan's Type argument and directly is listed both ways) through Holdings as the contract's body sees it (a
-    // Closure part by ClosureEnvironment, DECISIONS R4-M148). Output, appended to `into` in walk
-    // order: (layer, step, Past) for each raw layer met there, not gone past, its step that at the Place: DeclaredStep under its holding
-    // instance, except that a `during self` layer, where the key's path dereferences, has the step of the Origin reading it gives (SPEC 5.7
+    // read once per call and walked key (its Type, Written, Holder, Signature, whether it lies past a Loan's Type argument and its `let`
+    // mark: a part reached both through a Loan's Type argument and directly, or within a `let` and a `var` binding, is listed both ways)
+    // through Holdings as the contract's body sees it (a Closure part by ClosureEnvironment, DECISIONS R4-M148). At the key past a Closure
+    // call receiver's borrow (ReceiverKey's) each part within a `let` environment binding, at any depth by value, is marked OwnLayer.Let
+    // (SPEC 15.8.2: the call never writes it), the bindings told apart by component (BoundClosure.Captures); no other key marks a part.
+    // Output, appended to `into` in walk order: (layer, step, Past) for each raw layer met there, not gone past, its step that at the
+    // Place: DeclaredStep under its holding instance, except that a `during self` layer, where the key's path dereferences, has the step of the Origin reading it gives (SPEC 5.7
     // Writing a Field), and Unsupported through a U2 path; (null, step, Past) for each other part that reaches storage (a borrow or pair
     // case, an rc or arc view, an abstract, erased or unbound part); nothing for a part with no entry. Past is the key past the entry,
     // with the path's last dereferenced layer past it (Binding.PastThrough). Unsupported is never a stated Origin: a reader takes

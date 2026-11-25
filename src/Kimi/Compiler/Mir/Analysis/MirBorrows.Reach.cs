@@ -516,7 +516,7 @@ internal sealed partial class MirBorrows
         var (on, guard) = (!this.OffGrid(set), MirWrites.None);
         for (var j = 0; j < facts.PastCount; j++)
         {
-            var (at, reading) = (this.punPastLayers[facts.PastStart + j], this.punViewTypes[facts.FirstStart + j]);
+            var (at, reading) = (this.punPastLayers[facts.PastStart + j].Class, this.punViewTypes[facts.FirstStart + j]);
             var rows = at is PastLayer.Its or PastLayer.Stated || (at == PastLayer.Borrow && types.Punnable(reading))
                 ? this.Reading(this.punPastKeys[facts.PastStart + j], facts.Fold) : default;
             if (rows.Guard != MirWrites.None && this.PunnedAt(set, reading, on, rows))
@@ -634,7 +634,7 @@ internal sealed partial class MirBorrows
         var on = !this.OffGrid(set);
         for (var j = 0; j < facts.PastCount; j++)
         {
-            var (at, past, reading) = (this.punPastLayers[facts.PastStart + j], this.punPastKeys[facts.PastStart + j], this.punViewTypes[facts.FirstStart + j]);
+            var (at, past, reading) = (this.punPastLayers[facts.PastStart + j].Class, this.punPastKeys[facts.PastStart + j], this.punViewTypes[facts.FirstStart + j]);
             if (at is not (PastLayer.Its or PastLayer.Borrow))
             {
                 continue;
@@ -769,7 +769,7 @@ internal sealed partial class MirBorrows
         var facts = this.punKeys[node.Key];
         for (var j = 0; j < facts.PastCount; j++)
         {
-            if (this.punPastLayers[facts.PastStart + j] is PastLayer.Its or PastLayer.Borrow)
+            if (this.punPastLayers[facts.PastStart + j].Class is PastLayer.Its or PastLayer.Borrow)
             {
                 this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
                 this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
@@ -933,7 +933,7 @@ internal sealed partial class MirBorrows
     private void ReadPart(int part, MirWrites guard, bool readOn, int at, int layer, OutputRetention output)
     {
         var facts = this.punKeys[at];
-        var (type, raw, past, fold) = (this.punViewTypes[facts.FirstStart + layer], this.punPastLayers[facts.PastStart + layer] != PastLayer.Borrow,
+        var (type, raw, past, fold) = (this.punViewTypes[facts.FirstStart + layer], this.punPastLayers[facts.PastStart + layer].Class != PastLayer.Borrow,
             this.punPastKeys[facts.PastStart + layer], facts.Fold);
         var key = part == 0 ? -1 : this.Key(past, fold);
         if (part == 0 || !this.nodeParts.Add((part, key)))
@@ -998,7 +998,7 @@ internal sealed partial class MirBorrows
         var facts = this.punKeys[key];
         for (var j = 0; j < facts.PastCount; j++)
         {
-            if (this.punPastLayers[facts.PastStart + j] is var at and (PastLayer.Its or PastLayer.Any))
+            if (this.punPastLayers[facts.PastStart + j].Class is var at and (PastLayer.Its or PastLayer.Any))
             {
                 this.Written(Escaped, -1, ViaPast, at == PastLayer.Its ? this.EntryName(this.punPastKeys[facts.PastStart + j], output) : null);
             }
