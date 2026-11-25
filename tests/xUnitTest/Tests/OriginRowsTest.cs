@@ -236,7 +236,7 @@ public sealed partial class OriginRowsTest
         TheViewBuilds(c);
     }
 
-    // G215 (DECISIONS R7-M111, superseding R4-M168's located limit): a layer whose struct has no Published constructor (its omitted base
+    // G215 (DECISIONS R7-M114, superseding R4-M168's located limit): a layer whose struct has no Published constructor (its omitted base
     // clause selects none) has a MIR body of its own, keyed by the struct, and that body's slice is the layer's Field-initializer rows as
     // its own part, the one source of the slice; FieldInit's S, whose constructors' slices include its layer's rows, has no layer body.
     [Fact]

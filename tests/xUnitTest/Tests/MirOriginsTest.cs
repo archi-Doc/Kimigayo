@@ -148,7 +148,7 @@ public sealed partial class MirOriginsTest
     // and the subject it binds (rv/guard-annot), the destruction receiver's part and its helper borrow (G161), shared and exclusive layers
     // a Ref is reached through (SPEC 15.6.3's containment), an object's own step, a mutable static's storage (row 7), and FailedClause's
     // body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart), and a Field initializer's layer rows in a
-    // declared or synthesized constructor's slice, and in a constructorless layer's body (PLAN G215; DECISIONS R7-M111): an omitted base
+    // declared or synthesized constructor's slice, and in a constructorless layer's body (PLAN G215; DECISIONS R7-M114): an omitted base
     // clause that selects no constructor (NoBase) and a Field without an initializer (Holder), the latter also through an exclusive layer.
     [Theory]
     [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "local@ref")]
@@ -172,7 +172,7 @@ public sealed partial class MirOriginsTest
     public void AFiniteChainIntoAFixedOriginIsRefutedAtItsLastEdge(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
-    // SPEC 14.2.1, 23.1.2 (DECISIONS R7-M111; twins k_nobody, k_nobody_bad): a constructor whose body is missing is no Published one, so
+    // SPEC 14.2.1, 23.1.2 (DECISIONS R7-M114; twins k_nobody, k_nobody_bad): a constructor whose body is missing is no Published one, so
     // its struct's Field initializers are its layer body's and are judged there: the parse record alone, and with a local's Borrow
     // annotated into the layer's Origin (LocalInit) A5's Refuted record beside it, an independent failure.
     [Theory]
@@ -321,7 +321,7 @@ public sealed partial class MirOriginsTest
     // the destruction receiver's view exchanged with itself (d-g161-ok), and a Closure header's omitted inner Origin, whose
     // well-formedness is its signature's premise, proven at the call, so no row of the evaluating body (PLAN G216, DECISIONS R4-M137); a
     // Field initializer's written Type under the Type's clause in its constructor's slice and in a constructorless layer's body, whose
-    // Field without an initializer is not judged unset, with a Reborrow and with NoBase's pick call (G215; DECISIONS R7-M111);
+    // Field without an initializer is not judged unset, with a Reborrow and with NoBase's pick call (G215; DECISIONS R7-M114);
     // a value call's fresh per-call Origin, shortened by the input's well-formedness (p4, SPEC 15.6.4 steps 1 and 3); and a `$tryWrite`
     // whose writer operand is Never, a transfer or `$abort`: it supplies no value, so its writer names no Origin of Utf8Writer's own
     // declaration (SPEC 14.10.3, 15.3.4; PLAN G410); and MeetTrans in a function and in both parts of a constructor's slice, whose call
@@ -571,7 +571,7 @@ public sealed partial class MirOriginsTest
 
     // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components, bitsets and the arena; the oracles
     // the view pools; the cleared report it adds to): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes, a Field
-    // initializer's layer oracle and Dependent ends (FailedClause); and a constructorless layer's body (DECISIONS R7-M111), Refuted.
+    // initializer's layer oracle and Dependent ends (FailedClause); and a constructorless layer's body (DECISIONS R7-M114), Refuted.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmJudgmentAllocatesNothing()

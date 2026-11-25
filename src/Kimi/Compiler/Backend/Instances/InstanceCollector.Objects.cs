@@ -32,7 +32,7 @@ internal sealed partial class InstanceCollector
     /// own body: a Closure's body, made at an Aggregate(Closure) site, and a function declared in a function's or Closure's body (its
     /// declaring scope's Function) are none; the bodies that make or call them reach them; a default template takes the verdict of its
     /// declaration's own body, so a public function's is a root and a checked-only constructor's is none (DECISIONS R5-M153). A layer body
-    /// (MirBodyKind.Layer) is checked only: no call names it (SPEC 8.15.3; DECISIONS R7-M111, the owner's (a2)).</summary>
+    /// (MirBodyKind.Layer) is checked only: no call names it (SPEC 8.15.3; DECISIONS R7-M114, the owner's (a2)).</summary>
     /// <param name="program">The program.</param>
     /// <param name="root">The root.</param>
     /// <returns>Whether it is an output root, or null where its slot's applicability is undecided, a broken contract.</returns>

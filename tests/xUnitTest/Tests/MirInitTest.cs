@@ -134,7 +134,7 @@ public sealed class MirInitTest
         Assert.Equal(["MovedPlace_Kd x.name = \"n\" 1", "MovedPlace_Kd x 1"], Problems(written));
     }
 
-    // SPEC 15.1.1 (PLAN G215; DECISIONS R7-M111): a Field initializer's second Move is MovedPlace in its constructor's body and in a
+    // SPEC 15.1.1 (PLAN G215; DECISIONS R7-M114): a Field initializer's second Move is MovedPlace in its constructor's body and in a
     // constructorless layer's body alike (m_; accepted before), whose Field without an initializer is not judged unset; one Move is valid.
     [Theory]
     [InlineData("", "")]

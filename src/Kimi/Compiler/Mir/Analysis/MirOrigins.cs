@@ -13,7 +13,7 @@
 //   it is an enclosing body's call region, and an enclosing body's local region's solved value, OriginAtomEntry.Value: Binding's
 //   RegionValue, BU-127 and the owner's O-422 (a)), keyed by MirDefKey.Body, its
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part; a layer body's is its layer's,
-//   DECISIONS R7-M111); the view throws at a broken contract (DECISIONS BU-102); after Judge,
+//   DECISIONS R7-M114); the view throws at a broken contract (DECISIONS BU-102); after Judge,
 //   its queries (Outlives, Fixed) re-form a class's edges from these (IndexClass).
 // - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd
 //   (Ownership.UnprovenOrigin) at a chain's last edge's site (a row's Site, or the Ref's statement for a containment edge), with Reason

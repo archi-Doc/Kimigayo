@@ -136,7 +136,7 @@ internal sealed class MirMoveData(TyCtxt types)
             (this.once[root], this.named[root]) = (body.Locals[i] is { Kind: MirLocalKind.Var, Mutable: false }, true);
         }
 
-        // A constructor's or a layer body's _0, its validated receiver role (MirValidator.Tables, DECISIONS R7-M111).
+        // A constructor's or a layer body's _0, its validated receiver role (MirValidator.Tables, DECISIONS R7-M114).
         this.Constructing = body.Locals[0].Role == MirLocalRole.Receiver;
         if (this.Constructing)
         {

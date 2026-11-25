@@ -2379,7 +2379,7 @@ public sealed partial class InstanceCollectorTest
     // Type's least use in its declaration: a parameter (at its Type occurrence, SPEC 8.15.3), a generic instance's intrinsic Type argument, a Closure local
     // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
     // error and Option<Never> is laid out (X31), neither with a record; a Field initializer's instance in its constructor's body and in a
-    // constructorless layer's body, which is checked only (DECISIONS R7-M111, the owner's (a2)). Subjects by their first line.
+    // constructorless layer's body, which is checked only (DECISIONS R7-M114, the owner's (a2)). Subjects by their first line.
     [Theory]
     [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "[2147483648 of u8]")]
     [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "[2147483648 of ()]")]

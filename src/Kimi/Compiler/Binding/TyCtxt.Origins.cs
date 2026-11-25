@@ -13,7 +13,7 @@
 // holds them; meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is Binding's
 // to judge (DECISIONS BU-26) and in no slice; a constructor's own body's slice is its rows, then its layer's (the struct's Field
 // initializers), each atom in its forming unit's part, Fixed atoms shared, and a struct with no Published constructor reads its layer's
-// rows through its layer body alone, the one source of that slice: the layer key's own rows (DECISIONS R7-M111); a broken contract throws in a complete compilation
+// rows through its layer body alone, the one source of that slice: the layer key's own rows (DECISIONS R7-M114); a broken contract throws in a complete compilation
 // (CheckFaulted_Kd, DECISIONS BU-102), so MIR trusts every row and atom it reads.
 // Must not: decode a Projection slot for MIR (only ProjectionRole leaves the view, D7), read MirBodyKind, or judge a relation.
 

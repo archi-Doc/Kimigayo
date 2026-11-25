@@ -214,5 +214,5 @@ internal enum MirBodyKind : byte
     DefaultTemplate, // The template of the index-th parameter's default (plan 5.6.2).
     Test, // A #Test function's, which only the test entry calls.
     Layer, // SPEC 6.3.3: a struct's Field initializers where no constructor of it is Published, keyed by the struct (its Body the layer
-    // key): _0 the struct's object, which they are placed into as a constructor's step; checked only, never generated (DECISIONS R7-M111).
+    // key): _0 the struct's object, which they are placed into as a constructor's step; checked only, never generated (DECISIONS R7-M114).
 }

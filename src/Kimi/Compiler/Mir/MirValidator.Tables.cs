@@ -59,7 +59,7 @@ internal sealed partial class MirValidator
         {
             var locals = body.Locals;
             var arguments = true;
-            // The receiver (BU-48, amended by G283): a constructor's or a layer body's _0 (R7-M111), and a destructor's self _1, the body MIR
+            // The receiver (BU-48, amended by G283): a constructor's or a layer body's _0 (R7-M114), and a destructor's self _1, the body MIR
             // names by its Type's destructor.
             var receiver = body.Key.Kind == MirBodyKind.Layer ? 0 : body.Key.Kind != MirBodyKind.Fn ? -1 : AdtDef.IsConstructor(body.Key.Decl) ? 0
                 : body.Key.Decl is { } decl && locals is [_, { Type: { } self }, ..] && ReferenceEquals(AdtDef.DestructorSymbol(self), decl) ? 1 : -1;

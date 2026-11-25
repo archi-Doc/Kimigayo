@@ -95,7 +95,7 @@ public sealed partial class MirOriginsTest
     // start's region, a fixed Origin equal to its candidate x, R7-O2 A1 with SPEC 15.6.5's Closure sentence, O-443 (a)), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
     // since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
-    // its written Type is a local's (PLAN G215's twin), with a constructor and in a constructorless layer's body (DECISIONS R7-M111); a nested result's relation among enclosing Origins, the containing declaration's,
+    // its written Type is a local's (PLAN G215's twin), with a constructor and in a constructorless layer's body (DECISIONS R7-M114); a nested result's relation among enclosing Origins, the containing declaration's,
     // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), p4's value call without its clause (SPEC 15.6.4), and an
     // unrelated Constraint set's slot, fixed in the body, reached from an input no premise relates to it (DECISIONS BU-100).
     [Theory]
