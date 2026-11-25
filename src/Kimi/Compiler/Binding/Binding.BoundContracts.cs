@@ -149,18 +149,23 @@ public sealed partial class Binding
             return null;
         }
 
-        // The levels between a root-name form and its application resolve with the reference, as a parent's do (BuildContract).
+        // The levels between a root-name form and its application resolve with the reference, as a parent's do (BuildContract). Each
+        // written level forms the reference (FormedTypeRows, PLAN G1278: this is a written Contract reference's one path, so its formation
+        // site), as BindType's completion forms a written Type occurrence.
         for (var level = generic is not null && unwrapped is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : null; level is not null; level = ReferenceEquals(level, generic) ? null : ((TypeSemanticsKoto)level).Type)
         {
             level.BoundSymbol = declaration;
+            FormedTypeRows.Add(level);
             Complete(level, reference);
         }
 
         if (!ReferenceEquals(unwrapped, syntax))
         {
+            FormedTypeRows.Add(unwrapped);
             Complete(unwrapped, reference);
         }
 
+        FormedTypeRows.Add(syntax);
         Complete(syntax, reference);
         return this.BoundContractReference(reference);
     }
