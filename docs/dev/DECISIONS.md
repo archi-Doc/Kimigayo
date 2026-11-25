@@ -11993,19 +11993,59 @@ resumed by R4-M86 (2026-10-20).
     Origins are excluded"; 15.3.4 "Inner per-call Origins cannot escape their binder"). Only a held Function Type is closed: a layer
     written inside a nested signature's result still relates that signature's per-call Origins inside its binder (G216 (b)'s row;
     R4-M162, R7-M96). Census (O3-9, the implementation review's C1): `RetainInnerOutlives` is the reader that now reads
-    `ClosedSignature`; two other readers that decide which Origins of a held Function Type a borrow layer's well-formedness covers do
-    not read it yet: `StoredPremisePart` (`Binding.OriginPremises.cs:645`: a result premise enters no Function Type, an input enters
-    one whole) and `WellFormedPremises.EnterStored` (`Binding.WellFormedPremises.cs:199`: enters none). They are PLAN G1337 (O3-B2),
-    not readers already agreeing. Moves: valid forms accepted where a local's, a Field's or a result's Type holds a Function Type with
-    per-call inputs under a borrow layer (A5's located `Unsupported_Kd` or the declaration judge's `UnprovenOriginRelation_Kd` before:
-    rp1w, rp2v, rp1w_ref, f_loc_ref_ok, f_loc_res_ok, f_nest_ok, f_fld_ok, f_sig_res_ok, f_rq2r_ok, ResultPremiseTest's `pick`,
-    `forward` and `annotated`, so PLAN G56's annotated-call limit goes); the extra record of invalid programs goes (a4i, a5i, rn3m,
-    rp1i, rq2, rq2n, rq2v, rq2r, n1fm keep their Contract records); a fixed Origin's row stays (f_wf_bad's `b outlives q`). Corrects
-    c1d7b0eea's `pick`/`forward` pins (unlabelled, "as in dev"). Rejected: a per-call test in `RetainInnerOutlives` (a second copy of
-    BU-73's rule, and wrong for a layer inside a nested result); entering no Function Type (drops the fixed Origins' rows: f_wf_bad
-    accepted, SPEC 15.2.3 counts them); narrowing R7-M96's `ForeignEnd` and whitelisting the family (O3-6 (A): keeps the spurious
-    row, a family clause); an `AddObligation` guard (a catch-all after the fact); a fit or Callable comparison site (neither forms the
-    row).
+    `ClosedSignature`; the two other readers that decide which Origins of a held Function Type a borrow layer's well-formedness covers,
+    `StoredPremisePart` and `WellFormedPremises.EnterStored`, are R7-O3 O3-B2's, in the amendment below (PLAN G1337). Moves: valid
+    forms accepted where a local's, a Field's or a result's Type holds a Function Type with per-call inputs under a borrow layer (A5's
+    located `Unsupported_Kd` or the declaration judge's `UnprovenOriginRelation_Kd` before: rp1w, rp2v, rp1w_ref, f_loc_ref_ok,
+    f_loc_res_ok, f_nest_ok, f_fld_ok, f_sig_res_ok, f_rq2r_ok, ResultPremiseTest's `pick`, `forward` and `annotated`, so PLAN G56's
+    annotated-call limit goes); the extra record of invalid programs goes (a4i, a5i, rn3m, rp1i, rq2, rq2n, rq2v, rq2r, n1fm keep their
+    Contract records); a fixed Origin's row stays (f_wf_bad's `b outlives q`). Corrects c1d7b0eea's `pick`/`forward` pins (unlabelled,
+    "as in dev"). Rejected: a per-call test in `RetainInnerOutlives` (a second copy of BU-73's rule, and wrong for a layer inside a
+    nested result); entering no Function Type (drops the fixed Origins' rows: f_wf_bad accepted, SPEC 15.2.3 counts them); narrowing
+    R7-M96's `ForeignEnd` and whitelisting the family (O3-6 (A): keeps the spurious row, a family clause); an `AddObligation` guard (a
+    catch-all after the fact); a fit or Callable comparison site (neither forms the row).
+  - Amended by R7-O3 O3-B2 (Q-787, D-1290, 2026-11-25; Front, Binding; F's rulings O3-23, O3-24, O3-27, O3-28 and O3-29) SPEC 15.2.3,
+    15.3.4, 15.6.1, 15.6.4: **every premise's stored walk reads a held Function Type through `StoredSignature`, and a definition
+    result's row that such a Type's fixed Origin forms is judged without the one part of the result premise no call carries.** A held
+    Function Type's part of a borrow layer's well-formedness is read through `StoredSignature` (`Binding.Capabilities.cs`, beside
+    `ClosedSignature`: a Function Type with a per-call binder is its closed call signature, any other Type itself) by the judged
+    relations (`RetainInnerOutlives`) and by every premise's stored walk (`StoredPremisePart`: a result's, an input's, a capture's and
+    a local Place's): its fixed Origins are stored, its per-call Origins never are (SPEC 15.2.3, 15.3.4). A use's walk
+    (`WellFormedPremises.EnterStored`) enters no held Function Type yet (its contract says why: the whole-contract comparison would not
+    discharge the obligation, rejecting the valid l1v, e1v, b1v, SPEC 10.7, 15.3.7). So no call carries the part of a definition's
+    result premise that a held Function Type's fixed Origins form (SPEC 15.6.4 step 3), and (O3-24, O3-27) each row such an Origin
+    forms at the definition's own result Type is judged from the definition's premises without that part, every other part of its
+    result premise (another component's stored Origins, the result Type's clauses), which the calls carry, included; unproven, the
+    definition is the located `Unsupported_Kd` at the row's use, the written borrow layer (a Function Type with only fixed inputs has
+    no Binder to point at). `WellFormedPremises.DefinitionProves` keeps its whole exclusion (`resultPremiseExcluded`: another rule, the
+    definition's own premise never proven from itself). **Vocabulary, decided by F's ruling O3-28 (not a COMPILER_ARCHITECTURE closed
+    vocabulary): `OriginPremiseRule.HeldResult`**, R3's part inside a held Function Type, a value the proof reads, not a mode or a
+    bool. Writer: `StoredPremisePart`, which switches a result walk's rule from `Result` to `HeldResult` where it meets a Function
+    Type; its visits keep the two rules apart, so a part met inside and outside one forms both edges. Reader: the excluded rule of a
+    HeldResult row's proof (`PublishedPremise` passes it, in the same premise environment as every row; `OriginPremiseClosure.Close`
+    and `Entails` do not follow that rule's edges; `Target`, which no edge carries, excludes none). Removal: with
+    `OriginDischarge.HeldResult` and `OriginDischarge.AssumedResult`, at the closing form below. `OriginDischarge` gains
+    `AssumedResult` (the walk's state at a borrow layer of a definition's assumed result Type, `AssumesResult`'s set; never stored on
+    an obligation: `RetainInnerOutlives`, the one writer of the rows it reaches, stores `Judgment` or `HeldResult` in its place) and
+    `HeldResult` (the rows of a held Function Type below such a layer; `OriginClauses.CollectDeclarationRows` and `PublishedPremise`).
+    Closing form: `EnterStored` carries a held Function Type's fixed Origins to each call and the whole-contract comparison discharges
+    them over the implementation's solvable call Origins (SPEC 15.3.7; PLAN G1337); then the three entries go. Moves: t_sres_fix,
+    sres_fix, sres_use, leak_mk, ret_mk and call_ok (valid) at the located limit where dev recorded `UnprovenOriginRelation_Kd` at the
+    result layer (sres_use, leak_mk, ret_mk also lose their body records: the premise decides them); a nested named function's result
+    (its declaring body is recorded since O3-A's G230 (A) closure, BU-258) gets the same limit: edge_nest_enc and edge_nest_mix (valid,
+    SPEC 9.3), and tw_nest_use (valid; dev's two records, the result layer's and the body's, become the limit alone); call_bad,
+    leak_use, ret_use (invalid) rejected by mk's limit (leak_use, ret_use beside A5's Loan record); e3fr, rq1r (invalid) the limit
+    beside their Contract record; sres_bad keeps its own record beside the limit, and so do h_nres_fixed_bad (invalid: the nested
+    result inside the held Function Type is judged where it occurs, SPEC 15.3.4) and s_local_hide (invalid: a local's held Function
+    Type is not assumed, SPEC 15.3.3), which stay Judgment rows; edge_nest_use (invalid: mk's body reads outer's
+    runtime `b`, SPEC 7.3.1) keeps `InvalidCaptureBinding_Kd` beside the limit; the review's t_call_fix_bad (valid by 15.6.4) gets mk's
+    limit; tw_pair (valid: its second component stores b below q) and tw_a1 (valid: the same part met inside and outside the held
+    Function Type in one walk) stay accepted. Rejected: (L) the definition keeping no such premise (valid bodies keep dev's Language
+    record, or each failed body relation is proven again); option A alone (call_bad, invalid, accepted: a premise no call proves,
+    R4-M137's note); O3-24's whole exclusion of the result premise for a HeldResult row (tw_pair, valid, rejected: the delta review's
+    B1); excluding only the row's own Function Type's part (a second held Function Type with the same Origin would be accepted on a
+    premise no call carries); a bool walk parameter, a mode on the exclusion or a second premise environment; `EnterStored` reading
+    `StoredSignature` now (rejects l1v, e1v, b1v).
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a
@@ -13921,8 +13961,8 @@ resumed by R4-M86 (2026-10-20).
   - A Contract use's bound reference (SPEC 8.6.1, 9.7.1) is its Type (the Meaning column) at each level of the qualifier or
     selector, Unit when the reference is the declaration itself: `CompleteQualifier(use, selection, reference)` writes both,
     `QualifierReference` forms the reference, and readers take it through `ContractReferenceOf(use)`. Writers:
-    `ProjectionQualifier`, `BindAssociatedSpecification`, `BindAssociatedRefinement`, `EffectTarget`. Readers: `SpecifiesContract`,
-    `ArithmeticFactUse`.
+    `ProjectionQualifier`, `BindAssociatedSpecification`, `BindAssociatedRefinement`, `EffectTarget`. Reader: `PremiseUse`
+    (`Binding.ContractSolver.Rows.cs`; R7-M109 deleted `SpecifiesContract`, and `ArithmeticFactUse` no longer exists on 14400eeb0e).
   - Records: a reader of a failed published lookup forms nothing from it, so B1's receiver gives one QualificationRequired_Kd (t09,
     t12, v05). This holds at the readers that read; it is not general: MemberLookup still writes its own UnresolvedBinding_Kd over a
     qualifier whose published lookup is ambiguous (t02/t02b: 3 records against base's 1, Q13 by code; open, PLAN G575/G576).
@@ -27841,6 +27881,8 @@ Closure row of `MirCases.Branch`).
   Unsupported records (a second rule over every check, deriving independent failures too), resting the use on the conformance as a
   part (it would also derive the use of a conformance with its own record, beyond the ruled forms) and a cause type naming a
   specification (a new representation for an input the conformance publishes).
+  - Amended by R7-M109 (R7-C3 G1384/G1385, 2026-11-25): `SpecifiesContract` is deleted; a specification's paths are JoinMembers'
+    keys (`IsPathAssociated`, `SpecificationPart`), so the sentence "`SpecifiesContract` reads the admission test ..." no longer holds.
 - **R7-M83 An instantiated premise keeps its Statements (Z3-B1)** (Middle, 2026-11-23; stream Z's Z3, PLAN G396 (3), Q-691, D-1139;
   Major, an acceptance mover; designs `middle\notes\z3-design.md` Revision 1 and Z3-B1, O-502's split; the Front's repeated read on
   C-475, C5 and C6) SPEC 6.4.2 step 3, 8.11.4.
@@ -28853,6 +28895,10 @@ Closure row of `MirCases.Branch`).
     across root paths (a conditional root path forms under its own premises); a per-clause member table; a block-only representative,
     or the selection judged again at each reader (a second statement beside JoinMembers' keys); the count-once test restricted to the
     conformance loop (8.5.1 governs every receiver).
+  - Amended by R7-M109 (R7-C3 G1384/G1385, 2026-11-25): "The set's binding"'s sentence "A Type-level specification is judged in its
+    clause's scope D (`SpecifiesContract`)" is superseded; a Type-level specification belongs to each root path whose keys name its
+    identity, and `AssociatedInPath` counts a keyed set once. Records: f-cond (r6's records) and mg4n move to a1's
+    `InvalidAssociatedType_Kd` at the conditional clause.
 - **R7-M104 An index key's record names the conformances its selection weighed (R7-C3 C3b-3)** (Back, 2026-11-25; PLAN G1300's
   index half, Q-767, D-1268; Major, records only; design `artifacts\units\c3b-3\design.md` Revision 3, the Front's review C-552;
   commits 810538560, 75195fbe9) SPEC 4.7.1, 8.6.1, 8.9.1, 23.1.1. Amends R7-M82's index clause.
@@ -29022,6 +29068,7 @@ Closure row of `MirCases.Branch`).
     atom's kind and subject; the row's Clause is the constraint as stated, so a `not Callable` fact and a Contract's `not Callable`
     clause instance at any depth are leaf rows of the Callable kind. Every other row reader is unchanged: each filters
     `Clause.Kind == Callable` or a Contract row, so a negated row reaches `PremiseCallable` alone.
+    Superseded in part by R7-M110 (c2-5b2, `claude/f-c25b2`@3f30fe1a2, 2026-11-25): the operand of a negation of any atom, filed in the `Not` row by the fact's own kind.
   - `PremiseCallable` answers both polarities in one rows request: an available row whose atom has the proposition atom's receiver
     and signature supplies the proposition where their polarities agree and its negation where they differ. `Supply` reads it for
     every proposition; its fact scan opens only for an environment with a projection fact or a view with an identity premise (the
@@ -29029,12 +29076,14 @@ Closure row of `MirCases.Branch`).
     (1) of the same subject, availability and tests). The shadow run over P0's 34 programs and two conformance-scope programs with a
     `Callable` and a `not Callable` premise and no projection fact passes: no scan-only line, and every rows-only line is a
     Contract's Callable clause the rows supply, in the A/B programs and in four C/E programs whose records do not move.
+    Superseded by R7-M110 (c2-5b2): `ExactAssumption`, the reader for every atom proposition, this test its Callable case.
   - Not in the rule: a negated Contract, identity or Semantics atom gives no row (a Contract row is a positive premise's refinement
     closure, which `not C` does not supply; identity facts feed the classes and the validators' written-subject buckets; Semantics has
     no leaf row before c2-3e). Their exact assumption stays `Supply`'s exact match and scan, the eager supply's one level, until
     R7-C2c2 c2-5b2 (F's CC-8; nc2, nts2 and the class-1 form nc2c Explicit). `Reading` stays (three readers: `Supply`'s gated
     scan, `SpokenVerdict`, `IndexNormalized`) until R7-C2c3: its removal stage moves from c2-4b (R7-M41) to C2c3 with the owner's
     approval (2026-11-25, 「1 2 3は推奨通り」, item 2 = option (a) of `artifacts/units/r7-c25b/owner-q-reading.md`; F's CC-18).
+    Superseded in part by R7-M110 (c2-5b2): every negated atom is a row; `Reading`'s postponement stands.
   - Rejected: a clause or a second reader for `not Callable`; a polarity flag or mode on `PremiseCallable` or the rows' request; a second
     `ContractSupply` instantiation for negated clauses; widening to every kind's negation now (F's CC-8: RP8 risk on every program, P1
     beyond the hour); removing `Reading` in c2-5b (the owner's option (b): C2c3's request-by-class work for its three readers).
@@ -29078,6 +29127,125 @@ Closure row of `MirCases.Branch`).
     over per-problem input rows (the owner's O-509 (a) kept those rows out; PLAN G1323); `Fail` taking a node's range off at its
     first record (ruling 337: a record made later with no frame open reads that range); dev's exact records for one form under
     this rule (a per-form site exception).
+- **R7-M109 JoinMembers' keys are one associated Type for every reader (R7-C3 G1384, G1385)** (Back, 2026-11-25; PLAN G1384,
+  G1385; Major, an acceptance mover; design `artifacts\handoff\2026-11-13-weekly-pause\back\notes\g1384\design.md` Revision 1, B's
+  rulings 1-6, the Front's review C-569; commit c1963db2e) SPEC 8.4.3, 8.5.1, 8.5.5, 8.6.1, 8.8.1, 8.8.2, 8.9.2. Amends R7-M103
+  and R7-M82.
+  - **Rule.** The identities a root path keys to one binding (`JoinMembers`, in the path's scope: D, plus P for a conditional root
+    path) are one associated Type for every reader. A lookup counts them once: `AssociatedInPath` keeps its first match and counts a
+    later match keyed to the same binding once; a match of another binding stays an ambiguity (i0d, i4d), and before the keys exist
+    nothing changes. A specification belongs to each root path whose keys name its identity: the Type-level collection in
+    `PrepareAssociatedBindings` and `VerifyConformance`'s member loop read `AssociatedBindingOf` and `IsPathAssociated` alone, as the
+    block loops do, and `SpecificationPart` takes a clause whose identity the root path keys to the binding asked for
+    (`AssociatedBindingOf(root, named)` is `AssociatedBindingOf(root, identity)`). Inference collects a set's binding once, at the
+    member it was made for (`CollectRun`: `KeyedBinding(path, identity)` is the binding).
+  - **Reason (SPEC).** A Type-level specification's premises D are proved by every root path's premises (8.5.5 Completion: D + P
+    proves D); under them the members are one conformance (8.6.1, 8.9.2), so it specifies the conditional path's merged Type too, and
+    8.8.1 lets the block be omitted. R7-M103 judged the clause in its own scope D with no SPEC reason; under D alone `Iter<S.Item>` and
+    `Iter<R.Item>` are two references, so the conditional path got no Type (G1385), and `AssociatedInPath` still counted the set's
+    members as written (G1384), the miscount R7-M103 fixed in `SearchAssociated`. Superseded: R7-M103's "The set's binding": "A
+    Type-level specification is judged in its clause's scope D (`SpecifiesContract`)"; R7-M82's "`SpecifiesContract` reads the
+    admission test for a path's Contract and its ancestors, so a specification belongs to every member of the conformance its
+    qualifier names, never to one representative" (a specification's paths are now the keys').
+  - **Removes.** `SpecifiesContract` and its three gates (`PrepareAssociatedBindings`' Type-level loop, `VerifyConformance`'s member
+    loop, `SpecificationPart`); the `site` parameters of `SpecificationPart` and `InferenceHole`. A clause whose identity did not form
+    is no specification part, as on dev, whose symbol test failed the same way (`BindAssociatedName` sets the symbols only after the
+    projection formed; twins s1 and s2 unchanged).
+  - **Records (Q13).** Acceptance moves (valid, rejected on dev): i0 and i4 (`AssociatedInferenceTest`), c0 and c4 (TypeIdentityTest
+    mg5, mg5c). Invalid programs keep their failure with other records: i0w, i4w (`TypeMismatch_Kd` alone; dev added the inference
+    failure and `InvalidConstraint_Kd`); i2 and i4c (the conflict, naming both results, instead of "no eligible declaration result";
+    the same `AssociatedTypeInferenceFailed_Kd` at the conformance); c0w, c4w
+    (`IncompatibleContractImplementation_Kd` alone; dev: r6's records); c0k, c4k (one `InvalidAssociatedType_Kd` at the conditional
+    clause; dev: r6's records); c6 = mg4n, from R7-M103's "f-cond (r6's records)" (`IncompatibleContractImplementation_Kd` at the
+    conditional clause and `InvalidConstraint_Kd` at `Self is Iter<S.(HasItem).Item>`) to a1's `InvalidAssociatedType_Kd` at the
+    conditional clause, the disagreement now lying within its root path (R7-M103 Rule); c3 = mg5u, its conditional clause's record from
+    `AssociatedTypeInferenceFailed_Kd` to `InvalidAssociatedType_Kd`, resting on the same clause as the unconditional one (three
+    records, as on dev; PLAN G1405); c0m's conditional clause from `AssociatedTypeInferenceFailed_Kd` to `UnsatisfiedConstraint_Kd`
+    (once per clause declaring a conformance the clause specifies, mg3d); c2 = mg5m's conditional clause from
+    `AssociatedTypeInferenceFailed_Kd` to `UnsatisfiedConstraint_Kd`, beside G1260's `UnprovenConstraint_Kd` at the reference; c7's
+    `AssociatedTypeInferenceFailed_Kd` gone (G1260's record stays). Unchanged: mg1-mg3, mg4, mg4c, mg4o, mg4m; c0f and c4f (mg5f, mg5cf:
+    P does not identify, no join); i0k, i4k, i0d, i4d, c8, c8i, s1, s2.
+  - **Rejected.** A second, scope-aligned `SpecifiesContract` at every reader (a second statement beside the keys, R7-M103's rejected
+    "selection judged again at each reader"); normalized ImplTable keys (R7-M82); copying the Type-level Type into the conditional
+    path's binding; keeping a symbol test for a clause whose identity did not form (qualifier-blind: a sibling the qualifier excludes
+    would rest on the clause, C-569 B1).
+- **R7-M110 A negated atom of any kind is a row of its own; one reader answers every atom proposition** (Front, 2026-11-25; R7-C2c2
+  c2-5b2; Major, an acceptance mover; `artifacts/units/r7-c25b2/plan.md`, `labels.md`, F's CC-8, CC-15, CC-15a, CC-19, CC-25, CC-27,
+  CC-28;
+  supersedes in part R7-M107: its `RowAtom` bullet's filing of a negation in its kind's row, its `PremiseCallable` bullet and its
+  "Not in the rule" bullet; supersedes F's C2 rulings 301 and 308 for a failed premise the Copy walk reads). SPEC 8.3.2 (Contract
+  refinement at every depth; Exact assumption; Negation; contradictory evidence), 8.3.1, 8.3.3, 8.2.3, 10.1.
+  - Moves (Q13), at depth >= 2, through any alias; each form a row of `RecursiveContractTest.APremiseSuppliesItsRefinementsByDemand`
+    unless named a twin. Valid forms accepted (class 3): `UnprovenConstraint_Kd` removed at the use for nc2, nc3, nm2, nm3, nm2i,
+    nca2, nca2p, nts2, nts3, nts2i, nmr2, ntr2 (a negated Contract, Contract-argument or identity clause two or three links up,
+    through `U is T`, and an overload's Constraint it refutes, SPEC 10.1), `UnprovenConstraint_Kd: return G.noMark(v)` removed for
+    ncs2g (a conformance's scope; its root-function spelling ncs2 keeps SPEC 6.1.1's `UnresolvedBinding_Kd: return noMark(v)`, a
+    guard row; F's CC-25 S2), and for rv-sp-field (a field's Type, a guard row; CC-30 N8); the Middle's C-570 twins vn-d4,
+    vn-alias2, vi-alias2, vi-option and vr-neg (F's CC-29 (1); `artifacts/handoff/2026-11-16-pause/middle/notes/c570/`). Invalid
+    forms rejected, accepted before (class 1): `InvalidConstraint_Kd` at `func probe` for nc2c, nm3c, ncp2c, nm2ci, nca2c, nts2c
+    and at `struct BoxC<T>` for ncs2c (a written premise against the supplied negation); C-570's twins cc-alias, ic-alias and
+    cc-subq. Code moves on programs both sides reject (Q13): rr-both (a C-570 twin), `UnprovenConstraint_Kd` ->
+    `NoApplicableOverload_Kd` at `return pickb(v)`; a positive use that a negated clause at depth refutes, rv-nc2-need (a guard row)
+    and rv-nts2-need, `UnprovenConstraint_Kd` -> `NoApplicableOverload_Kd` at the use (CC-30 N7; SPEC 8.3.2, 10.1). A dependent record
+    added (counted by code, no row; F's CC-29 (2)): cc-subq's second `InvalidConstraint_Kd`, at the use `return needMark(v)`: SPEC
+    8.2.3 says "never again at uses", and the use reads the failed premise directly (rule W); dev accepts the program, so it is no
+    Q13 regression, and it joins c2-5b's tw04-h2 (R7-M107: `InvalidConstraint_Kd` +1 at a use; PLAN G1410). Record selection on invalid programs
+    (dependents, rule W; F's CC-27 (2), (3)): `InstanceCollectorTest.APartBindingRejectedIsNoGenerationRecord` virtualClause and
+    virtualBlock lose `TransferRequired_Kd` at `value@follow` (the Copy proof's walk reads the failed premise `T is Missing`, whose
+    `UnresolvedBinding_Kd` is reported, so its open answer rests; twin row vclause-nomiss, without that premise, keeps it, and so
+    do the guard rows rd-other and rd-neg, a failed premise on another subject or a negated one, which the Copy walk does not read,
+    rule W's limit; CC-29 (4));
+    `LateConstraintEnvironmentBindingTest.AnInvalidContractIsItsUsersDeclarationsPremiseErrorOnce` u.k's last record
+    `UnprovenConstraint_Kd` -> `IncompatibleContractImplementation_Kd` at `Self is Put<E>` (the same site, four records before and
+    after; the comparison reads Marker's reported failure through the identity, PLAN G1409). Programs:
+    `artifacts/units/r7-c25b2/programs.py`; P0 `out/p0.sum`, P1b `p1b/out/p1b-programs.sum`, P1c `p1c/out/p1c-programs.sum`,
+    P1c3 `p1c3/attribution.md`.
+  - W6 (F's CC-25 S3; ContractSolver's header): a read that consults a failure is Provisional, since a kept answer would not replay
+    it: a failed or unresolved declaration context, a failed premise and its derived failure, and a Refuted source read as the
+    proof's limit (`AvailableConstraintFact`, `AvailableContractPremise`), so a walk that wrote a proof limit keeps no rows. The one
+    rule (F's CC-28 C2): a table that read a failure is not kept, W7's identity table included. `ApplyIdentityPremise` reads a failed
+    or derived-failed identity premise Provisional, so the view's identity table is not Final: it is not memoized, and the view's
+    requests keep no entry or rows (`RowsRequest`). Answers are unchanged (the identity judge's `Same` and `Members` read the classes,
+    not the table's flag), and only invalid programs are affected. Before,
+    the limit writes (R7-C3) were Complete, and a FirstRows walk that consulted `T is IntTree`'s failure was kept: the capability
+    work reading those rows lost the limit its cause rests on (b1-r2-failed: `InternalInvariant_Kd`, `MovedPlace_Kd`,
+    `TransferRequired_Kd` at `return (value, value)` once the reader walked first; twcall, the same with a name discovery first).
+    Latent on dev (no program known to fault there; twcall keeps its records on dev). With no row kept past a limit, a Copy walk that
+    reads a failed premise rests wherever it is asked (SPEC 8.3.3: no answer depends on who asked first): F's C2 rulings 301 and 308
+    (virtualBlock's and virtualClause's `TransferRequired_Kd` an independent failure) are superseded for that form, since their
+    reason, that the answer did not read the failure, held only while an earlier walk's kept rows answered it (F's CC-27 (2)).
+  - Representation (CC-15 Q1 (a)): `RowKinds` gains `Not`, the negations' row; `ViewIndex.Add` keys a fact's bucket by the fact's
+    own kind, so every negated atom is filed in the `Not` bucket under its atom's subject and class key (`FilingAtom` gives that
+    subject alone), and the walk's rows (1) and (2) read it as a leaf row (its Clause the negation, no Contract). No validator reads
+    it; the TypeIdentity and Semantics buckets keep positive written facts alone. `RowAtom(c)` is a RowKinds atom (a Contract one
+    naming its Contract) or the operand of a negation that is an atom of any kind (no conjunction, disjunction or Unresolved); it is
+    the reader's one domain decision (`RowAtom(proposition.Kind == Not ? proposition : negation)`).
+  - The reader (CC-15 Q2 (a)): `PremiseCallable` becomes `ExactAssumption`, `Supply`'s one rows reader for every atom proposition
+    and its negation: an available leaf row of the subject whose atom, re-subjected to the proposition's subject and read by
+    `NormalizeProofConstraint` (the proposition's intake: each Type and the Contract reference's arguments in their class's form,
+    `CallableContractType` for a signature), is the proposition's atom by `SameProofPremise` supplies the proposition where their
+    polarities agree and its negation where they differ; R7-M107's Callable test is its Callable case. ContractSolver's
+    Prohibitions exception reads "a leaf row's atom, which only the reader normalizes" (a component-contract sentence).
+  - Cost (CC-15 Q5 (a), F's CC-25 S1 and CC-27 (1) (a')): a rows request for every atom proposition, and each request outside a Kept
+    region forms its view's entry again. CC-27 (1) (a') supersedes CC-15 Q5's count rule (an exact work count may move "by the indexed
+    negations only"), since the moved counts are the reader's own requests. Exact work counts moved, named as the reader's own
+    requests: `RecursiveContractTest.
+    AnExtensionReopensTheViewsKeptEntryAsItsOwn` (44, 84, 104) -> (44, 94, 104); in `NormalizedConstraintProofBindingTest`
+    `AValidatorsReadIndexesItsViewOncePerRead` 79 -> 133, `ARequestInsideANormalizationIndexesItsViewAgain` 87 -> 134,
+    `AViewsIndexIsFormedAtEachSerialUntilComplete` 172 -> 286, `ACallableFactIsFiledUnderItsClassKeyOnlyInARequestsEntry` 7, 4, 6
+    -> 9, 5, 8; and `AValidatorsReadEntryGoesBackWhenTheReadEnds` 30, 27 -> 29, 26 (one pair fewer each, observed and not located;
+    G1278-A moves the same two rows for its own cause, so the second lander states the merged counts). The binding *ScalingTest
+    classes keep their shape. The wall-time check A/B (base vs head CLI, Hello, Milestone26, four class programs) shows no excess;
+    the counts hold while the pinned Bind A/B at landing (RP8) reads within; BEYOND takes PLAN G1408's reduction.
+  - Not in the rule: a positive identity clause at depth, read in neither polarity (nts2c-rev invalid and accepted; PLAN G1406); a
+    Contract's own `Self` clause one link down and a
+    conjunction clause at depth, valid and rejected in both polarities on dev too (PLAN G1407). A Semantics atom needs no row (8.3.4:
+    the admitted set decides; a Contract supplies none, 8.2.1, 8.4.1).
+  - Rejected: TypeIdentity as a leaf row kind (two meanings for one bucket, Q1 (b)); Contract negations alone now (Q1 (c): nts2 and
+    c2-3d's `not string` wait for no reason); comparison by reference with a named limit (Q2 (b): a Language error on a valid form);
+    a reader per kind; restricting the reader's domain to restore the counts or the FAULT (CC-25: SPEC 8.3.2 refutes any `P` by
+    `not P`, and the restriction moves A and B rows back); keeping C2 rulings 301/308 by a relevance rule for an unresolved Contract
+    row in the Copy walk (a dependence decision beyond the unit, CC-27 (2)).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
