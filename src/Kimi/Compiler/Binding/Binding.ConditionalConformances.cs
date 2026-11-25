@@ -599,12 +599,13 @@ public sealed partial class Binding
             for (var i = 0; i < bindings.Count; i++)
             {
                 if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
-                    !this.IdentityRefuted(instance, required, scope, type))
+                    !this.IdentityRefuted(instance, required, scope, type, out var read))
                 {
                     for (var p = 0; p < this.impls.PathsOf(bindings[i]).Count; p++)
                     {
                         if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope, site) != ConstraintProof.Refuted)
                         {
+                            this.ReadIdentityLimit(scope, read); // G1406-11 C-a: an answer resting on a Limited reading's Unknown is refused
                             return true;
                         }
                     }

@@ -65,7 +65,13 @@ public sealed partial class Binding
 
         internal int Work { get; private set; }
 
+        // G1406-11 C-a: whether this is a reading's table at a Limited root (T_A, Binding.LimitedClassesOf, its one writer by MarkLimited);
+        // a judge left Unknown over it refuses (ReadIdentityLimit) and its Refuted answers false (Binding.IdentityRefuted). Open clears it.
+        internal bool Limited { get; private set; }
+
         internal void Read(Completion availability) => this.provisional |= availability == Completion.Provisional;
+
+        internal void MarkLimited() => this.Limited = true;
 
         internal void Open(BindingScope view)
         {
@@ -76,6 +82,7 @@ public sealed partial class Binding
 
             this.scope = view;
             this.provisional = false;
+            this.Limited = false;
             this.Work = 0;
             this.Worst = One;
             this.node.Clear();

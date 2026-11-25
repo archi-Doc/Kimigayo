@@ -182,7 +182,7 @@ public sealed partial class Binding
             for (var j = 0; j < requirements.Count; j++)
             {
                 if (ReferenceEquals(requirements[j], identity.Symbol) && contracts[j].Type is { } kept && identity.Contract.Type is { } reached &&
-                    this.IdentityProven(kept, reached, scope))
+                    this.IdentityProven(kept, reached, scope, out _))
                 {
                     return true;
                 }

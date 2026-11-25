@@ -84,7 +84,7 @@ public sealed partial class Binding
         // The check's site is its owner (a site frame, Binding.TypeHeight's inputs: an environment's owner), so a Type its requests form
         // past the height limit is refused there; what it reads explains no outcome of the owner (DropConsultation).
         var frame = this.BeginConsultation(scope.Owner);
-        var classes = this.RequestClasses(scope); // before the query: a build of the view's classes may begin queries of its own
+        var classes = this.RequestClasses(scope, null); // before the query: a build of the view's classes may begin queries of its own
         var start = this.directionSeeds.Count;
         var query = this.visitedParts.Begin(this.storageVersion);
         for (var stating = scope; stating is not null; stating = stating.Parent)
@@ -204,7 +204,7 @@ public sealed partial class Binding
             for (var r = start; !met && r < end; r++)
             {
                 met = this.premiseRows[r] is { Available: true, Symbol: { Type.Components: [var argument] } contract } &&
-                    ArithmeticContractSyntax.Identity(contract) == id && this.IdentityProven(argument, counterpart, scope) &&
+                    ArithmeticContractSyntax.Identity(contract) == id && this.IdentityProven(argument, counterpart, scope, out _) &&
                     this.OppositeRow(argument, this.directionSeeds[m], oppositeId, parent) is not null;
             }
 
@@ -244,7 +244,7 @@ public sealed partial class Binding
         for (var i = start; found is null && i < this.premiseRows.Count; i++)
         {
             if (this.premiseRows[i] is { Available: true, Symbol: { Type.Components: [var argument] } opposite } row &&
-                ArithmeticContractSyntax.Identity(opposite) == oppositeId && this.IdentityProven(argument, subject, view))
+                ArithmeticContractSyntax.Identity(opposite) == oppositeId && this.IdentityProven(argument, subject, view, out _))
             {
                 found = row;
             }

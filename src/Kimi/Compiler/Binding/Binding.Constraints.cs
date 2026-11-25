@@ -259,13 +259,23 @@ public sealed partial class Binding
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
             var (subject, required) = (proposition.Subject!, proposition.RequiredType!);
-            if (this.IdentityProven(subject, required, scope))
+            if (this.IdentityProven(subject, required, scope, out var read))
             {
                 return ConstraintProof.Proven;
             }
 
-            return this.DependentType(subject) || this.DependentType(required) ||
-                (this.IdentityPremiseErrorRead(scope, subject, required) is not null && !this.IdentityRefuted(subject, required, scope, null))
+            if (this.DependentType(subject) || this.DependentType(required))
+            {
+                // G1406-11 C-a (SPEC 8.3.3): an erroneous class reads its error (IdentityProven), else a Limited reading is refused.
+                if (read is { Limited: true } && this.IdentityPremiseErrorRead(scope, subject, required) is null)
+                {
+                    this.ReadIdentityLimit(scope, read);
+                }
+
+                return ConstraintProof.Unknown;
+            }
+
+            return this.IdentityPremiseErrorRead(scope, subject, required) is not null && !this.IdentityRefuted(subject, required, scope, null, out _)
                 ? ConstraintProof.Unknown : ConstraintProof.Refuted;
         }
 
@@ -308,9 +318,14 @@ public sealed partial class Binding
                 // SPEC 8.3.2, 10.7: only a known difference from the required signature, as compatibility compares it (a Never result
                 // fits any; Origins by subtyping, 15.6.1, never a difference, so both sides with every Origin static), refutes; a
                 // stand-in decides an open region's (PerCallCallables).
-                return TyCtxt.StorageMatches(proposition.RequiredType, signature) ||
-                    this.IdentityRefuted(this.types.Erase(this.CompatibleSignature(signature, proposition.RequiredType!)), this.types.Erase(signature), scope, null)
-                    ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+                if (TyCtxt.StorageMatches(proposition.RequiredType, signature) ||
+                    this.IdentityRefuted(this.types.Erase(this.CompatibleSignature(signature, proposition.RequiredType!)), this.types.Erase(signature), scope, null, out var read))
+                {
+                    return ConstraintProof.Refuted;
+                }
+
+                this.ReadIdentityLimit(scope, read); // G1406-11 C-a: an Unknown over a Limited reading is refused
+                return ConstraintProof.Unknown;
             }
 
             this.ScopeReads.Unknown ??= new(subject, proposition.RequiredType!, failure) { Epoch = this.frameEpoch };

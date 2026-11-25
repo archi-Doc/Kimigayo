@@ -162,6 +162,11 @@ internal sealed class ConstraintEnvironment
     // where the origin is; Binding.DerivedFailure reads it); none for a supply that instantiates no clause.
     internal List<(BoundConstraint Fact, BindingSymbol Source, IsKoto? Origin)> DerivedFacts { get; } = new();
 
+    // e2-7 (G1406-11 C-e): the environment's Type-identity facts with both sides, in Facts' order: the identity tables' one walk of
+    // an environment (Binding.ClassesOver, AddViewRows, PremiseErrorSupplier), which reads no other fact. Written only by Add and Reset,
+    // as Facts is, so it holds exactly Facts' identity facts.
+    internal List<BoundConstraint> IdentityFacts { get; } = new();
+
     // R7-C2c2 c2-4b (DECISIONS R4.13): the first Declared of DerivedFacts are the declaration's own supply (Declares).
     internal int Declared { get; private set; }
 
@@ -208,6 +213,10 @@ internal sealed class ConstraintEnvironment
         {
             this.HasAssociatedProjection |= fact.HasAssociatedProjection;
             this.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null };
+            if (fact is { Kind: ConstraintKind.TypeIdentity, Subject: not null, RequiredType: not null })
+            {
+                this.IdentityFacts.Add(fact);
+            }
         }
 
         if (added || availability)
@@ -243,7 +252,7 @@ internal sealed class ConstraintEnvironment
         => (ReferenceEquals(owner, scopeOwner) && ReferenceEquals(written, fact)) || this.Recorded(fact, owner, written);
 
     // R7-C2c2 c2-4b (DECISIONS R4.13; SPEC 8.3.3 Limits, "the closure of a declaration's premises"): whether `fact` is a ground of
-    // the declaration's closure, the one fact an extending request's table reads (ExtendedClassesOf): written, or derived by the
+    // the declaration's closure, the one fact a closure's round table reads (ExtendedClassesOf): written, or derived by the
     // declaration's own supply of its written Contract premises; never a use's supply alone. Invariant: the declaration's expansion
     // (ExpandContractPremises) runs before any use supply (Binding.AssociatedTypes holds its supply while bindingConstraintTypes,
     // until after the expansion; Binding.ContractCalls' is body time), so every derived fact written after the mark is a use's
@@ -361,6 +370,7 @@ internal sealed class ConstraintEnvironment
         this.Facts.Clear();
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
+        this.IdentityFacts.Clear();
         this.statements?.Clear();
         this.Declared = 0;
         this.FailedPremises?.Clear();

@@ -654,7 +654,7 @@ public sealed partial class Binding
     // identity premise is decided by Fits alone (IdentityProven's own guard, read first).
     private bool Identical(BoundType declared, BoundType hidden, BindingScope? view)
         => this.Fits(declared, hidden) ||
-            (view is not null && HasTypeIdentity(view) && this.IdentityProven(this.types.Erase(declared), this.types.Erase(hidden), view));
+            (view is not null && HasTypeIdentity(view) && this.IdentityProven(this.types.Erase(declared), this.types.Erase(hidden), view, out _));
 
     // SPEC 15.6.4 ("or where a callable the instantiated contract hands the callee's body ... may retain the argument there by this section
     // applied to that callable's signature, through its result or its writes"; Revision 1's R1.3, per input): how a callable the contract

@@ -430,7 +430,7 @@ public sealed partial class Binding
 
             foreach (var (named, namedContract) in inputs)
             {
-                if (ReferenceEquals(namedContract, contract) && (ReferenceEquals(named, subject) || this.IdentityProven(subject, named, scope)))
+                if (ReferenceEquals(namedContract, contract) && (ReferenceEquals(named, subject) || this.IdentityProven(subject, named, scope, out _)))
                 {
                     return failure;
                 }

@@ -45,7 +45,7 @@ public sealed partial class Binding
     private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap, QuerySite site)
     {
         var collision = this.CollisionScope(original, overlap);
-        if (this.ClassesOf(collision, out _) is { Worst: IdentityClasses.Conflict })
+        if (this.ClassesOf(collision, [], out _) is { Worst: IdentityClasses.Conflict })
         {
             return true;
         }

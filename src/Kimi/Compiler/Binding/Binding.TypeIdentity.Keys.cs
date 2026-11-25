@@ -98,7 +98,7 @@ public sealed partial class Binding
             return type;
         }
 
-        if (this.ClassesOf(scope, out completion) is not { } classes)
+        if (this.ClassesOf(scope, [type], out completion) is not { } classes)
         {
             return type;
         }
@@ -174,7 +174,7 @@ public sealed partial class Binding
     // in the view's classes.
     private BoundType AbstractClassForm(BoundType type, BindingScope scope, out Completion completion)
     {
-        if (this.ClassesOf(scope, out completion) is not { } classes)
+        if (this.ClassesOf(scope, [type], out completion) is not { } classes)
         {
             return type;
         }

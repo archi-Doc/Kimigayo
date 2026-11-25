@@ -74,47 +74,18 @@
 //   on its own judgment supplies nothing; no coinduction), in at most the (link, row) pairs plus one rounds. A key never leaves the supply: no
 //   reader receives it as a Type (on a class match AppliedAssociatedContract reads the fact's own subject). Not yet supplied: a
 //   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), and a leaf row's fact (a Callable
-//   fact, a negation) whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4). A missing row rejects, but where it
-//   is the evidence against a written premise it accepts: a positive identity clause at depth is no row (TypeIdentity is no row kind;
-//   c2-2's identity rows reach only an extending refinement request) and the identity judge reads the view's classes, so a written
-//   negated identity premise against it is accepted (nts2c-rev); PLAN's open issue against c2-5c's constructed roots.
-// - Extension (R7-C2c2 c2-2; SPEC 8.2.3's grounds include the identity Constraints a Contract premise supplies at every depth): the
-//   walk records the TypeIdentity clause instances of its available Contract rows, but a deferred mate's walk (PLAN G881b: a
-//   cycle's mate, walked from the top) records none, so an extension rests on the chains a request walks without a cycle, as
-//   before G881b: a cycle's mate is deeper than the link it is identical with, and under a recursive Contract whose clause
-//   identifies a deeper projection with a shallower one (`Self.(Mk).Next.(Mk).Up is Self`) each of its links supplies one more
-//   identity, so rows recorded there would never end. The implementation's limit, not SPEC's rule: an identity a Contract supplies
-//   only at a prefix of a cycle's mate joins no extension. An outermost refinement request (PremiseRefines)
-//   whose walk is not positive for its demanded Contract and recorded rows builds its own classes over the view's premises and
-//   those rows (ExtendedClassesOf: request-local, the rows Provisional),
-//   re-keys its subject and its view's facts and walks again while a round adds a row, at most PremiseClosureLimit rounds (SPEC 8.3.3
-//   Limits; the owner's O-321 (b)): a mate's chain may be deeper than the link it is identical with (row (5)), so under a path
-//   equation to a deeper projection (`Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`, allowed) each round supplies a deeper
-//   identity and the rounds have no end of their own. R7-C2c2 c2-4b (DECISIONS R4.13; the owner's O-345 (b)): the extension is the
-//   class's closure (ExtendRound): from its root over the declaration's grounds (ConstraintEnvironment.Declares) and its own rows,
-//   re-rooted to a lower key, its rounds counted from the root's first walk, so an extending request's rounds and verdict are a
-//   function of (its root, Contract, the declaration's grounds), never of a use's supply or an earlier request; whether a request
-//   extends is not: its first walk reads the view's table, which holds the supply of every use bound before it (a Type spelled
-//   anywhere in the declaration, a body statement checked earlier), so whether the bound is reached can depend on spelling and on
-//   the order of checks: a known limit against SPEC 8.3.3 (STATUS) until R7-C3 removes the syntax-triggered supply (the owner's
-//   O-413 (a)). A request still unproven at the bound is refused (RefuseProof:
-//   PremiseClosureLimit, a Resource record, SPEC 23.1.1, at the use whose check asked, else at the owner of the request's scope)
-//   and the proof that asked rests on the refusal, so a judgment that fails on it is a resource failure, never Unknown by
-//   exhaustion; a judgment other evidence proves stands, a request proven within the bound is proven, and a query made after the
-//   pass has counted its failures (a lint, MIR, emission) keeps Unknown (PLAN G651 U2's outcome). Nothing computed under an
-//   extension is kept (no
-//   kept row, no key column of the view's table), and a kept row answers only where it decides: a refinement among the rows, or rows
-//   whose walk recorded no identity row, which no extension reaches; else the request walks and extends as if nothing were kept
-//   (whether a walk extends depends on the Contract asked, the rows do not). So an answer is a function of (subject, view) (SPEC
-//   8.3.3). A candidate reader (PremiseRows) demands no Contract, so it never extends: it reads the first walk's rows, kept or
-//   fresh, also a function of (subject, view). The implementation's limit, not SPEC's rule: a member or an associated Type that only
-//   an identity clause at depth gives its subject is not found (dm1), as on base, until R7-C2e2's Closure(view) holds the view's
-//   identity closure. Under an extension the view's entry is the request's (Closure(view) below). Only depth-1 requests extend: a
-//   nested request reads written facts alone (a1's leaf rule), so its answer can be Unknown where a depth-1 one is Proven, never the
-//   reverse. Its reach (R7-C2e2 e2-3b): no table kept here (no Complete reading reads a judgment), no kept path verdict (only a
-//   Proven one, which a nested request answers alike, or Invalid is kept), but a capability work evaluated inside a nested request
-//   can keep for its epoch an Unknown a depth-1 evaluation would prove (no program shows it; removal: R7-C2c2 c2-4's request by
-//   identity class, which every depth reads alike).
+//   fact, a negation) whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4).
+// - Closure (R7-C2e2 e2-7; SPEC 8.2.3, 8.3.3; G1406-11): a reader closes the roots it asks at entry (CloseRoot's rounds, ExtendRound,
+//   once per root and publication) over the declaration's grounds (ConstraintEnvironment.Declares) and the root's own rows, every
+//   supply with its source (a deferred mate's walk keeps its rows: the cycle stop bounds them), a lower key of its own round table
+//   restarting it, at most PremiseClosureLimit rounds and restarts: its rows and whether it is Limited are a function of (grounds,
+//   root). The view's table is rebuilt over the grounds, the use supply and every Complete root's rows when a reader closes one
+//   (Binding.TypeIdentity's ViewClassesOf); a kept entry is a closed root's, and it answers. A reading asking a Limited root reads
+//   its own table (T_A: the grounds, the use supply, its Limited roots' last-round rows and its asked Complete roots' rows): a
+//   judgment it leaves unproven is refused (RefuseProof: AnalysisLimit, Resource, at the use whose check asked, else at the scope's
+//   owner), one other evidence proves stands, and a query after the pass keeps Unknown. What it proves reads the use supply bound
+//   before it, so it can depend on spelling and the order of checks: a known limit against SPEC 8.3.3 (STATUS) until R7-C3 removes
+//   the syntax-triggered supply (O-413 (a)). A nested request reads the table its outermost reader walks.
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
 //   only Reading calls (temporary until R7-C2c3 removes its binding completion), and of a leaf row's atom, which only the reader
 //   normalizes (ExactAssumption: as the proposition's intake reads it, NormalizeProofConstraint);
@@ -762,12 +733,13 @@ public sealed partial class Binding
                 var premise = this.conjuncts[c];
 
                 // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
-                // deferred mate's walk keeps none (EnumerateClosed; the class header's Extension). One row per pair, with the source
-                // of its first supply: the Contract and the clause, as AddContractPremises files the same supply (IdentityRow).
+                // deferred mate's walk keeps its rows (EnumerateClosed; the class header's Closure). One row per (pair, source): every
+                // supply with its supplier, the Contract and the clause, as AddContractPremises files a supply (IdentityRow;
+                // G1406-11 C-f), which the premise error's recorder reads by source; a table reads the pair alone.
                 if (premise is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } && this.enumerateDepth == 1 &&
-                    source.Available && !Recorded(this.enumerateIdentities, left, right))
+                    source.Available && !Recorded(this.enumerateIdentities, left, right, shape.Symbol))
                 {
-                    this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause)); // c2-2: a row (SPEC 8.2.3 grounds) of the request's classes
+                    this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional)); // a row (SPEC 8.2.3 grounds) of a closure (CloseRoot)
                 }
 
                 if (RowAtom(premise) is { Subject: { } stated } &&
@@ -785,12 +757,12 @@ public sealed partial class Binding
             this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
         }
 
-        // Whether the walk recorded the identity row `a is b` (interned Types: by reference).
-        static bool Recorded(List<IdentityRow> rows, BoundType a, BoundType b)
+        // Whether the walk recorded the identity row `a is b` from `supplier` (interned Types: by reference).
+        static bool Recorded(List<IdentityRow> rows, BoundType a, BoundType b, BindingSymbol supplier)
         {
             for (var i = 0; i < rows.Count; i++)
             {
-                if (ReferenceEquals(rows[i].Fact.Subject, a) && ReferenceEquals(rows[i].Fact.RequiredType, b))
+                if (ReferenceEquals(rows[i].Fact.Subject, a) && ReferenceEquals(rows[i].Fact.RequiredType, b) && ReferenceEquals(rows[i].Source, supplier))
                 {
                     return true;
                 }

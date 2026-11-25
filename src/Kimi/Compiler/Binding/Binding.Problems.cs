@@ -163,12 +163,18 @@ public sealed partial class Binding
         => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
 
     // SPEC 23.3: the sides a mismatch compared and the syntax that shows them; a node's further mismatch with other sides takes its own
-    // key (RecordNumbered).
+    // key (RecordNumbered). e2-7 (G1406-11 C-a; SPEC 8.3.3 Limits, R2.1's Mismatch writers row): a mismatch whose sides' reading is a
+    // Limited root's table (T_A) with no recorded error class is the analysis limit at the node (AnalysisLimit_Kd), not a Type mismatch.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
-        if (this.IdentityPremiseErrorRead(this.ConstraintScope(node), actual.Type, expected.Type) is { } premise)
+        var scope = this.ConstraintScope(node);
+        if (this.IdentityPremiseErrorRead(scope, actual.Type, expected.Type) is { } premise)
         {
             this.AddPrerequisite(node, premise.Use); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
+        }
+        else if (HasTypeIdentity(scope) && this.ClassesOf(scope, [actual.Type, expected.Type], out _) is { Limited: true })
+        {
+            return this.RecordNumbered(node, BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(at), (long)AnalysisBound.PremiseClosure)]);
         }
 
         var site = this.FactSite(at);
