@@ -61,7 +61,6 @@ public sealed partial class Binding
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
     private readonly List<IdentityRow> identityRows = new(); // the views' rows while their tables are built (AddViewRows), a stack of ranges
-    private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
 
     // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C2, C-d): the publication's closed roots (ContractSolver's CloseRoot), each filed by
     // FileClosure under its view scope and final key, with its entry key and each part asked as (ClosureOf) mapped to it: its rows (a
@@ -77,6 +76,7 @@ public sealed partial class Binding
     private readonly List<int> identityAsked = new(); // ClassesOf's A(X) closures while it reads, a stack of ranges
     private readonly List<BoundType> identityParts = new(); // CloseAsked's parts of X, a stack of ranges
     private readonly List<BoundType?> identitySides = new(); // OwnClasses' X, the own premises' sides, a stack of ranges
+    private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
 
     // The scaling rows' measures: the nodes the identity classes added in this compilation, and ClassKey's steps and the class members
     // its Representative scanned.
