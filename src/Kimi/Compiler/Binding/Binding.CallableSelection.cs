@@ -68,7 +68,7 @@ public sealed partial class Binding
         // The candidates are the callee's available Callable rows (TryCallable's), one per normalized signature with its weakest
         // receiver; a failure relates a candidate's first row by its use (PremiseUse: the written clause, else its scope's owner).
         var start = this.premiseRows.Count;
-        this.FirstRows(owner, scope, this.premiseRows);
+        var classes = this.FirstRows(owner, scope, this.premiseRows);
         var rows = this.premiseRows.Count - start;
         var candidates = this.callableCandidateScratch.Rent(rows);
         var count = 0;
@@ -100,6 +100,11 @@ public sealed partial class Binding
             }
 
             this.premiseRows.RemoveRange(start, rows);
+            if (count != 1)
+            {
+                this.ReadIdentityLimit(scope, classes); // e2-7 R3.3: no candidate or several over cut rows is a negative answer
+            }
+
             var choices = candidates.AsSpan(0, count);
             for (var a = 0; a < count; a++)
             {

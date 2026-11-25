@@ -264,12 +264,11 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 23.1.2 (F's C2 rulings 320, 324): the direction contradiction, the identity premise error (judged once per pass, so
-            // the certificate rounds terminate, each group recorded once, here or at a later closure; SPEC 8.2.3, e2-7 C1) and the facts'
-            // proofs are independent: all are judged on the premises as the step
-            // found them, none reading a failure this step records against the owner as its failed context (validationStep). A
-            // contradiction then fails the pair's own premises alone (FailPairPremise); its report site keeps a member from reporting it
-            // again (MetInParent), so every check reading no premise of the pair is judged.
+            // SPEC 23.1.2 (F's C2 rulings 320, 324): the direction contradiction, the identity premise error (once per pass, so the
+            // certificate rounds terminate; SPEC 8.2.3, e2-7 R3.2: its one recorder) and the facts' proofs are independent: all are judged
+            // on the premises as the step found them, none reading a failure this step records against the owner as its failed context
+            // (validationStep). A contradiction then fails the pair's own premises alone (FailPairPremise); its report site keeps a member
+            // from reporting it again (MetInParent), so every check reading no premise of the pair is judged.
             this.validationStep = scope.Owner.BindingFailure == BindingFailure.None ? scope.Owner : null;
             var state = scope.Owner.BindingState;
             var contradiction = this.ValidateArithmeticDirections(scope);
@@ -347,9 +346,8 @@ public sealed partial class Binding
 
     // SPEC 8.3.4 (F's C2/C3 rulings 332, 333): the owner of the environment whose premises, with its enclosing scopes', empty a pair's
     // admitted set: the outermost such scope on the chain, whose own Semantics premise the validation step proves Error (JudgeFacts), the
-    // Error's one record; null when the chain admits a case. Read by the error groups' recorder (RecordErrorGroups) at the step, before
-    // that proof runs, where EmptyingEnvironment's FailedPremise is not yet written, or at a later closure; it reads the admitted sets
-    // alone. An error path only.
+    // Error's one record; null when the chain admits a case. Read before that proof runs, where EmptyingEnvironment's FailedPremise is
+    // not yet written (RecordIdentityPremiseError's RecordErrorGroups); an error path only.
     private Koto? EmptyingOwner(BindingScope scope, BoundType whole)
     {
         Koto? owner = null;

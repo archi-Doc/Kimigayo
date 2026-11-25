@@ -37,7 +37,7 @@ public sealed partial class Binding
         var confined = false;
         var required = this.CallableContractType(signature, scope);
         var start = this.premiseRows.Count;
-        this.FirstRows(this.CallableContractType(type, scope), scope, this.premiseRows);
+        var classes = this.FirstRows(this.CallableContractType(type, scope), scope, this.premiseRows);
         for (var r = start; r < this.premiseRows.Count; r++)
         {
             if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact, Raw: { } raw, Stated: { } stated } ||
@@ -70,6 +70,11 @@ public sealed partial class Binding
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+        if (!confined)
+        {
+            this.ReadIdentityLimit(scope, classes); // e2-7 R3.3: false over cut rows is a negative answer
+        }
+
         return confined;
     }
 

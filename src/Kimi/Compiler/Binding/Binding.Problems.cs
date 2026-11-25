@@ -164,9 +164,10 @@ public sealed partial class Binding
 
     // SPEC 23.3: the sides a mismatch compared and the syntax that shows them; a node's further mismatch with other sides takes its own
     // key (RecordNumbered). e2-7 (G1406-11 C-a, G1406-12; SPEC 8.3.3 Limits, R2.1's Mismatch writers row): a mismatch whose sides'
-    // reading is a Limited root's table (T_A) with no recorded error class is the analysis limit, not a Type mismatch: the reading's one
-    // refusal (ReadIdentityLimit, in a site frame at the node where none is open), the declaration's AnalysisLimit_Kd once per run
-    // (RefuseProof), on which the node rests (rule W, RestOnPart) where the record stands at another node; it records nothing of its own.
+    // reading is a Limited reading's table (R(A)) with no recorded error class is the analysis limit, not a Type mismatch: the reading's
+    // one refusal (ReadIdentityLimit, in a site frame at the node where none is open), the declaration's AnalysisLimit_Kd once per run
+    // (RefuseProof), on which the node rests (rule W, RestOnPart) where the record stands at another node, only once it is recorded
+    // (RefuseProof answers null while a trial holds it, G1406-16 C4); it records nothing of its own.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
         var scope = this.ConstraintScope(node);

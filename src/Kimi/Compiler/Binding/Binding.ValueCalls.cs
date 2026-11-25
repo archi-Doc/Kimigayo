@@ -304,7 +304,7 @@ public sealed partial class Binding
         signature = null!;
         receiver = SemanticsKind.Owner;
         var start = this.premiseRows.Count;
-        this.FirstRows(owner, scope, this.premiseRows);
+        var classes = this.FirstRows(owner, scope, this.premiseRows);
         for (var i = start; i < this.premiseRows.Count; i++)
         {
             if (this.premiseRows[i] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact })
@@ -331,6 +331,11 @@ public sealed partial class Binding
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+        if (several || signature is null)
+        {
+            this.ReadIdentityLimit(scope, classes); // e2-7 R3.3: none or several over cut rows is a negative answer
+        }
+
         return !several && signature is not null;
     }
 

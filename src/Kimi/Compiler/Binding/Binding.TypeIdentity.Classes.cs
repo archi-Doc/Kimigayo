@@ -65,7 +65,7 @@ public sealed partial class Binding
 
         internal int Work { get; private set; }
 
-        // G1406-11 C-a: whether this is a reading's table at a Limited root (T_A, Binding.LimitedClassesOf, its one writer by MarkLimited);
+        // G1406-11 C-a: whether this is a Limited reading's table (R(A), Binding.ReadingOf, its one writer by MarkLimited);
         // a judge left Unknown over it refuses (ReadIdentityLimit) and its Refuted answers false (Binding.IdentityRefuted). Open clears it.
         internal bool Limited { get; private set; }
 
@@ -267,6 +267,10 @@ public sealed partial class Binding
                 groups.Add((group, state));
             }
         }
+
+        // e2-7 (R3.1): whether two Types are in one class of the table, whatever its state (Same is Proven's): the rows of a closure that
+        // join its key's class (E, Binding.FileClosure). No judgment.
+        internal bool Joins(BoundType a, BoundType b) => this.ClassOf(a) is var x && x >= 0 && x == this.ClassOf(b);
 
         // Verdict's Proven: one final class in state One, or one head and agreeing attributes over Proven parts.
         internal bool Same(BoundType a, BoundType b)

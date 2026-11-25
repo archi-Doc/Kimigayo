@@ -141,7 +141,7 @@ public sealed partial class Binding
         // Type, at every depth and whatever its spelling (ContractSolver's FirstRows). The evidence names a row's Source: the scope
         // stating it and its written premise, or the supplied proposition where a clause or an ancestor gives the row.
         var start = this.premiseRows.Count;
-        this.FirstRows(conforming, scope, this.premiseRows);
+        var classes = this.FirstRows(conforming, scope, this.premiseRows);
         for (var r = start; r < this.premiseRows.Count; r++)
         {
             if (this.premiseRows[r] is not { Available: true, Symbol: { Contract: { } shape } contract } row)
@@ -183,6 +183,11 @@ public sealed partial class Binding
                     }
                 }
             }
+        }
+
+        if (!confined)
+        {
+            this.ReadIdentityLimit(scope, classes); // e2-7 R3.3: not confined over cut rows is a negative answer
         }
 
         return confined;

@@ -466,8 +466,9 @@ public sealed partial class Binding
     // held for its selection (Refusal.Settle): only the selected candidate's Unknown judgments are obligations (SPEC 10.1). All of it
     // while the pass produces its failures (producing): a query after the pass (a lint, MIR, emission, the editor) fails no node, so
     // its request answers Unknown, as without the analysis (PLAN G651 U2 gives the after-run queries their outcome). Returns the
-    // record's node (Refusal.Use), which a check failing on the refused reading rests on (rule W, RecordTypeMismatch), or null after
-    // the pass.
+    // record's node (Refusal.Use) once the run has recorded it (settled here or earlier: Refusal.Recorded), which a check failing on
+    // the refused reading rests on (rule W, RecordTypeMismatch); null while it is held (a candidate trial's, a proof's limit: no node
+    // state rests on a refusal that may be dropped, G1406-16 C4) and after the pass.
     private Koto? RefuseProof(BindingScope scope, BindingFailure limit)
     {
         if (!this.producing)
@@ -495,7 +496,7 @@ public sealed partial class Binding
             refusal.Settle();
         }
 
-        return refusal.Use;
+        return refusal.Recorded ? refusal.Use : null;
     }
 
     private void ClearProofScopes()
@@ -617,6 +618,9 @@ public sealed partial class Binding
         public ICheckCause? Next => null;
 
         public ICheckCause? ReentrySite => null;
+
+        // Whether the run recorded the limit at Use (Settle), so a node may rest on it (RefuseProof's answer).
+        internal bool Recorded => this.recorded == binding.storageVersion;
 
         public void Rest()
         {

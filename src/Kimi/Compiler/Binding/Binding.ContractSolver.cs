@@ -76,16 +76,16 @@
 //   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), and a leaf row's fact (a Callable
 //   fact, a negation) whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4).
 // - Closure (R7-C2e2 e2-7; SPEC 8.2.3, 8.3.3; G1406-11): a reader closes the roots it asks at entry (CloseRoot's rounds, ExtendRound,
-//   once per root and publication) over the declaration's grounds (ConstraintEnvironment.Declares) and the root's own rows, every
-//   supply with its source (a deferred mate's walk keeps its rows: the cycle stop bounds them), a lower key of its own round table
-//   restarting it, at most PremiseClosureLimit rounds and restarts: its rows and whether it is Limited are a function of (grounds,
-//   root). The view's table is rebuilt over the grounds, the use supply and every Complete root's rows when a reader closes one
-//   (Binding.TypeIdentity's ViewClassesOf); a kept entry is a closed root's, and it answers. A reading asking a Limited root reads
-//   its own table (T_A: the grounds, the use supply, its Limited roots' last-round rows and its asked Complete roots' rows): a
-//   judgment it leaves unproven is refused (RefuseProof: AnalysisLimit, Resource, at the use whose check asked, else at the scope's
-//   owner), one other evidence proves stands, and a query after the pass keeps Unknown. What it proves reads the use supply bound
-//   before it, so it can depend on spelling and the order of checks: a known limit against SPEC 8.3.3 (STATUS) until R7-C3 removes
-//   the syntax-triggered supply (O-413 (a)). A nested request reads the table its outermost reader walks.
+//   once per root and publication) over the declaration's grounds (ConstraintEnvironment.DeclaredIdentityFacts) and the root's own
+//   rows, every supply with its source (a deferred mate's walk keeps its rows: the cycle stop bounds them), a lower key of its own round
+//   table restarting it, at most PremiseClosureLimit rounds and restarts (an entry's restarts include a filed key's): its rows, its pair
+//   row to its key and whether it is Limited are a function of (grounds, root). Each reading reads one table, R(A) (Binding.TypeIdentity's
+//   ReadingOf: the grounds, the use supply and its asked closures' pair rows and rows joining their keys' classes, G1406-16 B1), Limited
+//   when an asked closure is: a judgment it leaves unproven is refused (RefuseProof: AnalysisLimit, Resource, at the use whose check
+//   asked, else at the scope's owner), one other evidence proves stands, and a query after the pass keeps Unknown; a kept entry is a
+//   closed root's, and it answers. What it proves reads the use supply bound before it, so it can depend on spelling and the order of
+//   checks: a known limit against SPEC 8.3.3 (STATUS) until R7-C3 removes the syntax-triggered supply (O-413 (a)). A nested request,
+//   walk or build reads the base table, the grounds and the use supply alone (G1406-16 C1).
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
 //   only Reading calls (temporary until R7-C2c3 removes its binding completion), and of a leaf row's atom, which only the reader
 //   normalizes (ExactAssumption: as the proposition's intake reads it, NormalizeProofConstraint);

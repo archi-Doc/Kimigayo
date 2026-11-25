@@ -185,7 +185,9 @@ public sealed partial class Binding
     // whose projection chain repeats an associated declaration (Recurs: `associate Next is Mk`) is not walked, a subject just below an
     // own recursing Type included (an own `T.(Mk).Next.(Mk).Next` skips `T.(Mk).Next.(Mk).Next.(Mk).F`): its rows are those of its
     // first occurrence, Self one link deeper, so the walk is finite (probed for raw writers; an Origin writer at such a level is
-    // unprobed). Each (subject, Contract) once; whether each substitutes (false: CallRetention.Limit).
+    // unprobed). Each (subject, Contract) once; whether each substitutes (false: CallRetention.Limit). e2-7 (G1406-16 C3, SPEC 8.3.3):
+    // "every row handed" is universal over the rows, so a completed walk (`true`) that read a Limited reading's rows (FirstRows: cut at
+    // the round bound) is refused once (ReadIdentityLimit, while the pass produces) and answers false; a `false` from a found row stands.
     internal bool HandedSignatures(Koto use, ReadOnlySpan<BoundType> signature, List<ErasedSignature> handed)
     {
         handed.Clear();
@@ -199,6 +201,7 @@ public sealed partial class Binding
 
         var own = this.retentionWalk.Count;
         var scope = this.ConstraintScope(use);
+        IdentityClasses? cut = null; // a Limited reading the walk read
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { } constraints)
@@ -229,7 +232,11 @@ public sealed partial class Binding
             }
 
             var start = this.premiseRows.Count;
-            this.FirstRows(type, scope, this.premiseRows);
+            if (this.FirstRows(type, scope, this.premiseRows) is { Limited: true } limited)
+            {
+                cut = limited;
+            }
+
             var end = this.premiseRows.Count; // A nested request's range is above it and gone when the request returns.
             try
             {
@@ -253,7 +260,7 @@ public sealed partial class Binding
             }
         }
 
-        return true;
+        return this.ReadIdentityLimit(scope, cut) is null;
     }
 
     // A fixed Origin of an erased signature (Revision 9): a carrier's hidden Origins (R4-M36), or an Origin neither `static` nor one of its

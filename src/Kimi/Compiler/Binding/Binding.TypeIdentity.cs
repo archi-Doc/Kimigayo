@@ -15,8 +15,8 @@ namespace Kimi.Compiler;
 //   edges a constructor's components and a projection's Contract arguments (SPEC 8.3.3's expansion), Cyclic only through a
 //   constructor edge (R7-C2c2 c2-4b); a Type that is no node is in the class of the node it is congruent with (ClassOf); the
 //   premise error an error class is (SPEC 8.2.3's table), recorded once per pass at the declaration whose premises first form it, one
-//   record per error group at its last own premise clause and a supplied group at its supplier (R7-C3 C3d), by one recorder for the
-//   validation step's table and a closure's round table alike (RecordErrorGroups, e2-7 C1);
+//   record per error group at its last own premise clause and a supplied group at its supplier (R7-C3 C3d), by one recorder, the
+//   validation step over its own reading (RecordIdentityPremiseError, e2-7 R3.2);
 //   the identity proposition's Proven (IdentityProven; two complete Types by SameCompleteType, Binding.TypeIdentity.Complete, R7-C3
 //   C3c); the class key the premise supply compares by (ClassKey, R7-C2c2 c2-1); the
 //   one form every Type of a class takes in a view (ClassForm, R7-C2c2 c2-4b: its own contract in Binding.TypeIdentity.Keys, its
@@ -40,39 +40,40 @@ namespace Kimi.Compiler;
 //   judge's paths and the Callable judge's signature read before they refute (PLAN G866).
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
-//   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one publication, and a table that is not is
-//   rebuilt per read: the provisional path costs reads times the view's premise nodes (the reads include the premise clauses' own, so
-//   it is quadratic in the premises and linear in the uses); one table per view and pass, rebuilt in place; warm 0 B (pooled tables).
+//   premise environment cannot be rented); a reading reads one table, R(A) over its asked closures (e2-7 R3.1), and only a Final
+//   table is kept, by SerialOf, for one publication (the base table and T(G) per view, a reading's per its key), a table that is not
+//   being rebuilt per read: the provisional path costs reads times the view's premise nodes (the reads include the premise clauses'
+//   own, so it is quadratic in the premises and linear in the uses); warm 0 B (pooled tables).
 // - Prohibitions: no premise is withheld, ranked or chosen by order, and no mode parameter; no judgment inside the closure but the
 //   attribute domains', which read no identity; an erroneous class proves nothing and makes its declaration's context no failed one.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BindingScope, (int Serial, int Complete, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
+    // e2-7 (R3.1, R3.4): per view scope, the base table T(G ∪ U) (a reading with no closure, ReadingOf) and T(G) (a closure's first
+    // round, ExtendedClassesOf), each with the serial it is kept for (-1: kept, not memoized), rebuilt in place at its next read.
+    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityGrounds = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
-    // A scope's recorded premise error, written before its first record: whether it is the owner's failure (the owner had none before
-    // it), whether an own class reached the closure limit, the site of its first record when the owner rests on its records (R7-C3
-    // C3d: no record at the owner and no failure of its own; an own clause or the supplier, the owner's published cause,
-    // IdentityErrorSite, and the owner's own checks are its readers), else null; and whether the validation step judged it in the pass
-    // (Judged, RecordIdentityPremiseError's gate: its failure kinds are decided once per pass, e2-7 C1). Its group records' sites are
-    // identityGroupSites' rows (RecordsAt).
-    private readonly Dictionary<BindingScope, (bool Own, bool Limited, Koto? Site, bool Judged)> identityRecorded = new(ReferenceEqualityComparer.Instance);
+    // A scope's recorded premise error, written by the validation step (RecordIdentityPremiseError, the one recorder) before its first
+    // record, once per pass: whether it is the owner's failure (the owner had none before it), whether an own class reached the closure
+    // limit, and the site of its first record when the owner rests on its records (R7-C3 C3d: no record at the owner and no failure of
+    // its own; an own clause or the supplier, the owner's published cause, IdentityErrorSite, and the owner's own checks are its
+    // readers), else null; and its own premise clauses holding a group record, a range of identityClauses (HoldsGroupRecord).
+    private readonly Dictionary<BindingScope, (bool Own, bool Limited, Koto? Site, (int Start, int Count) Clauses)> identityRecorded = new(ReferenceEqualityComparer.Instance);
     private readonly List<(int Group, byte State)> identityGroups = new(); // OwnError's own error groups (R7-C3 C3d), a stack of ranges
-    private readonly List<(BindingScope Scope, Koto Site)> identityGroupSites = new(); // each group record's scope and site, reused between passes
+    private readonly List<Koto> identityClauses = new(); // identityRecorded's clause ranges, reused between passes
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
-    private readonly List<IdentityRow> identityRows = new(); // the views' rows while their tables are built (AddViewRows), a stack of ranges
+    private readonly List<IdentityRow> identityRows = new(); // the readings' rows while their tables are built, a stack of ranges
 
-    // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C2, C-d): the publication's closed roots (ContractSolver's CloseRoot), each filed by
-    // FileClosure under its view scope and final key, with its entry key and each part asked as (ClosureOf) mapped to it: its rows (a
-    // range of identityClosed: a Complete root's E(r), a Limited root's last round L(r)) and whether it is Limited; and per view scope
-    // the count of its Complete roots, which keys the view's table. T_A's kept tables (LimitedClassesOf), each under its view scope,
-    // serial and closure set (a range of identityLimitedRoots). All are forgotten at each publication and each pass, capacity kept.
+    // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C2, G1406-16 B1, C2): the publication's closed roots (ContractSolver's CloseRoot), each
+    // closed part filed by FileClosure under its view scope and the part as asked: its closure (IdentityClosure). The readings' kept
+    // tables (ReadingOf), each under its view scope, closure set (a range of identityReadingClosures) and Limited bit, with the serial it
+    // is memoized for (-1: kept, not memoized). All are forgotten at each publication and each pass, capacity kept.
     private readonly Dictionary<(BindingScope Scope, BoundType Key), int> identityRoots = new();
     private readonly List<IdentityClosure> identityClosures = new();
     private readonly List<IdentityRow> identityClosed = new();
-    private readonly Dictionary<BindingScope, int> identityComplete = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(BindingScope Scope, int Serial, int Start, int Count, IdentityClasses Classes)> identityLimited = new();
-    private readonly List<int> identityLimitedRoots = new();
+    private readonly List<(BindingScope Scope, int Serial, int Start, int Count, bool Limited, IdentityClasses Classes)> identityReadings = new();
+    private readonly List<int> identityReadingClosures = new();
     private readonly List<int> identityAsked = new(); // ClassesOf's A(X) closures while it reads, a stack of ranges
     private readonly List<BoundType> identityParts = new(); // CloseAsked's parts of X, a stack of ranges
     private readonly List<BoundType?> identitySides = new(); // OwnClasses' X, the own premises' sides, a stack of ranges
@@ -88,12 +89,14 @@ public sealed partial class Binding
     // is read by. A fact of a view's chain names its environment (Environment: read there, as every premise is, AvailableConstraintFact);
     // a clause instance a request's walk recorded names the Contract supplying it and the clause it instantiates, as a DerivedFacts entry
     // names its source (Source, Origin; Environment null) and is read with its Availability: Provisional while its walk runs (a derived
-    // availability, R7-M27), its closure's Completion once filed (FileClosure; G1406-11 C-d: a Complete closure's rows keep the view's
-    // table Final).
+    // availability, R7-M27), its closure's Completion once filed (FileClosure: a Complete closure's rows keep a reading's table Final);
+    // a closure's pair row (FileClosure, G1406-16 B1) names nothing and is read with its closure's Completion.
     private readonly record struct IdentityRow(BoundConstraint Fact, ConstraintEnvironment? Environment, BindingSymbol? Source, IsKoto? Origin, Completion Availability);
 
-    // A closed root (FileClosure): its view scope, final key, rows (identityClosed's range) and whether it is Limited (G1406-11 C2).
-    private readonly record struct IdentityClosure(BindingScope Scope, BoundType Key, int Start, int Count, bool Limited);
+    // A closed part's closure (FileClosure; G1406-11 C2, G1406-16 B1, C2): its final key; its pair row `part is Key` (an index of
+    // identityClosed) when the part is not the key, else -1; its rows E (a range of identityClosed, the key's); its re-rootings from the
+    // part to the key; and whether it is Limited.
+    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Restarts, bool Limited);
 
     // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
     private static bool HasTypeIdentity(BindingScope scope)
@@ -108,6 +111,9 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // C-b (R3.1): a table built for a reading under `serial` is kept only when Final and the serial is unchanged across its build.
+    private static bool Keeps(BindingScope scope, int serial, IdentityClasses classes) => classes.Final && SerialOf(scope) == serial;
 
     // The index pass's reset of a member or element access's identity premise, which each pass publishes again (DECISIONS BU-72).
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
@@ -127,18 +133,23 @@ public sealed partial class Binding
             CollectionsMarshal.GetValueRefOrNullRef(this.identityClasses, scope).Serial = -1;
         }
 
+        foreach (var scope in this.identityGrounds.Keys)
+        {
+            CollectionsMarshal.GetValueRefOrNullRef(this.identityGrounds, scope).Serial = -1;
+        }
+
         this.ForgetClosures();
     }
 
-    // The publication's closed roots and T_A tables are forgotten (G1406-11 C2: a closure is filed for one publication), capacity kept.
+    // The publication's closed roots and readings' tables are forgotten (G1406-11 C2: a closure is filed for one publication), capacity
+    // kept.
     private void ForgetClosures()
     {
         this.identityRoots.Clear();
         this.identityClosures.Clear();
         this.identityClosed.Clear();
-        this.identityComplete.Clear();
-        this.identityLimited.Clear();
-        this.identityLimitedRoots.Clear();
+        this.identityReadings.Clear();
+        this.identityReadingClosures.Clear();
     }
 
     // The pass's tables go back to the pool (ResetCapabilities); each keeps its capacity.
@@ -151,25 +162,24 @@ public sealed partial class Binding
 
         this.identityLent.Clear();
         this.identityClasses.Clear();
+        this.identityGrounds.Clear();
         this.ForgetClosures();
         this.identityRecorded.Clear();
-        this.identityGroupSites.Clear();
+        this.identityClauses.Clear();
     }
 
-    // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C-a, C-b, C-d, N2): the table a reading of the Types `asked` (its X) reads in the view
-    // `scope`, and its Completion. At the request boundary (no request open, no walk, no table build) it first closes A(X), X's
-    // dependent abstract parts, each keyed by its class (CloseAsked, ContractSolver's CloseRoot). It answers the view's table
-    // (ViewClassesOf) when every root of A(X) is Complete, else T_A (LimitedClassesOf), whose Limited bit is the reading's own limit,
-    // read by its judge alone (ReadIdentityLimit). Inside a request, a walk or a build it closes nothing and answers the view's table
-    // as it stands (a nested read reads the table its outermost reader walks). A re-entered build answers nothing (Provisional).
+    // e2-7 (SPEC 8.2.3, 8.3.3 Limits; R3.1, G1406-16 C1): the table a reading of the Types `asked` (its X) reads in the view `scope`,
+    // and its Completion: R(A) (ReadingOf), A the closures of X's dependent abstract parts, closed at the request boundary (no request
+    // open, no walk, no table build: CloseAsked, ContractSolver's CloseRoot). Inside a request, a walk or a build A is empty, so the
+    // reading is the base table T(G ∪ U): it reads no closure another reader filed. Its Limited bit is the reading's own limit, read by
+    // its judge alone (ReadIdentityLimit). A re-entered build answers nothing (Provisional).
     private IdentityClasses? ClassesOf(BindingScope scope, ReadOnlySpan<BoundType?> asked, out Completion completion)
     {
-        var start = this.identityAsked.Count;
+        var (start, serial) = (this.identityAsked.Count, SerialOf(scope));
         try
         {
-            return this.enumerateDepth == 0 && this.enumerateWalking == 0 && this.identityBuilding.Count == 0 && this.CloseAsked(scope, asked, start)
-                ? this.LimitedClassesOf(scope, start, out completion)
-                : this.ViewClassesOf(scope, out completion);
+            var limited = this.enumerateDepth == 0 && this.enumerateWalking == 0 && this.identityBuilding.Count == 0 && this.CloseAsked(scope, serial, asked, start);
+            return this.ReadingOf(scope, serial, start, limited, out completion);
         }
         finally
         {
@@ -177,9 +187,11 @@ public sealed partial class Binding
         }
     }
 
-    // A(X)'s closures (G1406-11 C2), appended to identityAsked from `start`, each once: each dependent abstract part of the asked Types
-    // (AddAbstractParts), closed or read from the publication's filing (ClosureOf). Returns whether one is Limited.
-    private bool CloseAsked(BindingScope scope, ReadOnlySpan<BoundType?> asked, int start)
+    // A(X)'s closures (G1406-11 C2; R3.1): each dependent abstract part of the asked Types (AddAbstractParts), read from the
+    // publication's filing or closed under `serial` (ContractSolver's CloseRoot, which files it). Appended to identityAsked from `start`,
+    // each once, are those holding rows of a reading (a pair row or E, G1406-16 B1); a closure with neither (a prefix closure) gives the
+    // reading its Limited bit alone. Returns whether one is Limited.
+    private bool CloseAsked(BindingScope scope, int serial, ReadOnlySpan<BoundType?> asked, int start)
     {
         var parts = this.identityParts.Count;
         foreach (var type in asked)
@@ -190,16 +202,22 @@ public sealed partial class Binding
         var limited = false;
         for (var p = parts; p < this.identityParts.Count; p++)
         {
-            if (!this.identityParts[p].IsAbstractType)
+            var part = this.identityParts[p];
+            if (!part.IsAbstractType)
             {
                 continue; // a composite the walk met (AddAbstractParts), no part of A(X)
             }
 
-            var closure = this.ClosureOf(scope, this.identityParts[p]);
-            if (this.identityAsked.IndexOf(closure, start, this.identityAsked.Count - start) < 0)
+            if (!this.identityRoots.TryGetValue((scope, part), out var closure))
+            {
+                closure = this.CloseRoot(scope, serial, part);
+            }
+
+            var filed = this.identityClosures[closure];
+            limited |= filed.Limited;
+            if ((filed.Pair >= 0 || filed.Count != 0) && this.identityAsked.IndexOf(closure, start, this.identityAsked.Count - start) < 0)
             {
                 this.identityAsked.Add(closure);
-                limited |= this.identityClosures[closure].Limited;
             }
         }
 
@@ -224,107 +242,78 @@ public sealed partial class Binding
         }
     }
 
-    // The closure of `part` in `scope`'s view for the publication: filed under the part as asked, else closed (CloseRoot), which files it
-    // under its final key and its entry key. Only CloseAsked calls it, at the request boundary.
-    private int ClosureOf(BindingScope scope, BoundType part)
+    // Files a closed root for the publication (CloseRoot's one writer of the filing; G1406-11 C2, G1406-16 B1, C2) and returns the
+    // closure of `entry`, closed to `key` with `restarts` re-rootings by the open request (its last round: enumerateIdentities' rows,
+    // enumerateClasses' table, enumerateCompletion). An entry whose re-rootings, its own and the filed key's (a restart onto a filed key
+    // reads that filing), pass PremiseClosureLimit is filed alone, Limited, with no rows: its Limited bit is a function of the entry
+    // (SPEC 8.3.3). Otherwise the key, unless filed, is filed with E, its last round's rows that join its class in that round's table
+    // (R3.1: a prefix closure's E is empty), Limited when `limited` (its rounds passed the bound); and an entry other than the key
+    // with the key's rows and the pair row `entry is key`, read with the request's Completion: the link its re-rootings rest on, which
+    // the restart's cleared rows held (SPEC 8.3.3: the identities obtained before it are kept).
+    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, int restarts, bool limited)
     {
-        if (!this.identityRoots.TryGetValue((scope, part), out var closure))
+        var known = this.identityRoots.TryGetValue((scope, key), out var closure);
+        restarts += known ? this.identityClosures[closure].Restarts : 0;
+        if (restarts > PremiseClosureLimit)
         {
-            closure = this.CloseRoot(scope, part);
-            this.identityRoots[(scope, part)] = closure;
+            return File(entry, new(entry, -1, 0, 0, restarts, true));
         }
 
-        return closure;
-    }
-
-    // Files a closed root (CloseRoot's one writer of the filing; G1406-11 C2): its rows (a range of identityClosed, each read with the
-    // closure's Completion, Complete when its walks read Complete), under its final key, and its entry key mapped to it; a Complete
-    // root counts in its view's table (identityComplete, ViewClassesOf's key). Returns the closure.
-    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, List<IdentityRow> rows, bool limited, Completion completion)
-    {
-        var start = this.identityClosed.Count;
-        foreach (var row in rows)
+        if (!known)
         {
-            this.identityClosed.Add(row with { Availability = completion });
-        }
-
-        var closure = this.identityClosures.Count;
-        this.identityClosures.Add(new(scope, key, start, rows.Count, limited));
-        this.identityRoots[(scope, key)] = closure;
-        this.identityRoots[(scope, entry)] = closure;
-        if (!limited)
-        {
-            CollectionsMarshal.GetValueRefOrAddDefault(this.identityComplete, scope, out _)++;
-        }
-
-        return closure;
-    }
-
-    // The view's table (G1406-11 C-d): ClassesOver its rows (AddViewRows: every identity premise of its chain) and every Complete root's
-    // rows closed in it this publication. Memoized by (SerialOf, the Complete roots' count) when Final: a reader that closes a new
-    // Complete root rebuilds it, by the same call, which re-joins every kept root's rows; a rebuild takes a table from the pool when a
-    // reader may hold the kept one (a build nested in another, or a closure since), so no held table changes under its reader.
-    private IdentityClasses? ViewClassesOf(BindingScope scope, out Completion completion)
-    {
-        var serial = SerialOf(scope);
-        var complete = this.identityComplete.GetValueOrDefault(scope);
-        if (this.identityClasses.TryGetValue(scope, out var kept) && kept.Serial == serial && kept.Complete == complete)
-        {
-            completion = kept.Classes.Completion;
-            return kept.Classes;
-        }
-
-        completion = Completion.Provisional;
-        if (!this.identityBuilding.Add(scope))
-        {
-            return null;
-        }
-
-        var start = this.identityRows.Count;
-        try
-        {
-            if (kept.Classes is not { } classes || this.identityBuilding.Count != 1 || kept.Complete != complete)
+            var start = this.identityClosed.Count;
+            foreach (var row in this.enumerateIdentities)
             {
-                classes = this.identityPool.Count != 0 ? this.identityPool.Pop() : new IdentityClasses(this);
-                this.identityLent.Add(classes);
-            }
-
-            this.AddViewRows(scope);
-            foreach (var closure in this.identityClosures)
-            {
-                if (ReferenceEquals(closure.Scope, scope) && !closure.Limited)
+                if (this.enumerateClasses is { } last && (last.Joins(row.Fact.Subject!, key) || last.Joins(row.Fact.RequiredType!, key)))
                 {
-                    this.identityRows.AddRange(CollectionsMarshal.AsSpan(this.identityClosed).Slice(closure.Start, closure.Count));
+                    this.identityClosed.Add(row with { Availability = this.enumerateCompletion });
                 }
             }
 
-            this.ClassesOver(classes, scope, this.identityRows, start);
-            completion = classes.Completion;
-            this.identityClasses[scope] = (classes.Final && SerialOf(scope) == serial ? serial : -1, complete, classes); // -1: kept, not memoized
-            return classes;
+            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, 0, limited));
         }
-        finally
+
+        if (ReferenceEquals(entry, key))
         {
-            this.identityRows.RemoveRange(start, this.identityRows.Count - start);
-            this.identityBuilding.Remove(scope);
+            return closure;
+        }
+
+        var filed = this.identityClosures[closure];
+        this.identityClosed.Add(new(this.InternConstraint(new(ConstraintKind.TypeIdentity, entry, filed.Key)), null, null, null, this.enumerateCompletion));
+        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Restarts = restarts });
+
+        int File(BoundType part, IdentityClosure filing)
+        {
+            this.identityClosures.Add(filing);
+            return this.identityRoots[(scope, part)] = this.identityClosures.Count - 1;
         }
     }
 
-    // T_A (G1406-11 C-a, C-b, N2; R2.1): a reading's table at a Limited root, ClassesOver the view's rows (its grounds and use supply) and
-    // the rows of each closure it asked (identityAsked from `start`: a Limited root's last round, an asked Complete root's rows), never
-    // another root's, so it is a function of (G, A, U). Marked Limited. Kept for the publication under (SerialOf, the set of its
-    // closures) only when Final and SerialOf is unchanged across its build, as the view's table is.
-    private IdentityClasses? LimitedClassesOf(BindingScope scope, int start, out Completion completion)
+    // e2-7 (R3.1; G1406-16 B1), the one keep step of a reading's table: R(A) = ClassesOver(G ∪ U ∪ the rows of A's closures, each pair
+    // row and E), A the closures appended to identityAsked from `start` (CloseAsked), marked Limited when `limited` (a closure of A is).
+    // It is keyed by (`serial`, A, the Limited bit), a function of (G, A, U), so the order of readers changes no reading; the key with
+    // no closure and the bit clear is the base table T(G ∪ U), one per view scope. Each key's table is rebuilt in place at its next
+    // read unless a build is nested in another (a reader may hold it), and memoized only when Final and the serial is unchanged across
+    // its build (Keeps). A re-entered build answers nothing (Provisional).
+    private IdentityClasses? ReadingOf(BindingScope scope, int serial, int start, bool limited, out Completion completion)
     {
-        var serial = SerialOf(scope);
         var count = this.identityAsked.Count - start;
-        foreach (var (keptScope, keptSerial, keysStart, keysCount, kept) in this.identityLimited)
+        var based = count == 0 && !limited;
+        var kept = based ? this.identityClasses.GetValueOrDefault(scope) : default;
+        var at = -1; // the key's entry in identityReadings
+        for (var k = 0; !based && at < 0 && k < this.identityReadings.Count; k++)
         {
-            if (ReferenceEquals(keptScope, scope) && keptSerial == serial && keysCount == count && this.SameClosures(keysStart, start, count))
+            var reading = this.identityReadings[k];
+            if (ReferenceEquals(reading.Scope, scope) && reading.Count == count && reading.Limited == limited && this.SameClosures(reading.Start, start, count))
             {
-                completion = kept.Completion;
-                return kept;
+                (at, kept) = (k, (reading.Serial, reading.Classes));
             }
+        }
+
+        if (kept.Classes is { } held && kept.Serial == serial)
+        {
+            completion = held.Completion;
+            return held;
         }
 
         completion = Completion.Provisional;
@@ -336,23 +325,39 @@ public sealed partial class Binding
         var rows = this.identityRows.Count;
         try
         {
-            var classes = this.identityPool.Count != 0 ? this.identityPool.Pop() : new IdentityClasses(this);
-            this.identityLent.Add(classes);
+            var classes = kept.Classes is { } reused && this.identityBuilding.Count == 1 ? reused : this.RentClasses();
             this.AddViewRows(scope);
             for (var a = start; a < this.identityAsked.Count; a++)
             {
                 var closure = this.identityClosures[this.identityAsked[a]];
+                if (closure.Pair >= 0)
+                {
+                    this.identityRows.Add(this.identityClosed[closure.Pair]);
+                }
+
                 this.identityRows.AddRange(CollectionsMarshal.AsSpan(this.identityClosed).Slice(closure.Start, closure.Count));
             }
 
             this.ClassesOver(classes, scope, this.identityRows, rows);
-            classes.MarkLimited();
-            completion = classes.Completion;
-            if (classes.Final && SerialOf(scope) == serial)
+            if (limited)
             {
-                var keys = this.identityLimitedRoots.Count;
-                this.identityLimitedRoots.AddRange(CollectionsMarshal.AsSpan(this.identityAsked).Slice(start, count));
-                this.identityLimited.Add((scope, serial, keys, count, classes));
+                classes.MarkLimited();
+            }
+
+            completion = classes.Completion;
+            var memo = Keeps(scope, serial, classes) ? serial : -1; // -1: kept, not memoized
+            if (based)
+            {
+                this.identityClasses[scope] = (memo, classes);
+            }
+            else if (at >= 0)
+            {
+                this.identityReadings[at] = (scope, memo, this.identityReadings[at].Start, count, limited, classes);
+            }
+            else
+            {
+                this.identityReadings.Add((scope, memo, this.identityReadingClosures.Count, count, limited, classes));
+                this.identityReadingClosures.AddRange(CollectionsMarshal.AsSpan(this.identityAsked).Slice(start, count));
             }
 
             return classes;
@@ -364,12 +369,21 @@ public sealed partial class Binding
         }
     }
 
-    // Whether a kept T_A's closure set (identityLimitedRoots from `kept`) is the asked one (identityAsked from `asked`), both `count` long.
+    // A table from the pool, lent for the pass (ResetIdentityClasses returns it).
+    private IdentityClasses RentClasses()
+    {
+        var classes = this.identityPool.Count != 0 ? this.identityPool.Pop() : new IdentityClasses(this);
+        this.identityLent.Add(classes);
+        return classes;
+    }
+
+    // Whether a kept reading's closure set (identityReadingClosures from `kept`) is the asked one (identityAsked from `asked`), both
+    // `count` long.
     private bool SameClosures(int kept, int asked, int count)
     {
         for (var i = 0; i < count; i++)
         {
-            if (this.identityAsked.IndexOf(this.identityLimitedRoots[kept + i], asked, count) < 0)
+            if (this.identityAsked.IndexOf(this.identityReadingClosures[kept + i], asked, count) < 0)
             {
                 return false;
             }
@@ -378,21 +392,30 @@ public sealed partial class Binding
         return true;
     }
 
-    // G1406-11 C-a (SPEC 8.3.3 Limits): a judgment that its reading of a Limited root's table (T_A, ClassesOf) leaves unproven is refused
-    // (RefuseProof: AnalysisLimit, at the use whose check asked, else at the scope's owner), read from that reading alone, never from
-    // scope state; a judgment over a table that is not Limited reads nothing. Returns the refusal's site (RefuseProof's), which a check
-    // over the same reading rests on (rule W, RecordTypeMismatch), or null when nothing is refused.
+    // G1406-11 C-a (SPEC 8.3.3 Limits), e2-7 R3.3: a judgment that its reading of a Limited table (R(A), ClassesOf) leaves unproven, or
+    // a rows reader's answer that the cut rows could make negative (FirstRows' readers), is refused (RefuseProof: AnalysisLimit, at
+    // the use whose check asked, else at the scope's owner), read from that reading alone, never from scope state; a judgment over a
+    // table that is not Limited reads nothing. Returns the refusal's site once the refusal is recorded (RefuseProof's), which a check
+    // over the same reading rests on (rule W, RecordTypeMismatch), else null.
     private Koto? ReadIdentityLimit(BindingScope scope, IdentityClasses? classes)
         => classes is { Limited: true } ? this.RefuseProof(scope, BindingFailure.AnalysisLimit) : null;
 
-    // R7-C2c2 c2-2: the declaration's classes with the identity rows a request's walk recorded (SPEC 8.2.3's grounds include the
-    // Constraints `T is C` supplies at every depth): ClassesOver those rows. Request-local: one reused table, never memoized as the
-    // view's; its rows are Provisional (a derived availability), so nothing keyed by it is kept, and at R7-C2e2 e2-1's merge what it
-    // keys stays the request's. Its keys follow the table's rule: a constructed member keys to itself (Representative). R7-C2c2 c2-4b
-    // (DECISIONS R4.13): its premises are the declaration's grounds alone (ClassesOver's, ConstraintEnvironment.Declares), never a
-    // use's supply, so the closure a request extends is a function of the declaration's premises and its own rows (SPEC 8.3.3 Limits).
-    private IdentityClasses? ExtendedClassesOf(BindingScope scope, List<IdentityRow> rows)
+    // R7-C2c2 c2-2, e2-7 R3.4: a closure's round table, the declaration's classes with the identity rows its walks recorded (SPEC 8.2.3's
+    // grounds include the Constraints `T is C` supplies at every depth): ClassesOver those rows. A round with rows builds one reused
+    // request-local table, never memoized; its rows are Provisional (a derived availability), so nothing keyed by it is kept, and at
+    // R7-C2e2 e2-1's merge what it keys stays the request's. The first round, with no rows, reads T(G), kept per view scope and
+    // `serial` (Keeps), so a closure builds no table of the grounds alone. Its keys follow the table's rule: a constructed member keys
+    // to itself (Representative). R7-C2c2 c2-4b (DECISIONS R4.13, R7-M44): its premises are the declaration's grounds alone
+    // (ClassesOver's, ConstraintEnvironment.DeclaredIdentityFacts), never a use's supply, so a closure is a function of the declaration's
+    // premises and its own rows (SPEC 8.3.3 Limits).
+    private IdentityClasses? ExtendedClassesOf(BindingScope scope, int serial, List<IdentityRow> rows)
     {
+        var kept = rows.Count == 0 ? this.identityGrounds.GetValueOrDefault(scope) : default;
+        if (kept.Classes is { } held && kept.Serial == serial)
+        {
+            return held;
+        }
+
         if (!this.identityBuilding.Add(scope))
         {
             return null;
@@ -400,7 +423,14 @@ public sealed partial class Binding
 
         try
         {
-            return this.ClassesOver(this.identityExtended ??= new IdentityClasses(this), scope, rows, 0);
+            if (rows.Count != 0)
+            {
+                return this.ClassesOver(this.identityExtended ??= new IdentityClasses(this), scope, rows, 0);
+            }
+
+            var classes = this.ClassesOver(kept.Classes is { } reused && this.identityBuilding.Count == 1 ? reused : this.RentClasses(), scope, rows, 0);
+            this.identityGrounds[scope] = (Keeps(scope, serial, classes) ? serial : -1, classes);
+            return classes;
         }
         finally
         {
@@ -543,16 +573,18 @@ public sealed partial class Binding
         }
     }
 
-    // e2-7 (G1406-11's C1; SPEC 8.2.3): the table the validation step reads, ClassesOf over the sides of the scope's own written identity
-    // premises (Declares) as its X, so their roots close at the step and a Limited root's table (T_A) is the one the recorder reads
-    // (RecordIdentityPremiseError). The sides are a range of identitySides, removed before it returns.
-    private IdentityClasses? OwnClasses(BindingScope scope, ConstraintEnvironment environment)
+    // e2-7 (G1406-11's C1, R3.2; SPEC 8.2.3): a scope's step reading, the table its validation step records from: ClassesOf over X_s,
+    // the sides of every identity fact the scope Declares (its written premises and the eager supply of its own Contract premises,
+    // ConstraintEnvironment.DeclaredIdentityFacts), so their roots close at the step, and R(A(X_s)) is the table the recorder
+    // (RecordIdentityPremiseError), its parent comparison and the record readers (IdentityPremiseErrorRead, HoldsClause) read. A scope with
+    // no environment reads with no X. The sides are a range of identitySides, removed before it returns.
+    private IdentityClasses? OwnClasses(BindingScope scope)
     {
         var start = this.identitySides.Count;
-        foreach (var fact in environment.DeclaredIdentityFacts)
+        for (var f = 0; scope.Constraints is { } environment && f < environment.DeclaredIdentityFacts.Count; f++)
         {
-            this.identitySides.Add(fact.Subject);
-            this.identitySides.Add(fact.RequiredType);
+            this.identitySides.Add(environment.DeclaredIdentityFacts[f].Subject);
+            this.identitySides.Add(environment.DeclaredIdentityFacts[f].RequiredType);
         }
 
         try
@@ -572,12 +604,16 @@ public sealed partial class Binding
     // declaration's where its own classes hold the supplied clauses erroneous (a Contract for what its Constraints alone cause, reported
     // there, never again at a use), else the owner's. In the Final pass an own error class still waiting for its Origin declarations is
     // the located limit (an Origin attribute the judge could not decide), and a limit (Unsupported, the closure limit) stays the owner's
-    // record, as before. e2-7 C1 (G1406-12 (a)): the step decides the failure kinds once per pass (Judged); its error groups go to the
-    // one recorder (RecordErrorGroups), which a closure's table (RecordClosureErrors) runs again for a group the scope has no record of.
+    // record, as before. e2-7 R3.2: the one recorder of a scope's premise error, once per pass, from its step reading (OwnClasses), whose
+    // kinds, worst state, sites and numbering are that one table's; its own error groups are those the parent's step reading does not
+    // hold (OwnError over OwnClasses(parent): a group the parent records is never recorded again in the child, SPEC 8.2.3). No closure
+    // records: a group any reading forms in the scope has a side the scope Declares, so its class is in the step's table (R3.2's proof,
+    // with the closures' pair rows, G1406-16 B1); a group formed only past a Limited closure's bound is the residual STATUS names, its
+    // reader refusing.
     private bool RecordIdentityPremiseError(BindingScope scope, BindingMode mode)
     {
-        if (scope.Constraints is not { HasTypeIdentity: true } environment || this.identityRecorded.GetValueOrDefault(scope).Judged ||
-            this.OwnClasses(scope, environment) is not { Worst: not IdentityClasses.One } own)
+        if (scope.Constraints is not { HasTypeIdentity: true } environment || this.identityRecorded.ContainsKey(scope) ||
+            this.OwnClasses(scope) is not { Worst: not IdentityClasses.One } own)
         {
             return false;
         }
@@ -585,7 +621,7 @@ public sealed partial class Binding
         var start = this.identityGroups.Count;
         try
         {
-            var (worst, waiting, limited) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, [], out _) : null, this.identityGroups);
+            var (worst, waiting, limited) = own.OwnError(scope.Parent is { } parent ? this.OwnClasses(parent) : null, this.identityGroups);
             var failure = worst switch
             {
                 IdentityClasses.One when waiting && mode == BindingMode.Final => BindingFailure.Unsupported,
@@ -601,10 +637,9 @@ public sealed partial class Binding
                 return false;
             }
 
-            // A closure's records (RecordClosureErrors) may have written the entry first: its Own (the owner had no failure before them)
-            // and Site stand.
-            var recorded = this.identityRecorded.TryGetValue(scope, out var closed) ? closed : (scope.Owner.BindingFailure == BindingFailure.None, false, null, false);
-            this.identityRecorded[scope] = (recorded.Own, recorded.Limited || limited, recorded.Site, true);
+            var owned = scope.Owner.BindingFailure == BindingFailure.None;
+            var clauses = this.identityClauses.Count;
+            this.identityRecorded.Add(scope, (owned, limited, null, (clauses, 0)));
             if (ImplementationLimit(failure) is not null)
             {
                 // A Resource record (SPEC 8.3.3 Limits, 23.1.1) is written as every limit writer writes it (RefuseProof's, TypeHeight's): the
@@ -628,44 +663,18 @@ public sealed partial class Binding
         }
     }
 
-    // e2-7 C1 (G1406-12 (a); SPEC 8.2.3, N3: the recorder stays per T_r): a closure's round table T_r (CloseRoot's last round, read
-    // inside its request, so no closure nests) can form an own error group that the scope's validation step never reads (its table's X
-    // is the own premises' sides, OwnClasses). Its own error groups (OwnError over the parent's table, as the step's) go to the one
-    // recorder (RecordErrorGroups), which records only a group whose site holds no record of the scope's yet. It decides no failure
-    // kind (the step's, Judged) and records nothing after the pass or for a table with no error class. A Limited reading's T_A is no
-    // round table and records nothing (N3).
-    private void RecordClosureErrors(BindingScope scope, IdentityClasses? table)
-    {
-        if (!this.producing || table is not { Worst: >= IdentityClasses.Unproven } || scope.Constraints is not { HasTypeIdentity: true } environment)
-        {
-            return;
-        }
-
-        var start = this.identityGroups.Count;
-        try
-        {
-            _ = table.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, [], out _) : null, this.identityGroups);
-            this.RecordErrorGroups(scope, environment, table, start);
-        }
-        finally
-        {
-            this.identityGroups.RemoveRange(start, this.identityGroups.Count - start);
-        }
-    }
-
-    // R7-C3 C3d (PLAN G830, G797; SPEC 8.2.3, 23.1.2), the one recorder of a scope's own error groups (identityGroups past `start`,
-    // OwnError's over `own`), for the validation step's table and a closure's alike (e2-7 C1). Each group in an error state is its own
-    // problem beside any failure of its site: at the last own premise clause reaching it (PremiseErrorClause), else at its supplier
-    // where the supplier holds it erroneous (PremiseErrorSupplier: the supplier's own record stands, none here), else at the owner. A
-    // group whose site holds a record of the scope's from an earlier run (RecordsAt) is that record and records nothing; a group in a
-    // limit state beside a worse one stays behind the worst. The scope's entry is written before any record (its readers read it; the
-    // step writes its own, a closure's first error group here), and each group's site before its record, which Fail may read in an
-    // open frame (HoldsGroupRecord). A table with no own group in an error state writes nothing.
+    // R7-C3 C3d (PLAN G830, G797; SPEC 8.2.3, 23.1.2): the step's own error groups (identityGroups past `start`, OwnError's over `own`,
+    // the step reading), recorded after the scope's entry. Each group in an error state is its own problem beside any failure of its
+    // site: at the last own premise clause reaching it (PremiseErrorClause), else at its supplier where the supplier holds it erroneous
+    // (PremiseErrorSupplier: the supplier's own record stands, none here), else at the owner; RecordNumbered numbers the records at one
+    // site. A group in a limit state beside a worse one stays behind the worst. Each clause site is published in the entry's clause range
+    // before its record, which Fail may read in an open frame (HoldsGroupRecord).
     private void RecordErrorGroups(BindingScope scope, ConstraintEnvironment environment, IdentityClasses own, int start)
     {
-        var (end, earlier) = (this.identityGroups.Count, this.identityGroupSites.Count);
+        var (owned, limited, _, (clauses, _)) = this.identityRecorded[scope];
         Koto? first = null;
-        for (var i = start; i < end; i++)
+        var atOwner = false;
+        for (var i = start; i < this.identityGroups.Count; i++)
         {
             var (group, state) = this.identityGroups[i];
             if (state < IdentityClasses.Unproven)
@@ -673,7 +682,6 @@ public sealed partial class Binding
                 continue;
             }
 
-            this.identityRecorded.TryAdd(scope, (scope.Owner.BindingFailure == BindingFailure.None, false, null, false));
             Koto? site = this.PremiseErrorClause(scope, environment, own, group);
             if (site is null && this.PremiseErrorSupplier(scope, own, group) is { } supplier)
             {
@@ -681,14 +689,15 @@ public sealed partial class Binding
                 continue;
             }
 
-            site ??= scope.Owner;
-            first ??= site;
-            if (this.RecordsAt(scope, site, earlier))
+            if (site is not null)
             {
-                continue;
+                this.identityClauses.Add(site);
+                this.identityRecorded[scope] = (owned, limited, null, (clauses, this.identityClauses.Count - clauses));
             }
 
-            this.identityGroupSites.Add((scope, site));
+            site ??= scope.Owner;
+            first ??= site;
+            atOwner |= ReferenceEquals(site, scope.Owner);
             this.RecordNumbered(site, state == IdentityClasses.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.InvalidConstraint, []);
 
             // F's C2/C3 rulings 332, 333 (SPEC 8.3.4, 23.1.2, rule W): a group whose meets read a binder's emptied admitted set (PairHead's
@@ -705,16 +714,9 @@ public sealed partial class Binding
         // cause is the first record's site (IdentityErrorSite), which the cause queries read: a use whose proof rests on the declaration
         // stays dependent (SPEC 8.2.3: never again at uses), and the context reader reads no part, so the owner keeps its context. A
         // record at the owner is its own cause: no site.
-        if (first is null)
-        {
-            return;
-        }
-
-        var recorded = this.identityRecorded[scope];
-        var atOwner = this.RecordsAt(scope, scope.Owner, this.identityGroupSites.Count);
-        var rest = atOwner ? null : recorded.Site ?? (recorded.Own ? first : null);
-        this.identityRecorded[scope] = (recorded.Own, recorded.Limited, rest, recorded.Judged);
-        if (rest is not null && recorded.Site is null)
+        var rest = owned && !atOwner ? first : null;
+        this.identityRecorded[scope] = (owned, limited, rest, (clauses, this.identityClauses.Count - clauses));
+        if (rest is not null)
         {
             this.SetRecordedState(scope.Owner, BindingState.Invalid);
         }
@@ -731,23 +733,17 @@ public sealed partial class Binding
             this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Site is { } site && this.IsUnresolvedPrerequisite(site) ? site : null;
 
     // R7-C3 C3d (F's ruling C3d-R1 (A)): whether `clause` is an own premise clause of `declaration` holding a record of its scope's error
-    // group, so the declaration's frame is that record's own check (ChecksOwnSite), as it is where the record stands at the declaration.
+    // group (identityRecorded's clause range), so the declaration's frame is that record's own check (ChecksOwnSite), as it is where the
+    // record stands at the declaration.
     private bool HoldsGroupRecord(Koto declaration, Koto clause)
-        => this.identityGroupSites.Count != 0 && this.scopes.TryGetValue(declaration, out var scope) && this.RecordsAt(scope, clause, this.identityGroupSites.Count);
-
-    // e2-7 C1: whether one of the first `count` group records (identityGroupSites) is the scope's at `site`: a recorder's run reads the
-    // earlier runs' records alone (RecordErrorGroups), every other reader all of them.
-    private bool RecordsAt(BindingScope scope, Koto site, int count)
     {
-        for (var i = 0; i < count; i++)
+        if (this.identityRecorded.Count == 0 || !this.scopes.TryGetValue(declaration, out var scope) || !this.identityRecorded.TryGetValue(scope, out var recorded))
         {
-            if (ReferenceEquals(this.identityGroupSites[i].Scope, scope) && ReferenceEquals(this.identityGroupSites[i].Site, site))
-            {
-                return true;
-            }
+            return false;
         }
 
-        return false;
+        var (start, count) = recorded.Clauses;
+        return this.identityClauses.IndexOf(clause, start, count) >= 0;
     }
 
     // R7-C3 C3d (PLAN G830): an own error group's clause, the last of the owner's premise clauses (its own facts) with a Type in the group.
@@ -828,7 +824,8 @@ public sealed partial class Binding
         return held;
     }
 
-    // Whether a declaration outside `scope`'s chain holds a clause erroneous in its own classes.
+    // Whether a declaration outside `scope`'s chain holds a clause erroneous in its own classes: its step reading (OwnClasses, e2-7 R3.2),
+    // the table its own records come from (rule W).
     private bool HoldsClause(BindingScope scope, Koto declaration, BoundConstraint clause)
     {
         if (!this.scopes.TryGetValue(declaration, out var source))
@@ -844,7 +841,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.ClassesOf(source, [clause.Subject, clause.RequiredType], out _) is { } classes && (classes.Holds(clause.Subject) || classes.Holds(clause.RequiredType));
+        return this.OwnClasses(source) is { } classes && (classes.Holds(clause.Subject) || classes.Holds(clause.RequiredType));
     }
 
     // SPEC 8.2.3, 23.1.2: a declaration whose own failure is its premise error keeps its context, as a shape violation keeps its signature:
@@ -879,6 +876,8 @@ public sealed partial class Binding
     // view reads that failed input, as the one consult (AvailableConstraintFact) reads a failed premise: the record of the outermost
     // scope whose own classes hold it (the producer) is its cause. A proof's read is its limit (an answer the valid facts leave open
     // rests on it, EndProof); a mismatch's record rests on it (RecordTypeMismatch). Nothing is read without a recorded identity error.
+    // e2-7 R3.2 (rule W): the producer's classes are its step reading (OwnClasses), the table its records come from, so a node rests on a
+    // premise error only where a step recorded its group; a class in error only in the reader's own Limited reading refuses there.
     private PremiseFailure? IdentityPremiseErrorRead(BindingScope scope, BoundType? a, BoundType? b)
     {
         BindingScope? producer = null;
@@ -887,7 +886,7 @@ public sealed partial class Binding
             // The producer's own checks (its frame) are the error's sites where it records at the owner, never its readers
             // (ChecksOwnSite); with its records at its clauses or its supplier (R7-C3 C3d) they read it as any check does.
             if (this.identityRecorded.TryGetValue(current, out var recorded) && recorded.Own && (recorded.Site is not null || !this.ChecksOwnSite(current.Owner)) &&
-                this.ClassesOf(current, [a, b], out _) is { } classes && (classes.Holds(a) || classes.Holds(b)))
+                this.OwnClasses(current) is { } classes && (classes.Holds(a) || classes.Holds(b)))
             {
                 producer = current;
             }
