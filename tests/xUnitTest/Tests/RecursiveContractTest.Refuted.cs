@@ -505,7 +505,10 @@ public sealed partial class RecursiveContractTest
     // Contract premise's subject (g6-subj-qual) passes MQ.A to HasY.B expandingly and `associate Y is MQ<B>` passes it back; HasY<A>
     // is flat (g6-ident-flat), and HasZ<Wrap<A>> lies on no cycle (g6-ident-open). F's G563C-9: so does a qualifier inside a Contract
     // premise's argument (g6-arg-qual; its flat twin g6-arg-flat), and DQ<Option<U>> in n.qual's subject makes DQ erroneous beside its
-    // unproven qualifier (SPEC 8.5.2).
+    // unproven qualifier (SPEC 8.5.2). F's G563C-12: an ancestor conformance's reference passes through the same walk, so HasY<A.(R2).V>
+    // inside MQ's ancestor Mark<..> makes MQ and HasY erroneous (p8.anc-qual, the Phase B twin; records that read them, as at the use
+    // `associate Y is MQ<B>`, may appear), HasY<A> there is flat (p8.anc-flat), and the same qualifier in an associated-Type
+    // requirement is the control (p8.assoc-qual).
     [Theory]
     [InlineData("x.mg-decl", G563Mg, G563MgRecord)]
     [InlineData("m.r-expand-q", G563Mg + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MG<i32>\n    needMark<T.(Tree).Child, Option<i32>>(c)\n", G563MgRecord + " | ...")]
@@ -543,6 +546,9 @@ public sealed partial class RecursiveContractTest
     [InlineData("g6-ident-open", G563Tree + "contract HasZ<B>\n    associate Y\ncontract R\n    associate V\n    associate W is HasZ<Self.(R).V>\ncontract MQ<A>: Tree\n    associate X\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is Wrap<A>\n    Self.(MQ<A>).X is Self.(Tree).Child.(R).W.(HasZ<Wrap<A>>).Y\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "")]
     [InlineData("g6-arg-qual", G563Tree + "contract HasY<B>\n    associate Y is MQ<B>\ncontract R\n    associate V\n    associate W is HasY<Self.(R).V>\ncontract Mark<C>\ncontract MQ<A>: Tree\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is Wrap<A>\n    Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y>\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "InvalidConstraint_Kd: contract MQ<A>: Tree <- Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y> | InvalidConstraint_Kd: contract HasY<B> <- associate Y is MQ<B>")]
     [InlineData("g6-arg-flat", G563Tree + "contract HasY<B>\n    associate Y is MQ<B>\ncontract R\n    associate V\n    associate W is HasY<Self.(R).V>\ncontract Mark<C>\ncontract MQ<A>: Tree\n    Self.(Tree).Child is R\n    Self.(Tree).Child.(R).V is A\n    Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<A>).Y>\nstruct Wrap<T>\n    public var tag: i32 = 0\n", "")]
+    [InlineData("p8.anc-qual", "contract R2\n    associate V is R2\n    associate W is HasY<Self.(R2).V>\ncontract HasY<B>\n    B is R2\n    associate Y is MQ<B>\ncontract Mark<C>\ncontract MQ<A>: Mark<A.(R2).W.(HasY<A.(R2).V>).Y>\n    A is R2\n", "InvalidConstraint_Kd: contract MQ<A>: Mark<A.(R2).W.(HasY<A.(R2).V>).Y> | InvalidConstraint_Kd: contract HasY<B> <- associate Y is MQ<B> | ...")]
+    [InlineData("p8.anc-flat", "contract R2\n    associate V is R2\n    associate W is HasY<Self>\ncontract HasY<B>\n    B is R2\n    associate Y is MQ<B>\ncontract Mark<C>\ncontract MQ<A>: Mark<A.(R2).W.(HasY<A>).Y>\n    A is R2\n", "")]
+    [InlineData("p8.assoc-qual", "contract R2\n    associate V is R2\n    associate W is HasY<Self.(R2).V>\ncontract HasY<B>\n    B is R2\n    associate Y is MQ<B>\ncontract Mark<C>\ncontract MQ<A>\n    A is R2\n    associate Z is Mark<A.(R2).W.(HasY<A.(R2).V>).Y>\n", "InvalidConstraint_Kd: contract MQ<A> <- associate Z is Mark<A.(R2).W.(HasY<A.(R2).V>).Y> | InvalidConstraint_Kd: contract HasY<B> <- associate Y is MQ<B>")]
     [InlineData("n.scc", G563Tree + "contract E<A>: Tree\n    Self.(Tree).Child is E<Option<A>>\n    Self.(Tree).Child is F<A>\ncontract F<B>: Tree\n    Self.(Tree).Child is E<B>\n", "InvalidConstraint_Kd: contract E<A>: Tree <- Self.(Tree).Child is E<Option<A>>; Self.(Tree).Child is F<A> | InvalidConstraint_Kd: contract F<B>: Tree <- Self.(Tree).Child is E<B>")]
     [InlineData("n.qual", "contract DQ<U>\n    associate M\n    Self.(DQ<Option<U>>).M is i32\n", "InvalidConstraint_Kd: contract DQ<U> | *: Self.(DQ<Option<U>>).M is i32 | ...")]
     public void AnExpandingContractCycleIsItsContractsError(string form, string program, string records)
