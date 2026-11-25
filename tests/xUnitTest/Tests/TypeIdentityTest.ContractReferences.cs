@@ -191,6 +191,19 @@ public partial class TypeIdentityTest
     [InlineData("c2-5c", "sh1-pw", HasItem + Shape + "func g<T, W>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    W is i32\n    return x.size(1)\n", "")]
     [InlineData("c2-5c", "sh1-2", HasItem + Shape + "func g<T>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    T is P<i32>\n    return x.size(1)\n", "")]
 
+    // SPEC 8.2.3, 8.6.1, 8.6.4 (R7-C2c2 c2-5c, F's CC-36 C2): the same ground through a deeper inherited chain (dA-1: R<SrcI>, Q<SrcI>,
+    // P<SrcI.(HasItem).Item>), a constructed subject (dA-3: Q<Box<i32>>, P<Box<i32>.(HasItem).Item>), a premise's class in either
+    // premise order (cB-1, cB-1r) and a premise beside a completed binding (cB-2: three spellings of P<i32>). P<u8> beside P<i32> stays
+    // two candidates the literal fits (-n).
+    [InlineData("c2-5c", "dA-1", HasItem + Shape + "contract R<B>: Q<B>\n    B is HasItem\nfunc g<T>(x: ref/T) -> i32\n    T is R<SrcI>\n    T is P<i32>\n    return x.size(1)\n", "")]
+    [InlineData("guard", "dA-n", HasItem + Shape + "contract R<B>: Q<B>\n    B is HasItem\nfunc g<T>(x: ref/T) -> i32\n    T is R<SrcU>\n    T is P<i32>\n    return x.size(1)\n", "AmbiguousBinding_Kd: return x.size(1)")]
+    [InlineData("c2-5c", "dA-3", HasItem + Shape + Box + "contract R2<B>: Q<Box<B>>\nfunc g<T>(x: ref/T) -> i32\n    T is R2<i32>\n    T is P<i32>\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "cB-1", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is SrcI\n    T is P<U.(HasItem).Item>\n    T is P<i32>\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "cB-1r", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is SrcI\n    T is P<i32>\n    T is P<U.(HasItem).Item>\n    return x.size(1)\n", "")]
+    [InlineData("guard", "cB-n", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is SrcU\n    T is P<U.(HasItem).Item>\n    T is P<i32>\n    return x.size(1)\n", "AmbiguousBinding_Kd: return x.size(1)")]
+    [InlineData("c2-5c", "cB-2", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is P<U.(HasItem).Item>\n    T is Q<SrcI>\n    return x.size(1)\n", "")]
+    [InlineData("guard", "cB-2n", HasItem + Shape + "func g<T, U>(x: ref/T) -> i32\n    U is HasItem\n    U.(HasItem).Item is u8\n    T is P<U.(HasItem).Item>\n    T is Q<SrcI>\n    return x.size(1)\n", "AmbiguousBinding_Kd: return x.size(1)")]
+
     // SPEC 8.5.1, 8.5.5, 8.6.1: a specification's qualifier is a direct conformance, normalized; a Tag left unspecified and uninferred fails at the
     // conformance on its own.
     [InlineData("C3", "sp2", HasItem + Tagged + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\nfunc f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
