@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 
 // Binding.ContractSolver's request boundary (the entry file states the contract; split from it without a change, R7-C2c2 c2-3b):
 // the requests for Enumerate's rows (PremiseRefines, SPEC 8.3.2's refinement row; FirstRows, the first walk's rows, which the
-// Callable and effect-bound readers read; PremiseRows, the candidate readers' rows over them; PremiseCallable, SPEC 8.10's row;
+// Callable and effect-bound readers read; PremiseRows, the candidate readers' rows over them; ExactAssumption, SPEC 8.3.2's Exact
+// assumption over the leaf rows;
 // PremiseUse, the premise-row locator a record reads),
 // their shared frame (RowsRequest, PrepareRows, LeaveRows), the view's index, Closure(view) (IndexOf, IndexWritten,
 // IndexNormalized, ViewIndex; a closure validator's read, BeginClosureRead to EndClosureRead; DropOwnedEntries, ClearClosure;
@@ -277,14 +278,17 @@ public sealed partial class Binding
         }
     }
 
-    // R7-C2c2 c2-3b, c2-5b: SPEC 8.10's row for a Callable atom `S is Callable<r, Sig>` or its negation, normalized by its caller
-    // (Supply's), both polarities in one request: an available row of S whose atom (RowAtom) is a Callable atom with the proposition
-    // atom's receiver and signature (SameProofPremise's tests of two Callable atoms; the subject is the rows') supplies the
-    // proposition where the row and the proposition agree in polarity and its negation where they differ (SPEC 8.3.2 Exact
-    // assumption). A row's signature is read as the Callable selection reads it. Any other proposition: neither.
-    private (bool Positive, bool Negative) PremiseCallable(BoundConstraint proposition, BindingScope scope)
+    // R7-C2c2 c2-3b, c2-5b, c2-5b2: SPEC 8.3.2's Exact assumption over the rows, Supply's one rows reader, for a proposition about S
+    // and its negation (`negation`), normalized by its caller (Supply's), both polarities in one request. Its domain is the rows' one
+    // decision: the atom (RowAtom) of the Not row that would state the proposition or its negation, so every atom and no conjunction,
+    // disjunction or Unresolved proposition. An available leaf row of S (a Callable row, a negation's Not row) supplies the
+    // proposition where its atom (RowAtom), re-subjected to S (the rows matched it) and read as the proposition's intake reads it
+    // (NormalizeProofConstraint: each Type and the Contract reference's arguments in their class's form, a Callable signature as the
+    // Callable selection reads it), is the proposition's atom (SameProofPremise) and their polarities agree, and its negation where
+    // they differ.
+    private (bool Positive, bool Negative) ExactAssumption(BoundConstraint proposition, BoundConstraint negation, BindingScope scope)
     {
-        if (RowAtom(proposition) is not { Kind: ConstraintKind.Callable, Subject: { } subject } atom)
+        if (RowAtom(proposition.Kind == ConstraintKind.Not ? proposition : negation) is not { Subject: { } subject } atom)
         {
             return default;
         }
@@ -294,8 +298,8 @@ public sealed partial class Binding
         var (positive, negative) = (false, false);
         for (var i = start; !(positive && negative) && i < this.premiseRows.Count; i++)
         {
-            if (this.premiseRows[i] is { Available: true, Clause: { } clause } && RowAtom(clause) is { Kind: ConstraintKind.Callable } row &&
-                row.Mask == atom.Mask && this.SameCallableSignature(this.CallableContractType(row.RequiredType!, scope), atom.RequiredType!))
+            if (this.premiseRows[i] is { Available: true, Clause: { } clause } && RowAtom(clause) is { } row && row.Kind == atom.Kind && row.Mask == atom.Mask &&
+                this.SameProofPremise(this.NormalizeProofConstraint(this.InternConstraint(new(row.Kind, subject, row.RequiredType, row.Contract, row.Mask)), scope, out _), atom))
             {
                 var agrees = (clause.Kind == ConstraintKind.Not) == (proposition.Kind == ConstraintKind.Not);
                 (positive, negative) = (positive || agrees, negative || !agrees);
@@ -627,7 +631,7 @@ public sealed partial class Binding
     }
 
     // The outermost request's view, under a parameter identity: each Contract fact as the view reads it (Reading, every reader's; a
-    // leaf kind's fact is indexed as written and by its class key alone, the class header's Identity), added after all are read. A
+    // leaf row's fact is indexed as written and by its class key alone, the class header's Identity), added after all are read. A
     // reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the facts.
     private int IndexNormalized(ViewIndex index, EvidenceView view)
     {
@@ -742,17 +746,17 @@ public sealed partial class Binding
             }
         }
 
-        // One fact of an environment of the view in its filing atom's kind's bucket (FilingAtom) under the subject key of `at` (a
-        // projection's declaration and receiver, else the Type; the fact's subject or its class key): `raw` as the environment holds
-        // it (its availability), `fact` as the index reads it. A fact with a row atom (RowAtom) is in its atom's kind's row, a
-        // negated leaf atom too, and that row kind's bucket keeps one order whatever the premises' (the class header's Invariants: a
-        // row's Source): a fact whose own atom's subject has the bucket's key before one under its class key or its reading's
+        // One fact of an environment of the view in its own kind's bucket under the subject key of `at` (a projection's declaration
+        // and receiver, else the Type; its filing atom's subject, FilingAtom, or its class key): `raw` as the environment holds it (its
+        // availability), `fact` as the index reads it. A fact with a row atom (RowAtom) is in its kind's row, a negated atom in the
+        // Not row (R7-C2c2 c2-5b2), and a row kind's bucket keeps one order whatever the premises' (the class header's Invariants:
+        // a row's Source): a fact whose filing atom's subject has the bucket's key before one under its class key or its reading's
         // subject, then Binding.TypeIdentity's Order of the atoms' subjects; equal subjects keep their arrival. Another kind's bucket
         // keeps its environment's order, which its readers' pairs read (ValidateAssociatedOverlapAgreement: each identity with those
         // before it).
         internal void Add(BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
         {
-            var key = (scope, FilingAtom(fact).Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
+            var key = (scope, fact.Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
             if (!this.Buckets.TryGetValue(key, out var list))
             {
                 if (this.used == this.lists.Count)
@@ -769,7 +773,7 @@ public sealed partial class Binding
             for (var end = list.Count; position < end;)
             {
                 var middle = (position + end) >> 1;
-                if (Before(RowAtom(raw)!.Subject!, RowAtom(list[middle].Raw)!.Subject!, at))
+                if (Before(FilingAtom(raw).Subject!, FilingAtom(list[middle].Raw).Subject!, at))
                 {
                     end = middle;
                 }
@@ -789,8 +793,9 @@ public sealed partial class Binding
                 => ReferenceEquals(SubjectKey(subject).Symbol, SubjectKey(at).Symbol) && ReferenceEquals(SubjectKey(subject).Type, SubjectKey(at).Type);
         }
 
-        // The atom a fact is filed by, Add's bucket kind and DropClassKeys' own subject: its row atom (RowAtom), else the fact itself
-        // (a TypeIdentity or Semantics fact, filed under its written subject: IndexWritten).
+        // The atom whose subject a fact is filed under, Add's order's and DropClassKeys' own subject: its row atom (RowAtom), else the
+        // fact itself (a TypeIdentity or Semantics fact, filed under its written subject: IndexWritten). The bucket's kind is the
+        // fact's own (Add): a negation's is Not, whatever its atom's (R7-C2c2 c2-5b2).
         private static BoundConstraint FilingAtom(BoundConstraint fact) => RowAtom(fact) ?? fact;
     }
 }

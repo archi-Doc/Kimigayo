@@ -97,7 +97,7 @@ public sealed partial class Binding
         {
             if (this.inlineSummaryPool[i] is { Path: { InheritedBase: null } path, Cyclic: true } node)
             {
-                this.Fail(this.SpecificationPart(path, node.Identity, path.Use) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
+                this.Fail(this.SpecificationPart(path, node.Identity) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
                 if (this.AssociatedBindingOf(path.RootPath, node.Identity) is { } binding)
                 {
                     binding.InlineCycle = true;

@@ -26,6 +26,11 @@ internal enum OriginPremiseRule : byte
     /// <summary>R3: result well-formedness of the enclosing named function: its Types' own relations and its stored Origins outliving an outer borrow.</summary>
     Result,
 
+    /// <summary>R3's part inside a held Function Type: the fixed Origins it stores outliving the outer borrow (SPEC 15.2.3, 15.6.1), the one
+    /// part of R3 no call carries yet (WellFormedPremises.EnterStored), so a HeldResult row's proof excludes it (OriginDischarge.HeldResult).
+    /// It goes with OriginDischarge.HeldResult (PLAN's O3-B2 issue).</summary>
+    HeldResult,
+
     /// <summary>R4: associated formation and requirement relations.</summary>
     Associated,
 
@@ -45,7 +50,8 @@ internal enum OriginPremiseRule : byte
 /// are reached. Each node is inserted once, each edge activated once and each operand incidence decremented once per closure, so a
 /// closure is linear in nodes, edges and meet incidences. Storage is reused across environments and allocates nothing when warm.
 /// An edge may carry a Semantics-case condition (SPEC 15.6.5): the pair binders that must all be borrows for it to hold; a closure
-/// follows only the edges whose condition the request's condition contains.
+/// follows only the edges whose condition the request's condition contains, and none of the rule the request excludes (Target, which no
+/// edge carries, excludes none).
 /// </summary>
 internal sealed class OriginPremiseClosure
 {
@@ -332,16 +338,19 @@ internal sealed class OriginPremiseClosure
     /// <param name="longer">The longer node.</param>
     /// <param name="shorter">The target node.</param>
     /// <param name="condition">The pair binders that are borrows in every case the relation is required in, as bits.</param>
+    /// <param name="excluded">The rule whose edges the relation may not rest on.</param>
     /// <returns>Whether the relation is entailed.</returns>
-    internal bool Entails(int longer, int shorter, ulong condition = 0) => this.Close(shorter, longer, condition) || this.reachedStamp[longer] == this.stamp;
+    internal bool Entails(int longer, int shorter, ulong condition = 0, OriginPremiseRule excluded = OriginPremiseRule.Target)
+        => this.Close(shorter, longer, condition, excluded) || this.reachedStamp[longer] == this.stamp;
 
     /// <summary>The closure from <paramref name="shorter"/>, stopped once it reaches <paramref name="longer"/> (-1: never): each node
     /// it reaches is entailed to outlive the target.</summary>
     /// <param name="shorter">The target node.</param>
     /// <param name="longer">The node that stops the closure, or -1.</param>
     /// <param name="condition">The pair binders that are borrows in every case the relation is required in, as bits.</param>
+    /// <param name="excluded">The rule whose edges the closure does not follow.</param>
     /// <returns>Whether <paramref name="longer"/> was reached.</returns>
-    internal bool Close(int shorter, int longer, ulong condition)
+    internal bool Close(int shorter, int longer, ulong condition, OriginPremiseRule excluded = OriginPremiseRule.Target)
     {
         if (++this.stamp == int.MaxValue)
         {
@@ -372,9 +381,9 @@ internal sealed class OriginPremiseClosure
 
             for (var edge = this.firstIncoming[node]; edge >= 0; edge = this.edgeNext[edge])
             {
-                if ((this.edgeCondition[edge] & ~condition) != 0)
+                if ((this.edgeCondition[edge] & ~condition) != 0 || this.edgeRule[edge] == excluded)
                 {
-                    continue; // A premise of a case the relation is not required in.
+                    continue; // A premise of a case the relation is not required in, or one it may not rest on.
                 }
 
                 activations++;

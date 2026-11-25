@@ -66,7 +66,7 @@ public sealed partial class Binding
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (this.InferenceHole(path, identity, path.Use))
+                if (this.InferenceHole(path, identity))
                 {
                     InferenceBatches.Batch(path.Type).Active = true;
                     break;
@@ -224,7 +224,7 @@ public sealed partial class Binding
 
                 foreach (var identity in path.Contract.Contract!.AssociatedStorage)
                 {
-                    if (this.InferenceHole(path, identity, path.Use) && this.AssociatedBindingOf(path, identity) is { } binding &&
+                    if (this.InferenceHole(path, identity) && this.AssociatedBindingOf(path, identity) is { } binding &&
                         !this.inferenceBindingIndex.ContainsKey(binding))
                     {
                         // One value per definition and identity (SPEC 8.5.5: `Self is C and P` with C: P conforms to P once): the root
@@ -463,7 +463,7 @@ public sealed partial class Binding
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                hasHole |= this.InferenceHole(path, identity, path.Use);
+                hasHole |= this.InferenceHole(path, identity);
             }
         }
 
@@ -537,13 +537,20 @@ public sealed partial class Binding
 
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
-                if (!this.InferenceHole(path, identity, path.Use) || !run.Evidence.TryGetValue(identity.Symbol, out var evidence))
+                if (!this.InferenceHole(path, identity) || !run.Evidence.TryGetValue(identity.Symbol, out var evidence))
                 {
                     continue;
                 }
 
                 // Per binding (its root path and identity), never per associated symbol: `C<i32> and C<bool>` are two bindings.
+                // A set's binding once, at the member it was made for (JoinMembers), not by `run.Usable`'s keys as the registration
+                // above tests its index: a rented run keeps its keys with emptied lists.
                 var binding = this.AssociatedBindingOf(path, identity)!;
+                if (!ReferenceEquals(this.KeyedBinding(path, identity), binding))
+                {
+                    continue;
+                }
+
                 var index = this.inferenceBindingIndex[binding];
                 if (run.Owner >= 0 && index != run.Owner)
                 {
