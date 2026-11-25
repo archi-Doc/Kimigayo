@@ -29736,7 +29736,7 @@ Closure row of `MirCases.Branch`).
     staged reduction. Exact counts moved by the rule's own filing: `RecursiveContractTest.AnExtensionReopensTheViewsKeptEntryAsItsOwn`
     (44, 94, 104) -> (68, 118, 128), `NormalizedConstraintProofBindingTest.AViewsIndexIsFormedAtEachSerialUntilComplete` 286 -> 306.
     SameNormalizedRequirement compares by reference first; its proposition runs only when one requirement is reached through two
-    distinct references. RP8 is the landing window's timing slot; a BEYOND takes G1408's reduction.
+    distinct references. RP8 is T-W373; a BEYOND takes G1408's reduction.
   - **Moves (Q13), rows of `TypeIdentityTest.ContractReferencesAreIdentifiedByTheirNormalizedForm` unless named a twin** (the
     Middle's C-581, `artifacts/handoff/2026-11-16-pause/middle/notes/c581-rp17.md` section 4). Class 3: k4c, kq1, kq2, kq3, k4m (the
     rule), ef2-w, sh1-w, sh1-pw, sh1-2 (the reader), dA-1, dA-3, cB-1, cB-1r, cB-2 (the review's rows). The 22 unlisted moves, class 3:
