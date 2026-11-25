@@ -149,7 +149,7 @@ public sealed partial class Binding
         var kind = binary.Akind;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
         SetAdmittedMisfit(binary, misfit: false);
-        if (this.TryArithmetic(binary, scope, out var arithmeticResult))
+        if (this.TryArithmetic(binary, scope, out var arithmeticResult, out var independent))
         {
             return assignment ? this.CompleteRoutedUpdate(binary, arithmeticResult, scope) : arithmeticResult;
         }
@@ -187,9 +187,11 @@ public sealed partial class Binding
         }
 
         // SPEC 13.7.1, 13.7.2, 23.1.2: a write's value takes its expected Type, and its route and fit their Types, from a target that
-        // designates a destination only (DesignatesDestination); a target that designates none gives its value no expectation.
+        // designates a destination only (DesignatesDestination); a target that designates none gives its value no expectation. SPEC 13.3.4:
+        // the route takes both terminal Types, so its one decision reads the right's independent Type where TryArithmetic typed it, and a
+        // right that defeats every row fails the operation, never a fit.
         var located = !assignment || this.DesignatesDestination(binary.Left);
-        var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
+        var decision = this.OperatorApplicabilityOf(binary, left, independent, scope);
         var counterpart = located && ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
         if (referenceBinding is { } assigned)
@@ -392,7 +394,7 @@ public sealed partial class Binding
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 
-        (binary.ArithmeticStorage ??= new()).Active = false;
-        return this.RecordArithmeticSelection(binary, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit, null);
+        // SPEC 13.3.4: only two Never operands reach here; a Never operand proves no direction, so no row applies (no provider).
+        return this.FailOperator(binary, binary, new(null, null, BindingFailure.OperatorNotDefined, null, null, left, left));
     }
 }

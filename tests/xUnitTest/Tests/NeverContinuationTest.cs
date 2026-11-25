@@ -82,6 +82,7 @@ public class NeverContinuationTest
     [InlineData("let n = 1 % stop()")]
     [InlineData("let wide: i64 = 2\nlet n = wide & stop()")]
     [InlineData("let wide: i64 = 2\nlet n = wide % stop()")]
+    [InlineData("let wide: i64 = 2\nlet n = wide * stop()")] // PLAN G1356: a typed Never counterpart keeps no verdict (the route's counterpart row)
     [InlineData("let n = 1.5 + stop()")]
     [InlineData("let n = (1 + 2) & stop()")]
     [InlineData("let n = stop() < stop()")]
@@ -123,7 +124,7 @@ public class NeverContinuationTest
     [InlineData("func f() -> i32\n    (return 42)[0] = 1\n    return 0", DiagnosticCode.InvalidAssignment_Kd)] // A Never receiver has no element.
     [InlineData("func f() -> i32\n    let ia: [1 of i32] = [1]\n    let x: bool = ia[(return 42)]\n    return 0", DiagnosticCode.TypeMismatch_Kd)] // R5-M159.
     [InlineData("let n = stop() & stop()", DiagnosticCode.NonIntegerOperand_Kd)]
-    [InlineData("let n = stop() + stop()", DiagnosticCode.ArithmeticSelection_Kd)]
+    [InlineData("let n = stop() + stop()", DiagnosticCode.OperatorNotDefined_Kd)] // SPEC 13.3.4: no Never proves a direction, no provider (PLAN G1356, Q13: was ArithmeticSelection_Kd)
     [InlineData("let n = stop() & true", DiagnosticCode.NonNumericOperand_Kd)]
     [InlineData("let n = stop() & missing", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("let n = 2147483648 & stop()", DiagnosticCode.InvalidNumericLiteral_Kd)]

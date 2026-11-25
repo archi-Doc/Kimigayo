@@ -534,13 +534,12 @@ public class UserArithmeticOperatorTest
         Assert.Equal(2, error.Related!.Length);
     }
 
-    // SPEC 13.3.4: a right provider under a non-numeric left operand, and no fitting conformance on the ordinary route (a user
-    // provider's candidates, related) or without one (a Type parameter; a unary operand with no Negatable conformance, which has no
-    // counterpart); each cause is explained by the Note alone (DECISIONS BU-111).
+    // SPEC 13.3.4: no fitting conformance on the ordinary route (a user provider's candidates, related; a unary operand with no
+    // Negatable conformance, which has no counterpart); each cause is explained by the Note alone (DECISIONS BU-111). A non-numeric
+    // left beside a right provider and a Type parameter without a proven PrimitiveInteger take the built-in table's verdict
+    // (NonNumericOperandDiagnosticTest; PLAN G1356, Q13: were ArithmeticSelection_Kd NonNumericLeft and NoFit).
     [Theory]
-    [InlineData(Declarations + "\nlet value = Value.init()\nlet result = true + value", "LeftAddable", "NonNumericLeft", "A right provider requires a built-in numeric left operand", "provider: Value; counterpart: bool", 0)]
     [InlineData(Declarations + "\nlet value = Value.init()\nlet result = value + true", "Addable", "NoFit", "No proven conformance fits the counterpart structure", "provider: Value; counterpart: bool", 1)]
-    [InlineData("func add<T>(a: T, b: T) -> T => a + b\npublic func main() => ()", "Addable", "NoFit", "No proven conformance fits the counterpart structure", "provider: T; counterpart: T", 0)]
     [InlineData("struct M\n    Self is Addable<i32>\n    associate Output is i32\n    public func added(self: ref/Self, right: ref/i32) -> i32 => right\nlet m = M.init()\nlet result = -m", "Negatable", "NoFit", "No proven conformance fits the counterpart structure", "provider: M; counterpart: none (unary operation)", 0)]
     public void ASelectionFailureNamesItsCause(string source, string contract, string cause, string note, string label, int related)
     {

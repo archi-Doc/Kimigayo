@@ -109,8 +109,9 @@ public sealed partial class Binding
             return decision;
         }
 
-        // SPEC 13.3.4: the counterpart is judged at its terminal Type, as the left operand is, and keeps its own Type.
-        if (left.IsNumeric && rightCore is not null)
+        // SPEC 13.3.4: the counterpart of a left the table admitted (numeric, a proven integer parameter or Never) is judged at its
+        // terminal Type, as the left operand is, and keeps its own Type; a raw pointer's counterpart is its own row's (isize).
+        if (!left.IsPointer && rightCore is not null)
         {
             var counterpart = this.NumericApplicability(rightCore, scope, operation);
             if (counterpart.Failure != BindingFailure.None)
@@ -257,9 +258,9 @@ public sealed partial class Binding
             return new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
         }
 
-        // A successful PrimitiveInteger query selects the built-in path; a non-integer arithmetic provider retains selection.
-        var integer = this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand);
-        return integer.Proof == ConstraintProof.Proven ? integer : default;
+        // SPEC 13.3.3, 13.3.4: any other Type is built-in numeric only as a parameter with proven PrimitiveInteger; else no row applies
+        // (an unproven query UnprovenConstraint, a Tuple or fixed array no provider). A user provider's routes are TryArithmetic's, first.
+        return this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
     }
 
     private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope, QuerySite site)

@@ -52,10 +52,11 @@ public sealed partial class Binding
         return false;
     }
 
-    // Type independent expressions once. Candidate trials inspect only their structure or literal syntax.
-    private bool TryArithmetic(BinaryKoto binary, BindingScope scope, out BoundType? result)
+    // Type independent expressions once. Candidate trials inspect only their structure or literal syntax. The right operand's independent
+    // Type leaves as `right` (none for a literal, the survey path or another operator) for the built-in route's one decision (BindBinary).
+    private bool TryArithmetic(BinaryKoto binary, BindingScope scope, out BoundType? result, out BoundType? right)
     {
-        result = null;
+        result = right = null;
         var compound = binary.Akind is >= KotoKind.PlusEquals and <= KotoKind.PercentEquals;
         var operation = compound ? KotoHelper.CompoundOperation(binary.Akind) : binary.Akind;
         if (operation is not (KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent) || IsLiteralOnlyOperation(binary))
@@ -78,27 +79,27 @@ public sealed partial class Binding
         }
 
         // A fixed left provider can give the other operand a bounded expected Type after selection.
-        var right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
+        right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
         var rightCore = right is null ? null : this.OperandTerminal(binary.Right, right);
+        var domain = leftCore is not null && this.ArithmeticNumericDomain(leftCore, scope, binary);
         if ((!leftLiteral && this.RestsOn(binary.Left, left)) || (!rightLiteral && this.RestsOn(binary.Right, right)))
         {
-            // Missing inputs defer provider selection, while successful operand facts retain independent prohibitions.
-            var decision = this.OperatorApplicabilityOf(binary, left, right, scope);
+            // Missing inputs defer provider selection, while successful operand facts retain independent prohibitions. SPEC 13.3.4: a left
+            // that may take a Contract route, its own or the right's (ordinary, a numeric domain), keeps only the string restriction; any
+            // other left takes no row whatever the right is, so its verdict stands.
+            var decision = ordinary || domain ? ArithmeticPairApplicability(left, leftCore, right, rightCore)
+                : this.OperatorApplicabilityOf(binary, left, right, scope);
             result = decision.Failure == BindingFailure.None ? Complete(binary, null)
                 : this.FailOperator(binary, binary, decision);
             return true;
         }
 
-        var reverse = ((leftLiteral && NumericLiteralDefault(binary.Left) is not null) || (leftCore is not null && this.ArithmeticNumericDomain(leftCore, scope, binary))) &&
+        // SPEC 13.3.4: a pair that takes neither Contract route is the built-in table's (BindBinary), a non-numeric left beside a right
+        // provider included (no provider).
+        var reverse = ((leftLiteral && NumericLiteralDefault(binary.Left) is not null) || domain) &&
             rightCore is not null && (UserArithmeticProvider(rightCore) || this.HasArithmeticPremise(rightCore, ArithmeticContract(operation, true), scope));
         if (!ordinary && !reverse)
         {
-            if (leftCore is not null && rightCore is not null && UserArithmeticProvider(rightCore) && !ReferenceEquals(ComparisonReferent(leftCore), BoundType.String) && !leftCore.IsPointer)
-            {
-                this.RecordArithmeticSelection(binary, rightCore, leftCore, ArithmeticContract(operation, true), ArithmeticSelectionCause.NonNumericLeft, null);
-                return true;
-            }
-
             return false;
         }
 

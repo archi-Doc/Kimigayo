@@ -42,7 +42,10 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Empty(c.Problems);
     }
 
-    // The operand Type and the operator are the facts; only a string operand is told about interpolation.
+    // The operand Type and the operator are the facts; only a string operand is told about interpolation. SPEC 13.3.4's last row: a
+    // built-in numeric left (a numeric Type, a proven PrimitiveInteger parameter) with a non-numeric counterpart, and a non-numeric left
+    // beside a right provider, have no provider either (PLAN G1356, Q13: before, TypeMismatch_Kd at the counterpart, and
+    // ArithmeticSelection_Kd NonNumericLeft for `true + value`), in every operator, numeric Type and compound form.
     [Theory]
     [InlineData("let v = true + true", "bool", "+")]
     [InlineData("let v = () + ()", "()", "+")]
@@ -62,6 +65,13 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f() -> i32\n    return 1\n    -\"text\"\npublic func main() => ()", "string", "-")]
     [InlineData("var v = true\nv++", "bool", "++")]
     [InlineData("var v = 'a'\n--v", "char", "--")]
+    [InlineData("let n = 1\nlet b = true\nlet v = n + b", "bool", "+")] // PLAN G1356, Q13 (new)
+    [InlineData("let n = 1\nlet b = true\nlet v = n * b", "bool", "*")] // PLAN G1356, Q13 (new)
+    [InlineData("let x = 1.5\nlet b = true\nlet v = x - b", "bool", "-")] // PLAN G1356, Q13 (new)
+    [InlineData("func f<T>(t: T, b: bool) -> T\n    T is PrimitiveInteger\n    return t + b\npublic func main() => ()", "bool", "+")] // PLAN G1356, Q13 (new)
+    [InlineData("var n = 1\nlet b = true\nn += b", "bool", "+=")] // PLAN G1356, Q13: AFailedDestinationsMismatchIsAtItsOperand's row, was TypeMismatch_Kd
+    [InlineData("let n: i32 = 1\nlet v = n + \"a\"", "string", "+")] // PLAN G1356, Q13: AKnownNumericOperandKeepsTheFailedFit's row, was TypeMismatch_Kd
+    [InlineData(Provider + "let value = V.init()\nlet v = true + value", "bool", "+")] // PLAN G1356, Q13: UserArithmeticOperatorTest's row, was ArithmeticSelection_Kd
     public void EveryNonNumericPrimitiveNamesItsTypeAndOperator(string source, string type, string op)
     {
         var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
@@ -72,9 +82,9 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
 
     // SPEC 23.1.2, 13.7.1, 13.7.2: a compound assignment or update whose destination failed keeps its route, judged by the admitted path
     // (G509): the route reads neither the destination's authority nor its Holder, so both records stand, the route's as its writable twin
-    // gives it (a counterpart's fit, a shift count, a pointer offset); a refused plain write keeps its value's fit, its Origin part
-    // included (SPEC 15.6.1: the A5 record of its writable twin). An update of a reference binding computes in the binding's read Type
-    // (SPEC 15.1.6; a raw pointer is none, SPEC 13.3.4). The destination check reads the destination only, so its record stands beside a
+    // gives it (a counterpart's fit or no provider, a shift count, a pointer offset); a refused plain write keeps its value's fit, its
+    // Origin part included (SPEC 15.6.1: the A5 record of its writable twin). An update of a reference binding computes in the binding's
+    // read Type (SPEC 15.1.6; a raw pointer is none, SPEC 13.3.4). The destination check reads the destination only, so its record stands beside a
     // route that failed first, a user provider's selection (G1310, G509's parameter form) or a string's with a failed operand (G502's r16).
     [Theory]
     [InlineData(Provider + "func f() -> ()\n    let value = V.init()\n    value += true\n", "InvalidAssignment_Kd", "ArithmeticSelection_Kd")]
@@ -83,15 +93,15 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("func f(u: ref/string, n: i32) -> ()\n    u += n\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(n: bool) -> ()\n    n += 1\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f() -> ()\n    let s = \"a\"\n    s += \"b\"\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
-    [InlineData("func f(n: i32, b: bool) -> ()\n    n += b\n", "InvalidAssignment_Kd", "TypeMismatch_Kd")]
+    [InlineData("func f(n: i32, b: bool) -> ()\n    n += b\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData("func f(b: bool) -> ()\n    b <<= 1\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(b: bool) -> ()\n    b++\n", "InvalidAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(x: f64) -> ()\n    x++\n", "InvalidAssignment_Kd", "NonIntegerOperand_Kd")]
     [InlineData("func f<T>(x: T) -> ()\n    x++\n", "InvalidAssignment_Kd", "UnprovenConstraint_Kd")]
-    [InlineData("func f(items: uniq/Array<i32>, n: bool) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd", "TypeMismatch_Kd")]
+    [InlineData("func f(items: uniq/Array<i32>, n: bool) -> ()\n    for item in items\n        item += n\n", "ExclusiveBindingAssignment_Kd", "NonNumericOperand_Kd")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData("func f(items: uniq/Array<bool>) -> ()\n    for item in items\n        item++\n", "ExclusiveBindingAssignment_Kd", "NonNumericOperand_Kd")]
     [InlineData("func f(u: i32, n: i64) -> ()\n    u += n\n", "InvalidAssignment_Kd", "TypeMismatch_Kd")]
-    [InlineData("func f<T>(x: T, y: T) -> ()\n    x += y\n", "InvalidAssignment_Kd", "ArithmeticSelection_Kd")]
+    [InlineData("func f<T>(x: T, y: T) -> ()\n    x += y\n", "InvalidAssignment_Kd", "UnprovenConstraint_Kd")] // PLAN G1356, Q13: was ArithmeticSelection_Kd
     [InlineData("func f(x: ref/i32) -> ()\n    x++\n", "InvalidAssignment_Kd", "NonIntegerOperand_Kd")]
     [InlineData("func f(u: i32, s: bool) -> ()\n    u <<= s\n", "InvalidAssignment_Kd", "InvalidShiftCount_Kd")]
     [InlineData("func f(p: raw/i32, n: i32) -> ()\n    unsafe => p += n\n", "InvalidAssignment_Kd", "TypeMismatch_Kd")]
@@ -106,10 +116,10 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(codes.Order(), Errors(c).Select(static x => x.Code).Order());
     }
 
-    // SPEC 23.3: the route's or the value's mismatch after a refused destination is the operand's, with both Types, as its writable twin's.
+    // SPEC 23.3: the route's or the value's mismatch after a refused destination is the operand's, with both Types, as its writable twin's
+    // (PLAN G1356, Q13: `n += b` with `b: bool` has no provider, EveryNonNumericPrimitiveNamesItsTypeAndOperator's row).
     [Theory]
     [InlineData("func f(u: i32, n: i64) -> ()\n    u += n\n", "n", "i64", "i32")]
-    [InlineData("func f(n: i32, b: bool) -> ()\n    n += b\n", "b", "bool", "i32")]
     [InlineData("func f(u: i32, n: i64) -> ()\n    u = n\n", "n", "i64", "i32")]
     [InlineData("func f(p: raw/i32, n: i32) -> ()\n    unsafe => p += n\n", "n", "i32", "isize")]
     public void AFailedDestinationsMismatchIsAtItsOperand(string source, string at, string found, string expected)
@@ -135,14 +145,19 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(destination, Assert.Single(Errors(c)).Code);
     }
 
-    // SPEC 13.3.1 and SPEC 13.3.4, 13.3: a bitwise operand that is no integer names the integer requirement, and an
-    // arithmetic operand Type that neither is numeric nor provides the operator, such as an unconstrained or Position Type
-    // parameter or a Tuple, selects no conformance; both are Language errors at the operation.
+    // SPEC 13.3.1 and SPEC 13.3.3, 13.3.4: a bitwise operand that is no integer names the integer requirement, and an arithmetic
+    // operand, left or counterpart, that is neither built-in numeric nor a user provider has no provider (the route table's last row):
+    // a Type parameter's unproven `T is PrimitiveInteger` (UnprovenConstraint_Kd), a Tuple or a raw pointer reached through a layer
+    // (OperatorNotDefined_Kd); each is a Language error at the operation (PLAN G1356, Q13: before, ArithmeticSelection_Kd's NoFit
+    // without a candidate, or TypeMismatch_Kd at the counterpart).
     [Theory]
     [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet v = a & a", "a & a", nameof(DiagnosticCode.NonIntegerOperand_Kd))]
-    [InlineData("func add<T>(a: T, b: T) -> T => a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
-    [InlineData("func add<P>(a: P, b: P) -> P\n    P is Position\n    return a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
-    [InlineData("var a = (1, 2)\na += (3, 4)", "a += (3, 4)", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
+    [InlineData("func add<T>(a: T, b: T) -> T => a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.UnprovenConstraint_Kd))] // PLAN G1356, Q13: was ArithmeticSelection_Kd
+    [InlineData("func add<P>(a: P, b: P) -> P\n    P is Position\n    return a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.UnprovenConstraint_Kd))] // PLAN G1356, Q13: was ArithmeticSelection_Kd
+    [InlineData("var a = (1, 2)\na += (3, 4)", "a += (3, 4)", nameof(DiagnosticCode.OperatorNotDefined_Kd))] // PLAN G1356, Q13: was ArithmeticSelection_Kd
+    [InlineData("func f(p: ref/raw/i32, n: isize) => n + p\npublic func main() => ()", "n + p", nameof(DiagnosticCode.OperatorNotDefined_Kd))] // PLAN G1356, Q13: AKnownNumericOperandKeepsTheFailedFit's row, was TypeMismatch_Kd
+    [InlineData("func f<T>(n: i32, t: T) -> i32 => n + t\npublic func main() => ()", "n + t", nameof(DiagnosticCode.UnprovenConstraint_Kd))] // PLAN G1356, Q13 (new)
+    [InlineData("let n = 1\nlet c = (1, 2)\nlet v = n + c", "n + c", nameof(DiagnosticCode.OperatorNotDefined_Kd))] // PLAN G1356, Q13 (new)
     public void AnOperandWithoutTheOperatorIsALanguageError(string source, string at, string code)
     {
         var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
@@ -229,11 +244,11 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(Note, error.Note);
     }
 
-    // A known numeric Type licenses a numeric expectation; a failed fit supplies no new operand fact.
+    // A known numeric Type licenses a numeric expectation; a failed fit supplies no new operand fact. A typed counterpart is judged by the
+    // route instead (PLAN G1356, Q13: `n + "a"` and `n + p` have no provider; EveryNonNumericPrimitiveNamesItsTypeAndOperator's and
+    // AnOperandWithoutTheOperatorIsALanguageError's rows).
     [Theory]
-    [InlineData("let n: i32 = 1\nlet v = n + \"a\"", "expected i32, found string")]
     [InlineData("let n: i32 = 1\nlet v = n + 1.0", "expected i32, found floating-point literal")]
-    [InlineData("func f(p: ref/raw/i32, n: isize) => n + p\npublic func main() => ()", "expected isize, found ref/raw/i32")]
     public void AKnownNumericOperandKeepsTheFailedFit(string source, string label)
     {
         var error = Assert.Single(Errors(MinimalEmissionTest.Check(source)));
