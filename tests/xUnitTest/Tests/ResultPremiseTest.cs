@@ -609,14 +609,20 @@ public partial class ResultPremiseTest
     // accepted on that part: sres_fix, sres_use, leak_mk, ret_mk (valid) the limit only; call_ok (valid) and call_bad, leak_use, ret_use
     // (invalid, SPEC 15.6.4 step 3) rejected by mk's limit, beside A5's Loan record where the borrow is retained; sres_bad keeps its own
     // record at `g`. Every other part of the result premise, which the calls carry, proves such a row: tw_pair's second component stores b
-    // below q (valid, accepted). The controls without a Function Type, and the input premise (in_prem, in_prem_bad), are unchanged.
+    // below q (valid, accepted), and so does tw_a1's element, the same part met inside and outside the held Function Type in one walk (F's
+    // ruling O3-29 C1). The controls without a Function Type, and the input premise (in_prem, in_prem_bad), are unchanged. A row the limit
+    // could hide stays a Judgment row and keeps its record beside the limit (F's ruling O3-30, the Middle's C-571 twins): h_nres_fixed_bad's
+    // nested result is judged where it occurs (SPEC 15.3.4), and s_local_hide's local Type is not assumed (SPEC 15.3.3, 15.6.1).
     [Theory]
     [InlineData(HeldFixed + "    return .None\n\n", HeldLimit)] // sres_fix
     [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n", HeldLimit)] // sres_use: the premise decides the initializer
     [InlineData(StoredFixed + "    return .None\n\n")] // sres_fix_ctl
     [InlineData(StoredFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use_ctl
     [InlineData("func mk(b: ref/i32, q: ref/i32) -> (Option<ref/((ref/i32 during b) -> i32) during q>, Option<ref/(ref/i32 during b) during q>)\n    return (.None, .None)\n\n")] // tw_pair
+    [InlineData("func mk(b: ref/i32, q: ref/i32) -> Option<ref/(((ref/i32 during b) -> i32), ref/i32 during b) during q>\n    return .None\n\n")] // tw_a1
     [InlineData("func mk(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32)) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    return .Some(g)\n\n", HeldLimit, Unproven + "g|requires g outlives q, which is not proven")] // sres_bad
+    [InlineData("func mk(b: ref/i32, c: ref/i32, q: ref/i32) -> Option<ref/(() -> ref/(ref/i32 during b) during c) during q>\n    return .None\n\n", nameof(DiagnosticCode.Unsupported_Kd) + "|ref/(() -> ref/(ref/i32 during b) during c) during q|", Unproven + "ref/(ref/i32 during b) during c|requires b outlives c, which is not proven")] // h_nres_fixed_bad
+    [InlineData("func mk(b: ref/i32, q: ref/i32, x: ref/i32) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    let g: Option<ref/((ref/i32 during x) -> i32) during q> = .None\n    return .None\n\n", HeldLimit, Unproven + "ref/((ref/i32 during x) -> i32) during q|requires x outlives q, which is not proven")] // s_local_hide
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem: the input's premise b outlives q
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/(ref/i32 during b) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem_ctl
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32) -> i32) during q) -> ref/i32 during q\n    return b\n\n", Unproven + "b|requires b outlives q, which is not proven")] // in_prem_bad: per-call Origins relate nothing
