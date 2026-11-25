@@ -9,10 +9,12 @@ rules that result from them.
 
 Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the pre-compaction text of every entry is at commit 4fb6fcdb1.
 
-- An entry gives its id, date and decider, the decision, the options rejected and why, and the stage that removes a
-  temporary structure. It is added in the commit that first implements it. A superseded entry stays and names its replacement.
-  A fully superseded entry becomes a short line naming its replacement and the commit with its full text; review rounds,
-  measurements and evidence paths stay in commits, not entry bodies.
+- An entry gives its id, date and decider, the decision in force, its reason, the options rejected and why, and the stage that
+  removes a temporary structure; nothing else. It is added in the commit that first implements it. A later decision that
+  changes part of an entry rewrites that entry in the same commit to the part still in force, ending "Changed by <id>
+  (earlier text: commit <sha>)."; an entry nothing of which remains becomes one line "**<id>** superseded by <id> (full text:
+  commit <sha>)." History, review rounds, measurements, evidence paths and superseded wording stay in commits, not entry
+  bodies.
 - This log is the authority. Planning and handoff files under `artifacts/` (ignored by Git) cite entries by id instead of
   restating them; a decision recorded only there is not in force.
 - Open questions belong in PLAN until decided.
