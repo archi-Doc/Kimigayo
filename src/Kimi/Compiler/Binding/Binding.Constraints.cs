@@ -784,7 +784,8 @@ public sealed partial class Binding
     }
 
     // J1's reading of a bound Contract reference (NormalizeProofConstraint's Contract arm): its arguments read as a proposition's Types
-    // (NormalizedForm), so a completed projection there is its binding (SPEC 8.2.3; R7-C2c2 c2-5a).
+    // (NormalizedForm), so a completed projection there is its binding (SPEC 8.2.3; R7-C2c2 c2-5a). Both J1 entries read a reference by
+    // it: NormalizeProofConstraint and ProveConformance, whose direct callers bypass that intake (R7-C2c2 c2-5c).
     private BindingSymbol NormalizedContract(BindingSymbol reference, BindingScope scope, out Completion completion)
     {
         var form = this.NormalizedForm(reference.Type!, scope, out completion);

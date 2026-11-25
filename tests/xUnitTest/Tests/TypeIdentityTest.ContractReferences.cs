@@ -138,7 +138,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "k3", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Sub\n    return use(x)\n", "")]
     [InlineData("guard", "k3d", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Sub\n    return use(x)\n", "")]
     [InlineData("guard", "k4", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
-    [InlineData("c2-5c", "k4c", HasItem + Tagged + Base + "func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return x.size()\n", "", Explicit = true)]
+    [InlineData("c2-5c", "k4c", HasItem + Tagged + Base + "func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
     [InlineData("guard", "k4d", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Base\n    return x.size()\n", "")]
 
     // SPEC 8.2.3, 8.3.1, 8.3.2, 8.5.2, 8.8.2 (R7-C2c2 c2-5c): a fact's Contract argument is read by its completed binding wherever a
@@ -147,18 +147,19 @@ public partial class TypeIdentityTest
     // is Unknown.
     [InlineData("guard", "k4c-w", HasItem + Tagged + Base + "func f<T, W>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    W is i32\n    return x.size()\n", "")]
     [InlineData("guard", "k4cu", HasItem + Tagged + Base + "func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32\n    T is Iter<SrcU.(HasItem).Item>\n    T.(Iter<SrcU.(HasItem).Item>).Tag is Base\n    return x.size()\n", "UnprovenConstraint_Kd: func f<T>(x: ref/T.(Iter<SrcI.(HasItem).Item>).Tag) -> i32 | UnresolvedBinding_Kd: return x.size()")]
-    [InlineData("c2-5c", "kq1", HasItem + TagSeq + "func f<T>(x: ref/T, t: T.(Iter<i32>).Tag) -> ()\n    T is Seq<SrcI.(HasItem).Item>\n    ()\n", "", Explicit = true)]
+    [InlineData("c2-5c", "kq1", HasItem + TagSeq + "func f<T>(x: ref/T, t: T.(Iter<i32>).Tag) -> ()\n    T is Seq<SrcI.(HasItem).Item>\n    ()\n", "")]
     [InlineData("guard", "kq1n", HasItem + TagSeq + "func f<T>(x: ref/T, t: T.(Iter<i32>).Tag) -> ()\n    T is Seq<SrcU.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T>(x: ref/T, t: T.(Iter<i32>).Tag) -> ()")]
     [InlineData("guard", "kq1r", HasItem + TagSeq + "func f<T>(x: ref/T, t: T.(Seq<i32>).Tag) -> ()\n    T is Iter<SrcI.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T>(x: ref/T, t: T.(Seq<i32>).Tag) -> ()")]
-    [InlineData("c2-5c", "kq2", HasItem + Box + Tagged + "func f<T, U>(x: ref/T, t: T.(Iter<U>).Tag) -> ()\n    T is Iter<Box<U>.(HasItem).Item>\n    ()\n", "", Explicit = true)]
+    [InlineData("c2-5c", "kq2", HasItem + Box + Tagged + "func f<T, U>(x: ref/T, t: T.(Iter<U>).Tag) -> ()\n    T is Iter<Box<U>.(HasItem).Item>\n    ()\n", "")]
     [InlineData("guard", "kq2n", HasItem + Box + Tagged + "func f<T, U>(x: ref/T, t: T.(Iter<U>).Tag) -> ()\n    T is Iter<Box<i64>.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T, U>(x: ref/T, t: T.(Iter<U>).Tag) -> ()")]
-    [InlineData("c2-5c", "kq3", HasItem + Opt + Tagged + "func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> ()\n    V is Marker\n    T is Iter<Opt<V>.(HasItem).Item>\n    ()\n", "", Explicit = true)]
-    [InlineData("G-decl", "kq3n", HasItem + Opt + Tagged + "func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> ()\n    T is Iter<Opt<V>.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> () | UnprovenConstraint_Kd: T is Iter<Opt<V>.(HasItem).Item>", Explicit = true)]
+    [InlineData("c2-5c", "kq3", HasItem + Opt + Tagged + "func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> ()\n    V is Marker\n    T is Iter<Opt<V>.(HasItem).Item>\n    ()\n", "")]
+    [InlineData("guard", "kq3n", HasItem + Opt + Tagged + "func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> ()\n    T is Iter<Opt<V>.(HasItem).Item>\n    ()\n", "UnprovenConstraint_Kd: func f<T, V>(x: ref/T, t: T.(Iter<V>).Tag) -> () | UnprovenConstraint_Kd: T is Iter<Opt<V>.(HasItem).Item>")]
 
     // SPEC 8.2.3, 8.5.2 (R7-C2c2 c2-5c): a qualifier's demand inside a premise clause is read by its completed binding too. SPEC 23.1.2
-    // (F's CC-33): one unproven demand in a premise clause is one record at the clause; G-decl's rows (kq3n above, k4mu, k4ms, k4mc) stay
-    // Explicit while a second record of the same demand stands at the whole declaration (ValidateDeclarationProjectionInputs).
-    [InlineData("c2-5c", "k4m", HasItem + Tagged + Base + "func f<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return 0\n", "", Explicit = true)]
+    // (F's CC-33, CC-34): one unproven demand in a premise clause is one record at the clause; G-decl's rows (k4mu, k4ms, k4mc) stay
+    // Explicit while a second record of the same demand stands at the whole declaration (ValidateDeclarationProjectionInputs). kq3n above
+    // guards its labelled lines: the helper groups records by line, so its header line hides that second record.
+    [InlineData("c2-5c", "k4m", HasItem + Tagged + Base + "func f<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return 0\n", "")]
     [InlineData("G-decl", "k4mu", HasItem + Tagged + Base + "func f<T>(x: ref/T) -> i32\n    T is Iter<u8>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is Base\n    return 0\n", "UnprovenConstraint_Kd: T.(Iter<SrcI.(HasItem).Item>).Tag is Base", Explicit = true)]
     [InlineData("G-decl", "k4ms", HasItem + Tagged + Base + "func f<T>(x: ref/T) -> i32\n    T is Iter<i32>\n    T.(Iter<SrcU.(HasItem).Item>).Tag is Base\n    return 0\n", "UnprovenConstraint_Kd: T.(Iter<SrcU.(HasItem).Item>).Tag is Base", Explicit = true)]
     [InlineData("G-decl", "k4mc", HasItem + Opt + Tagged + Base + "func f<T, V>(x: ref/T) -> i32\n    T is Iter<V>\n    T.(Iter<Opt<V>.(HasItem).Item>).Tag is Base\n    return 0\n", "UnprovenConstraint_Kd: T.(Iter<Opt<V>.(HasItem).Item>).Tag is Base", Explicit = true)]

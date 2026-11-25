@@ -84,8 +84,8 @@ public sealed partial class Binding
 
     // The Alias column of a candidate reader's range (R7-C2c2 c2-3a). Rows whose Contract references are one Type in the request's
     // classes are one Contract (SPEC 8.2.3: `Getter<U>` and `Getter<S>` under `U is S`), by the canonical judge's Proven
-    // (IdentityClasses.Same: decomposition and constructed members included; ClassKey is the supply's index of subjects and keys a
-    // constructed member to itself, so it cannot answer this). One of them stays non-Alias, the more determined spelling: a closed
+    // (IdentityClasses.Same: decomposition and constructed members included; ClassKey is the supply's index of subjects, a key and no
+    // judgment, so it cannot answer this). One of them stays non-Alias, the more determined spelling: a closed
     // one first (its members' signatures need no identity reading), then Binding.TypeIdentity's total Order; never premise order
     // (SPEC 8.3.3). Without classes, each reference is its own row; a candidate reader identifies references that are one Type by
     // another ground (SameNormalizedRequirement, IsSelectionCandidate). A leaf row has no reference and is never Alias.
@@ -631,44 +631,42 @@ public sealed partial class Binding
         this.enumerateHeads.Clear();
     }
 
-    // The outermost request's view, under a parameter identity: each Contract fact as the view reads it (Reading, every reader's; a
-    // leaf row's fact is indexed as written and by its class key alone, the class header's Identity), added after all are read. A
-    // reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the facts.
+    // The outermost request's view: each Contract fact whose reading can differ from it (R7-C2c2 c2-5c: a projection in one of its
+    // Types or an identity premise in the view, NormalizeProofConstraint's own test, per fact) as the view reads it (Reading, every
+    // reader's; a leaf row's fact is indexed as written and by its class key alone, the class header's Identity), added after all are
+    // read. A reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the facts.
     private int IndexNormalized(ViewIndex index, EvidenceView view)
     {
         int? after = index.Serial; // The loop writes nothing but through Reading.
-        if (HasTypeIdentity(view.Premises))
+        var typeIdentity = HasTypeIdentity(view.Premises);
+        var start = this.enumerateNormalized.Count;
+        for (var scope = view.Premises; scope is not null; scope = scope.Parent)
         {
-            var start = this.enumerateNormalized.Count;
-            for (var scope = view.Premises; scope is not null; scope = scope.Parent)
+            if (scope.Constraints is not { } environment || !(typeIdentity || environment.HasAssociatedProjection))
             {
-                if (scope.Constraints is not { } environment)
-                {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    // R7-M25 (D), R7-C3 C6: a reading whose subject has no abstract part is not filed; a concrete constructed member's
-                    // conformance is ResolveConformance's (never Unknown), so its row would repeat it or be a premise error.
-                    if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } &&
-                        this.Reading(fact, view.Premises, ref after) is { Subject.HasAbstractPart: true } normalized && !ReferenceEquals(normalized, fact))
-                    {
-                        this.enumerateNormalized.Add((scope, fact, normalized));
-                    }
-                }
+                continue;
             }
 
-            for (var i = start; i < this.enumerateNormalized.Count; i++)
+            foreach (var fact in environment.Facts)
             {
-                var (scope, raw, fact) = this.enumerateNormalized[i];
-                index.Add(scope, raw, fact, fact.Subject!);
+                // R7-M25 (D), R7-C3 C6: a reading whose subject has no abstract part is not filed; a concrete constructed member's
+                // conformance is ResolveConformance's (never Unknown), so its row would repeat it or be a premise error.
+                if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } && (typeIdentity || fact.HasAssociatedProjection) &&
+                    this.Reading(fact, view.Premises, ref after) is { Subject.HasAbstractPart: true } normalized && !ReferenceEquals(normalized, fact))
+                {
+                    this.enumerateNormalized.Add((scope, fact, normalized));
+                }
             }
-
-            this.ClosureIndexWork += this.enumerateNormalized.Count - start;
-            this.enumerateNormalized.RemoveRange(start, this.enumerateNormalized.Count - start);
         }
 
+        for (var i = start; i < this.enumerateNormalized.Count; i++)
+        {
+            var (scope, raw, fact) = this.enumerateNormalized[i];
+            index.Add(scope, raw, fact, fact.Subject!);
+        }
+
+        this.ClosureIndexWork += this.enumerateNormalized.Count - start;
+        this.enumerateNormalized.RemoveRange(start, this.enumerateNormalized.Count - start);
         return after ?? SerialOf(view.Premises);
     }
 
