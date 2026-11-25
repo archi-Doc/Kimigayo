@@ -36,7 +36,7 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
     }
 
     // The output of the IR ir, a full path with a .ll extension, for a row: its executable's extension is the row's format's, mapped
-    // once here (IMPL 20.3.2); another format is a broken contract.
+    // here to the extension, as the native build's Link maps it to its writer (IMPL 20.3.2); another format is a broken contract.
     internal static ArtifactPaths Create(string ir, string optimization, TargetProfile row)
     {
         var extension = row.Format switch

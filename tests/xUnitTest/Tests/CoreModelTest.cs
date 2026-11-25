@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -155,6 +156,9 @@ public class CoreModelTest
         Assert.Equal([(".lib", "COFF"), (".a", "ELF")], TargetProfile.Rows.Select(static x => (x.InputExtension, x.Format)));
         Assert.All(TargetProfile.Rows, static x => Assert.Equal((x.Format == "COFF", x.Format == "COFF", x.Format == "COFF"), (x.Subsystem is not null, x.FloatMarker is not null, x.LoadConfigSymbol is not null)));
         Assert.Equal("_load_config_used", TargetProfile.Windows.LoadConfigSymbol);
+
+        // The Tatara plan's B7b8: the host that runs each row's executables, as HostName spells one; none for linux-x64 until B8.
+        Assert.Equal(["windows x64", null], TargetProfile.Rows.Select(static x => x.ExecutionHost));
     }
 
     // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C
@@ -179,5 +183,19 @@ public class CoreModelTest
         Assert.All(TargetProfile.Rows, static row => Assert.Same(row, TargetProfile.Find(row.Target)));
         Assert.Null(TargetProfile.Find(string.Empty));
         Assert.Null(TargetProfile.Find("x86_64-unknown-linux-gnu"));
+    }
+
+    // The Tatara plan's B7b8: the host's row is the row that runs on this process's host, read once; on a Windows x64 process it is
+    // windows-x64's.
+    [Fact]
+    public void HostIsTheRowThatRunsOnThisHost()
+    {
+        Assert.Same(TargetProfile.Host, TargetProfile.Host);
+        Assert.Equal(TargetProfile.Rows.SingleOrDefault(static x => x.ExecutionHost == TargetProfile.HostName), TargetProfile.Host);
+        if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.X64)
+        {
+            Assert.Equal("windows x64", TargetProfile.HostName);
+            Assert.Same(TargetProfile.Windows, TargetProfile.Host);
+        }
     }
 }

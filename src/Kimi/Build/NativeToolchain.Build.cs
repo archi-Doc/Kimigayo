@@ -139,9 +139,12 @@ internal static partial class NativeToolchain
     // unreferenced sections removed and no build id, reproducible as COFF's /Brepro is; the inputs by place around the object (design
     // §3.11): the files placed Start, the object, the program's libraries (no place) in the manifest's order, the files placed Library,
     // then the files placed End (the C path: crt1.o crti.o <obj> <program libraries> libc.a crtn.o). With no start file the process
-    // starts at the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). The line is order-free
-    // for the dependency check, which runs before it (LinkAmbiguity); the object's definition of the entry is Inspect's. ld.lld reads no
-    // LINK variable and detects no toolchain; it still reads LLD_REPRODUCE (LC3 §10).
+    // starts at the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). The start path is one
+    // fact read three ways: the module frame decides it (a module requiring a library starts through the row's CRuntime, entry main),
+    // ValidateManifest holds the manifest to it (the entry is main exactly when the CRuntime is listed), and the line reads it as a file
+    // placed Start (only the CRuntime's files are). The line is order-free for the dependency check, which runs before it
+    // (LinkAmbiguity); the object's definition of the entry is Inspect's. ld.lld reads no LINK variable and detects no toolchain; it
+    // still reads LLD_REPRODUCE (LC3 §10).
     internal static string[] ElfLine(string entry, string obj, List<StagedLibrary> libraries, string executable)
     {
         List<string> link = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", executable];
@@ -266,11 +269,10 @@ internal static partial class NativeToolchain
     /// identity, with the input the manifest names, resolved as its other paths are (absent for a pair emitted from memory or by an
     /// earlier compiler), Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
     /// version), the libraries (each staged: the compiler's supplies found by their catalog hash or staged from their resources, a program's
-    /// from its input), the object, its inspection, the dependency check (an ambiguous native dependency, one inconsistent with its
-    /// declared Kind, or an import its named library does not define, fails before the link, CheckDependencies, over the libraries' facts,
-    /// a program's input's Tatara's inspection of its staged copy and a compiler supply file's its stored inspection, kept per process,
-    /// LinkInputs), the link to a
-    /// private file, the report and the commit;
+    /// from its input), the object, its inspection, the dependency check (an ambiguous or unsupported native dependency, one
+    /// inconsistent with its declared Kind, or an import its named library does not define, fails before the link, CheckDependencies,
+    /// over the libraries' facts, a program's input's Tatara's inspection of its staged copy and a compiler supply file's its stored
+    /// inspection, kept per process, LinkInputs), the link to a private file, the report and the commit;
     /// the steps fill the record and <see cref="Run"/> writes each of its states. The commit, after the report and the last cancellation
     /// point, writes the success record, which names the private file's hash, and then moves the file to the executable's path, so an Application publishes its executable
     /// only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the commit, the report included, throws and leaves the
@@ -539,9 +541,9 @@ internal static partial class NativeToolchain
         // library; the manifest's entry defined as an external function, on every format (ld.lld's -e meets an undefined entry with a
         // warning only; T's ruling 79). Unwind information is not judged here: IMPL 21.4's is the ABI's, which every definition's uwtable
         // attribute (the profile's UnwindTables) asks of LLVM, an entry for each function that allocates stack, saves a nonvolatile
-        // register or calls, and none for a frameless leaf, so an object
-        // whose functions are all leaves has none. Returns the record's form of the undefined symbols, llvm-nm's posix lines, in which an
-        // undefined symbol's value and size are 0, and the object's facts, which the dependency step reads (one inspection).
+        // register or calls, and none for a frameless leaf, so an object whose functions are all leaves has none. Returns the record's
+        // form of the undefined symbols, llvm-nm's posix lines, in which an undefined symbol's value and size are 0, and the object's
+        // facts, which the dependency step reads (one inspection).
         private (string Undefined, ObjectMember Module) Inspect(Tatara tatara, string obj, Dictionary<string, (string Library, string Form)> declared)
         {
             var facts = tatara.Inspect(this.context, obj);
@@ -630,10 +632,11 @@ internal static partial class NativeToolchain
             }
         }
 
-        // The executable: linked by the row's format's link writer (Format, mapped once here; another format is a broken contract) to
-        // Run's private file, so neither a failed link nor any failure before the commit publishes it, then the record's linked state,
-        // naming the private file's hash, which Run's commit publishes before the file. LLD opens the held object and each held library by
-        // its path, for reading, which the holds admit (StagedHold, Intermediates).
+        // The executable: linked by the row's format's link writer (Format, mapped here to its writer, as ArtifactPaths maps it to the
+        // executable's extension; another format is a broken contract) to Run's private file, so neither a failed link nor any failure
+        // before the commit publishes it, then the record's linked state, naming the private file's hash, which Run's commit publishes
+        // before the file. LLD opens the held object and each held library by its path, for reading, which the holds admit (StagedHold,
+        // Intermediates).
         private void Link(Tatara tatara, string obj, List<StagedLibrary> libraries, string undefined, string executable)
         {
             var line = this.row.Format switch

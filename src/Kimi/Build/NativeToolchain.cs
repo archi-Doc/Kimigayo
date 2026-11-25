@@ -7,8 +7,10 @@
 // kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root, and whose dependency step
 // reads each staged library's facts (a program's input: Tatara's inspection of its staged copy; a compiler supply file: its stored
 // inspection, its catalog facts read at adoption, which must name the staged hash; SupplyFacts), kept per process by the staged hash
-// (LinkInputs), and fails an ambiguous native dependency, or one inconsistent with its declared Kind (IMPL 20.4), as the build's input
-// failure before the link (LinkAmbiguity, Kind); the built Application's run;
+// (LinkInputs), and fails an ambiguous or unsupported native dependency (a library input that is no library, an archive without a
+// symbol index, a loaded unit carrying /entry: or of LLVM bitcode), one inconsistent with its declared Kind, or an import its named
+// library does not define (IMPL 20.4), as the build's input failure before the link (LinkAmbiguity, Kind, NamedProvider, LinkRoots);
+// the built Application's run;
 // toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs, two steps: its Tatara's start check and
 // its supplies' bytes against the catalog and their stored facts against those bytes), which reads no directory and runs no tool, so
 // no code here launches an LLVM tool; the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded

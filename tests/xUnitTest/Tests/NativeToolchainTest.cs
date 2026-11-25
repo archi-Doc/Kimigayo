@@ -257,7 +257,8 @@ public sealed class NativeToolchainTest : IDisposable
     // and a removed member (Tatara B6b5: the toolchain, whatever its content) asks to re-emit. The target is read first: one that names no
     // row of the target table asks to re-emit, and another row's head is checked as that row's (the Tatara plan's B7b7: Windows' manifest
     // under linux-x64's target fails at that row's profile). Each row edits one field of an emitted Application's manifest (a JSON value,
-    // or null to remove it). The libraries are read after Tatara is loaded, so their rows need a toolchain.
+    // or null to remove it). The libraries are read with the other fields, before Tatara is loaded (ValidateManifest; the Tatara plan's
+    // B7b7a).
     [Theory]
     [InlineData("toolchain", "{\"llvmBin\": \"../tools\"}", "The link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest.")]
     [InlineData("target", "\"x86_64-unknown-linux-gnu\"", "The link manifest's 'target' is not this compiler's. Re-emit the manifest.")]

@@ -3,7 +3,6 @@
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Build;
 using Kimi.Checking;
@@ -139,12 +138,8 @@ public partial class Project
         var target = options.Target;
         if (string.IsNullOrEmpty(target))
         {
-            if (!OperatingSystem.IsWindows() || RuntimeInformation.OSArchitecture != Architecture.X64)
-            {
-                throw new PlatformNotSupportedException("Implicit projects currently support only the Windows x64 host target. Specify --Target explicitly for emission to a supported target.");
-            }
-
-            target = TargetProfile.Windows.Target;
+            target = TargetProfile.Host?.Target ?? throw new PlatformNotSupportedException(
+                $"An implicit project takes the host's target, and this host ({TargetProfile.HostName}) has none. Specify --Target explicitly for emission to a supported target.");
         }
 
         var fullPath = Path.GetFullPath(path);

@@ -118,9 +118,6 @@ internal sealed class WorkspaceCheck
         this.openByDirectory = CheckInputs.GroupOpenPaths(start.Documents.Select(static x => x.Identity.Value));
     }
 
-    /// <summary>Gets the host target for implicit projects, or empty when the host has none.</summary>
-    public static string HostTarget { get; } = OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 ? TargetProfile.Windows.Target : string.Empty;
-
     /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4), each URI's list in display-range and result order.</summary>
     /// <param name="output">The check output.</param>
     /// <param name="sources">The source files the check read.</param>
@@ -701,7 +698,7 @@ internal sealed class WorkspaceCheck
                 var members = item.Members.ToArray();
                 var targets = item.Project.ProjectFile.Targets;
                 var productTargets = settings.AllTargets ? targets : settings.Target is { } target ? [target] :
-                    targets.Length == 1 ? [targets[0]] : targets.Contains(HostTarget, StringComparer.Ordinal) && HostTarget.Length != 0 ? [HostTarget] : [];
+                    targets.Length == 1 ? [targets[0]] : TargetProfile.Host is { } host && targets.Contains(host.Target, StringComparer.Ordinal) ? [host.Target] : [];
                 if (productTargets.Length == 0)
                 {
                     var key = new UnitKey(path, UnitKind.Product, string.Empty);
@@ -741,7 +738,7 @@ internal sealed class WorkspaceCheck
                 continue;
             }
 
-            var target = settings.Target ?? HostTarget;
+            var target = settings.Target ?? TargetProfile.Host?.Target ?? string.Empty;
             var product = new UnitKey(document, UnitKind.Product, target);
             required.Add(product);
             plans.Add(new(product, null, document, CheckMode.Product, [document]));

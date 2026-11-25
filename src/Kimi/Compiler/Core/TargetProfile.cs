@@ -4,29 +4,33 @@
 // (Windows) and linux-x64 (Linux, the Tatara plan's B7b2a: static, without a C library, its layer over system calls), which Binding's
 // native resolution, the Backend's module frame and runtime ABI, target selection (Project, Solution, LSP), project configuration and
 // the native build read.
-// Input: none. Output: the rows (Rows), the row of a triple (Find), and each row's columns: the triple, the profile name, data layout,
-// CPU, features and code generation settings, the module frame's extra function attributes (FunctionAttributes), the entry and a COFF
-// row's subsystem, float marker and load configuration symbol (null on a row without them), the platform layer (Layer: its template's
-// resource name), the reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)), the library kinds the row
-// links (Kinds, IMPL 20.4; the Tatara plan's B7b5), the supply a program's C library starts through (CRuntime, null for none; the
-// Tatara plan's B7b2b), the convention by which the row's imports extend their arguments (ArgumentExtension, IMPL 21.2's name, null
-// for none), the extension of a program library's input (InputExtension, IMPL 20.4) and the executable format, whose link writer the
-// native build selects (Format, IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's B7b7), the runtime's import declarations,
-// and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines
-// (MemorySymbols), the C entry's symbol (MainSymbol), the reserved external names of every target (ReservedSymbols, IMPL 21.2) and
-// the reads over every row (B7b5): a reserved supply of a name (ReservedSupply; its name is reserved under every target key, IMPL 20.4),
-// whether a supply of that name provides a symbol (Provides), and a symbol's runtime declaration with its providing supply
-// (TryGetRuntimeDeclaration).
-// Invariants: constants and arrays only; triples distinct; each row's Layer names exactly one of the Backend's RuntimeLayer records
-// (Core names no Backend type, so CoreModelTest pins it); each row's supplies distinct, in Ordinal name order (publication interleaves
-// a program's supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2), each one's kind
-// among its row's Kinds and one kind for every row's supply of its name (a reserved supply's kind is fixed, IMPL 20.4); a row's
-// CRuntime names one of its supplies; every row declaring a runtime symbol declares it alike (one physical signature, provided by a
-// supply of one name), so any row's declaration is every row's; ReservedSymbols are every row's float marker and backend supply's
-// symbols, MemorySymbols and MainSymbol, pairwise disjoint parts, built once; the native build checks the embedded backend record
-// against the backend supply and keys its material by the supplies' names (ToolchainIdentity).
+// Input: this process's operating system and architecture (HostName, read once). Output: the rows (Rows), the row of a triple (Find),
+// the host's row (Host: the row whose executables this host runs, or null), and each row's columns: the triple, the profile name, data
+// layout, CPU, features and code generation settings, the module frame's extra function attributes (FunctionAttributes), the entry and
+// a COFF row's subsystem, float marker and load configuration symbol (null on a row without them), the platform layer (Layer: its
+// template's resource name), the reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)), the library kinds
+// the row links (Kinds, IMPL 20.4; the Tatara plan's B7b5), the supply a program's C library starts through (CRuntime, null for none;
+// the Tatara plan's B7b2b), the convention by which the row's imports extend their arguments (ArgumentExtension, IMPL 21.2's name,
+// null for none), the extension of a program library's input (InputExtension, IMPL 20.4), the executable format, whose link writer
+// the native build selects (Format, IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's B7b7), the host that runs the row's executables
+// (ExecutionHost, as HostName spells one, null for none; B7b8), the runtime's import declarations, and the bound below which the
+// system maps no address; table-wide, the C memory functions every runtime defines (MemorySymbols), the C entry's symbol (MainSymbol),
+// the reserved external names of every target (ReservedSymbols, IMPL 21.2) and the reads over every row (B7b5): a reserved supply of
+// a name (ReservedSupply; its name is reserved under every target key, IMPL 20.4), whether a supply of that name provides a symbol
+// (Provides), and a symbol's runtime declaration with its providing supply (TryGetRuntimeDeclaration).
+// Invariants: constants and arrays only, but HostName, this process's, read once; triples distinct; no two rows run on one host
+// (ExecutionHost); each row's Layer names exactly one of the Backend's RuntimeLayer records (Core names no Backend type, so
+// CoreModelTest pins it); each row's supplies distinct, in Ordinal name order (publication interleaves a program's supplies by name),
+// with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2), each one's kind among its row's Kinds and one
+// kind for every row's supply of its name (a reserved supply's kind is fixed, IMPL 20.4); a row's CRuntime names one of its supplies;
+// every row declaring a runtime symbol declares it alike (one physical signature, provided by a supply of one name), so any row's
+// declaration is every row's; ReservedSymbols are every row's float marker and backend supply's symbols, MemorySymbols and
+// MainSymbol, pairwise disjoint parts, built once; the native build checks the embedded backend record against the backend supply and
+// keys its material by the supplies' names (ToolchainIdentity).
 // Must not read a file, a resource or the toolchain (the native build's material is ToolchainIdentity's), nor stand for the checked
 // triple (Compilation.TargetTriple and IrTarget: any triple a check selects).
+
+using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler;
 
@@ -46,7 +50,7 @@ internal sealed class TargetProfile
     private const string BackendSupply = "kimi_backend";
 
     // The Windows row's values that its columns read, stated once. Static initializers run in text order: these before Windows, Windows
-    // before Rows, Rows before ReservedSymbols (a reversed pair reads null).
+    // before Rows, Rows before ReservedSymbols, Rows and HostName before Host (a reversed pair reads null).
     // The kernel32 declarations the generated runtimes emit, with their import-ABI physical signatures: the ordinary runtime of SPEC
     // 21.4.7, the two test-runtime APIs, which one source can reach in either build, then the platform layer's pages (the Tatara plan's
     // decision 23, B7r2). A null signature marks a declaration no expressible LibraryImport can share: the ExitProcess declaration is
@@ -104,6 +108,7 @@ internal sealed class TargetProfile
         ArgumentExtension = null,
         InputExtension = ".lib",
         Format = "COFF",
+        ExecutionHost = "windows x64",
     };
 
     /// <summary>Gets the linux-x64 row, the static Linux execution profile (IMPL 21.5; the Tatara plan's decision 21): its platform
@@ -134,6 +139,7 @@ internal sealed class TargetProfile
         ArgumentExtension = "SystemV",
         InputExtension = ".a",
         Format = "ELF",
+        ExecutionHost = null,
     };
 
     /// <summary>Gets the table's rows: one per executable target profile (SPEC 22), in the order the table states them.</summary>
@@ -142,6 +148,16 @@ internal sealed class TargetProfile
     /// <summary>Gets the reserved external names of every target (IMPL 21.2; the Tatara plan's B7b5): for each row its float marker and
     /// its backend supply's symbols, then <see cref="MemorySymbols"/>, then <see cref="MainSymbol"/>, each name once, built once.</summary>
     internal static string[] ReservedSymbols { get; } = ReservedNames();
+
+    /// <summary>Gets this process's host, "&lt;os&gt; &lt;arch&gt;": the OS windows, linux, macos or unknown, and the OS architecture lowercased (x64,
+    /// arm64, ...), read once.</summary>
+    internal static string HostName { get; } =
+        (OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsLinux() ? "linux" : OperatingSystem.IsMacOS() ? "macos" : "unknown") + " " +
+        RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
+
+    /// <summary>Gets the host's row: the row whose <see cref="ExecutionHost"/> is <see cref="HostName"/>, whose executables this process's
+    /// host runs, or null when it runs none (IMPL 20.3: run and test require it; an implicit project takes its target).</summary>
+    internal static TargetProfile? Host { get; } = Array.Find(Rows, static x => x.ExecutionHost == HostName);
 
     /// <summary>Gets the target triple, the row's key (the manifest's target).</summary>
     internal required string Target { get; init; }
@@ -210,10 +226,14 @@ internal sealed class TargetProfile
     /// which publication checks and the native build's staged copy keeps.</summary>
     internal required string InputExtension { get; init; }
 
-    /// <summary>Gets the row's executable format (IMPL 20.3.2), "COFF" or "ELF", which the native build maps once to its link writer and
-    /// its executable's extension (any other value is a broken contract); a "COFF" row has a subsystem, a float marker and a load
-    /// configuration symbol, no other row has.</summary>
+    /// <summary>Gets the row's executable format (IMPL 20.3.2), "COFF" or "ELF", which ArtifactPaths maps to its executable's extension
+    /// and the native build to its link writer (another value is a broken contract in each); a "COFF" row has a subsystem, a float marker
+    /// and a load configuration symbol, no other row has.</summary>
     internal required string Format { get; init; }
+
+    /// <summary>Gets the host whose processes run the row's executables, spelled as <see cref="HostName"/> spells one, or null when no
+    /// host Kimi runs on runs them (linux-x64 until the Tatara plan's B8: no Linux host runs Kimi's native build or its launcher).</summary>
+    internal required string? ExecutionHost { get; init; }
 
     /// <summary>Gets the row of a target triple.</summary>
     /// <param name="triple">The target triple.</param>
