@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -100,6 +101,53 @@ public sealed partial class TyCtxtTest
         }
 
         Assert.Equal(["True: Exclusive p's Origin", "False: "], answers.Order(StringComparer.Ordinal).Reverse());
+    }
+
+    private const string ReceiverKeysSource =
+        "struct ZHold\n    public var p: raw/u64\n    public init(p: raw/u64) => self.p = p\n" +
+        "func letLeaf(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let n: u64 = 3\n    let q: raw/(ref/u8) = w@raw\n" +
+        "    var cLet = func [n, q] (v: raw/u8)\n        unsafe => *q = *q\n    cLet(spare)\n" +
+        "func letStruct(spare: raw/u8)\n    var z: u64 = 0\n    let h = ZHold.init(p: z@raw)\n" +
+        "    var cStruct = func [h@move] (v: raw/u8)\n        unsafe => *(h.p) = 0@u64\n    cStruct(spare)\n" +
+        "func letTup(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let t: (raw/(ref/u8), u64) = (w@raw, 0)\n" +
+        "    var cTup = func [t] (v: raw/u8)\n        unsafe => *(t.0) = *(t.0)\n    cTup(spare)\n" +
+        "func nestLet(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let n: u64 = 3\n    let k: u64 = 5\n    let q: raw/(ref/u8) = w@raw\n" +
+        "    var inner = func [n, var q] (v: raw/u8)\n        unsafe => *q = *q\n    var outerLet = func [inner@move, var k] (v: raw/u8)\n        k = 4\n" +
+        "    outerLet(spare)\n" +
+        "func nestVar(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let n: u64 = 3\n    let q: raw/(ref/u8) = w@raw\n" +
+        "    var inner = func [n, q] (v: raw/u8)\n        unsafe => *q = *q\n    var outerVar = func [var inner@move] (v: raw/u8)\n        inner(v)\n" +
+        "    outerVar(spare)\n" +
+        "func sameType(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let q: raw/(ref/u8) = w@raw\n    let q2: raw/(ref/u8) = w@raw\n" +
+        "    var cSame = func [q, var q2] (v: raw/u8)\n        unsafe => *q2 = *q2\n    cSame(spare)\n" +
+        "func uniqLet(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let q: raw/(ref/u8) = w@raw\n" +
+        "    var c = func [q] (v: raw/u8)\n        unsafe => *q = *q\n    let cu = c@uniq\n    var d = func [cu@move] (v: raw/u8)\n        cu(v)\n    d(spare)\n" +
+        "func pastLet(spare: raw/u8)\n    var hop: raw/u8 = null\n    var w2: uniq/(raw/u8) = hop@uniq\n    let q: raw/(uniq/(raw/u8)) = w2@raw\n" +
+        "    var cUniq = func [q] (v: raw/u8)\n        unsafe => (*q)@follow = null\n    cUniq(spare)\n" +
+        "public func main() => ()\n";
+
+    // SPEC 15.8.2, 7.7.2 (the owner's O-254 Q1 D, DECISIONS R4-M219; PLAN G941): at the key past a Closure call's receiver borrow
+    // (TyCtxt.ReceiverKey) each part within a `let` environment binding, at any depth by value, is marked Let: a `let` raw layer (cLet), a
+    // declaration's Field in a `let` binding (cStruct's h.p), a Tuple's element (cTup's t.0), a nested Closure's `var q` within the outer
+    // Closure's `let inner` (outerLet); none within a `var inner` (outerVar), past a marked layer (cUniq: w2's borrow and hop's layer),
+    // past another Closure's exclusive reference (d: its `let cu` marked, c's q past it not) or at a root key (a result's, or a by-value
+    // receiver's: cLet's Closure as a root); a `let` and a `var` binding of one Type are both listed, only the `let` one marked (cSame).
+    // Fail-before: 14400eeb0 has no ReceiverKey and no Let mark, and lists cSame's second binding once.
+    [Theory]
+    [InlineData("cLet", true, "- Exclusive {raw/ref/u8 Address Let {- Shared}}")]
+    [InlineData("cStruct", true, "- Exclusive {raw/u64 Address Let}")]
+    [InlineData("cTup", true, "- Exclusive {raw/ref/u8 Address Let {- Shared}}")]
+    [InlineData("outerLet", true, "- Exclusive {raw/ref/u8 Address Let {- Shared}}")]
+    [InlineData("outerVar", true, "- Exclusive {raw/ref/u8 Address {- Shared}}")]
+    [InlineData("cSame", true, "- Exclusive {raw/ref/u8 Address Let {- Shared}; raw/ref/u8 Address {- Shared}}")]
+    [InlineData("d", true, "- Exclusive {- Exclusive Let {raw/ref/u8 Address {- Shared}}}")]
+    [InlineData("cUniq", true, "- Exclusive {raw/uniq/raw/u8 Address Let {- Exclusive {raw/u8 Address}}}")]
+    [InlineData("cLet", false, "raw/ref/u8 Address {- Shared}")]
+    public void AReceiverKeyMarksThePartsOfItsLetBindings(string local, bool receiver, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(ReceiverKeysSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var closure = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).First(x => x.Name == local).Type!;
+        Assert.Equal(expected, Marks(c.Types, receiver ? c.Types.ReceiverKey(closure) : PlaceKey.Root(closure), 0));
     }
 
     // Binding's Limit: a growing Type answers false.
@@ -452,15 +500,22 @@ public sealed partial class TyCtxtTest
         Assert.Equal(0, AllocationMeasurement.Measure(Read));
     }
 
-    // The keys' layers with their Hidden bit, and each Past key's nested (four keys deep).
-    private static string Hiding(TyCtxt types, PlaceKey key, int depth)
+    // The keys' layers with their Hidden bit.
+    private static string Hiding(TyCtxt types, PlaceKey key, int depth) => Layers(types, key, depth, ", ", static x => x.Hidden ? "H" : "S");
+
+    // The keys' layers with their step and Let mark.
+    private static string Marks(TyCtxt types, PlaceKey key, int depth)
+        => Layers(types, key, depth, "; ", static x => $"{x.Step}{(x.Let ? " Let" : string.Empty)}");
+
+    // The keys' layers, each with its `column` text, and each Past key's nested (four keys deep).
+    private static string Layers(TyCtxt types, PlaceKey key, int depth, string separator, Func<OwnLayer, string> column)
     {
         var into = new List<OwnLayer>();
         Assert.True(types.OwnLayers(key, into));
-        return string.Join(", ", into.Select(x =>
+        return string.Join(separator, into.Select(x =>
         {
-            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {(x.Hidden ? "H" : "S")}";
-            var below = depth < 3 && x.Past.Type is not null ? Hiding(types, x.Past, depth + 1) : string.Empty;
+            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {column(x)}";
+            var below = depth < 3 && x.Past.Type is not null ? Layers(types, x.Past, depth + 1, separator, column) : string.Empty;
             return below.Length == 0 ? row : $"{row} {{{below}}}";
         }));
     }

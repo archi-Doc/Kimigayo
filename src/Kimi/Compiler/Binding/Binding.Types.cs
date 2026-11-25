@@ -516,16 +516,30 @@ public sealed partial class Binding
     }
 
     /// <summary>The `formedTypes` family's one accessor (DECISIONS BU-220; PLAN G1278, SPEC 9.7, 9.7.1, 12.4): a kept family, whether a node
-    /// forms its Type: a written Type occurrence the Type binding completed (BindType, a `Self`, an alias and a rooted name included; a
-    /// Case or construction qualifier that writes its own list, is its declaration's `Self` or is formed by its path) or a Dictionary literal
-    /// its binder completed. A `bool` row in the node's module's NodeColumns at its SyntaxId, written true by its one producer at each
-    /// completion, so a node bound in an earlier pass keeps it and a renumbering moves it; read only with the node's Type. A node that
-    /// takes its Type from an expected Type, an inference or another node never has one. Read by ValidateConstraintUses' site test
-    /// (ConstrainedType): a constructed Type with clauses is judged at the node that forms it, and every other node carries it.</summary>
+    /// forms its Type. A `bool` row in the node's module's NodeColumns at its SyntaxId, written true by each producer where it completes
+    /// the node's Type: BindType's completion of a written occurrence (a `Self`, an alias and a Type parameter included) and of a rooted
+    /// name's operand; EnumQualifierType, for a Case or construction qualifier that writes its own list or is its declaration's `Self`;
+    /// ConstructionTargetType, for a qualifier with no own parameters, whose path forms the whole Type; BindContractReference, at each
+    /// node of a written Contract reference it completes; and the Dictionary literal's binder. A pass's reset empties its modules' rows
+    /// (Empty), which its binders write again, so a row is its node's in the latest pass over its module: a writer's decision reads the
+    /// resolved declaration (ConstructionTargetType's own parameters, the binder a qualifier's symbol selects), which an edit can change
+    /// under an unchanged node. A node of another pass's module (the frozen library's) keeps its row, and a renumbering moves it; read
+    /// only with the node's Type. A node that takes its Type from an expected Type, an inference or another node never has one. Read by
+    /// ValidateConstraintUses' site test (ConstrainedType): a constructed Type with clauses is judged at the node that forms it, and
+    /// every other node carries it.</summary>
     private static class FormedTypeRows
     {
         internal static void Add(Koto node) => HirTables.Of(node).Families.FormedTypes.Ref(node.SyntaxId) = true;
 
         internal static bool Contains(Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.FormedTypes.Get(node.SyntaxId);
+
+        // The pass reset's step (ResetPass), over the running pass's modules.
+        internal static void Empty(BindingPass pass)
+        {
+            for (var i = 0; i < pass.Count; i++)
+            {
+                pass[i].Syntax.Hir.Families.FormedTypes.Empty();
+            }
+        }
     }
 }

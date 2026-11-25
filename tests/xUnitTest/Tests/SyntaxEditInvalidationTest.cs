@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -80,6 +81,34 @@ public class SyntaxEditInvalidationTest
         Assert.True(KotoHelper.Replace(match, pattern, donor));
         Assert.True(KotoHelper.Replace(match, body, pattern));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // PLAN G1278 (G1278-A review N6): a construction qualifier whose path formed its Type in an earlier pass keeps no FormedTypes row
+    // once an edit makes it a carrier. `O.In` (no own parameters) forms its Type; after `O.In.A` becomes `P.In.A`, the qualifier's own
+    // list is omitted and `P.In<S>` supplies it (SPEC 6.5.2 steps 2-3, 9.7), so the written `P.In<S>` is the one site and its
+    // UnsatisfiedConstraint_Kd the one record (SPEC 8.6.3, 23.1.2), as in a fresh compilation of the edited source (ResetPass empties
+    // the FormedTypes family; a stale row would judge the qualifier as a second site).
+    [Fact]
+    public void AnEditedQualifierLeavesNoStaleFormationRow()
+    {
+        const string Before = "contract C\nstruct S\nstruct O\n    public enum In\n        A\nstruct P\n    public enum In<T>\n        T is C\n        A\n" +
+            "let v: P.In<S> = O.In.A\n";
+        var after = Before.Replace("= O.In.A", "= P.In.A", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(Before);
+        Assert.False(c.Binding.Result.IsComplete); // `O.In` is not `P.In<S>`.
+        var qualifier = Qualifier(c.Kotonoha.RootKoto);
+        var path = Qualifier(ParseTestHelper.ParseSuccess(after).RootKoto).Left;
+        ParseTestHelper.Detach(path, new CodeBlockKoto(path.CodeContext));
+        Assert.True(KotoHelper.Replace(qualifier, qualifier.Left, path));
+        Assert.False(c.Bind().IsComplete);
+        var fresh = MinimalEmissionTest.Analyze(after);
+        Assert.Single(fresh.Binding.Issues, static x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
+        Assert.Equal(Records(fresh), Records(c));
+
+        static MemberAccessKoto Qualifier(Koto root)
+            => (MemberAccessKoto)KotoTree.Walk(root).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == "A").Left;
+
+        static string Records(Compilation c) => string.Join("\n", c.Binding.Issues.Select(static x => x.Code.ToString()).Order());
     }
 
     [Theory]
