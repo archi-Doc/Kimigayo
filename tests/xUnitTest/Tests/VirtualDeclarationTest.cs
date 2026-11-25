@@ -91,8 +91,9 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     // modifier (23.1.1). The limit's check reads the receiver shape and the modifier only, so it is independent of the declaration's other
     // failures (NotOpen, Private, own Type parameters, a duplicate, no override target by name or receiver mode, 6.4.2) and is reported
     // beside them (23.1.2). Twins: the limit's cause fixed (objref) keeps the other record alone; the other cause fixed keeps the limit.
-    // Nor does it read the declaration's own premise error (SPEC 8.2.3, at its clause: v1, its cycle v1c) or a Contract's it names (v2,
-    // at the Contract): the declaration's frame is its premise error's own check, never its reader (R7-C3 C3d).
+    // Nor does it read the declaration's own premise error (SPEC 8.2.3, at its clause: v1, its cycle v1c, two groups at two clauses v1two)
+    // or a Contract's it names (v2, at the Contract; beside an own group, v2sup): the declaration's frame is its premise error's own
+    // check, never its reader (R7-C3 C3d).
     [Theory]
     [InlineData("d1", "struct S\n    public virtual func f(self: objuniq/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objuniq/Self) => () | Unsupported_Kd: public virtual func f(self: objuniq/Self) => ()")]
     [InlineData("d1t", "struct S\n    public virtual func f(self: objref/Self) => ()", "InvalidVirtualDeclaration_Kd: public virtual func f(self: objref/Self) => ()")]
@@ -111,7 +112,9 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     [InlineData("v1r", "open struct S<A, B>\n    public virtual func f(self: objref/Self) -> i32\n        A is Option<B>\n        A is Array<B>\n        return 0", "InvalidConstraint_Kd: A is Array<B>")]
     [InlineData("v1c", "open struct S<A>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is Option<A>\n        return 0", "InvalidConstraint_Kd: A is Option<A> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
     [InlineData("v1t", "open struct S<A, B>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is Option<B>\n        return 0", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v1two", "open struct S<A, B, C, D>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is Option<B>\n        A is Array<B>\n        C is Option<D>\n        C is Array<D>\n        return 0", "InvalidConstraint_Kd: A is Array<B> | InvalidConstraint_Kd: C is Array<D> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
     [InlineData("v2", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nopen struct S<A>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is C\n        return 0", "InvalidConstraint_Kd: Self.Y is Option<Self.X> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
+    [InlineData("v2sup", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nopen struct S<A, B, T>\n    public virtual func f(self: objuniq/Self) -> i32\n        T is C\n        A is Option<B>\n        A is Array<B>\n        return 0", "InvalidConstraint_Kd: A is Array<B> | InvalidConstraint_Kd: Self.Y is Option<Self.X> | Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
     [InlineData("v2t", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\nopen struct S<A>\n    public virtual func f(self: objuniq/Self) -> i32\n        A is C\n        return 0", "Unsupported_Kd: public virtual func f(self: objuniq/Self) -> i32")]
     public void TheDispatchLimitIsItsOwnRecordBesideTheDeclarationsOtherFailures(string form, string program, string records)
         => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);

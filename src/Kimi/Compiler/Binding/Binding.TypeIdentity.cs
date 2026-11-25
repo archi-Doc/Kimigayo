@@ -23,10 +23,11 @@ namespace Kimi.Compiler;
 // - Inputs: the view's chain of valid Constraint environments: positive identity premises and their availability (R7-C2e1's
 //   Completion); the Origin declarations' relations and completion; the pairs' admitted sets.
 // - Outputs: per view and pass, the classes (ClassesOf) and their Completion (DECISIONS R7-M20's W7); Proven; the premise error; the
-//   own premise clauses holding its group records (HoldsGroupRecord), whose declaration's frame is their own check, never their reader
-//   (ChecksOwnSite, read by Fail and Consulted alike); for a declaration resting on its records, their site (IdentityErrorSite, the
-//   cause queries' one answer for it): a declaration rests on its own premise error only through that site, and only until it has a
-//   record of its own (R7-C3 C3d, F's ruling C3d-R1); a
+//   own premise clauses holding its group records (HoldsGroupRecord), whose declaration's frame is their own check: its failures and
+//   reads of them are no prerequisites (ChecksOwnSite, read by Fail, Consulted and VerifyConformance's conformance use alike), though
+//   its proofs read the error as their limit while its records stand at its clauses or its supplier (IdentityPremiseErrorRead); for a
+//   declaration resting on its records, their site (IdentityErrorSite, the cause queries' one answer for it): a declaration rests on
+//   its own premise error only through that site, and only until it has a record of its own (R7-C3 C3d, F's rulings C3d-R1, C3d-R2); a
 //   Type's key in a table (ClassKey: a parameter's or projection's class's least parameter or projection by a total structural order,
 //   Representative, or the Type over its components' keys; c2-4: a constructed member keys to its class's Representative, so
 //   every member's premise rows are the class's, joined with the Member's closed world by polarity), which relates only what Proven relates (a class in state One with complete meets, whatever the

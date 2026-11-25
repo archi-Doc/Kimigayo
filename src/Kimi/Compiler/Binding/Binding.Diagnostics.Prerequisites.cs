@@ -503,7 +503,10 @@ public sealed partial class Binding
     // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2), R7-E5 c1: whether the open consultation is `site`'s own check. A
     // failure's own checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity
     // premise error (IdentityPremiseErrorRead); a failure (Fail) or a read (Consulted) of the frame's own node, or of its own premise
-    // clause holding its error group's record (HoldsGroupRecord, R7-C3 C3d), is no prerequisite of it.
+    // clause holding its error group's record (HoldsGroupRecord, R7-C3 C3d), is no prerequisite of it. A conformance's verification asks
+    // it of the conformance's use (VerifyConformance's `!ChecksOwnSite(conformance.Use)`, Binding.ContractMatching): where JudgeFacts
+    // proves an own group clause's conformance (`T is K`) in the declaration's frame, that frame answers as the clause's own frame does,
+    // so the conformance does not read the failed premises of its scope chain (F's ruling C3d-R2).
     private bool ChecksOwnSite(Koto site)
         => ReferenceEquals(site, this.consultationNode) || (this.consultationNode is { } node && this.HoldsGroupRecord(node, site));
 
