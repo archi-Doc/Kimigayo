@@ -357,6 +357,15 @@ public partial class CallableOriginForwardingTest
 
     private const string NestedLet = NestedT + NestedHost + "    let f: (() -> Option<T during s>) -> i32 = ";
 
+    // PLAN G464: k's Function parameter over a nested input naming T, with no clause of k; host's Function values of that shape.
+    private const string NestedInputK = NestedT + "func k(q: ref/i32, f: (Option<T during q>) -> i32) -> i32\n    return 0\n\n";
+
+    private const string NestedInputHost = "func host(s: ref/i32, h: (Option<T during s>) -> i32) -> i32\n";
+
+    private const string NestedBothHost = "func host(s: ref/i32, h: (Option<T during s>) -> Option<T during s>) -> i32\n";
+
+    private const string SlotK = NestedT + "func ku<U>(q: ref/i32, f: U) -> i32\n    return 0\n\n";
+
     private const string NestedWritten = "func [] (g: () -> Option<T during s>) -> i32 => 5";
 
     private const string StaticHost = "func host(s: ref/i32 during static) -> i32\n";
@@ -1119,7 +1128,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("uniq2_n", UniqHead + BOutlivesA + UniqLet, "UnprovenOriginContract_Kd " + UniqClosure)]
     [InlineData("arg2", ValueRun + InnerHead + BothWays + "    return run(" + InnerClosure + ", w)\n", "")]
     [InlineData("cal2", CallableHolder + InnerHead + BothWays + InnerHolder, "")]
-    [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, "UnprovenConstraint_Kd .None; " + HolderConstraint)]
+    [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, HolderConstraint)] // `.None` carries the annotated Type: its restating UnprovenConstraint_Kd goes (G1278-A, Q13; F's G1278-3)
     [InlineData("pnest1", NestedClauseHead + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("pnest1_c", NestedClauseHead + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] (g) => 5)\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     public void AClosuresContractIsJudgedWithItsUsesPremises(string form, string body, string records)
@@ -1202,15 +1211,31 @@ public partial class CallableOriginForwardingTest
     // annotation record at `Option<T during s>` is the Closure's own (DECISIONS R5-M184). Neither completion stops at a failed part:
     // a contextual Case beside the Closure (s_first_q, t_none; r_case's failed `.Some(undefinedName)` keeps the Closure's own record),
     // a second Closure (r_two) and another input's fit (r_fit) keep theirs. A clause located at the failed Closure is published with its
-    // record (pk_first). By SPEC 15.6.1 a nested signature's inputs are its premises, proven at its calls, so the call need not prove
-    // `T during s`; the plan check's UnprovenConstraint_Kd beside a Function value argument restates the clause (PLAN G464).
+    // record (pk_first). PLAN G464 (SPEC 15.6.1, 15.3.4, 15.6.4 step 3): a nested signature's inputs are its premises, proven at its
+    // calls, and its result is judged where it is written, so no use forms either: a Function value argument over a nested input or
+    // result (g464v, g464v2), a Type slot bound to its Type (g464u, g464u2) and a Case payload (g464e) are valid, as through a value
+    // (g464vv), beside an input premise (g464s) and in a local annotation (g464l); g464 keeps host's record at its written
+    // `Option<T during s>` and k's clause record at `s`, and the call's UnprovenConstraint_Kd that restated the first goes (DECISIONS
+    // Q13, rule W); a value call proves its input (g464c: its UnprovenOriginRelation_Kd at `.None`, which carries the call's instantiated
+    // input, so its UnprovenConstraint_Kd, the same clause's second record there, goes: PLAN G1278, G1278-A, Q13, F-2, as r4 below).
     // A Case construction is a call (PLAN G418 (2)): after a failed payload it still judges its Constraints over the solution it fixed,
-    // so its own UnprovenConstraint_Kd stays beside the payload's record (c_closure, c_first, the inner one of c_nested, an Origin the
-    // expected Type fixes in r4, r4v and c_expected, restating the annotation's relation as the no-failure twin r4n does), and a Refuted
+    // so its own UnprovenConstraint_Kd stays beside the payload's record where it infers an Origin (c_closure, c_first, the inner one of
+    // c_nested); where the expected Type fixes every Origin (r4, r4v, c_expected and the no-failure twin r4n) it carries that Type and
+    // its record, which restated the annotation's relation, goes (PLAN G1278, G1278-A, Q13; F's G1278-5 C3), and a Refuted
     // `X is Copy` is UnsatisfiedConstraint_Kd (c_constraint2). The construction still forms no result, so c_dep's TypeMismatch at `e`
     // stays lost (PLAN G495); a waiting callable's failure (r7) stops before the solution is fixed and judges no Constraint.
     [Theory]
     [InlineData("pk_noclause", NestedClauseK + "    return k(s, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd s")]
+    [InlineData("g464", ClauseK + "func host(s: ref/i32, h: (() -> Option<T during s>) -> i32) -> i32\n    return k(s, h@move)\n", "UnprovenOriginRelation_Kd Option<T during s>; UnprovenOriginRelation_Kd s")]
+    [InlineData("g464v", NestedInputK + NestedInputHost + "    return k(s, h@move)\n", "")]
+    [InlineData("g464v2", NestedT + "func k(q: ref/i32, f: (Option<T during q>) -> Option<T during q>) -> i32\n    return 0\n\n" + NestedBothHost + "    return k(s, h@move)\n", "")]
+    [InlineData("g464vv", NestedInputK + NestedInputHost + "    let g = k\n    return g(s, h@move)\n", "")]
+    [InlineData("g464s", NestedInputK + "func host(s: ref/i32, h: (Option<T during s>) -> i32, o: Option<T during s>) -> i32\n    return k(s, h@move)\n", "")]
+    [InlineData("g464u", SlotK + NestedInputHost + "    return ku(s, h@move)\n", "")]
+    [InlineData("g464u2", SlotK + NestedBothHost + "    return ku(s, h@move)\n", "")]
+    [InlineData("g464l", NestedT + NestedInputHost + "    let g: (Option<T during s>) -> i32 = h@move\n    return 0\n", "")]
+    [InlineData("g464c", NestedT + NestedInputHost + "    return h(.None)\n", "UnprovenOriginRelation_Kd .None")]
+    [InlineData("g464e", NestedT + "enum E {q}\n    C(ref/i32 during q, (Option<T during q>) -> i32)\n    N\n\n" + NestedInputHost + "    let e = E.C(s, h@move)\n    return 0\n", "")]
     [InlineData("pk_noclause_int", NestedClauseK + "    return k(s, " + NestedWritten + ")\n", "UnprovenOriginContract_Kd " + NestedWritten + "; UnprovenOriginRelation_Kd Option<T during s>; UnprovenOriginRelation_Kd s")]
     [InlineData("pk_nonid", ClauseK + "func host(s: ref/i32, t: ref/i32 during static) -> i32\n    return k(s, func [] (g: () -> Option<T during t>) -> i32 => 5)\n", "UnprovenOriginContract_Kd func [] (g: () -> Option<T during t>) -> i32 => 5; UnprovenOriginRelation_Kd s")]
     [InlineData("pk_tm", NestedClauseK + "    return k(s, func [] (g) => true)\n", "TypeMismatch_Kd true; UnprovenOriginContract_Kd func [] (g) => true; UnprovenOriginRelation_Kd s")]
@@ -1228,9 +1253,9 @@ public partial class CallableOriginForwardingTest
     [InlineData("c_constraint2", CaseW + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let w = W.C(\"text\", t, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnsatisfiedConstraint_Kd W.C(\"text\", t, func [] (g) => 5)")]
     // R7-O1 H (Q13 rule 3, the Middle's (iii)): the closure's contract record (T's well-formedness, `r outlives static`), as c_closure has
     // it, which the failed annotation fit's node hid.
-    [InlineData("r4", CaseE + CaseRHost + "    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd s")]
-    [InlineData("r4v", CaseE + "func host(s: ref/i32, r: ref/i32, h: (() -> Option<T during r>) -> i32) -> i32\n    let e: E during r = E.C(s, h@move)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, h@move); UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd Option<T during r>; UnprovenOriginRelation_Kd s")]
-    [InlineData("r4n", CaseE + CaseRHost + "    let e: E during r = E.N\n    return 0\n\n", "UnprovenConstraint_Kd E.N; UnprovenOriginRelation_Kd E during r")]
+    [InlineData("r4", CaseE + CaseRHost + "    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd s")]
+    [InlineData("r4v", CaseE + "func host(s: ref/i32, r: ref/i32, h: (() -> Option<T during r>) -> i32) -> i32\n    let e: E during r = E.C(s, h@move)\n    return 0\n\n", "UnprovenOriginRelation_Kd E during r; UnprovenOriginRelation_Kd Option<T during r>; UnprovenOriginRelation_Kd s")]
+    [InlineData("r4n", CaseE + CaseRHost + "    let e: E during r = E.N\n    return 0\n\n", "UnprovenOriginRelation_Kd E during r")]
     [InlineData("r4b", CaseE + "func host(s: ref/i32, r: ref/i32 during static) -> i32\n    let e: E during r = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginRelation_Kd s")]
     [InlineData("r4c", CaseE + "func host(s: ref/i32 during static, r: ref/i32 during static) -> i32\n    let e: E during r = E.D(func [] (g) => 5, s)\n    return 0\n\n", "")]
     [InlineData("c_value", CaseE + "func host(s: ref/i32, h: (() -> Option<T during s>) -> i32) -> i32\n    let e = E.C(s, h@move)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, h@move); UnprovenOriginRelation_Kd Option<T during s>")]
@@ -1239,7 +1264,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("c_dep", CaseE + NestedHost + "    let e = E.C(s, func [] (g) => 5)\n    let n: i32 = e\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5")]
     [InlineData("r7", "enum Holder<F>\n    F is Callable<() -> i32>\n    H(F)\n    N\n\nfunc host() -> i32\n    let h = Holder.H(func [] () => true)\n    return 0\n\n", "TypeMismatch_Kd true")]
     [InlineData("c_nested", CaseE + NestedHost + "    let o = Option.Some(E.C(s, func [] (g) => 5))\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5")]
-    [InlineData("c_expected", CaseE + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let e: E during t = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenConstraint_Kd E.C(s, func [] (g) => 5); UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during t")]
+    [InlineData("c_expected", CaseE + "func host(s: ref/i32 during static, t: ref/i32) -> i32\n    let e: E during t = E.C(s, func [] (g) => 5)\n    return 0\n\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd E during t")]
     public void AFailedClosureContractKeepsTheCallsClauseRecords(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

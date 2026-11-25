@@ -13,6 +13,7 @@ internal sealed partial class MirBorrows
 {
     private int chainHead = -1; // The checks replay's chain: its head and first block.
     private int chainFirst;
+    private bool replaying; // Whether Carry runs the checks replay.
 
     /// <summary>Checks a body under the selected view; view 0 of a body no view decides checks it for every view.</summary>
     /// <param name="program">The program, whose drop table it reads and whose problems it adds to.</param>
@@ -26,7 +27,7 @@ internal sealed partial class MirBorrows
         }
 
         var all = MirCases.Every(body);
-        (this.program, this.body, this.view, this.views, this.held) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all, false);
+        (this.program, this.body, this.view, this.views) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all);
         this.mixedKnown = false;
         this.sets.Clear();
         (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));
@@ -126,7 +127,7 @@ internal sealed partial class MirBorrows
                 this.End(state, this.inspected[block]);
             }
 
-            this.Plan(state, block, i, checks);
+            this.Plan(state, block, i);
             if (checks)
             {
                 this.Advance(location);

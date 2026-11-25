@@ -268,13 +268,18 @@ public sealed partial class Binding
 
     // SPEC 9.7, 9.7.1, 10.8.1: a construction qualifier whose own Type-argument list is omitted: its environment from the path, its own
     // arguments those of `supplied`, else its own parameters, open, and the qualifier an inferred construction target, which the
-    // construction completes with its solved Type.
+    // construction completes with its solved Type. With no own parameters the path forms the whole Type, and the qualifier is its
+    // formation site (FormedTypeRows, PLAN G1278).
     private BoundType? ConstructionTargetType(Koto syntax, BindingSymbol symbol, BindingScope scope, BoundType? supplied)
     {
         var own = ((DeclarationContainerKoto)symbol.Declaration).GenericParameterNodes.Count;
         var arguments = own == 0 ? default : ((BoundType[])(supplied ?? this.SelfType(symbol)).Components).AsSpan(0, own);
         var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), arguments);
-        if (type is not null && own != 0 && supplied is null)
+        if (type is not null && own == 0)
+        {
+            FormedTypeRows.Add(syntax);
+        }
+        else if (type is not null && supplied is null)
         {
             this.inferredConstructionTargets.Add(syntax);
         }
@@ -403,7 +408,7 @@ public sealed partial class Binding
 
         if (syntax is ParenthesizedTypeKoto grouped)
         {
-            return Complete(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
+            return this.PublishType(syntax, this.BindContainerQualifier(grouped.Type, symbol, scope, context));
         }
 
         if (symbol.Declaration is GroupKoto)
@@ -413,14 +418,14 @@ public sealed partial class Binding
 
             // The qualifier names its group, as BindType names a struct qualifier, so no consumer takes the group's Type as a value.
             syntax.BoundSymbol = symbol;
-            return result is null ? null : Complete(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
+            return result is null ? null : this.PublishType(syntax, this.CompleteOrigins(result, syntax as TypeSemanticsKoto, syntax, scope, context with { SuppressOuter = true }));
         }
 
         if (symbol.Declaration is ContractKoto)
         {
             // SPEC 8.4, 18.2.1: a Contract reference has no Type role either; the bound Contract reference is formed where every other is,
             // and the qualifier completes with it, as a group's does (a Contract without arguments forms no Type there).
-            return this.BindContractReference(syntax, symbol, scope) is { } contract ? Complete(syntax, contract.Type) : null;
+            return this.BindContractReference(syntax, symbol, scope) is { } contract ? this.PublishType(syntax, contract.Type) : null;
         }
 
         return this.BindType(syntax, scope, context with { SuppressOuter = true });

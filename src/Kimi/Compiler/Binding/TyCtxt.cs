@@ -3,7 +3,7 @@
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), an Integer
 // constant's one encoding (Normalize, DECISIONS BU-133), a safe reference's stored representation (IsStoredReference) and two Types'
 // storage agreement with their Origins erased (StorageMatches), and the lifetime of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
+// TyCtxt.Substitutions.cs's (a call's in a Semantics case, CaseSubst, beside CaseType), the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
 // and R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
 // TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
@@ -167,9 +167,48 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
         => PlaceKey.Root(input) with { Signature = this.Signature(function, null, slot, out _) };
 
+    // SPEC 15.8.2, 7.7.3 (DECISIONS R4-M148; PLAN G941): a Closure call's receiver key: the root key of its contract's call receiver input
+    // (input 0, HasReceiverInput) as Retains forms it, `R/Env during ρ` (Binding.ClosureReceiver over ClosureReceiverIn; Env by value under
+    // `owner/Self`), so that OwnLayers at the key past its borrow lists the environment bindings with their `let` mark (OwnLayer.Let).
+    // `callee` has that input (MirBorrows' Receiver); a callee without it is a broken contract (InternalInvariant_Kd).
+    internal PlaceKey ReceiverKey(BoundType callee)
+        => Closure(callee) is { } closure
+            ? PlaceKey.Root(binding.ClosureReceiver((FunctionKoto)closure.Symbol!.Declaration!, this.ClosureReceiverIn(closure), closure))
+            : throw new InvalidOperationException($"{Binding.DiagnosticTypeName(callee)} has no call receiver input (InternalInvariant).");
+
     // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
+
+    // SPEC 8.15 (DECISIONS R4-M246, Z4-M): the case key of a call's substitution in one Semantics case, its Self, declaring Type and Types
+    // each read by CaseType (a null slot kept), its lengths, Origins and inputs the call's: the call itself without a case or a pair layer,
+    // and Intern's own where no Type changes, so nothing is allocated then. Retains keys a direct call's contract by it, one entry per
+    // distinct case reading, which is complete since an instance reads every view binder through its Self, declaring Type and Types: two
+    // readings with the same cased Subst read the same instance Types. Must not be substituted through: a pair slot holds its binder's
+    // whole Type, and a case form placed there is judged by Binding's substitution under the caller's premises, not the case (DECISIONS
+    // BU-240); a contract instantiates with the call's own substitution and reads its Types in the case after it (Retains).
+    internal Subst CaseSubst(Subst call, ReadOnlySpan<PairCase> cases)
+    {
+        var paired = call.Self?.ContainsPairLayer == true || call.Declaring?.ContainsPairLayer == true;
+        foreach (var type in call.Types)
+        {
+            paired |= type?.ContainsPairLayer == true;
+        }
+
+        if (cases.IsEmpty || !paired)
+        {
+            return call;
+        }
+
+        var types = Fit(ref this.caseTypes, call.Types.Length);
+        for (var i = 0; i < types.Length; i++)
+        {
+            types[i] = call.Types[i] is { } type ? this.CaseType(type, cases) : null;
+        }
+
+        var self = call.Self is { } conforming ? this.CaseType(conforming, cases) : null;
+        return this.Intern(call.Target, self, call.Declaring is { } owner ? this.CaseType(owner, cases) : null, types, call.Lengths, call.Origins, call.Inputs);
+    }
 
     // A Type parameter's own Type, which no interning shares: a generic parameter's whole Type and a pair parameter's target
     // projection (Binding.Indexing), a Contract's Self (Binding.ContractSelfType); each is made once and kept on its symbol.
@@ -379,6 +418,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 22.10.5 (R8-W2 c2t): the interpolation-hint term of an owning interpolation's write position with the later value Types (a
     // Tuple) and the later literal bytes, the bytes its adapter's later writes may still reserve: the constant HintBound
     // decides, else the term (Term), which a substitution folds again (Refold). R8-W2 c2b's builder forms it; until then nothing does.
+    // Both terms' dominance (PLAN G651 U2c): their Values Tuple is exactly as high as the ref/V each written value passes to its write
+    // (BU-71), and that ref/V is formed first, so no instance of a term passes IMPL A.4's height where its values' did not: a default's
+    // copy forms every non-Arg local, the write's borrow among them, before its Length constants (MirBuilder.Instantiates' loop order),
+    // and the instance collector forms an item's locals before code generation reads a length (InstanceCollector.LengthOf). Both read
+    // the term bare (TyCtxt.InstanceLength, no formation); were it broken the outcome is loud with no further code: after the run the
+    // copy's refusal marks the omitting call (TypeHeightLimit_Kd) and its null makes the copy Incomplete, InternalInvariant_Kd there in a
+    // complete compilation; code generation meets G651 U2b's no-owner throw (R13.1) or LengthConstant's InternalInvariant_Kd.
     internal BoundLength InterpolationHint(BoundType values, long literal) => this.Term(LengthOperation.InterpolationHint, values, literal);
 
     // An interpolation term over its value Types' image, as a substitution or an instance makes them (Binding.SubstituteLength,

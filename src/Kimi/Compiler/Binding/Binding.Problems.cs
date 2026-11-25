@@ -37,6 +37,10 @@ public sealed partial class Binding
         this.UnlinkProblems(node);
     }
 
+    // A located limit's one fact: the part's span, packed (start above, length below), read back by LocatedPart.
+    private static ProblemFact LocatedFact(Koto node, SourceSpan part)
+        => new(ProblemFactKind.Span, SourceRef.Of(node), ((long)part.Start << 32) | (uint)part.Length);
+
     // The code of a failure at a node: the one table, with the rows that read the node until their checks record their own (E3, E4).
     private DiagnosticCode CodeOf(Koto node, BindingFailure failure)
     {
@@ -66,7 +70,7 @@ public sealed partial class Binding
             BindingFailure.Cycle => DiagnosticCode.CyclicBinding_Kd,
             BindingFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
             BindingFailure.TypeHeightLimit => DiagnosticCode.TypeHeightLimit_Kd,
-            BindingFailure.PremiseClosureLimit => DiagnosticCode.PremiseClosureLimit_Kd,
+            BindingFailure.AnalysisLimit => DiagnosticCode.AnalysisLimit_Kd,
             BindingFailure.ResolutionWorkLimit => DiagnosticCode.ResolutionWorkLimit_Kd,
             BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
             BindingFailure.InvalidLiteral => DiagnosticCode.InvalidNumericLiteral_Kd,
@@ -184,17 +188,14 @@ public sealed partial class Binding
     // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee; its own record
     // beside any other failure of its node (SPEC 23.1.2).
     private void RecordLocated(Koto node, SourceSpan part, bool unresolved = false)
-    {
-        long value = ((long)part.Start << 32) | (uint)part.Length;
-        this.Record(node, BindingFailure.Unsupported, [new(ProblemFactKind.Span, SourceRef.Of(node), value)], unresolved: unresolved);
-    }
+        => this.Record(node, BindingFailure.Unsupported, [LocatedFact(node, part)], unresolved: unresolved);
 
     // SPEC 23.1.1, 23.1.2 (PLAN G254c): a located limit beside its node, which keeps its state, Type and rows: a problem that sets no slot,
     // so no consumer reads the node as a failed input, published by its subject (CollectIssue). At condition 1 at least, as a further
     // Origin record is, so the node's own first failure, set later at 0, keeps its key; an equal record keeps its first's (DIAGNOSTICS 4.3).
     private void RecordLocatedLimit(Koto node, SourceSpan part)
     {
-        ReadOnlySpan<ProblemFact> facts = [new(ProblemFactKind.Span, SourceRef.Of(node), ((long)part.Start << 32) | (uint)part.Length)];
+        ReadOnlySpan<ProblemFact> facts = [LocatedFact(node, part)];
         BindingProblem problem = new(this.CodeOf(node, BindingFailure.Unsupported), DiagnosticRequirement.Binding(BindingFailure.Unsupported), SourceRef.Of(node), 1);
         this.report.Add(problem with { Condition = this.report.Condition(problem, facts) }, facts);
     }
@@ -317,6 +318,9 @@ public sealed partial class Binding
             case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: an associated Type declaration, with its Instance.
                 this.ReportAssociatedAmbiguity(node, store, index, problem);
                 break;
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 8 }: // Role 8: a conformance an index key's selection weighed, with its Instance.
+                this.ReportKeyAmbiguity(node, store, index, problem);
+                break;
             case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 3 }:
                 // Role 3, "candidate": a declaration a selection considered and rejected or could not order (CandidateFacts).
                 this.ReportCandidates(node, store, index, problem);
@@ -341,6 +345,10 @@ public sealed partial class Binding
                 break;
             case BindingFailure.AssociatedInference when this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportAssociatedInference(node, store, index, problem);
+                break;
+            case BindingFailure.AnalysisLimit when this.FactOf(index, ProblemFactKind.Reason) is { } bound:
+                var (limitValue, limitText) = AnalysisLimitOf((AnalysisBound)bound.Value);
+                node.ReportIn(store, problem.Requirement, problem.Code, limitValue, limitText, condition: problem.Condition);
                 break;
             case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { } entry && entry.Value == 2:
                 // Role 2, "entry": a range iteration's selected entry declaration (IntoIterable, Iterable or UniqIterable, SPEC 14.6.2),

@@ -8,15 +8,14 @@ namespace Kimi.Compiler.Mir;
 // A5's Call contract records (A3 5, Calls; E14; SPEC 7.2.3, 15.8.2; DECISIONS R4-M51, R4-M63, R4-M93, R4-M148, R4-M154): the retention a
 // Call applies, by callee kind, apart from its transfer (MirBorrows.Calls).
 // Input: a Call terminator; for a callee's contract Binding's retention (TyCtxt.Retains over the callee's declaration and Subst, an
-// intrinsic's library declaration included, or a Value callee's declared signature) and the intrinsic table's retained operand beyond a
-// declaration (MirDescriptors); a default template's call (MirCalleeKind.Fn, Arg > 0) needs neither.
-// Output: Planned, in reused scratch (Plan: the same with PD13's hold; MirBorrows.Holders reads the result's kinds before the forward
-// solve): the result's kinds by operand position (resultKinds) and whether it is untied, the contract's
-// retention whose Writes the Call stores through (planned), its slots' operand positions (slotPositions) and the outputs the call writes only
-// where their receiver refers to (its referent stores, CallRetention.ReferentStores, by position); Retaining, the CallRetention of a
-// callee's contract; Broken, a Value call whose declared signature does not number its operands; Cover, a written input's covering inputs
-// by position (covering); and PD13's view hold (held, R4-M148),
-// which MirBorrows.Reports applies.
+// intrinsic's library declaration included, its instance read in the view's case, or a Value callee's Type and declared signature, each
+// in the view's case) and the intrinsic table's retained operand beyond a declaration (MirDescriptors); a default template's call
+// (MirCalleeKind.Fn, Arg > 0) needs neither.
+// Output: Planned, in reused scratch (MirBorrows.Holders reads the result's kinds before the forward solve): the result's kinds by
+// operand position (resultKinds) and whether it is untied, the contract's retention whose Writes the Call stores through (planned), its
+// slots' operand positions (slotPositions) and the outputs the call writes only where their receiver refers to (its referent stores,
+// CallRetention.ReferentStores, by position); Retaining, the CallRetention of a callee's contract; Broken, a Value call whose declared
+// signature does not number its operands; Cover, a written input's covering inputs by position (covering).
 // - A callee's contract: its records, slots to positions (Position: a Closure callee's input 0, its call receiver, at the callee operand,
 //   position call.Count, where TyCtxt.HasReceiverInput says the contract has it; every other slot as MirCallee.Position maps it), and an
 //   intrinsic's Value for the operand the builder adds beyond its declaration. The records and the referent stores map through the one
@@ -24,12 +23,8 @@ namespace Kimi.Compiler.Mir;
 // - SPEC 4.8.4, 5.6 (R4-M40): that operand, RawSlice's backing, ties the result: `x[r]` is `x.slice(r)`, during its backing, and reaches
 //   what the backing's value reaches. Only a written `Raw.slice`, whose backing is the builder's Unit constant (nothing backs it), keeps
 //   its declaration's untied result, a fresh anchor tied to no argument (SPEC 15.6).
-// - PD13 (SPEC 7.7.3; R4-M126 (iii), R4-M148): a Call whose acquired receiver, the Semantics of its callee operand's case Type, is
-//   Exclusive while the callee's case Type admits a Shared one (TyCtxt.ClosureReceiverIn) holds the view: each rejection of it is recorded
-//   as the located Unsupported_Kd at its subject (MirBorrows.Reports). Plan sets the fact in the forward solve, which plans every
-//   reachable Call before the checks replay records any problem; Run resets it per view. Removal: per-case callee acquisition (PLAN G13).
-// - G136 (R4-M148): a Value call whose declared signature's inputs are not its operands is a broken contract: Plan maps no record of it and
-//   the checks record InternalInvariant_Kd at the call (MirBorrows.Locations).
+// - G136 (R4-M148): a Value call whose declared signature's inputs are not its operands is a broken contract: Planned maps no record of
+//   it and the checks record InternalInvariant_Kd at the call (MirBorrows.Locations).
 // - G338 (SPEC 5.2.1 Retained dependencies, 5.7's table): Cover, the inputs whose storage a written input's stated raw layers address,
 //   those at its own address (TyCtxt.OwnLayers: the parts it holds by value, at any holder; PLAN G598, G583), Binding's reading of
 //   their members (TyCtxt.LayerMembers), a direct callee's or a Function Item's declaration (PLAN G584). Only an
@@ -41,30 +36,22 @@ namespace Kimi.Compiler.Mir;
 // Invariants: a CallRetention.Limit, a genuine limit (Binding's storage bounds or a keeper cycle), retains nothing the stratum follows;
 // another terminator, an intrinsic without a declaration and a default template's call have no CallRetention.
 // Must not read a state or apply a record (MirBorrows.Calls), derive retention (TyCtxt.Retains) or record a problem: the checks record the
-// Limit as a located Unsupported_Kd at the call (R4-M51, MirBorrows.Locations).
+// Limit as OwnershipDepthLimit_Kd at the call (R4-M51, R4-M153, MirBorrows.Locations).
 internal sealed partial class MirBorrows
 {
     private readonly List<int> covering = []; // By operand position: the inputs whose storage the store being kept also writes (Cover).
     private readonly List<BoundType> coverInputs = []; // Cover's scratch: the callee's instantiated inputs.
     private readonly List<OwnLayer> ownLayers = []; // Cover's scratch: the parts at the written input's own address (TyCtxt.OwnLayers).
-    private RetentionKind[] resultKinds = []; // A Call's result kinds by operand position (Plan).
-    private int[] slotPositions = []; // A Call's contract slots' operand positions (Plan).
-    private int[] referentStores = []; // A Call's referent stores by operand position (Plan; CallRetention.ReferentStores).
+    private RetentionKind[] resultKinds = []; // A Call's result kinds by operand position (Planned).
+    private int[] slotPositions = []; // A Call's contract slots' operand positions (Planned).
+    private int[] referentStores = []; // A Call's referent stores by operand position (Planned; CallRetention.ReferentStores).
     private int referentCount;
-    private CallRetention? planned; // A Call's contract retention, whose Writes it stores through (Plan); null for none.
-    private bool held; // PD13's view hold (R4-M126 (iii), R4-M148): the view has a Call acquiring more than its case admits (Plan).
+    private CallRetention? planned; // A Call's contract retention, whose Writes it stores through (Planned); null for none.
 
     // A contract slot's operand position: with the call receiver input (receiver, call.Count), slot 0 is the callee operand and slot i the
     // argument i - 1 (R4-M148); without it (receiver -1), as MirCallee.Position maps a function's slots.
     private static int Position(in MirCallee callee, int receiver, int slot)
         => receiver < 0 ? MirCallee.Position(callee.Symbol, slot) : slot == 0 ? receiver : slot - 1;
-
-    // A Call's plan (Planned) with PD13's hold (Overacquired). Whether the result is untied.
-    private bool Plan(in MirTerminator call)
-    {
-        this.held |= this.Overacquired(call);
-        return this.Planned(call);
-    }
 
     // A Call's records into the scratch (A3 E14): its callee's contract (Retaining), slots to positions, the result's kinds with an
     // intrinsic's Value for the operand the builder adds beyond its declaration (MirDescriptors), which ties the result unless it is a
@@ -117,13 +104,6 @@ internal sealed partial class MirBorrows
     // (TyCtxt.HasReceiverInput, read through one Semantics layer), else -1.
     private int Receiver(in MirTerminator call)
         => call.Callee.Kind == MirCalleeKind.Value && cases.TypeOf(call.Operand) is { } callee && types.HasReceiverInput(callee) ? call.Count : -1;
-
-    // PD13's hold (R4-M126 (iii)) at a Call with a call receiver input: an Exclusive acquisition, a `uniq` callee operand, where the case
-    // Type admits a Shared receiver is the only one stronger than its case's (the acquisition is the callee's strongest receiver, and a
-    // Consuming one never depends on a case).
-    private bool Overacquired(in MirTerminator call)
-        => this.Receiver(call) >= 0 && cases.TypeOf(call.Operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var closure] } &&
-            types.ClosureReceiverIn(closure) == SemanticsKind.Ref;
 
     // G338 (SPEC 5.2.1 "storage a pointer addresses `during o` is covered by the Loans of `o`", 5.7's table): into `covering`, the operand
     // positions of the borrows the stated raw layers at a written input's own address belong to among the call's inputs, whose holders the
@@ -198,9 +178,15 @@ internal sealed partial class MirBorrows
             (ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count) != call.Count;
 
     // The retention a Call's contract gives: TyCtxt.Retains over the callee's declaration (an intrinsic's library declaration, E14) and
-    // Subst, or a Value callee's declared signature; none for another terminator, an intrinsic without a declaration or a default template's
-    // call. Its Limit, a genuine limit, retains nothing the stratum follows: the checks record a located Unsupported_Kd at the call
-    // (R4-M51); a call over storage Binding rejected has its rows (G240).
+    // Subst, or over a Value callee's Type and declared signature. Every Type the call passes to its contract is read in the selected view's
+    // case after the call's substitution, never through a cased substitution (MirCases; SPEC 7.7.3, 8.14, 15.8.2, as a destruction's
+    // contract is read over its case Type): a Value call's callee and declared signature, already its instance's Types; a direct call's
+    // instance inputs, result, destruction receiver and bound signatures, which Retains reads in the view's cases (MirCases.View), keyed by
+    // its substitution's case (TyCtxt.CaseSubst). So a Closure callee's call receiver input is the receiver its case admits
+    // (TyCtxt.ClosureReceiverIn), and an input of a pair layer is its case's Type, by value in the owner case, so the call writes nothing
+    // through it there (SPEC 15.6.4); none for another terminator, an intrinsic without a declaration or a default template's call. Its
+    // Limit, a genuine limit, retains nothing the stratum follows: the checks record it as OwnershipDepthLimit_Kd at the call (R4-M51,
+    // R4-M153, MirBorrows.Locations); a call over storage Binding rejected has its rows (G240).
     private CallRetention? Retaining(in MirTerminator call)
     {
         var callee = call.Callee;
@@ -210,7 +196,7 @@ internal sealed partial class MirBorrows
         }
 
         return callee.Kind == MirCalleeKind.Value
-            ? types.Retains(cases.TypeOf(call.Operand), this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
-            : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl);
+            ? types.Retains(cases.TypeOf(call.Operand), cases.Type(this.body.Consts[callee.Arg].Type), this.body.Key.Decl)
+            : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl, cases.View);
     }
 }

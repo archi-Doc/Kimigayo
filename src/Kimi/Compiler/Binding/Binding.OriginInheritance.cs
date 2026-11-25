@@ -95,6 +95,9 @@ public sealed partial class Binding
         var binders = this.originScratch.Rent(definitionOrigins.Count);
         Array.Clear(inputs, 0, count);
         Array.Clear(binders, 0, definitionOrigins.Count);
+        // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the slot's Types form in a site frame at the implementation (an override, a specialization)
+        // where none is open, so a Type past the limit formed there is refused at it.
+        var site = this.OpenQuerySite(function);
         try
         {
             for (var i = 0; i < definition.Parameters.Count; i++)
@@ -314,6 +317,7 @@ public sealed partial class Binding
         {
             this.originScratch.Return(binders, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
+            this.CloseQuerySite(site);
         }
 
         // The definition's Type slots, Origins and inputs in one pass (PLAN G457), then the declaring Type's slots.
@@ -393,7 +397,7 @@ public sealed partial class Binding
                 {
                     if (ReferenceEquals(use, syntax))
                     {
-                        this.obligationSet.Remove(this.obligations[i]);
+                        this.obligationSet.Remove(new(this.obligations[i]));
                         this.obligations.RemoveAt(i);
                         break;
                     }

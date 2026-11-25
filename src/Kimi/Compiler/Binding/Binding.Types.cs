@@ -64,6 +64,19 @@ public sealed partial class Binding
     private BoundType? BindType(Koto syntax, BindingScope scope)
         => this.BindType(syntax, scope, this.TypeContext(syntax, scope));
 
+    // SPEC 8.5.5 (C4 rulings 8-9): a Type-expression node's Type value is published here, once, and only Complete: after the gate a Type
+    // holding a pending projection (HoldsPendingProjection) stays unpublished and is returned for a partial header to inspect, so the
+    // binding after the requests forms the node and its parts again. A projection's name node and a specification's head keep their own
+    // write, the projection the name denotes as written (BindAssociatedProjection, BindAssociatedName; AsWritten's input, SPEC 8.6.1).
+    private BoundType? PublishType(Koto syntax, BoundType? type)
+        => type is not null && this.HoldsPendingProjection(type) ? type : Complete(syntax, type);
+
+    // The one predicate of a Type value not yet publishable: after the gate, a projection on a struct or enum receiver is a value inference
+    // has not determined (formed Types hold a determined projection's value, never the projection).
+    private bool HoldsPendingProjection(BoundType type) => this.associatedInferenceReady && this.PendingAssociatedType(type);
+
+    // The Type binding of a written Type occurrence: the one producer of its Type, which it completes on `syntax` and publishes as formed
+    // there (FormedTypeRows; PLAN G1278), whatever names it: a declaration, a `Self`, an alias, a Type parameter.
     private BoundType? BindType(Koto syntax, BindingScope scope, TypeBindingContext context)
     {
         if (syntax.BoundType is { } known && !(this.closureHeader?.ReturnType is { } result && IsWithin(syntax, result)))
@@ -121,7 +134,7 @@ public sealed partial class Binding
             {
                 // The children were checked in their Type/length contexts; the rejected combination establishes no Type.
                 RestPendingOn(originDeclaration, syntax);
-                return Complete(syntax, null);
+                return this.PublishType(syntax, null);
             }
 
             if (type is null)
@@ -135,7 +148,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (this.associatedInferenceReady && this.PendingAssociatedType(type))
+            if (this.HoldsPendingProjection(type))
             {
                 return type; // A partial header may inspect structure; syntax is not a completed Type yet.
             }
@@ -148,7 +161,8 @@ public sealed partial class Binding
                 return this.HeightChecked(syntax, type);
             }
 
-            Complete(syntax, type);
+            FormedTypeRows.Add(syntax);
+            this.PublishType(syntax, type);
             this.CompleteOriginDeclaration(originDeclaration);
             return syntax.BoundType;
         }
@@ -175,7 +189,8 @@ public sealed partial class Binding
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
-                Complete(root.Operands[0], rootType);
+                FormedTypeRows.Add(root.Operands[0]);
+                this.PublishType(root.Operands[0], rootType);
                 return rootType;
             case GenericParameterKoto:
                 return syntax.BoundSymbol?.WholeType;
@@ -212,7 +227,7 @@ public sealed partial class Binding
                             while (true)
                             {
                                 groupedTarget.BoundSymbol = target;
-                                Complete(groupedTarget, inner);
+                                this.PublishType(groupedTarget, inner);
                                 if (groupedTarget is not ParenthesizedTypeKoto targetParentheses)
                                 {
                                     break;
@@ -425,7 +440,7 @@ public sealed partial class Binding
         {
             // SPEC 3.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
             // declaration's only Constraint, so no container reference or obligation is formed.
-            return Complete(generic, own);
+            return this.PublishType(generic, own);
         }
 
         // SPEC 15.3.5: Loan<T> is formed only over a complete ref, uniq, objref or objuniq borrow Type.
@@ -435,7 +450,7 @@ public sealed partial class Binding
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
-        return own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
+        return own is null ? null : this.PublishType(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
     }
 
     // SPEC 9.7, 23.1.2: explicit Type arguments resolve in the use-site context, whatever their head, so a head or arity that forms no
@@ -502,5 +517,33 @@ public sealed partial class Binding
         internal void Remove(Koto syntax) => HirTables.Of(syntax).Families.ResolvingTypes.Ref(syntax.SyntaxId, binding) = false;
 
         internal bool Contains(Koto syntax) => syntax.SyntaxOwner is { } table && table.Hir.Families.ResolvingTypes.Get(syntax.SyntaxId, binding);
+    }
+
+    /// <summary>The `formedTypes` family's one accessor (DECISIONS BU-220; PLAN G1278, SPEC 9.7, 9.7.1, 12.4): a kept family, whether a node
+    /// forms its Type. A `bool` row in the node's module's NodeColumns at its SyntaxId, written true by each producer where it completes
+    /// the node's Type: BindType's completion of a written occurrence (a `Self`, an alias and a Type parameter included) and of a rooted
+    /// name's operand; EnumQualifierType, for a Case or construction qualifier that writes its own list or is its declaration's `Self`;
+    /// ConstructionTargetType, for a qualifier with no own parameters, whose path forms the whole Type; BindContractReference, at each
+    /// node of a written Contract reference it completes; and the Dictionary literal's binder. A pass's reset empties its modules' rows
+    /// (Empty), which its binders write again, so a row is its node's in the latest pass over its module: a writer's decision reads the
+    /// resolved declaration (ConstructionTargetType's own parameters, the binder a qualifier's symbol selects), which an edit can change
+    /// under an unchanged node. A node of another pass's module (the frozen library's) keeps its row, and a renumbering moves it; read
+    /// only with the node's Type. A node that takes its Type from an expected Type, an inference or another node never has one. Read by
+    /// ValidateConstraintUses' site test (ConstrainedType): a constructed Type with clauses is judged at the node that forms it, and
+    /// every other node carries it.</summary>
+    private static class FormedTypeRows
+    {
+        internal static void Add(Koto node) => HirTables.Of(node).Families.FormedTypes.Ref(node.SyntaxId) = true;
+
+        internal static bool Contains(Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.FormedTypes.Get(node.SyntaxId);
+
+        // The pass reset's step (ResetPass), over the running pass's modules.
+        internal static void Empty(BindingPass pass)
+        {
+            for (var i = 0; i < pass.Count; i++)
+            {
+                pass[i].Syntax.Hir.Families.FormedTypes.Empty();
+            }
+        }
     }
 }

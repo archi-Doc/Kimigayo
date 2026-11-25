@@ -5,8 +5,9 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Derived, unsupported and broken values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, the one broken-HIR-contract path
-// (Invariant: InternalInvariant_Kd at a node no published form takes there, PLAN G396 (3) Z1), the one path of a construction record
+// Derived, unsupported and broken values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, the one broken-contract path
+// (Invariant: InternalInvariant_Kd at a node no published form takes there, PLAN G396 (3) Z1, or at a call omitting a default whose copy
+// a complete compilation's formation leaves Incomplete, R5-M151), the one path of a construction record
 // made in the body being built (Record), and the gate of every derived Opaque value (DECISIONS Z17), whose site names the uses
 // MirBuilder.Opaque.Uses.cs collects: the node's syntax's, a part built already, or its caller's.
 // - The gate: Opaque (the node's own uses), Derived (the uses its caller collected) and DerivedValue (an Opaque temp's value) form a
@@ -26,8 +27,10 @@ namespace Kimi.Compiler.Mir;
 //     (AdtDef.BaseNotStored, FieldOwner's Index none; PLAN G651 a2), Derived;
 //   - a container whose published Completion completes into a destination neither Unit nor Never (Leave): lint row 12 or the guess
 //     rule's Error (R5-M186), Derived;
-//   - an omitted default whose template failed (Body null or Failed) or whose copy the budget refuses (Refuses' Resource record at the
-//     call) (Defaults): Derived;
+//   - an omitted default whose template failed (Body null or Failed), whose copy the budget refuses (Refuses' Resource record at the
+//     call) or whose copy's formation is not Formed (Instantiates): HeightLimit, resting on the call's TypeHeightLimit_Kd (PLAN G651
+//     U2b), and Incomplete where Binding is incomplete (TyCtxt.BindingComplete; R5-M151) (Defaults): Derived; a complete compilation's
+//     Incomplete is a broken contract at the call (Invariant; PLAN G651 U2c);
 //   - an rvalue that would lend a Place in an Opaque temp (Unlent): the temp's site's fact (R4-M149), DerivedValue.
 internal sealed partial class MirBuilder
 {
@@ -63,8 +66,9 @@ internal sealed partial class MirBuilder
         this.Invariant(node, destination, Completes(node));
     }
 
-    // A broken contract's record and Opaque value (Invariant) at a site naming the uses its caller collected: the node's syntax's, or a
-    // part built already (SiteUses(MirPlace?), R5-M63, R5-M84).
+    // A broken contract's record and Opaque value (Invariant) at a site naming the uses its caller collected: the node's syntax's, a part
+    // built already (SiteUses(MirPlace?), R5-M63, R5-M84), or a default's earlier slots where a complete compilation's formation of its
+    // copy is Incomplete (Defaults; R5-M151, PLAN G651 U2c), guarded at the omitting call, where Unsupported guarded the default's value.
     private void Invariant(Koto node, MirPlace destination, bool completes)
     {
         if (HirTables.Op(node) != HirOp.Error)

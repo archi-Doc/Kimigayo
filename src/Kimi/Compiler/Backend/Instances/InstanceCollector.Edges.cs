@@ -53,13 +53,7 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        var body = program.Body(set.Items[item].BodyOrdinal);
-        if (this.extent < program.Bodies.Length)
-        {
-            this.Templates(program); // Bodies a lookup built during the run (PLAN G951).
-        }
-
-        this.missed |= !program.Drops.Holds(body.Ordinal); // Round: a body the analyses have not stepped.
+        var body = program.Body(set.Items[item].BodyOrdinal); // Held by A2's table (Round), so built and templated before the run.
         this.LayOutLocals(item, body);
         this.LayOutNeeds(item, body);
         // A body with a case branch: the blocks the item's view reaches (MirCases.Branch's side), whose sites alone are admitted.

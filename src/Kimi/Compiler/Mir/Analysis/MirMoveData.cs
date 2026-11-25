@@ -26,10 +26,10 @@
 // (closed upward and backward through the carries), so a source's parts whose counterparts lie under different Move Paths have
 // different owners. A fact on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part"
 // (A1's Unplaced lane); a fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking
-// entry. A published fact is a path's number, or its complement for the Unplaced lane. Invariant: a carry's source lies in a run
-// recorded before the carry's (a temp is defined at a location the walk visits before the one that takes it, and runs are appended) and
-// differs from its destination (MirValidator: no placing location takes its own destination temp, no insertion's value holds its
-// construction), so one reverse pass over the carries closes them.
+// entry. A published fact is a path's number, or its complement for the Unplaced lane.
+// Invariants: a carry's source lies in a run recorded before the carry's (a temp is defined at a location the walk visits before the
+// one that takes it, and runs are appended) and differs from its destination (MirValidator: no placing location takes its own
+// destination temp, no insertion's value holds its construction), so one reverse pass over the carries closes them.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -97,7 +97,8 @@ internal sealed class MirMoveData(TyCtxt types)
     internal int FlowCount { get; private set; }
 
     /// <summary>Gets a value indicating whether a view decides an access of the body: a case-dependent access (a PairLayer step, a
-    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>).</summary>
+    /// PairAcquire, an Adapt; <see cref="MirAccess.CaseDependent"/>) or a case branch, whose side the view selects (<see
+    /// cref="MirBody.CaseSwitches"/>; a side may hold only case-free accesses, a by-case call's borrows of its callee).</summary>
     internal bool ViewDependent { get; private set; }
 
     /// <summary>Gets a value indicating whether the body constructs its object in _0 from fresh storage (SPEC 6.3).</summary>
@@ -117,7 +118,7 @@ internal sealed class MirMoveData(TyCtxt types)
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.indexCount) = (0, false, 0, 0, 0, -1);
+        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.indexCount) = (0, body.CaseSwitches > 0, 0, 0, 0, -1);
         this.children.Clear();
         this.places.Clear();
         this.nevers.Clear();

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -9,6 +10,12 @@ namespace XunitTest;
 
 public class PatternTypeFormationBindingTest
 {
+    // PLAN G464 (SPEC 15.6.1, 15.3.4): a pattern's Type holding a Function Type is formed without the nested signature, whose input is
+    // its premise, so the plan is Proven (dev: UnprovenConstraint_Kd at each pattern and Unsupported_Kd at each arm of the Pending plan).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nfunc host(s: ref/i32, o: Option<(Option<T during s>) -> i32>) -> i32\n    return match o\n        .Some(let f) => 0\n        .None => 1\n", "clean")] // c1p
+    public void ANestedSignatureInAPatternTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Theory]
     [InlineData("Box<string>", "_")]
     [InlineData("raw/Box<string>", "_")]
@@ -96,12 +103,80 @@ public class PatternTypeFormationBindingTest
         Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Opaque });
     }
 
+    // SPEC 9.4.4, 15.1.6, 23.1.2 (PLAN G1321, the Middle's C-551 K1): public Wrap's and E's requirement `T is Hidden` expose the
+    // non-public contract Hidden (their own records); E<Source> passes BindMatch's judgment and the late recheck refutes it at the root
+    // only, so `.A(let x)` keeps its kind and x, an owned part of the `@move` Subject below the root, is acquired without a proof:
+    // Moved (before: the per-position recheck refuted x's own Type Wrap<Source> and left x unacquired). The plan is built.
+    [Fact]
+    public void ALateRefutedRootAcquiresItsBindingsBelow()
+    {
+        var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic struct Wrap<T>\n    T is Hidden\npublic enum E<T>\n    T is Hidden\n    A(Wrap<T>)\n    B\nfunc f(value: E<Source>) => match value@move\n    .A(let x) => ()\n    .B => ()");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
+        var plan = Plan(c);
+        Assert.Equal(MatchCoverageState.Invalid, plan.Coverage.State);
+        Assert.Equal(BoundPatternKind.Case, plan.Positions[0].Kind);
+        var binding = Assert.Single(plan.Positions, static x => x.Kind == BoundPatternKind.Binding);
+        Assert.Equal(0, binding.Parent);
+        Assert.Equal(PatternAcquisition.Move, binding.Acquisition);
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
     [Fact]
     public void UnrelatedInvalidContextPreservesValidPattern()
     {
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\nfunc f(value: bool) => match value\n    _ => ()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
+    }
+
+    // SPEC 8.6.3, 23.1.2 (PLAN G1278, G1321), 8.3, 17.3: a match never judges its Subject Type's formation: the Subject carries that
+    // Type, judged at its formation site (the written `Box<string>`, 3:18), and the plan reads the verdict with no record (Q13: the root's
+    // restating record at 5:9 is gone); every arm binds, so a body's own failure (`b.nope`, 12.5.1) is reported. Each published error
+    // as Code@line:column. Controls: a valid Subject Type keeps the `try`'s 17.3 record, and its `@move` twin is valid.
+    [Theory]
+    [InlineData("func f(o: Option<Box<string>>) -> i32\n    return match o\n        .Some(_) => 1\n        .None => 0", "UnsatisfiedConstraint_Kd@3:18")]
+    [InlineData("func f(o: Option<Box<string>>) -> i32\n    return match o\n        .Some(let b) => b.nope\n        .None => 0", "UnsatisfiedConstraint_Kd@3:18 | UnresolvedBinding_Kd@5:25")]
+    [InlineData("func f(o: Option<Box<i32>>) -> Option<i32>\n    let b = try o\n    return .Some(1)", "TransferRequired_Kd@4:17")]
+    [InlineData("func f(o: Option<Box<i32>>) -> Option<i32>\n    let b = try o@move\n    return .Some(1)", "")]
+    public void ASubjectTypeIsJudgedOnlyAtItsFormationSite(string function, string expected)
+    {
+        var source = "struct Box<T>\n    T is i32\n" + function + "\n\npublic func main()\n    Console.writeLine(\"x\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(expected.Length == 0, c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(expected, TestDiagnostics.ErrorSites(c, source));
+    }
+
+    // The same rule at a `try`, whose two synthesized arms share its span: a `try` over a failed operand Type records nothing of its
+    // Subject Type, whose failure is recorded at its formation site, so its site holds no two equal records and no internal fault
+    // (before G1321: two equal records at one site, CheckFaulted_Kd). Each row asserts that and the records its SPEC labels give that this rule keeps
+    // (`required`); it pins no exact list. Labels (SPEC 17.3, 23.1.2): gtrymin is invalid by one independent failure, its written
+    // Constraint's subject `I.Iterator.Item` (3:5: I declares no member Iterator; 8.5.2 spells the projection `I.(Iterator).Item`); its
+    // operand, a call's temporary, is transferred and its return target `Option<i64>` takes `.None`, so the `try` (6:18) and its operand
+    // (6:22) read only that failed Constraint and rest on it. gtryinv and gtryres are invalid by `Box<string>` where the parameter Type is
+    // written (3:18, 8.3) and by the bare non-Copy Place operand moved without `@move` (4:17, 17.3); gtryres's return target
+    // `Result<i32, i32>` takes `.Err(error)`, error `i32` fitting `i32`, so it holds. The `try` and its synthesized nodes carry the
+    // Subject Type and are not failed by it (PLAN G1278: G1321-C's restating 4:13 is gone, Q13), so the operand's 17.3 record is reported.
+    [Theory]
+    [InlineData("func drain<I>(iterator: uniq/I) -> Option<i64>\n    I is Iterator\n    I.Iterator.Item is i64\n    var total: i64 = 0\n    loop\n        total += try iterator.next()\n        if total > 10\n            exit\n    return .Some(total)", "UnresolvedBinding_Kd@3:5")]
+    [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Option<Box<string>>) -> Option<i32>\n    let b = try o\n    return .Some(1)", "UnsatisfiedConstraint_Kd@3:18 | TransferRequired_Kd@4:17")]
+    [InlineData("struct Box<T>\n    T is i32\nfunc f(o: Result<Box<string>, i32>) -> Result<i32, i32>\n    let b = try o\n    return .Ok(1)", "UnsatisfiedConstraint_Kd@3:18 | TransferRequired_Kd@4:17")]
+    public void ATryOverAFailedOperandTypeRecordsOncePerSite(string function, string required)
+    {
+        var source = function + "\n\npublic func main()\n    Console.writeLine(\"x\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var errors = TestDiagnostics.ErrorSites(c, source).Split(" | ");
+        Assert.Equal(errors.Length, errors.Distinct().Count());
+        Assert.DoesNotContain(errors, static x => x.StartsWith("CheckFaulted_Kd", StringComparison.Ordinal) || x.StartsWith("InternalInvariant_Kd", StringComparison.Ordinal));
+        Assert.Empty(required.Split(" | ").Except(errors));
+
+        // MIR is built for these programs (the fault ended the check before it): the builder meets no broken contract (C-551 K2).
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
     }
 
     [Trait("Purpose", "Allocation")]

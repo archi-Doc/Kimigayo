@@ -17,6 +17,11 @@ public partial class ResultPremiseTest
 
     private const string ResultCall = "func k(q: ref/i32, f: () -> Option<T during q>) -> i32\n";
 
+    // PLAN G464: a Function result whose nested input names T at r's own Origin, and its twin whose nested result does too.
+    private const string FunctionResult = "func r(q: ref/i32) -> (Option<T during q>) -> i32 => $abort(\"no\")\nfunc host(s: ref/i32) -> i32\n";
+
+    private const string FunctionBothResult = "func r(q: ref/i32) -> (Option<T during q>) -> Option<T during q> => $abort(\"no\")\nfunc host(s: ref/i32) -> i32\n";
+
     // An enclosing body's local whose value Origin a named nested signature names (BU-56's unannotated class).
     private const string LocalR = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    let r = arr[0]\n";
 
@@ -29,7 +34,7 @@ public partial class ResultPremiseTest
     [InlineData("t7", StaticClause + ResultCall + "    let o = f()\n    return 0\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("t7_c", StaticClause + ResultCall + "    origin q outlives static\n    let o = f()\n    return 0\n", "")]
     [InlineData("t7n", StaticClause + "func h(x: ref/i32) -> Option<T during x>\n    origin x outlives static\n    return .None\nfunc k(q: ref/i32) -> i32\n    let o = h(q)\n    return 0\n", "UnprovenConstraint_Kd h(q); UnprovenOriginRelation_Kd q")]
-    [InlineData("t7l", StaticClause + "func k(q: ref/i32) -> i32\n    let o: Option<T during q> = .None\n    return 0\n", "UnprovenConstraint_Kd .None; UnprovenOriginRelation_Kd Option<T during q>")] // + the MIR's record, published directly (R5-M184, H3b T51)
+    [InlineData("t7l", StaticClause + "func k(q: ref/i32) -> i32\n    let o: Option<T during q> = .None\n    return 0\n", "UnprovenOriginRelation_Kd Option<T during q>")] // the MIR's record, published directly (R5-M184, H3b T51); `.None` carries the annotated Type, so its restating UnprovenConstraint_Kd goes (G1278-A, Q13; F's G1278-3)
     [InlineData("z1", NestedResult + "ref/i32 during r\n    return q\nfunc bad() -> i32\n    let long = 1\n    let lr = long@ref\n    var keep = lr\n    if true\n        let short = 2\n        let sq = short@ref\n        keep = k(sq, lr, func [] () => Option.None)\n    return keep@follow\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("z1_c", NestedResult + "ref/i32 during r\n    origin q outlives r\n    return q\nfunc good() -> i32\n    let long = 1\n    let lr = long@ref\n    let short = 2\n    let sr = short@ref\n    let keep = k(lr, sr, func [] () => Option.None)\n    return keep@follow\n", "")]
     [InlineData("r3", "func g(q: ref/i32, cb: (ref/i32) -> Option<ref/(ref/i32 during q)>) -> i32 => 0\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q)")]
@@ -83,6 +88,15 @@ public partial class ResultPremiseTest
     [InlineData("kr1q", StaticClause + "func mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> T during p\n    let t = mk(.None, p)\n    return t@move\n", "")]
     [InlineData("kr1x", StaticClause + "func k(p: ref/i32, q: ref/i32) -> T during p\n    let c = func [] () -> T during q => $abort(\"no\")\n    return $abort(\"no\")\n", "UnprovenOriginRelation_Kd T during q")]
     [InlineData("kr1y", StaticClause + AllClause + "func k(p: ref/i32) -> Q during p\n    let c = func [] () -> T during p => $abort(\"no\")\n    return $abort(\"no\")\n", "UnprovenOriginRelation_Kd T during p")]
+    // PLAN G464 (SPEC 15.6.1, 15.3.4, 15.6.4 step 3): a call's instantiated Function result is well formed by the clauses the call
+    // proves: its nested input is that signature's premise, proven at its calls (o6i, o6ri: the value call's record at `.None`, which
+    // carries that input, so its UnprovenConstraint_Kd goes: G1278-A, Q13, F-2), and its nested result was judged where r wrote it, under
+    // r's nested input (o6r). Dev's UnprovenConstraint_Kd at `r(s)` goes: acceptance moves (o6v, o6r) and a false record (o6i, o6ri).
+    [InlineData("o6v", StaticClause + FunctionResult + "    let f = r(s)\n    return 0\n", "")]
+    [InlineData("o6r", StaticClause + FunctionBothResult + "    let f = r(s)\n    return 0\n", "")]
+    [InlineData("o6i", StaticClause + FunctionResult + "    let f = r(s)\n    return f(.None)\n", "UnprovenOriginRelation_Kd .None")]
+    [InlineData("o6ri", StaticClause + FunctionBothResult + "    let f = r(s)\n    let o = f(.None)\n    return 0\n", "UnprovenOriginRelation_Kd .None")]
+    [InlineData("o6s", StaticClause + FunctionResult + "    origin s outlives static\n    let f = r(s)\n    return f(.None)\n", "")]
     [InlineData("kr1i", StaticClause + "func k(p: ref/i32) -> T during p\n    let c = func [] () -> T during p => $abort(\"no\")\n    return $abort(\"no\")\nfunc m(q: ref/i32) -> i32\n    let t = k(q)\n    return 0\n", "UnprovenConstraint_Kd k(q)")]
     // PLAN G216 (b), R7-O3 U-O3 (SPEC 15.3.4: a nested signature's result is well formed under the declaration's premises and its own
     // well-formed inputs for every choice of its per-call Origins; a per-call relation must follow from those inputs): a relation with a

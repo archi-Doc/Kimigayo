@@ -220,7 +220,12 @@ public sealed partial class Binding
     private bool BindFunctionHeader(BindingSymbol symbol, FunctionKoto function)
     {
         var scope = this.scopes[function];
+        // PLAN G651 a2 (F1, BU-161; IMPL 21.3.2): the header is its declaration's, never the demander's (SPEC 23.1.2): the premises it forms
+        // outside its parameters' walks are in a site frame at the function whatever frame the demander holds, so a Type past the limit
+        // formed there is refused at the function.
+        var frame = this.BeginConsultation(function);
         var header = this.PrepareVirtualHeaderPremises(function, scope); // An override's inputs and result bind under its header layer.
+        this.DropConsultation(frame);
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
@@ -234,11 +239,10 @@ public sealed partial class Binding
         {
             // BindType retains a partial value on the parameter symbol without publishing it on
             // syntax. A failed Type (null) is already an error, not an inference dependency.
-            pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.PendingAssociatedType(parameterType);
+            pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.HoldsPendingProjection(parameterType);
         }
 
-        var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
-        if (this.associatedInferenceReady && pendingHeader)
+        if (pendingInputs || (symbol.Type is { } resultType && this.HoldsPendingProjection(resultType)))
         {
             // Result portions that do not depend on missing Type values use the ordinary Origin
             // completion. Unrelated result holes do not hide a determined input/elision contract.

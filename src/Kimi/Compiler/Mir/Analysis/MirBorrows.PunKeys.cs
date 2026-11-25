@@ -7,10 +7,11 @@ namespace Kimi.Compiler.Mir;
 // A5's pun rule, its Place keys (PLAN G667b; contract in MirBorrows.Puns.cs; SPEC 5.7 Calls). Responsibility: Binding's facts at a
 // Place's key (TyCtxt.OwnLayers), folded once per program version (R4-M140): whether a raw layer is at the Place's own address, what
 // its layers state (Stated; AnyStated, which A5's storing rule reads at a store's destination, MirBorrows.Storing), the Types a write through
-// them writes and the keys past them, each past key with the class of its layer (PastLayer), a hidden layer (OwnLayer.Hidden) with neither, and
-// whether every part there is hidden (WhollyHidden: a value that adds no reach of its own);
+// them writes and the keys past them, each past key with the class of its layer (PastLayer) and its layer's `let` mark (OwnLayer.Let), a
+// hidden layer (OwnLayer.Hidden) with neither, and whether every part there is hidden (WhollyHidden: a value that adds no reach of its own);
 // whether W reads a holder at the key by the declared step (Declared: a part there is no layer the walked Type expression writes);
-// a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run; a call input's key and the result's (InputKey);
+// a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run; a call input's key, a Closure call
+// receiver's and the result's (InputKey);
 // the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
 internal sealed partial class MirBorrows
 {
@@ -20,7 +21,7 @@ internal sealed partial class MirBorrows
     private readonly List<BoundType> punViewTypes = []; // The keys' write Types (PunKey's spans).
     private readonly List<OwnLayer> punLayers = []; // OwnLayers' scratch.
     private readonly List<PlaceKey> punPastKeys = []; // The keys past each key's writable entries (PunKey's spans).
-    private readonly List<PastLayer> punPastLayers = []; // Beside punPastKeys: the class of the layer each lies past (PastLayer).
+    private readonly List<(PastLayer Class, bool Let)> punPastLayers = []; // Beside punPastKeys: the class of the layer each lies past (PastLayer) and its `let` mark (OwnLayer.Let).
     private readonly List<int> punWalk = []; // Below's walk: key indices.
     private int[] entryKeys = []; // Per run: an entry's key index plus one (0: not yet read).
     private int punRun = -1; // The run whose scans and entry keys the tables hold.
@@ -121,10 +122,13 @@ internal sealed partial class MirBorrows
     // A call input's key, read by W and the pun rule alike (SPEC 15.6.4, 5.7 Calls, 8.2.3; PLAN G823), and the result's at the result slot
     // (CallRetention.ResultOutput; PLAN G841 (3)): a called function's parameter key (TyCtxt.ParameterKey; at the result, the Type its
     // declaration writes for the result, Binding's SignatureResult), at which OwnLayers marks Hidden the layers its own Type parameters'
-    // bindings hold; the root key of the input or result for any other callee (a value, an intrinsic).
+    // bindings hold; a Closure call's receiver key at its receiver input (TyCtxt.ReceiverKey, Receiver; SPEC 15.8.2), past whose borrow
+    // OwnLayers marks Let the parts its `let` environment bindings hold (PLAN G941); the root key of the input or result for any other
+    // callee (a value, an intrinsic).
     private PlaceKey InputKey(in MirTerminator call, int position, BoundType input)
         => call.Callee is { Kind: MirCalleeKind.Fn, Symbol: { Declaration: Parsing.FunctionKoto } function } && position < call.Count
-            ? types.ParameterKey(function, position < 0 ? position : MirCallee.Slot(function, position), input) : PlaceKey.Root(input);
+            ? types.ParameterKey(function, position < 0 ? position : MirCallee.Slot(function, position), input)
+            : position >= 0 && position == this.Receiver(call) ? types.ReceiverKey(input) : PlaceKey.Root(input);
 
     // A key's facts, folded from TyCtxt.OwnLayers once per program version: whether a raw layer (or an abstract part) is at the Place's own
     // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive), and whether one does
@@ -179,7 +183,7 @@ internal sealed partial class MirBorrows
             {
                 this.punViewTypes.Add(cases.Type(to));
                 this.punPastKeys.Add(past);
-                this.punPastLayers.Add(at);
+                this.punPastLayers.Add((at, own.Let));
             }
         }
 
@@ -279,7 +283,7 @@ internal sealed partial class MirBorrows
         internal bool SomeStated { get; init; } // A raw layer at the key states an Origin other than `static` (Key).
 
         // Whether a raw layer at the key states an Origin other than `static` while another raw layer or an unknown part there does not: a
-        // punned pointer's verdict differs by the layer it lands at, which one state per holder cannot place (MirBorrows.Puns' PunAt).
+        // placed pun's verdict differs by the layer the layout lands it at (MirBorrows.Puns' PlacedAt).
         internal bool PartlyStated => this.SomeStated && !this.Stated;
 
         internal bool Unsupported { get; init; }

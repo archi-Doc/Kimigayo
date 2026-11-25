@@ -47,7 +47,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
-        Assert.Equal(5, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(6, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("llvm-dlltool", libraries[0].GetProperty("generator").GetString());
         Assert.Equal(ToolchainIdentity.Kernel32DefinitionSha256, libraries[0].GetProperty("definitionSha256").GetString());
         Assert.False(libraries[0].TryGetProperty("input", out _));
@@ -86,6 +86,50 @@ public sealed class EmissionArtifactsTest : IDisposable
         c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = kind, Input = input } };
         Assert.False(EmissionArtifacts.Publish(c, null));
         Assert.NotEmpty(PublicationFailure(c));
+    }
+
+    // The Tatara plan's B7b7 (IMPL 20.4; design §5 row 18; O8): a program library's input has its row's extension, checked under the
+    // row's key even when unused, one text per row: a Linux pair takes native/codec.a and refuses native/codec.lib; Windows' text names
+    // its triple and .lib.
+    [Theory]
+    [InlineData("x86_64-unknown-linux-musl", "native/codec.a", null)]
+    [InlineData("x86_64-unknown-linux-musl", "native/codec.lib", "NativeLibraries inputs for x86_64-unknown-linux-musl must be .a files.")]
+    [InlineData("x86_64-pc-windows-msvc", "native/codec.a", "NativeLibraries inputs for x86_64-pc-windows-msvc must be .lib files.")]
+    public void ANativeInputHasItsRowsExtension(string target, string input, string? failure)
+    {
+        var row = TargetProfile.Find(target)!;
+        var c = MinimalEmissionTest.Analyze(row, "::Kimi.Console.writeLine(\"Hello, world!\")", "Hello.kimi", OutputKind.Application);
+        c.Project.Directory = this.directory;
+        c.Project.ProjectFile.NativeLibraries[target] = new() { ["codec"] = new() { Kind = "static", Input = input } };
+        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "Hello.ll"), "O2", row);
+        Assert.Equal(failure is null, EmissionArtifacts.Publish(c, paths));
+        if (failure is not null)
+        {
+            Assert.Contains(failure, PublicationFailure(c), StringComparison.Ordinal);
+        }
+    }
+
+    // The Tatara plan's B7b7 (design §3.7, §3.11; T's rulings D4, D5, O7 and 10): a Linux pair's manifest is the row's: its head without
+    // backendSupport, its entry the generation result's (main on the C path, __kimi_start without a library) and no subsystem, and its
+    // libraries in Ordinal order with c, the row's C runtime, listed only when the module requires it, its entry the compiler's
+    // (resolution toolchain, no input): Ffi's lists c before codec, Hello's none.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ALinuxManifestIsTheRows(bool ffi)
+    {
+        var source = ffi
+            ? "group Codec\n    #LibraryImport(\"codec\", \"codec_add\")\n    public func add(a: i32, b: i16) -> i32\npublic func main()\n    require Codec.add(40, -2) == 38 else => $abort(\"add\")\n"
+            : "::Kimi.Console.writeLine(\"Hello, world!\")";
+        var paths = LinuxPair.Publish(this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
+        var root = manifest.RootElement;
+        Assert.Same(TargetProfile.Linux, NativeToolchain.ValidateManifest(root));
+        Assert.False(root.TryGetProperty("backendSupport", out _));
+        Assert.Equal((ffi ? "main" : "__kimi_start", JsonValueKind.Null), (root.GetProperty("entry").GetString(), root.GetProperty("subsystem").ValueKind));
+        Assert.Equal(
+            ffi ? ["c static resolution=toolchain", "codec static input=" + Path.Combine("..", "native", "codec.a")] : [],
+            root.GetProperty("libraries").EnumerateArray().Select(static x => string.Join(' ', x.EnumerateObject().Skip(1).Select(static y => y.Name == "kind" ? y.Value.GetString() : $"{y.Name}={y.Value.GetString()}")).Insert(0, x.GetProperty("name").GetString() + " ")));
     }
 
     [Theory]
@@ -131,7 +175,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         using var manifest = JsonDocument.Parse(json);
         Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
         NativeToolchain.ValidateManifest(manifest.RootElement);
-        using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 5", "\"schemaVersion\": 4", StringComparison.Ordinal));
+        using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 6", "\"schemaVersion\": 5", StringComparison.Ordinal));
         Assert.Contains("'schemaVersion' is not this compiler's", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
     }
 
@@ -472,9 +516,10 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     // R9-B1: the manifest states the generation result's external declarations, which the native build's object inspection reads in
-    // place of the IR (SPEC 22.6: an import is referenced through __imp_ when dllimport), in declaration order, then the runtime's imports
-    // no external names (LinkAmbiguity, T's rulings 21 (ii) and 28: kernel32's GetLastError once); an uncalled import's library is still
-    // required and listed (SPEC 22.6, IMPL 20.4; RequiredNameWithoutSupplyCannotPublish: it needs its supply).
+    // place of the IR, each with its providing library (NamedProvider; SPEC 22.6: an import is referenced through __imp_ when its library
+    // is an import library), in declaration order, then the runtime's imports no external names, each kernel32's (LinkAmbiguity, T's
+    // rulings 21 (ii) and 28: kernel32's GetLastError once); an uncalled import's library is still required and listed (SPEC 22.6, IMPL
+    // 20.4; RequiredNameWithoutSupplyCannotPublish: it needs its supply), and it has no declaration.
     [Fact]
     public void TheManifestStatesTheModulesExternalDeclarations()
     {
@@ -493,7 +538,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
         Assert.Equal(
-            [("encode", false), ("GetLastError", true), .. ProductRuntime.Where(static x => x != "GetLastError").Select(static x => (x, true))],
+            [("encode", "codec"), ("GetLastError", "kernel32"), .. ProductRuntime.Where(static x => x != "GetLastError").Select(static x => (x, "kernel32"))],
             Declarations(root));
         Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], root.GetProperty("libraries").EnumerateArray().Select(static x => x.GetProperty("name").GetString()));
         NativeToolchain.ValidateManifest(root);
@@ -501,8 +546,8 @@ public sealed class EmissionArtifactsTest : IDisposable
 
     // LinkAmbiguity (T's rulings 21 (ii) and 28, the Back's conditions on C-514): the manifest's external declarations name the imports
     // of the runtime the build links, the product runtime's for an Application and the test runtime's for kimi test's build (published
-    // as TestCommand publishes it), each once: the program's own import of a runtime symbol, kernel32's GetLastError, is one entry with
-    // one dllimport form. Fail-before: the manifest named the program's import alone.
+    // as TestCommand publishes it), each once and kernel32's: the program's own import of a runtime symbol, kernel32's GetLastError, is
+    // one entry with one library. Fail-before: the manifest named the program's import alone.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -514,13 +559,13 @@ public sealed class EmissionArtifactsTest : IDisposable
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\npublic func main()\n" + Call);
         File.WriteAllText(Path.Combine(this.directory, "t.kimi"), "#Test\nfunc lastErrorIsRead()\n" + Call + "    $expect(true)\n");
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, file, out var project));
-        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "tests.ll"), project.ProjectFile.Optimization);
+        var paths = ArtifactPaths.Create(Path.Combine(this.directory, "out", "tests.ll"), project.ProjectFile.Optimization, TargetProfile.Windows);
         Assert.True(test
             ? project.PublishArtifacts(Assert.IsType<Compilation>(project.PrepareTests(TestContext.Current.CancellationToken)), paths, null)
             : await project.Generate(TestContext.Current.CancellationToken));
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(test ? paths.Manifest : ArtifactPaths.Create(project).Manifest));
         string[] runtime = test ? [.. ProductRuntime[..4], "GetEnvironmentVariableA", "SetHandleInformation", .. ProductRuntime[4..]] : ProductRuntime;
-        Assert.Equal([("GetLastError", true), .. runtime.Where(static x => x != "GetLastError").Select(static x => (x, true))], Declarations(manifest.RootElement));
+        Assert.Equal([("GetLastError", "kernel32"), .. runtime.Where(static x => x != "GetLastError").Select(static x => (x, "kernel32"))], Declarations(manifest.RootElement));
         NativeToolchain.ValidateManifest(manifest.RootElement);
     }
 
@@ -535,17 +580,18 @@ public sealed class EmissionArtifactsTest : IDisposable
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var declared = Declarations(manifest.RootElement);
         string[] externals = [.. c.Generated.Externals.Select(static x => x.Symbol)];
-        Assert.Equal([.. c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)), .. ProductRuntime.Where(x => !externals.Contains(x)).Select(static x => (x, true))], declared);
-        Assert.Contains(("QueryPerformanceCounter", true), declared);
-        Assert.Contains(("QueryPerformanceFrequency", true), declared);
+        Assert.Equal([.. c.Generated.Externals.Select(static x => (x.Symbol, x.Library)), .. ProductRuntime.Where(x => !externals.Contains(x)).Select(static x => (x, "kernel32"))], declared);
+        Assert.Contains(("QueryPerformanceCounter", "kernel32"), declared);
+        Assert.Contains(("QueryPerformanceFrequency", "kernel32"), declared);
     }
 
-    // R9-B1: a manifest whose external declarations are not each a nonempty symbol, declared once, with a boolean dllimport form is
-    // rejected before any tool.
+    // R9-B1, NamedProvider: a manifest whose external declarations are not each a nonempty symbol, declared once, naming a libraries
+    // entry (a Hello manifest's: kernel32 and kimi_backend; codec is none) is rejected before any tool.
     [Theory]
-    [InlineData("[{\"symbol\": \"\", \"dllimport\": true}]", "Invalid external declaration")]
-    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": \"yes\"}]", "'externalDeclarations.dllimport' is missing or not a JSON Boolean")]
-    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": true}, {\"symbol\": \"encode\", \"dllimport\": false}]", "Duplicate external declaration")]
+    [InlineData("[{\"symbol\": \"\", \"library\": \"kernel32\"}]", "Invalid external declaration")]
+    [InlineData("[{\"symbol\": \"encode\", \"library\": true}]", "'externalDeclarations.library' is missing or not a JSON String")]
+    [InlineData("[{\"symbol\": \"encode\", \"library\": \"codec\"}]", "Invalid external declaration")]
+    [InlineData("[{\"symbol\": \"encode\", \"library\": \"kernel32\"}, {\"symbol\": \"encode\", \"library\": \"kernel32\"}]", "Duplicate external declaration")]
     public void AMalformedExternalDeclarationIsRejected(string declarations, string failure)
     {
         var c = this.Create();
@@ -572,9 +618,9 @@ public sealed class EmissionArtifactsTest : IDisposable
     private static string PublicationFailure(Compilation c)
         => Assert.Single(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.ArtifactPublicationFailed_Kd)).Note!;
 
-    // A manifest's external declarations, each its symbol and dllimport form, in its order.
-    private static (string Symbol, bool DllImport)[] Declarations(JsonElement root)
-        => [.. root.GetProperty("externalDeclarations").EnumerateArray().Select(static x => (x.GetProperty("symbol").GetString()!, x.GetProperty("dllimport").GetBoolean()))];
+    // A manifest's external declarations, each its symbol and providing library, in its order.
+    private static (string Symbol, string Library)[] Declarations(JsonElement root)
+        => [.. root.GetProperty("externalDeclarations").EnumerateArray().Select(static x => (x.GetProperty("symbol").GetString()!, x.GetProperty("library").GetString()!))];
 
     private Compilation CreateForeign(string source, Action<ProjectFile> configure)
     {

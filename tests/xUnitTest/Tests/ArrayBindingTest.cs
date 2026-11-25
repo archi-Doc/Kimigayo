@@ -113,7 +113,7 @@ public class ArrayBindingTest
     [InlineData("let u: uniq/[2 of i32] = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
     [InlineData("func h<T>()\n    let x: T = [1]\nlet done = 0\n", "Unsupported_Kd [1]")]
     [InlineData("func r() -> i32\n    return [1]\nlet done = 0\n", "TypeMismatch_Kd [1]")]
-    [InlineData("let nested: Array<i32> = [[1]]\n", "TypeMismatch_Kd [[1]]")]
+    [InlineData("let nested: Array<i32> = [[1]]\n", "TypeMismatch_Kd [1]")]
     [InlineData("let n: i32 = []\n", "UnresolvedBinding_Kd []")]
     [InlineData("let unknown = []\n", "UnresolvedBinding_Kd []")]
     [InlineData("let r: ref/[2 of i32] = [1, 2]\n", "")]
@@ -129,7 +129,7 @@ public class ArrayBindingTest
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [1]\n    return 0\nlet done = 0\n", "")]
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = []\n    return 0\nlet done = 0\n", "")]
     [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2, 3]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd [1, 2, 3]")]
-    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [true]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd [true]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [true]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd true")]
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
     [InlineData("let w = [[1], []]\n", "Unsupported_Kd []")]
     [InlineData("let ready = true\nlet x = if ready => [1] else => []\n", "Unsupported_Kd []")]
@@ -310,7 +310,8 @@ public class ArrayBindingTest
     }
 
     [Theory]
-    [InlineData("values@ref.append(1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    // SPEC 7.3.3, 15.6.2 (R7-E4 E4a-3): a receiver through a shared layer records its written twin's failure.
+    [InlineData("values@ref.append(1)", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("let index = 1.5\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]

@@ -15,8 +15,10 @@ namespace Kimi.Compiler;
 // - Inputs: a formed Type and the open consultation frame's node (PLAN G651 U1): the walk's (BindNode's node, BindType's syntax); a
 //   judgment frame's use, the node a validation check's Language record names (a Constraint clause, then its owner; a constructed Type
 //   node; an environment's owner; an agreement's first path); a site frame's element, whose facts a pass publishes (a source state's
-//   declaration, an override's premises, the conformance PrepareAssociatedBindings resolves); a judgment's proof query's site frame,
-//   opened at its node by the outermost proof scope where none is open (BeginProof, OpenQuerySite; R7-C6 a). A frame is a site only
+//   declaration, an override's premises, the conformance PrepareAssociatedBindings resolves); a declaration query's computation at its
+//   declaration (PLAN G651 a2, F1: an inherited conformance's base clause, an override header's function); a judgment's proof query's
+//   site frame, opened at its node by the outermost proof scope where none is open (BeginProof, OpenQuerySite; R7-C6 a), and a pass
+//   step's element that forms Types outside a proof, where none is open (OpenQuerySite; PLAN G651 a2, F2). A frame is a site only
 //   while the pass produces its failures (RunSite).
 // - Outputs: the site's failure (BindingFailure.TypeHeightLimit, its first failure only); a refused node publishes no Type, so a node
 //   reading it rests on it (SPEC 23.1.2, 8.3.3 Limits) and a later failure of the same node is not recorded; inside a capability work's
@@ -88,8 +90,8 @@ public sealed partial class Binding
     }
 
     // The run's site: the open consultation frame's node while the pass produces its failures; none after the pass, where a query fails
-    // no node (R7-M38; PLAN G651 U2). The one test of "a site to record at" for RefuseHeight and RefusedConformance (G651 U2c's predicate;
-    // R7-C6 a carries it where it lands first).
+    // no node (R7-M38; PLAN G651 U2). The one test of "a site to record at" for RefuseHeight and RefusedConformance (G651 U2c's C2
+    // predicate, carried by R7-C6 a; R7-M94).
     private Koto? RunSite => this.producing ? this.consultationNode : null;
 
     /// <summary>Opens the answer frame of the instance collector's run (TyCtxt.OpenAnswer, its only opener; R7-T1): a refusal of a Type

@@ -966,16 +966,18 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // R5-M72 (its first review's B1): an input that does not reserve, an obj/Base or an objref/Base, is not checked, though a conditional's
-    // Adapts of a pair layer write it twice; the objref/Base program's only records are Binding's.
+    // Adapts of a pair layer write it twice: a moved obj/Base and a borrowed objref/Base. The call is a local's initializer, where the
+    // qualifier's omitted Origin is a local region (SPEC 15.3.6); in an expression statement it is MissingOriginBinding_Kd (PLAN G10), and
+    // the conversion rests on it and writes no Adapt (E3e ruling 15 (b)).
     [Theory]
-    [InlineData("obj")]
-    [InlineData("objref")]
-    public void AnInputThatDoesNotReserveIsNotChecked(string semantics)
+    [InlineData("obj", "@move")]
+    [InlineData("objref", "")]
+    public void AnInputThatDoesNotReserveIsNotChecked(string semantics, string transfer)
     {
         var c = MirBuildTest.Compile("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
             $"func own(x: {semantics}/Base) -> () => ()\nfunc probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n" +
-            $"    own(if flag => a@move@{semantics}/Base else => b@move@{semantics}/Base)\n");
-        Assert.Equal(semantics == "obj" ? [] : [Kimi.DiagnosticCode.MissingOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code).Distinct());
+            $"    let done = own(if flag => a{transfer}@{semantics}/Base else => b{transfer}@{semantics}/Base)\n");
+        Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
         Assert.Equal(2, body.Statements.ToArray().Count(static x => x.Rvalue.Kind == MirRvalueKind.Adapt));
@@ -1720,6 +1722,30 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
         Assert.Equal(expected, string.Join(", ", Validate(body).Select(static x => x.Rule)));
         Assert.Equal(1, body.CaseSwitches); // Terminate, their one writer, counts them.
+    }
+
+    // R7 plan Z4 (SPEC 7.7.3; PLAN G13): a value call whose Closure receiver is by case borrows its callee exclusively only in the views
+    // whose case receiver is Exclusive (MirBuilder.Calls' case branch), so the built body is valid; with the branch's sides swapped, each
+    // call breaks it in the view that now reaches it (MirValidator.Types' Receivers), an Operation finding each: the owner view's `uniq/C`
+    // callee where C's case admits a Shared receiver, and the uniq view's `ref/C` callee, which supplies no Exclusive call.
+    [Fact]
+    public void EachViewBorrowsAClosureCalleeInTheReceiverItsCaseAdmits()
+    {
+        var c = MirBuildTest.Compile("func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
+            "    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var blocks = body.Blocks.ToArray();
+        var at = Array.FindIndex(blocks, static x => x.Terminator.Kind == MirTerminatorKind.CaseSwitch);
+        var calls = blocks.Select(static x => x.Terminator).Where(static x => x is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value }).ToArray();
+        Assert.Equal(1, body.CaseSwitches);
+        Assert.Equal(2, calls.Length); // The call on each side, into one destination.
+        var branch = blocks[at].Terminator;
+        body.Terminate(at, MirTerminator.CaseSwitch(branch.Operand, body.AddCase(1, branch.Target), body.Cases[branch.Start].Target, branch.Source));
+        Assert.Equal(
+            [(MirViolation.Operation, body.Subject(calls[0].Source)), (MirViolation.Operation, body.Subject(calls[1].Source))],
+            Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
     }
 
     // SPEC 8.15, 23.1.1, 8.3.4: Binding publishes no part of a definition beyond PairBinder.CaseBound views or whose binders admit no case

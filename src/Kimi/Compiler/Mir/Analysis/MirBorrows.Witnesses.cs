@@ -31,7 +31,7 @@ internal sealed partial class MirBorrows
     // A Loan's anchor (D14): its issuing location's subject.
     private SourceRef Site(int loan) => this.body.Subject(this.Source(this.loans[loan].Location));
 
-    // A holder's declaration: its local's, a drop slot's its holder's (MirBorrows.Holders' HolderLocal).
+    // A holder's declaration: its local's (MirBorrows.Holders' HolderLocal).
     private SourceRef Declaration(int holder) => this.body.Subject(this.body.Locals[this.HolderLocal(holder)].Source);
 
     // A location's source: its statement's or terminator's.

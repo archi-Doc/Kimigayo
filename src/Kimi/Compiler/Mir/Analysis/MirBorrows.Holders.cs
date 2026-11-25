@@ -579,19 +579,8 @@ internal sealed partial class MirBorrows
         return at == 0 ? from.Root : -1;
     }
 
-    // A holder slot's local, or a drop slot's holder's (the drop list keeps it).
-    private int HolderLocal(int slot)
-    {
-        foreach (var (drop, local) in this.drops)
-        {
-            if (drop == slot)
-            {
-                return local;
-            }
-        }
-
-        return Array.IndexOf(this.slots, slot, 0, this.body.Locals.Length);
-    }
+    // A holder slot's local; a via is never a drop slot, whose state is always empty (the drop tier's via is its holder, DropPasses).
+    private int HolderLocal(int slot) => Array.IndexOf(this.slots, slot, 0, this.body.Locals.Length);
 
     // Whether a kept Drop past the destruction walk's bound (Dropping's Unclassified) drops a holder root, each such root marked -2 in
     // dropSlots for a drop slot; the drop slots' table is reset only for a view that has one (R4-M153).

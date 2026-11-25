@@ -5,9 +5,9 @@
 // for a subject (Enumerate) and their readers: SPEC 8.3.2's refinement row over them (PremiseRefines, the row's one
 // predicate: ProveConformance, SymbolicCapability, and the declaration queries of a parameter's indexing, iteration and arithmetic),
 // the first walk's rows (FirstRows, R7-C2c2 c2-3b: a value call's Callable Constraints, TryCallable and SelectValueCall; the bounds
-// of a Callable premise and of a requirement call, AvailableCallableEffects and AvailableEffectBounds; SPEC 8.10's row for a
-// Callable atom, PremiseCallable, which Supply reads; the callables a contract hands its body, retention's HandedSignatures, R7-C2c2
-// c2-3c) and, over them, the candidate readers' rows (PremiseRows: name discovery, R7-C2c2 c2-3a); until C3 the eager derivation
+// of a Callable premise and of a requirement call, AvailableCallableEffects and AvailableEffectBounds; SPEC 8.3.2's Exact assumption
+// over the leaf rows for every atom and its negation, ExactAssumption, which Supply reads (c2-5b, c2-5b2); the callables a contract hands its body, retention's
+// HandedSignatures, R7-C2c2 c2-3c) and, over them, the candidate readers' rows (PremiseRows: name discovery, R7-C2c2 c2-3a); until C3 the eager derivation
 // too (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply)
 // and the availability of a fact (AvailableConstraintFact).
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts, published source states (BU-59).
@@ -19,11 +19,12 @@
 //   of its identity class in the request's classes, by that projection's own walk (PLAN G881). Rows (1) and (2) take the Contract at the
 //   subject's Origin arguments (RowContract; SPEC 8.5.1, 8.5.4: application substitutes Origin atoms positionally). A row carries
 //   whether it is available (R7-C2c2 c2-3a): its fact and its Contract are, for a clause or an ancestor its source row too; the
-//   strongest of its derivations wins. A constraint of another kind with a reader (RowKind; R7-C2c2 c2-3b: Callable) gives a leaf
-//   row under (1) and (2): its proposition (Clause) and no Contract, so the closure (3), (4), head depths and active prefixes read
-//   Contract rows alone. A leaf row is one per proposition and stating scope, never merged and never Alias: SPEC 8.10's weakest
-//   receiver is each premise's, 8.11.4's bound list each fact's Statements', and merging by signature is the Callable selection's
-//   rule. Every row carries its Source: the written fact its derivation starts from, as its environment holds it (Raw; none for a
+//   strongest of its derivations wins. A constraint of another kind with a reader (RowAtom; R7-C2c2 c2-3b: Callable), and the
+//   negation of any atom (c2-5b, c2-5b2; SPEC 8.3.2 Exact assumption), gives a leaf row under (1) and (2), filed and matched by its
+//   atom's subject, a negation in the Not row: its proposition (Clause, the negation as stated) and no Contract, so the closure (3), (4), head depths and
+//   active prefixes read Contract rows alone. A leaf row is one per proposition and stating scope, never merged and never Alias:
+//   SPEC 8.10's weakest receiver is each premise's, 8.11.4's bound list each fact's Statements', and merging by signature is the
+//   Callable selection's rule. Every row carries its Source: the written fact its derivation starts from, as its environment holds it (Raw; none for a
 //   clause instance or an ancestor), and the scope stating it (Stated; a clause instance's and an ancestor's are their Contract row's, a
 //   Contract's own Self row has none). Refinement reads the available rows (SPEC 8.3.1: only evidence proves); a candidate reader
 //   reads every row (a lookup is not a proof: the use is judged), one per Contract: rows whose Contract references are one Type in
@@ -71,9 +72,12 @@
 //   links' equations: a function of (link, view), whichever link a request entered first or spelled (SPEC 8.3.3: a fact that depends
 //   on its own judgment supplies nothing; no coinduction), in at most the (link, row) pairs plus one rounds. A key never leaves the supply: no
 //   reader receives it as a Type (on a class match AppliedAssociatedContract reads the fact's own subject). Not yet supplied: a
-//   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a Callable fact whose subject
-//   only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), and the clause kinds without a
-//   leaf row at depth (the eager supply's one level until c2-3c and d); a missing row only rejects.
+//   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a leaf row's fact (a Callable fact,
+//   a negation) whose subject only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), and
+//   the clause kinds without a leaf row at depth (the eager supply's one level until c2-3c and d). A missing row rejects, but where it
+//   is the evidence against a written premise it accepts: a positive identity clause at depth is no row (TypeIdentity is no row kind;
+//   c2-2's identity rows reach only an extending refinement request) and the identity judge reads the view's classes, so a written
+//   negated identity premise against it is accepted (nts2c-rev); PLAN's open issue against c2-5c's constructed roots.
 // - Extension (R7-C2c2 c2-2; SPEC 8.2.3's grounds include the identity Constraints a Contract premise supplies at every depth): the
 //   walk records the TypeIdentity clause instances of its available Contract rows, but a deferred mate's walk (PLAN G881b: a
 //   cycle's mate, walked from the top) records none, so an extension rests on the chains a request walks without a cycle, as
@@ -112,15 +116,14 @@
 //   can keep for its epoch an Unknown a depth-1 evaluation would prove (no program shows it; removal: R7-C2c2 c2-4's request by
 //   identity class, which every depth reads alike).
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
-//   only Reading calls (temporary until R7-C2c2 c2-4 removes its binding completion), and of a Callable row's signature, which only
-//   PremiseCallable calls, as the Callable selection reads it (CallableContractType, which reads ClassForm);
+//   only Reading calls (temporary until R7-C2c3 removes its binding completion), and of a leaf row's atom, which only the reader
+//   normalizes (ExactAssumption: as the proposition's intake reads it, NormalizeProofConstraint);
 //   Enumerate's walk and what it calls never
 //   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, ClassForm or RequestCapability
 //   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading and the kept rows,
 //   each in the kept region alone, and the view's index when Complete (all below); no second scheduler; no read sets. From C3
 //   (C1 §5), broken until then by the eager derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or
-//   fallback scan. Staged (R7-C2c2 c2-3b): Supply's fact scan keeps its two Callable gate terms for a `not Callable` premise, which
-//   the rows do not hold, until c2-5's Not rows; c2-5 removes them after its probes show the scan's positive adds nothing over the rows.
+//   fallback scan.
 //
 // The view and its closure (DECISIONS R7-C2e1). ViewOf names the state of a scope's chain: the serial changes when an environment's
 // Version, a scope's LinkVersion or the parent's serial does (each counted at its writer). Reading is the one caller of the request
@@ -135,8 +138,9 @@
 //   are kept by their table alone; R7-C2c2 c2-4b, whose deletion of SubstituteIdentity and IdentityPremise left W7 for W2 and W3);
 //   ContractType, ContractPart, ContractTypeCore, ContractLength, ApplyContractEnvironment, SubstituteContractReference (W4);
 //   ProjectionSpecification, ResolveAssociated(receiver), BuiltinArithmeticOutput's and FixedArrayIteratorType's gates (W5);
-//   AvailableConstraintFact and AvailableContractPremise (W6: the meet of every source state read, a failed declaration context
-//   Provisional); the identity classes' Completion (W7); ReadSourceState (W8, SourceStates': a published Proven or Refuted); and
+//   AvailableConstraintFact and AvailableContractPremise (W6: the meet of every source state read; a read that consults a failure
+//   Provisional: a failed declaration context, a failed premise and a Refuted source read as the proof's limit); the identity
+//   classes' Completion (W7); ReadSourceState (W8, SourceStates': a published Proven or Refuted); and
 //   an outermost walk, PremiseRefines' or FirstRows' (the meet of its availability reads, which admits its rows; R7-C2e2 e2-3a). Provisional is a
 //   conservative superset of C1's: the derivation took a route not shown final in the publication (a source read Pending or in
 //   Error; a projection route past its gate; the batched route; a Callable fact; StoredType's null). Complete is final within one
@@ -161,10 +165,11 @@
 // Closure(view) (DECISIONS R7-C2e2-1, R7-C2e2-2): a view's index of its facts by kind and subject is one table, an entry per (view
 // scope, requirement Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope,
 // kind, SubjectKey).
-// - Rows: a kind has a row when a reader reads it by subject: each row kind (RowKinds: Contract, and R7-C2c2 c2-3b's leaf kind
-//   Callable; Enumerate's walk), TypeIdentity (ValidateAssociatedOverlapAgreement, DisjointConformanceFacts) and Semantics
-//   (DisjointConformanceFacts). A row kind's row holds each fact as written, under its subject and its class key in the view (R7-C2c2
-//   c2-1: the forming request's classes, which are the view's), in the Sources' order (the Invariants above), and the Contract row,
+// - Rows: a kind has a row when a reader reads it by subject: each row kind (RowKinds: Contract, R7-C2c2 c2-3b's leaf kind
+//   Callable and c2-5b2's Not, every negated atom; Enumerate's walk), TypeIdentity
+//   (ValidateAssociatedOverlapAgreement, DisjointConformanceFacts) and Semantics (DisjointConformanceFacts). A row kind's row holds
+//   each fact as written, under its atom's subject and its class key in the view (R7-C2c2 c2-1: the forming request's classes,
+//   which are the view's), in the Sources' order (the Invariants above), and the Contract row,
 //   under a parameter identity, each fact as the view reads it (Reading) too. The TypeIdentity and Semantics rows hold each fact as
 //   written under its written subject alone, in its environment's order, with no class key and no reading: a bucket of theirs holds
 //   the facts of one written subject key, so a reader that pairs by bucket pairs no other subject's fact.
@@ -188,8 +193,9 @@
 //   request, its row kinds' rows have no class key and no reading, so no request may read it, and it goes back to the pool when the
 //   read ends. A Kept entry serves a read as it is.
 // - Retained memory is the pool's high water: an entry keeps the largest buckets and lists any view gave it, flat across warm
-//   rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion. A view whose identity table is not
-//   Final (a derived identity fact whose sources are not all final in the publication, W6) has its entry formed per request.
+//   rebinds. Temporary: the readings go when R7-C2c3 removes Reading's binding completion. A view whose identity table is not
+//   Final has its entry formed per request. It has two causes: a derived identity fact whose sources are not all final in the
+//   publication (W6), and an identity premise whose read consulted a failure (ApplyIdentityPremise, W7's table).
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)), a column of the view's Kept entry in Closure(view) (R7-C2e2 e2-3a).
 // - What and key: the rows of each link an outermost request walked, in the entry of its (view scope, requirement Contract) at the
@@ -217,7 +223,7 @@
 //   - FirstRows' admission (`nofirstadmit`: its rows kept whatever the walk's Completion): the merge review's six twins (d3a, d3ar,
 //     d3av, d3b, d3br, d3bv) and the refresh's 56 acceptance programs: no difference, and the admission unobserved: the invalid
 //     twins never reach a Provisional FirstRows walk (an environment naming a failed Contract is Invalid, and the walk skips it).
-//     FirstRows' readers (PremiseCallable, the Callable and effect-bound readers, HandedSignatures) read `Available` rows directly,
+//     FirstRows' readers (ExactAssumption, the Callable and effect-bound readers, HandedSignatures) read `Available` rows directly,
 //     with no shadow, so a Pending read inside a round by one of them is the case left open; its row is owed with C3's.
 // - Lifetime: the entry's, the publication, in the capability phase (KeepsAcrossRequests, the one phase fact); before it one
 //   outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
@@ -232,9 +238,11 @@
 //   serial (not shown for an ancestor's or an enclosing declaration's failure: (i) carries the argument). The same holds for every
 //   table kept for the publication (readings, entries, identity tables).
 // - Not replayed: a kept answer skips the walk's per-check effects, which a capability result replays from its payload. A Complete
-//   walk read only Proven or Refuted states and valid contexts, so two are left, both records only (Q13): a read outside every
-//   proof scope opens and closes its own frame (ReadSourceState at proofNesting 0), and a context failed after the walk would
-//   have been consulted (SPEC 23.1.2), the dependent record of (i) above.
+//   walk read only Proven or Refuted states and valid contexts and wrote no proof limit (W6: a failed premise or a Refuted source
+//   read as the limit is Provisional; R7-C2c2 c2-5b2's b1-r2-failed: a capability work that read rows another reader kept lost the
+//   limit its cause rests on), so two are left, both records only (Q13): a read outside every proof scope opens and closes its own
+//   frame (ReadSourceState at proofNesting 0), and a context failed after the walk would have been consulted (SPEC 23.1.2), the
+//   dependent record of (i) above.
 
 using Kimi.Compiler.Parsing;
 
@@ -242,10 +250,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The kinds whose constraints give a row, the one list the index and the walk's two sources read (RowKind; each kind its own row
-    // of Closure(view), R7-C2e2-2): Contract, and each kind with a reader of its own, a leaf row (R7-C2c2 c2-3b: Callable). A later
-    // kind with a reader joins the list here alone.
-    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable, ConstraintKind.Error]; // Error: an unbound clause's failed fact (R7-C3)
+    // The kinds whose constraints give a row, the one list the index and the walk's two sources read (RowAtom; each kind its own row
+    // of Closure(view), R7-C2e2-2, a fact in its own kind's: ViewIndex.Add): Contract, each kind with a reader of its own, a leaf kind
+    // (R7-C2c2 c2-3b: Callable), and Not, every negated atom (c2-5b, c2-5b2), filed by its atom's subject (one row per meaning, which
+    // the walk reads and no validator). A later kind with a reader joins the list here alone.
+    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable, ConstraintKind.Not, ConstraintKind.Error]; // Error: an unbound clause's failed fact (R7-C3)
 
     // The closure's kept readings (Reading), emptied at each publication's start in the capability phase (ForgetKeptTables) and each
     // pass (ResetCapabilities), capacity kept.
@@ -310,18 +319,26 @@ public sealed partial class Binding
     private static (BindingSymbol? Symbol, BoundType Type) SubjectKey(BoundType type)
         => type.Kind == BoundTypeKind.AssociatedProjection ? (type.Symbol, type.Components[0]) : (null, type);
 
-    // A constraint that gives a row: one of RowKinds, a Contract constraint naming its Contract.
-    private static bool RowKind(BoundConstraint constraint)
+    // The atom by whose subject a constraint gives a row, else none: a constraint of one of RowKinds (a Contract one naming its
+    // Contract), or the operand of a negation that is an atom of any kind, no conjunction, disjunction or Unresolved (R7-C2c2 c2-5b,
+    // c2-5b2; SPEC 8.3.2 Exact assumption and Negation: the negation is a Not row, its Clause; an operand is never a negation,
+    // NegateConstraint folding `not not P`).
+    private static BoundConstraint? RowAtom(BoundConstraint constraint)
     {
+        if (constraint.Kind == ConstraintKind.Not)
+        {
+            return constraint.Left!.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Unresolved ? null : constraint.Left;
+        }
+
         foreach (var kind in RowKinds)
         {
             if (constraint.Kind == kind)
             {
-                return kind != ConstraintKind.Contract || constraint.Contract is not null;
+                return kind != ConstraintKind.Contract || constraint.Contract is not null ? constraint : null;
             }
         }
 
-        return false;
+        return null;
     }
 
     // A row joins `list` from `start`: one row per Contract reference, and per proposition and stating scope for a leaf row. A row
@@ -449,7 +466,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, proposition, out _);
             negative |= this.AvailableConstraintFact(environment, negation, out _);
-            if (environment.HasAssociatedProjection || typeIdentity || proposition.Kind == ConstraintKind.Callable || proposition is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
+            if (environment.HasAssociatedProjection || typeIdentity)
             {
                 foreach (var fact in environment.Facts)
                 {
@@ -465,12 +482,10 @@ public sealed partial class Binding
             }
         }
 
-        // R7-C2c2 c2-3b: a Callable atom's premise evidence is the subject's Callable rows (SPEC 8.3.2: a clause at every depth,
-        // whatever its spelling), for the proposition and, under `not`, for its negation. A `not Callable` premise stays a fact
-        // match above (the class header's Prohibitions: staged until c2-5).
-        positive = positive || (proposition is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(proposition, view.Premises));
-        negative = negative || (negation is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(negation, view.Premises));
-        return new() { Positive = positive, Negative = negative };
+        // R7-C2c2 c2-3b, c2-5b, c2-5b2: an atom's premise evidence at every depth, for the proposition and its negation, is the
+        // subject's leaf rows (SPEC 8.3.2 Exact assumption: a clause at every depth, whatever its spelling).
+        var rows = this.ExactAssumption(proposition, negation, view.Premises);
+        return new() { Positive = positive || rows.Positive, Negative = negative || rows.Negative };
     }
 
     // R7-C3 (F's C2 ruling 278; SPEC 8.3.2 "evidence for both polarities ... is contradictory evidence", 8.2.3 "never again at uses"):
@@ -654,7 +669,8 @@ public sealed partial class Binding
 
             // A fact is indexed in its kind's row by subject key, as written and as normalized in the view: FactStates confirms a
             // match. A nested demand reads the written facts alone (the leaf rule), so an entry an outermost request prepared serves it
-            // too. Each is a row with its Source: a Contract fact its Contract's, a fact of another row kind (RowKinds) a leaf row.
+            // too. Each is a row with its Source: a Contract fact its Contract's, a fact of another row kind (RowKinds: a leaf kind's, a
+            // negation's) a leaf row, matched by its atom (RowAtom).
             foreach (var kind in RowKinds)
             {
                 if (index.Buckets.GetValueOrDefault((current, kind, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
@@ -670,8 +686,9 @@ public sealed partial class Binding
                         continue; // A nested demand reads the written facts and their keys alone.
                     }
 
-                    var states = this.FactStates(fact, subject, out _);
-                    if (states || this.SameClass(fact.Subject!, subject))
+                    var atom = RowAtom(fact)!; // a row kind's bucket holds facts with a row atom alone (IndexWritten, IndexNormalized)
+                    var states = this.FactStates(atom, subject, out _);
+                    if (states || this.SameClass(atom.Subject!, subject))
                     {
                         var contract = fact.Kind == ConstraintKind.Contract;
                         var available = this.WalkAvailable(this.AvailableConstraintFact(environment, raw, out var factRead), factRead) &&
@@ -710,8 +727,9 @@ public sealed partial class Binding
                         this.enumerateIdentities.Add((left, right)); // c2-2: an identity row (SPEC 8.2.3 grounds), for the request's classes
                     }
 
-                    // A clause instance stating the subject or a Type of its class is a row whose Source is its prefix row's scope.
-                    if (premise is { Subject: { } stated } && RowKind(premise) &&
+                    // A clause instance stating the subject or a Type of its class is a row whose Source is its prefix row's scope; a
+                    // negated clause states its atom's subject (RowAtom).
+                    if (premise is not null && RowAtom(premise) is { Subject: { } stated } &&
                         ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
                     {
                         var contract = premise.Kind == ConstraintKind.Contract;
@@ -890,8 +908,9 @@ public sealed partial class Binding
     }
 
     // A Contract premise is available when the Contract and each ancestor (the deduplicated transitive closure) are valid sources: its
-    // declaration context and its published source state (Binding.SourceStates). W6: the meet of the states it read (W8); a failed or
-    // unresolved context is Provisional (its read consults the failure, which a kept answer would not replay).
+    // declaration context and its published source state (Binding.SourceStates). W6: the meet of the states it read (W8); a read that
+    // consults a failure is Provisional, since a kept answer would not replay it: a failed or unresolved context, and a Refuted source
+    // read as the proof's limit (R7-C2c2 c2-5b2: a walk that wrote a limit keeps no row, so every request's proof rests on it).
     private bool AvailableContractPremise(BindingSymbol contract, out Completion completion)
     {
         completion = Completion.Complete;
@@ -914,6 +933,7 @@ public sealed partial class Binding
                 // Refuted; an Error's it joins itself). The source's own checks are the failure's sites (ChecksOwnSite).
                 if (state == ConstraintProof.Refuted && !this.ChecksOwnSite(source.Declaration))
                 {
+                    completion = Completion.Provisional;
                     this.ScopeReads.Limit ??= ((DeclarationContainerKoto)source.Declaration).BoundSymbol!.SourceCause; // Published (RefutedCause).
                 }
 
@@ -956,7 +976,8 @@ public sealed partial class Binding
     // read (R7-M20's composite rule), and one not found is Provisional (a Pending source may still supply it).
     // R7-C3 (F's C2 rulings 272-273, 276): the environment's one premise consult. A failed premise is no evidence, and the read is the
     // proof's limit (ScopeReads.Limit, its PremiseFailure; SPEC 23.1.2): an answer the valid facts leave open (Unknown) rests on it where
-    // it is no longer combined (EndProof), and one they prove or refute holds or keeps its own record.
+    // it is no longer combined (EndProof), and one they prove or refute holds or keeps its own record. The read consults the failure,
+    // so it is Provisional (W6, as a failed context's).
     private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, out Completion completion)
     {
         completion = Completion.Complete;
@@ -967,6 +988,7 @@ public sealed partial class Binding
 
         if (environment.IsFailed(fact))
         {
+            completion = Completion.Provisional;
             this.ScopeReads.Limit ??= environment.CauseOf(fact);
             return false;
         }
@@ -978,6 +1000,7 @@ public sealed partial class Binding
 
         if (this.DerivedFailure(environment, fact) is { } failure)
         {
+            completion = Completion.Provisional;
             this.ScopeReads.Limit ??= failure;
             return false;
         }
@@ -1014,8 +1037,11 @@ public sealed partial class Binding
             var scope = this.scopes[this.nodes[n]];
             if (scope.Owner is ContractKoto contract)
             {
-                // SPEC 8.7.3: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does.
+                // SPEC 8.7.3: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does. Its frame is
+                // a separate one at the same element as ExpandScopeContractPremises' (the Contract, PLAN G651 a2).
+                var site = this.OpenQuerySite(contract);
                 this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
+                this.CloseQuerySite(site);
             }
 
             this.ExpandScopeContractPremises(scope);
@@ -1035,9 +1061,12 @@ public sealed partial class Binding
             this.contractFactScratch = new BoundConstraint[Math.Max(count, Math.Max(16, this.contractFactScratch.Length * 2))];
         }
 
-        // Expansion performs no proof or nested scope expansion, so one owned buffer suffices.
+        // Expansion performs no proof or nested scope expansion, so one owned buffer suffices. PLAN G651 a2 (C1, BU-161; IMPL 21.3.2): it
+        // forms the premises in a site frame at the scope's owner where none is open (a caller's frame keeps them), so a Type past the
+        // limit formed there is refused at the owner.
         var facts = this.contractFactScratch;
         environment.Facts.CopyTo(facts);
+        var site = this.OpenQuerySite(scope.Owner);
         try
         {
             for (var i = 0; i < count; i++)
@@ -1051,6 +1080,7 @@ public sealed partial class Binding
         finally
         {
             Array.Clear(facts, 0, count);
+            this.CloseQuerySite(site);
         }
 
         environment.MarkDeclared(); // R7-C2c2 c2-4b: what follows is a use's supply (ConstraintEnvironment.Declares)

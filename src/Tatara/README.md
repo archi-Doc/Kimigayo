@@ -9,6 +9,12 @@ changes it. A worktree whose `tatara.h` differs from the shared root's `tatara.d
 base) gives itself a toolchain directory of its own, removing the junction alone (`cmd /c rmdir toolchain`, never `/s` or a recursive
 delete, which empties the shared root), and never runs setup through the junction.
 
+The compiler's supply files carry their stored inspections (`src/backend/<row>/<file>.facts`), which a native build reads instead of
+calling `tatara_inspect`. A unit that changes `src/Tatara` or updates LLVM runs `NativeToolchainTest` (its facts row,
+`EachCompilerSupplysFactsAreItsInspection`) on the `tatara.dll` built from its change, whether or not it means to change an inspection;
+when the row fails, it runs the row with `KIMI_SUPPLY_FACTS=write`, builds Kimi again, runs the row again and commits the regenerated
+files with its change.
+
 ## Operations
 
 `tatara_optimize` (`opt -passes=verify`, then `opt -S -passes=default<O2> -mtriple`), `tatara_emit` (`opt -passes=verify`, then
@@ -16,11 +22,11 @@ delete, which empties the shared root), and never runs setup through the junctio
 by its first argument as an LLD executable's name, through `lld::lldMain`) read the files the tools would and give equal bytes:
 optimize and emit return their output (the text and the object) in the result, which the caller writes, and LLD writes its own
 files, the only files Tatara writes. `tatara_inspect` reads a COFF or ELF object, or each member of an archive, and returns each
-member's undefined and defined external symbols with `llvm-nm`'s letters, its form (relocatable object, COFF short import member or
-linked image), its definitions that admit copies (a COMDAT section; a bitcode member's comdat) and its `.drectve`'s (a bitcode
-member's linker options') `/include:` and `/alternatename:` references, the archive's symbol index (each entry's member), and two
-flags: whether a member names a default library (a COFF `.drectve` or a bitcode member's linker options naming `DEFAULTLIB`, an ELF
-`.deplibs` section) and whether the input is an archive.
+member's undefined and defined external symbols with `llvm-nm`'s letters, its form (relocatable object, COFF short import member,
+linked image or LLVM bitcode), its definitions that admit copies (a COMDAT section; a bitcode member's comdat) and its `.drectve`'s
+(a bitcode member's linker options') `/include:`, `/export:`, `/entry:` and `/alternatename:` references, the archive's symbol index
+(each entry's member), and two flags: whether a member names a default library (a COFF `.drectve` or a bitcode member's linker
+options naming `DEFAULTLIB`, an ELF `.deplibs` section) and whether the input is an archive.
 Each call returns 0 (success), 1 (failed; Tatara can run again) or 2 (failed; Tatara cannot run again in this process) and a
 result whose message carries the tools' text, released with `tatara_release`.
 

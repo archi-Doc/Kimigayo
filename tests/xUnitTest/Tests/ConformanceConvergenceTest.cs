@@ -979,17 +979,19 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // goes without that judge, which leaves them clean or Resource records. A binding on the cycle names no Type after the failed Binding,
     // inferred as written (F's C2 ruling 261), so a published body using the cyclic Type by value adds no generation limit: an inferred
     // one's S.get (InlineCycleInferred, InlineCycleInferredWithAValue) gave GenerationResourceLimit_Kd once PLAN G1071's gate published it.
+    // PLAN G1278 (G1278-A, Q13; F's G1278-3): `S.get`'s Function node carries the `Box<S>` written in its result, whose own record stays, so
+    // the Function's restating InvalidConstraint_Kd goes (InlineCycleInferred, InlineCycleInferredWithAValue, InlineCycleWrittenWithAMethod).
     [Theory]
     [InlineData(InlineCycleDirect, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleWithAValue, "Application", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
-    [InlineData(InlineCycleInferred, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferred, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleInTupleAndArray, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughTwoTypes, "Library", "2*InvalidConstraint_Kd 2*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleGrowing, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
-    [InlineData(InlineCycleInferredWithAValue, "Library", "3*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
-    [InlineData(InlineCycleWrittenWithAMethod, "Library", "3*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferredWithAValue, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleWrittenWithAMethod, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     public void ABindingOnlyInlineCycleIsItsBindingsError(string source, string outputKind, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source, outputKind));
 

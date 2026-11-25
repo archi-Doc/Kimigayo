@@ -149,6 +149,12 @@ public class CoreModelTest
         Assert.Equal(["static"], linux.Kinds);
         Assert.Equal("c", linux.CRuntime);
         Assert.Equal("SystemV", linux.ArgumentExtension);
+
+        // The Tatara plan's B7b7: each row's input extension and executable format (IMPL 20.3.2, 20.4); a subsystem, a float marker and
+        // a load configuration symbol exactly on the COFF rows (LinkRoots: windows-x64's _load_config_used).
+        Assert.Equal([(".lib", "COFF"), (".a", "ELF")], TargetProfile.Rows.Select(static x => (x.InputExtension, x.Format)));
+        Assert.All(TargetProfile.Rows, static x => Assert.Equal((x.Format == "COFF", x.Format == "COFF", x.Format == "COFF"), (x.Subsystem is not null, x.FloatMarker is not null, x.LoadConfigSymbol is not null)));
+        Assert.Equal("_load_config_used", TargetProfile.Windows.LoadConfigSymbol);
     }
 
     // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C

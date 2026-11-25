@@ -325,9 +325,16 @@ public sealed partial class Binding
                 this.RecordAccess(syntax, inaccessible, syntax.TypeKoto); // An inferred Type is checked as a written one, at the Property.
             }
 
+            // SPEC 23.1.2 (E3e Revision 2): a Property whose written Type holds a failed occurrence rests on it at its certificate.
+            var failedType = syntax.BindingFailure == BindingFailure.None ? this.FailedWrittenType(syntax) : null;
+            if (failedType is not null)
+            {
+                this.CompleteDependent(syntax, failedType);
+            }
+
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
-            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingFailure == BindingFailure.None && !this.InvalidDeclarationContext(syntax);
+            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingFailure == BindingFailure.None && failedType is null && !this.InvalidDeclarationContext(syntax);
 
             // SPEC 23.1.2: an accessor's own declaration Error explains the Property's failed verification; a second record at
             // the Property would restate it. Every other failure is the Property's own problem.

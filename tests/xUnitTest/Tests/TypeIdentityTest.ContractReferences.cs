@@ -34,6 +34,8 @@ public partial class TypeIdentityTest
 
     private const string Base = "contract Base\n    func size(self: ref/Self) -> i32\ncontract Sub: Base\nfunc use<X>(x: ref/X) -> i32\n    X is Base\n    return x.size()\n";
 
+    private const string Nest = "struct Outer<A>\n    public struct Inner\n        public init() => ()\n";
+
     private const string Converge = "contract C<E>\ncontract Q<U>: C<i32>, C<U>\nfunc need<T>(x: ref/T) -> i32\n    T is C<i32>\n    return 1\n";
 
     private const string Agree = "contract C<E>\n    associate Item\ncontract Q<U>: C<i32>, C<U>\nstruct Gx<A>\n    Self is Q<A>\n";
@@ -42,6 +44,8 @@ public partial class TypeIdentityTest
 
     private const string Merged = "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n";
 
+    private const string MergedWhen = "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n";
+
     private const string UseTag = "func f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true\n    return\n";
 
     private const string Two = "contract Q<U, V>: Iter<U>, Iter<V>\n";
@@ -49,6 +53,8 @@ public partial class TypeIdentityTest
     private const string Direct = "contract Q2<U>: Iter<U>\n";
 
     private const string Key = "struct Name\n    Self is Copy\n    public let id: isize\n    public init(id: isize) => self.id = id\n";
+
+    private const string ShortItem = "contract P<T>\n    associate Item\ncontract R\n    associate X\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
     // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
@@ -80,7 +86,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "ar16", HasItem + "func f<T, U>(a: T, b: i32) -> T.Output\n    U is HasItem\n    T is Addable<i32>\n    T is Addable<U.(HasItem).Item>\n    return a + b\n", "AmbiguousBinding_Kd: func f<T, U>(a: T, b: i32) -> T.Output")]
     [InlineData("C3", "an1", HasItem + Holders + "func f<T, U>(x: ref/T, t: T.Item) -> ()\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Sub<i32, U.(HasItem).Item>\n    ()\n", "", Explicit = true)]
     [InlineData("guard", "an1n", HasItem + Holders + "func f<T, U>(x: ref/T, t: T.Item) -> ()\n    U is HasItem\n    T is Sub<i32, U.(HasItem).Item>\n    ()\n", "AmbiguousBinding_Kd: func f<T, U>(x: ref/T, t: T.Item) -> ()")]
-    [InlineData("C3", "an1c", HasItem + Holders + "func f<T>(x: ref/T, t: T.Item) -> ()\n    T is Sub<i32, SrcI.(HasItem).Item>\n    ()\n", "", Explicit = true)]
+    [InlineData("C3", "an1c", HasItem + Holders + "func f<T>(x: ref/T, t: T.Item) -> ()\n    T is Sub<i32, SrcI.(HasItem).Item>\n    ()\n", "")]
     [InlineData("guard", "an1cu", HasItem + Holders + "func f<T>(x: ref/T, t: T.Item) -> ()\n    T is Sub<i32, SrcU.(HasItem).Item>\n    ()\n", "AmbiguousBinding_Kd: func f<T>(x: ref/T, t: T.Item) -> ()")]
 
     // SPEC 8.6.4, 8.9.2, 10.2.1, 12.3.1: equal bound references give one requirement. Distinct ones are distinct candidates: a literal adopts no
@@ -164,17 +170,55 @@ public partial class TypeIdentityTest
     [InlineData("C3", "cv6", Agree + "    associate C<i32>.Item is i32\n    associate C<A>.Item is i32\n" + UseItem, "")]
     [InlineData("guard", "cv6n", Agree + "    associate C<i32>.Item is i32\n    associate C<A>.Item is i64\n" + UseItem, "IncompatibleContractImplementation_Kd: Self is Q<A> | InvalidConstraint_Kd: let v: Gx<i32>.(C<i32>).Item = 1")]
 
-    // SPEC 8.6.1, 8.9.2 (PLAN C3b-2): a specification whose qualifier names one conformance through several members (merging paths under the
-    // premises) belongs to the whole set, which is not implemented yet: the located limit at each such specification, whatever the members' order.
-    // The use's Constraint rests on that limit (rule W, F's ruling 5: no record at the use; mg2bm without the marker); the marker `= true`
-    // keeps dev's TypeMismatch_Kd against the projection, which names no Type (PLAN C3b-2).
-    [InlineData("guard", "mg1", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<i32>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
-    [InlineData("guard", "mg2", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<i32>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
-    [InlineData("guard", "mg2r", HasItem + Tagged + Direct + Merged + "    Self is Q2<R.(HasItem).Item>\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<i32>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
-    [InlineData("guard", "mg1b", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
-    [InlineData("guard", "mg2b", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\n" + UseTag, "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is bool | TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true")]
-    [InlineData("guard", "mg2bm", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\nfunc f(a: ref/B<SrcI, SrcI>, t: B<SrcI, SrcI>.(Iter<i32>).Tag) -> ()\n    return\n", "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is bool")]
-    [InlineData("guard", "mg3", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is i64\n", "Unsupported_Kd: associate Iter<S.(HasItem).Item>.Tag is bool | Unsupported_Kd: associate Iter<R.(HasItem).Item>.Tag is i64")]
+    // SPEC 8.6.1, 8.9.2, 8.5.1 (PLAN G1300): a specification whose qualifier names one conformance through several members (merging paths
+    // under the premises) specifies the set's one associated Type, whatever member it names and whatever the members' order, and an
+    // unqualified name counts the set once (paths with equal bindings count once); a use reads it through any member. The set's
+    // specifications must agree: a disagreement is the conformance's error at its declaring clause, as two specifications of one member
+    // are (InvalidAssociatedType_Kd), once per clause declaring the conformance (mg3d: two).
+    [InlineData("guard", "mg1", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "")]
+    [InlineData("guard", "mg2", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "")]
+    [InlineData("guard", "mg2r", HasItem + Tagged + Direct + Merged + "    Self is Q2<R.(HasItem).Item>\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n" + UseTag, "")]
+    [InlineData("guard", "mg1b", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\n" + UseTag, "")]
+    [InlineData("guard", "mg2b", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\n" + UseTag, "")]
+    [InlineData("guard", "mg2bm", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is bool\nfunc f(a: ref/B<SrcI, SrcI>, t: B<SrcI, SrcI>.(Iter<i32>).Tag) -> ()\n    return\n", "")]
+    [InlineData("guard", "mg1c", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool and Copy\n" + UseTag, "")]
+    [InlineData("guard", "mg1u", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Tag is bool\n" + UseTag, "")]
+    [InlineData("guard", "mg1uu", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\nfunc f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.Tag = true\n    return\n", "")]
+    [InlineData("guard", "mg1us", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Tag is bool\n    public func g(self: ref/Self, t: Self.Tag) -> bool => t\n", "")]
+    [InlineData("guard", "mg1i", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\nfunc f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = 1\n    return\n", "TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = 1")]
+    [InlineData("guard", "mg3", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Q<S.(HasItem).Item, R.(HasItem).Item>")]
+    [InlineData("guard", "mg3x", HasItem + Tagged + Two + Merged + "    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\n    associate Iter<i32>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Q<S.(HasItem).Item, R.(HasItem).Item>")]
+    [InlineData("guard", "mg3d", HasItem + Tagged + Direct + Merged + "    Self is Iter<S.(HasItem).Item>\n    Self is Q2<R.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    associate Iter<R.(HasItem).Item>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item>")]
+
+    // SPEC 8.8.2, 8.6.1, 8.9.2 (PLAN G1300): a conditional block's specification selects under D and P, where its conformance is one with a
+    // member declared outside the block, which then represents it; it specifies the block conformance's associated Type all the same, through
+    // either member's name, and its obligation is the block's (mg4m); a disagreement with the member outside lies within the block
+    // conformance's root path, whose one binding both specify, so it is that path's error at its declaring clause (mg4n).
+    [InlineData("guard", "mg4", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool\n", "")]
+    [InlineData("guard", "mg4c", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool and Copy\n", "")]
+    [InlineData("guard", "mg4o", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<S.(HasItem).Item>.Tag is bool\n", "")]
+    [InlineData("guard", "mg4n", HasItem + Tagged + Direct + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is i64\n", "InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+    [InlineData("guard", "mg4m", HasItem + Tagged + Direct + "contract Marker\n" + MergedWhen + "        associate Iter<R.(HasItem).Item>.Tag is bool and Marker\n", "UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+
+    // SPEC 8.8.1, 8.8.2, 8.5.5 Completion, 8.6.1, 8.9.2 (PLAN G1385): without a block, the Type-level specification of the member outside
+    // specifies the block conformance's associated Type too, where P makes them one conformance (mg5, mg5c: the root path's premises prove
+    // the clause's), and its obligation is that conformance's (mg5m); where P does not identify them, the block conformance's Tag is
+    // undetermined (mg5f, mg5cf).
+    [InlineData("guard", "mg5", HasItem + Tagged + Direct + MergedWhen, "")]
+    [InlineData("guard", "mg5c", Tagged + Direct + "struct B<T>\n    Self is Iter<i32>\n    associate Iter<i32>.Tag is bool\n    Self is Q2<T> when T is i32\n", "")]
+    [InlineData("guard", "mg5f", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is bool\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy\n", "AssociatedTypeInferenceFailed_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is Copy")]
+    [InlineData("guard", "mg5cf", Tagged + Direct + "struct B<T>\n    Self is Iter<i32>\n    associate Iter<i32>.Tag is bool\n    Self is Q2<T> when T is i64\n", "AssociatedTypeInferenceFailed_Kd: Self is Q2<T> when T is i64")]
+    // The UnprovenConstraint_Kd is PLAN G1260's (a Contract's condition on its Self judged as a reference input condition at `Q2<..>`).
+    [InlineData("guard", "mg5m", HasItem + Tagged + "contract Marker\ncontract Q2<U>: Iter<U>\n    Self.(Iter<U>).Tag is Marker\n" + MergedWhen, "UnprovenConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | UnsatisfiedConstraint_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item")]
+    // The InvalidAssociatedType_Kd records rest on the unresolved name's record (PLAN G-new: a specification link settles only to an
+    // Invalid specified Type, SettleSpecificationLinks).
+    [InlineData("guard", "mg5u", HasItem + Tagged + Direct + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<S.(HasItem).Item>.Tag is Undefined\n    Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item\n", "InvalidAssociatedType_Kd: Self is Iter<S.(HasItem).Item> | InvalidAssociatedType_Kd: Self is Q2<R.(HasItem).Item> when R.(HasItem).Item is S.(HasItem).Item | UnresolvedBinding_Kd: associate Iter<S.(HasItem).Item>.Tag is Undefined")]
+
+    // SPEC 8.5.2, 8.5.1, 8.4.3, 8.2.3 (PLAN G722): inside a Contract a short name means its own or an inherited associated Type, and paths to one
+    // declaration whose bindings are one under the Contract's premises count once, in either parent order; distinct bindings stay two (a01i).
+    [InlineData("guard", "a01", ShortItem + "contract Q: R, P<i32>, P<Self.(R).X>\n    Self.(R).X is i32\n    func get(self: ref/Self) -> Item\n", "")]
+    [InlineData("guard", "a01r", ShortItem + "contract Q: R, P<Self.(R).X>, P<i32>\n    Self.(R).X is i32\n    func get(self: ref/Self) -> Item\n", "")]
+    [InlineData("guard", "a01i", ShortItem + "contract Q: R, P<i32>, P<Self.(R).X>\n    Self.(R).X is i64\n    func get(self: ref/Self) -> Item\n", "AmbiguousBinding_Kd: func get(self: ref/Self) -> Item")]
 
     // SPEC 8.9.1: conformances that can collide are an error at the later clause, an unresolved projection included (step 4); the use is ambiguous.
     [InlineData("guard", "x2", "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "DuplicateBinding_Kd: Self is Indexable<i32> | AmbiguousBinding_Kd: let b = m[k]")]
@@ -184,15 +228,44 @@ public partial class TypeIdentityTest
     // SPEC 8.2.3 Premise errors and Cycles: a Type identical with a proper part of itself is InvalidConstraint_Kd (tests/diagnostics/spec-cases.json,
     // 8.2.3-identity-premises) where the premises meet, at a Contract for what its Constraints alone cause and never again at uses. `T is U` with `U is
     // T` identifies them, and a projection is no proper part.
-    [InlineData("C3", "cyclic", "func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>", Explicit = true)]
+    [InlineData("C3", "cyclic", "func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>")]
     [InlineData("guard", "cyc-swap", "func same<T, U>(value: T) -> U\n    T is U\n    U is T\n    return value@move\n", "")]
-    [InlineData("C3", "cyc-self", "func f<T>(value: T) -> i32\n    T is Option<T>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T>", Explicit = true)]
+    [InlineData("C3", "cyc-self", "func f<T>(value: T) -> i32\n    T is Option<T>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T>")]
     [InlineData("guard", "cyc-proj", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is T.(C).X\n    return 0\n", "")]
     [InlineData("guard", "cyc-part", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T.(C).X> | InvalidConstraint_Kd: func f<T>(value: T) -> i32")] // O-344 (a): Option declares no C
-    [InlineData("C3", "cyc-both", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    T.(C).X is T\n    return 0\n", "InvalidConstraint_Kd: T.(C).X is T", Explicit = true)]
-    [InlineData("C3", "cyc-contract", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "InvalidConstraint_Kd: Self.Y is Option<Self.X>", Explicit = true)]
+    [InlineData("C3", "cyc-both", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    T.(C).X is T\n    return 0\n", "InvalidConstraint_Kd: T.(C).X is T")]
+    [InlineData("C3", "cyc-contract", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "InvalidConstraint_Kd: Self.Y is Option<Self.X>")]
+    // R7-C3 C3d (PLAN G830, G797): one record per error group at the last own premise clause with a Type in it: a cycle through a nested
+    // Type's enclosing argument, at a Type declaration, through a supplied Constraint joined by the declaration's own premise, and the Proof
+    // row's cycle through an owner-admitting pair; each with its valid twin.
+    [InlineData("C3", "cyc-nest", Nest + "func f<T>(value: T) -> i32\n    T is Outer<T>.Inner\n    return 0\n", "InvalidConstraint_Kd: T is Outer<T>.Inner")]
+    [InlineData("C3", "cyc-nest-t", Nest + "func f<T>(value: T) -> i32\n    T is Outer<i32>.Inner\n    return 0\n", "")]
+    [InlineData("C3", "cyc-nest2", Nest + "func f<T, U>(value: T) -> i32\n    T is Outer<U>.Inner\n    U is Option<T>\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>")]
+    [InlineData("C3", "cyc-type", "struct S<T, U>\n    T is Option<U>\n    U is Option<T>\n", "InvalidConstraint_Kd: U is Option<T>")]
+    [InlineData("C3", "cyc-type-t", "struct S<T, U>\n    T is Option<U>\n    U is Option<i32>\n", "")]
+    [InlineData("C3", "cyc-use", "func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    let y: Option<U> = value@move\n    return 0\n", "InvalidConstraint_Kd: U is Option<T>")]
+    [InlineData("C3", "cyc-contract-t", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<i32>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "")]
+    [InlineData("C3", "cyc-supply", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\nfunc f<T>(value: T) -> i32\n    T is C\n    T.(C).Y is T.(C).X\n    return 0\n", "InvalidConstraint_Kd: T.(C).Y is T.(C).X")]
+    [InlineData("C3", "cyc-supply-t", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\nfunc f<T>(value: T) -> i32\n    T is C\n    T.(C).Y is i32\n    return 0\n", "")]
+    [InlineData("C3", "cyc-pair", "func f<s/A>(x: ref/A) -> ()\n    s is owner or ref\n    A is s/A\n    ()\n", "UnprovenConstraint_Kd: A is s/A")]
+    [InlineData("C3", "cyc-pair-t", "func f<s/A>(x: ref/A) -> ()\n    s is owner\n    A is s/A\n    ()\n", "")]
     public void ContractReferencesAreIdentifiedByTheirNormalizedForm(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // R7-C3 C3d (F's C2/C3 ruling 331 (B)): a declaration whose premise error stands at its clause, or at its supplying Contract's clause, is
+    // Invalid with no failure and no part, and its published cause is that record: the cyclic owner's is its clause's, f's under a
+    // Contract-only cycle the Contract's clause's (through the Contract, which rests on its own clause).
+    [Theory]
+    [InlineData("func cyclic<T, U>(value: T) -> i32\n    T is Option<U>\n    U is Option<T>\n    return 0\n", "cyclic", "U is Option<T>")]
+    [InlineData("contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "f", "Self.Y is Option<Self.X>")]
+    public void ADeclarationRestingOnItsPremiseErrorsClausePublishesItsRecordAsItsCause(string program, string owner, string clause)
+    {
+        var c = MinimalEmissionTest.Analyze(program + "()");
+        var declaration = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single(x => x.Name == owner);
+        Assert.Equal((Kimi.Compiler.BindingState.Invalid, Kimi.Compiler.BindingFailure.None), (declaration.StateOf(c), declaration.FailureOf(c)));
+        var cause = Assert.IsType<Kimi.Compiler.Parsing.IsKoto>(Assert.Single(c.Binding.FailureCauses(declaration)!).Subject);
+        Assert.Equal(program.IndexOf(clause, StringComparison.Ordinal), cause.Span.Start);
+    }
 
     // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
     // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
@@ -208,17 +281,20 @@ public partial class TypeIdentityTest
     public void AnAccessResolvesThroughItsReceiversIdentity(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertBindingRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
-    // SPEC 8.9.1, 4.7.1, 23.1.2: an index key's record shows each conformance it weighed, and a Note states only what the check found:
-    // M<SrcI> does conform to UniqIndexable, for Name.
+    // SPEC 8.9.1, 4.7.1, 23.1.2: an index key's record relates each conformance its selection by the key weighed, labelled by the instance
+    // it stands for (`related`, in order; f-x2w's Indexable<Name> is no member of the selection by Indexable<i32>), and a Note states only
+    // what the check found (`note`, its start): M<SrcI> does conform to UniqIndexable, for Name.
     [Theory]
-    [InlineData("C3", "x2", "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "AmbiguousBinding_Kd", "Indexable<", null, Explicit = true)]
-    [InlineData("C3", "x4", HasItem + "struct M<S>\n    S is HasItem\n    Self is Indexable<S.(HasItem).Item>\n    Self is Indexable<i32>\n    associate Indexable<S.(HasItem).Item>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S.(HasItem).Item) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<SrcI>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "AmbiguousBinding_Kd", "Indexable<", null, Explicit = true)]
-    [InlineData("C3", "x11", HasItem + Key + "struct M<S>\n    S is HasItem\n    Self is Indexable<Option<S.(HasItem).Item>>\n    Self is UniqIndexable<Name>\n    associate Indexable<Option<S.(HasItem).Item>>.Element is i32\n    associate Indexable<Name>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/Option<S.(HasItem).Item>) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref\n    public func indexUniq(self: uniq/Self, key: ref/Name) -> uniq/i64 during self => self.large@uniq\nvar m = M<SrcI>.init(3, 4)\nlet k: Option<i32> = .Some(1)\nm[k] = 5\n", "SharedPathAccess_Kd", null, "has no UniqIndexable conformance", Explicit = true)]
-    public void AKeysRecordStatesWhatTheCheckFound(string unit, string form, string program, string code, string? named, string? denied)
+    [InlineData("C3", "x2", "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "AmbiguousBinding_Kd", "Indexable<S> | Indexable<i32>", null)]
+    [InlineData("C3", "x4", HasItem + "struct M<S>\n    S is HasItem\n    Self is Indexable<S.(HasItem).Item>\n    Self is Indexable<i32>\n    associate Indexable<S.(HasItem).Item>.Element is i32\n    associate Indexable<i32>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S.(HasItem).Item) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\nlet m = M<SrcI>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "AmbiguousBinding_Kd", "Indexable<S.Item> | Indexable<i32>", null)]
+    [InlineData("C3", "f-x2w", Key + "struct M<S>\n    Self is Indexable<S>\n    Self is Indexable<i32>\n    Self is Indexable<Name>\n    associate Indexable<S>.Element is i32\n    associate Indexable<i32>.Element is i64\n    associate Indexable<Name>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/S) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/i32) -> ref/i64 during self => self.large@ref\n    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref\nlet m = M<i32>.init(3, 4)\nlet k: i32 = 1\nlet b = m[k]\n", "AmbiguousBinding_Kd", "Indexable<S> | Indexable<i32>", null)]
+    [InlineData("C3", "x11", HasItem + Key + "struct M<S>\n    S is HasItem\n    Self is Indexable<Option<S.(HasItem).Item>>\n    Self is UniqIndexable<Name>\n    associate Indexable<Option<S.(HasItem).Item>>.Element is i32\n    associate Indexable<Name>.Element is i64\n    var small: i32\n    var large: i64\n    public init(small: i32, large: i64)\n        self.small = small\n        self.large = large\n    public func index(self, key: ref/Option<S.(HasItem).Item>) -> ref/i32 during self => self.small@ref\n    public func index(self, key: ref/Name) -> ref/i64 during self => self.large@ref\n    public func indexUniq(self: uniq/Self, key: ref/Name) -> uniq/i64 during self => self.large@uniq\nvar m = M<SrcI>.init(3, 4)\nlet k: Option<i32> = .Some(1)\nm[k] = 5\n", "SharedPathAccess_Kd", null, "M<SrcI> conforms to UniqIndexable<Name> but not to UniqIndexable<Option<i32>>")]
+    public void AKeysRecordStatesWhatTheCheckFound(string unit, string form, string program, string code, string? related, string? note)
     {
         var c = MinimalEmissionTest.Analyze(program + "()");
         var record = CompilationTestHelper.PublishedErrors(c).Single(x => x.Code == code);
-        Assert.True(named is null || record.Explanation.Split(named).Length > 2, $"{form} [{unit}]: {record.Explanation}");
-        Assert.True(denied is null || !record.Explanation.Contains(denied, StringComparison.Ordinal), $"{form} [{unit}]: {record.Explanation}");
+        var labels = string.Join(" | ", (record.Related ?? []).Select(static x => x.Label));
+        Assert.True(related is null || labels == related, $"{form} [{unit}]: {labels}");
+        Assert.True(note is null || record.Note?.StartsWith(note, StringComparison.Ordinal) == true, $"{form} [{unit}]: {record.Note}");
     }
 }

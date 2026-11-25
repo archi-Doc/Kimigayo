@@ -355,6 +355,16 @@ public class ClosureReceiverClassificationTest
         Assert.Null(error.Repairs);
     }
 
+    // SPEC 7.7.3, 10.1.1, 23.1.2 (PLAN G1130): a value call's argument match is judged whatever its callee's acquisition gave, its record
+    // beside the callee's (a located limit, a write).
+    [Theory]
+    [InlineData("v2", "func call<F>(v: objuniq/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload\n    return v(1)\n", "Unsupported_Kd: return v(1) | NoApplicableOverload_Kd: return v(1)")]
+    [InlineData("v2t", "func call<F>(v: F) -> i32\n    F is Callable<ref, () -> i32>\n    return v(1)\n", "NoApplicableOverload_Kd: return v(1)")]
+    [InlineData("v3", "func call<F>(f: ref/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f(1)\n", "InvalidAssignment_Kd: return f(1) | NoApplicableOverload_Kd: return f(1)")]
+    [InlineData("v3t", "func call<F>(f: ref/F) -> i32\n    F is Callable<uniq, () -> i32>\n    return f()\n", "InvalidAssignment_Kd: return f()")]
+    public void AValueCallsArgumentMatchIsJudgedWhateverItsCalleeGave(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "public func main() => ()\n", records);
+
     // A closure that calls its captured object's payload exclusively is itself Exclusive.
     [Fact]
     public void AnExclusivePayloadCallMakesTheCaptureExclusive()
@@ -364,12 +374,24 @@ public class ClosureReceiverClassificationTest
     public void AScalarReadThroughACapturedExclusiveReferenceIsShared()
         => ScalarEmissionTest.EmitFixture("ClosureReceiverScalarRead", "var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow + 1\nlet r = f()\nrequire r == 8 and f() == 8 else => $abort(\"r\")", string.Empty);
 
+    // R7 plan Z4 (SPEC 7.7.3; PLAN G13): a call whose Closure receiver is by case borrows its callee shared in the owner case and
+    // exclusively in the uniq case (a case branch, MirBuilder.Calls); each instance runs the side its case selects, the owner instance's
+    // calls through a shared borrow of h.
+    [Fact]
+    public void EachInstanceCallsAByCaseClosureAsItsCaseAdmits()
+        => ScalarEmissionTest.EmitFixture("ClosureReceiverByCase", ByCase, string.Empty);
+
+    private const string ByCase = "func f<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    T is Copy\n" +
+        "    var h = func [value] () -> i32\n        let local = value\n        _ = local\n        return 7\n    let first = h()\n" +
+        "    return first + h()\nvar n: i32 = 1\nrequire f(n) == 14 and f(n@uniq) == 14 else => $abort(\"by case\")";
+
     private const string PairHead = "func take<t/U>(y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\nfunc f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n";
     private const string PairMain = "public func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
     private const string PairCall = "func pair<t/U>(a: i32, y: t/U)\n    t is owner or uniq\n    U is Copy\n    return\n";
     private const string UniqHead = "public func main() -> ()\n    var n: i32 = 1\n    let value = n@uniq\n";
     private const string MissingAndExclusive = "UnresolvedBinding_Kd missing; InvalidAssignment_Kd h";
-    private const string PendingGxs = "Unsupported_Kd let g = func (z: s/T) -> () => (); ComparisonLoanConflict_Kd let g = func (z: s/T) -> () => ()";
+    private const string PendingGxs = "ComparisonLoanConflict_Kd let g = func (z: s/T) -> () => ()";
+    private const string UniqCase = "Found under the Semantics case s = uniq (SPEC 8.15)";
     private const string Node = "contract Loaded\n    func load(self: ref/Self) -> i32\ncontract Bump\n    func bump(self: uniq/Self)\n" +
         "struct Node\n    Self is Copy\n    Self is Loaded\n    Self is Bump\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n" +
         "    public func load(self: ref/Self) -> i32 => self.weight\n    public func bump(self: uniq/Self) => self.weight += 1\n";
@@ -421,8 +443,11 @@ public class ClosureReceiverClassificationTest
     // the call is Exclusive there: the strongest receiver is Exclusive, and a `let` Closure's call is invalid; under admitted cases that
     // only Copy it stays Shared. The value call, the assignment and the Dictionary entry were Shared in every case (2c-2 review B1).
     // The exclusive rows' `var` twin is valid, but the Exclusive call `f(y)` stores the receiver's Content, which leaves the shared capture
-    // `g@ref`'s Loan where `g`'s storage ends, so since the MIR decides (R6-check H5; H3b T30) it publishes, under `s = uniq`, a located
-    // Unsupported_Kd and a ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
+    // `g@ref`'s Loan where `g`'s storage ends, so since the MIR decides (R6-check H5; H3b T30) it publishes, under `s = uniq` only, a
+    // ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs, its case note asserted). Under `s = owner` the call is Shared (SPEC 7.7.3)
+    // and `q` is a `T` by value (SPEC 8.14): the view reads the call's contract in its case, whose call receiver input is shared, which
+    // writes nothing through the environment (SPEC 15.8.2, 15.6.4), and which writes nothing through `q`, so that view has no record
+    // (Z4-M removed PD13's Unsupported_Kd there). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
     // board O-1): PLAN G148 (2), GXS's proposal, which reconciles SPEC 15.6.4 with 15.8.2's retention, restores the acceptance and
     // re-points these rows back to no record. G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.4.2, 15.6.3, 15.8.2): under `s = uniq`
     // the use Reborrows the captured `x` within the call receiver, and `g`'s parameter and the annotated Dictionary element are the
@@ -439,13 +464,30 @@ public class ClosureReceiverClassificationTest
     [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true, PendingGxs + "; UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x", "UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x; ")]
     [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or ref", false)]
     public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive, string varRecords = "", string letBefore = "")
-        => AssertCallReceiver(
-            "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T, y: s/T)\n    s is " + admitted + "\n" +
-                "    T is Copy\n    let g = func (z: s/T) -> () => ()\n    let f = func [x, g@ref] (q: s/T) -> i32\n" + use + "        return 0\n    let v = f(y)\n" +
-                "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
-            exclusive,
-            varRecords,
-            letBefore);
+    {
+        var source = Outer(admitted, "    let g = func (z: s/T) -> () => ()\n    let f = func [x, g@ref] (q: s/T) -> i32\n" + use + "        return 0\n    let v = f(y)\n");
+        AssertCallReceiver(source, exclusive, varRecords, letBefore);
+        var conflicts = DiagnosticCorpus.Check(source.Replace("    let f = func", "    var f = func", StringComparison.Ordinal)).Diagnostics
+            .Where(static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd)).ToArray();
+        Assert.Equal(exclusive ? 1 : 0, conflicts.Length);
+        Assert.All(conflicts, static x => Assert.Contains(UniqCase, x.Note, StringComparison.Ordinal));
+    }
+
+    // SPEC 7.7.2, 15.8.2, 15.6.2, 7.7.3: the invalid neighbour of the PendingGxs rows. `f`'s entry `g@ref` keeps its shared Loan on `g`
+    // while `f` lives, and the later call `f(y)` uses `f` in every case (Shared where s = owner, reading its environment; Exclusive where
+    // s = uniq), so the Move `g@move` meets a live `ref` Loan: an error in every case, at the moved `g` with no case note. The uniq case
+    // adds PendingGxs, under `s = uniq` alone.
+    [Fact]
+    public void AMoveOfASharedCaptureBeforeAByCaseCallConflictsInEveryCase()
+    {
+        var body = "    let g = func (z: s/T) -> () => ()\n    var f = func [x, g@ref] (q: s/T) -> i32\n        take(x)\n        return 0\n" +
+            "    let moved = g@move\n    let v = f(y)\n";
+        var source = Outer("owner or uniq", body);
+        Assert.Equal(PendingGxs + "; ComparisonLoanConflict_Kd g", Records(source));
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Contains(UniqCase, errors[0].Note, StringComparison.Ordinal);
+        Assert.DoesNotContain("Found under the Semantics case", errors[1].Note ?? string.Empty, StringComparison.Ordinal);
+    }
 
     // SPEC 3.5, 14.2.2, 23.1.2 (DECISIONS R4-M145; the owner, 2026-10-26): a captured pair layer in Discard Context (a statement, in
     // parentheses, a discarded selection body) is acquired by bare acquisition, as at a value position, so it Reborrows in its exclusive
@@ -735,6 +777,12 @@ public class ClosureReceiverClassificationTest
             return c.Binding.ClosureWork;
         }
     }
+
+    // The PendingGxs rows' program: `take` and `outer<s/T>(x, y)` with `s` and `take`'s `t` admitting `admitted`, `body` after `outer`'s
+    // premises, and a main calling it.
+    private static string Outer(string admitted, string body)
+        => "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T, y: s/T)\n    s is " + admitted + "\n" +
+            "    T is Copy\n" + body + "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n";
 
     // The records of a checked source: each one's code and the text at its span.
     private static string Records(string source) => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));

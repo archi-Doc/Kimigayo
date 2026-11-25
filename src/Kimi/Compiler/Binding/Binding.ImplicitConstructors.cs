@@ -47,8 +47,14 @@ public sealed partial class Binding
     internal OmittedBaseSelection SelectOmittedBaseConstructor(FunctionKoto constructor)
     {
         var call = constructor.BaseInitializer!;
+        // PLAN G651 a2 (F2, BU-161; IMPL 21.3.2): the selection forms its Types in a site frame at the base call (located at the base clause,
+        // SPEC 6.2.2) where none is open, so a Type past the limit formed there is refused at it, for CompleteImplicitConstructors and
+        // RevalidateImplicitConstructors alike.
+        var site = this.OpenQuerySite(call);
         if (this.BaseConstructorGroup(constructor, out var parent) is not { } group)
         {
+            this.CloseQuerySite(site);
+
             // SPEC 23.1.2 (PLAN G651 a2, B5): a clause that gives the selection no base rests the selection on the struct's records.
             return parent is null ? new(OmittedBaseOutcome.Dependent, Cause: constructor.BoundSymbol!.Scope.Owner) : new(OmittedBaseOutcome.NoBaseConstructor);
         }
@@ -82,6 +88,7 @@ public sealed partial class Binding
         {
             this.EndSelectionQuery(query);
             this.ReturnEvaluation(evaluation);
+            this.CloseQuerySite(site);
         }
     }
 
@@ -180,7 +187,7 @@ public sealed partial class Binding
             var obligation = this.obligations[i];
             if (this.WithinWithdrawnConstructor(obligation.Use))
             {
-                this.obligationSet.Remove(obligation);
+                this.obligationSet.Remove(new(obligation));
                 continue;
             }
 

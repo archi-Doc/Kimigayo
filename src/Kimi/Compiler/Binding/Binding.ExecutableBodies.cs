@@ -7,7 +7,8 @@
 //   EnterBody, with the one value of each body (FunctionBody, a default template's, AccessorBody, InitializerBody).
 // - Outputs: BindingObligation.Body (AddObligation), BoundOrigin.Body (OriginAtom, OpenOrigin; defined for non-declaration binders),
 //   OriginDeclaration.Body (BeginOriginDeclaration), BindingSymbol.DeclaringBody (the index walk's: a Closure's, a named function's
-//   and a local's, IndexNode and DeclareFunction).
+//   and a local's, IndexNode and DeclareFunction), and the decision-time rule's scope (BindNode's end asks FailedWrittenType for a use
+//   bound in a body only, E3e).
 // - The rule for a local (SPEC 15.3.4, 15.3.6; DECISIONS R8-M56): its declaration, its Type's Origin declaration and its initializer are
 //   formed in its declaring body whoever demands them (FormingBodyOf: a use, a capture or a nested header binding them first), so every
 //   atom, row and region they form is that body's. DeclaringBody is total for a local: the index walk enters every body Binding forms

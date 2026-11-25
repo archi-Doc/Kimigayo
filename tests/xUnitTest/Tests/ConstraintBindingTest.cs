@@ -181,11 +181,14 @@ public class ConstraintBindingTest
 
     // The owner's O-44: a conformance reads no signature's formation, so a declaration that fails after the bodies keeps its own record and fails
     // no conformance naming it. LateAssociated's goes through the binding's own formation (R7-V5's S3). DECISIONS Q13 for the removed records.
+    // PLAN G464 (SPEC 15.6.4 step 3, 8.2.3, 23.1.2; DECISIONS Q13, dependent): a call no longer forms its instantiated inputs, so a failed
+    // declaration named only in a call's input gives the call no record (LateClause, LateAfterItsReaders, LateThroughAClosedClause); one
+    // named in its result keeps its dependent record through the result's formation (LateWithUses, LateAssociated).
     [Theory]
-    [InlineData(LateClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateClauseValid, "clean")]
-    [InlineData(LateAfterItsReaders, "3*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
-    [InlineData(LateThroughAClosedClause, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateAfterItsReaders, "2*UnsatisfiedConstraint_Kd")]
+    [InlineData(LateThroughAClosedClause, "2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateWithUses, "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
     [InlineData(LateAssociated, "1*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 287; DECISIONS Q13, dependent): the user's record reads S's failed closed clause and rests (SPEC 23.1.2)
     public void ALateFailureStaysAtItsDeclaration(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
@@ -563,9 +566,9 @@ public class ConstraintBindingTest
     // declaration that states it (an id<K<string>> row was InternalInvariant_Kd before); a callee's signature, proven again at each use,
     // explains none while PLAN G375's sigref1 stays open (null Note).
     [Theory]
-    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", null)] // G572 U2a (Q13): the Final record without the clause fact (U2a-2)
+    [InlineData(OwnedHolder + "func use(x: ref/i32) -> i32\n    let h = H.init(t: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: x)", "Call init requires T is Owned; this condition cannot be proven for ref/i32")] // G1278-A (Q13; F's G1278-4): the inferring construction is its Type's site; its Final record names the clause (BU-136)
     [InlineData(CallableHolder + "func use(g: (ref/i32 during static) -> i32) -> i32\n    let h = H.init(f: g@move)\n    return 0", "UnprovenConstraint_Kd", "g@move", "F is Callable<(ref/i32) -> i32> compares whole contracts and is not proven: the 1st parameter requires the omitted Origin of ref/i32 outlives static; its Origin part is judged from the premises alone (SPEC 8.10, 10.7, 15.6.1)")] // G572 U2a (Q13): the Callable record at its argument (U2a-2)
-    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "InvalidConstraint_Kd", "H.init(t: u@move)", null)] // G572 U2a (Q13): the call rests on mk's failed H<U>
+    [InlineData(OwnedHolder + "func mk<U>(u: U) -> H<U>\n    return H.init(t: u@move)\nfunc use(x: ref/i32) -> i32\n    let h = mk(u: x)\n    return 0", "UnprovenConstraint_Kd", "H.init(t: u@move)", "Call init requires T is Owned; this condition cannot be proven for U")] // G1278-A (Q13; F's G1278-4): the inferring construction is a site of its own and proves its own clause; mk's result carries H<U>
     [InlineData(CallableHolder + "func use(g: i32) -> i32\n    let h = H.init(f: g)\n    return 0", "NoApplicableOverload_Kd", "H.init(f: g)", "init requires F is Callable<(ref/i32) -> i32>; this condition is refuted for i32")]
     [InlineData(OwnedHolder + "func id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<H<ref/i32>>\n    return 0", "UnprovenConstraint_Kd", "id<H<ref/i32>>", "Function Item id: H requires T is Owned; this condition cannot be proven for ref/i32")]
     [InlineData("struct H<T>\n    T is Copy\n    public let t: T\nstruct K<T>\n    T is Copy\n    public let t: T\nfunc id2<U, V>(u: U, v: V) -> i32 => 0\nfunc use() -> i32\n    let f = id2<H<string>, K<Array<i32>>>\n    return 0", "UnsatisfiedConstraint_Kd", "id2<H<string>, K<Array<i32>>>", "Function Item id2: H requires T is Copy; this condition is refuted for string")]
@@ -622,6 +625,29 @@ public class ConstraintBindingTest
         Assert.All(records, static x => Assert.StartsWith("UnsatisfiedConstraint_Kd ", x, StringComparison.Ordinal));
     }
 
+    // SPEC 8.6.3, 23.1.2 (PLAN G1278): a constructed Type with clauses is judged once, at its formation site; a node that carries it (a
+    // Function at its result, a Field, a local or a parameter and their reads, a call result, an acquisition or a `let` at its expected
+    // Type) is neither judged nor rested (Q13: their restating records are gone). Guards keep their independent records: a Type written
+    // in an expression, a call's own clause (8.3.1), a literal and an acquisition that infer their Type (12.4, 10.8), a body's own
+    // failure. `struct H`'s 8:12 is ValidateAccessor's (PLAN G1278-B); dictann's literal 8:33, a carrier still judged, is named open.
+    [Theory]
+    [InlineData("struct H\n    public var x: Box<S>", "UnsatisfiedConstraint_Kd 8:12 | UnsatisfiedConstraint_Kd 8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")", "UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("func g()\n    let b: Option<Box<S>> = .None", "UnsatisfiedConstraint_Kd 8:19")]
+    [InlineData("func g() -> Box<S> => $abort(\"no\")\nfunc h() -> i32\n    let v = g()\n    return v.nope", "NoApplicableOverload_Kd 9:13 | UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("func g(b: Box<S>) -> i32\n    return b.nope", "UnresolvedBinding_Kd 8:12 | UnsatisfiedConstraint_Kd 7:11")]
+    [InlineData("func g(p: Box<S>) -> i32\n    let b: Box<S> = p@move\n    return b.nope", "UnresolvedBinding_Kd 9:12 | UnsatisfiedConstraint_Kd 7:11 | UnsatisfiedConstraint_Kd 8:12")]
+    [InlineData("func g(s: S)\n    let d: Dictionary<S, i32> = [s@move: 1]", "UnsatisfiedConstraint_Kd 8:12 | UnsatisfiedConstraint_Kd 8:33")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g()\n    let e: E<S> = .B", "UnsatisfiedConstraint_Kd 12:12")]
+    [InlineData("func make<T>() -> T => $abort(\"no\")\nfunc g()\n    let o = make<Box<S>>()", "NoApplicableOverload_Kd 9:13 | UnsatisfiedConstraint_Kd 9:18")]
+    [InlineData("func wrap<T>(x: T) -> Box<T>\n    T is C\n    return $abort(\"no\")\nfunc g(s: S)\n    let b = wrap(s@move)", "NoApplicableOverload_Kd 11:13")]
+    [InlineData("func g(s: S)\n    let d = [s@move: 1]", "UnsatisfiedConstraint_Kd 8:13")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g(s: S)\n    let e = E.A(s@move)", "UnsatisfiedConstraint_Kd 12:13")]
+    [InlineData("func g() -> Box<S> => 1", "TypeMismatch_Kd 7:23 | UnsatisfiedConstraint_Kd 7:13")]
+    [InlineData("enum E<T>\n    T is C\n    A(T)\n    B\nfunc g()\n    let e: E<K> = .B", "")]
+    public void AFormedTypeIsJudgedAtItsFormationSiteOnly(string declaration, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n").Select(static x => string.Join(' ', x.Split(' ', 3).Take(2))).Order(StringComparer.Ordinal)));
+
     // SPEC 23.1.2, 15.3.1 (R7-V1c, F's V1c ruling 3): the walk judges a written occurrence once, at the outermost layer of it whose Type is
     // formed. A wrapper whose `during` binds no slot (Box has none) forms no Type, so the occurrence is judged at the Type below it and
     // both independent failures are reported, the Origin's and `S is C`'s (ee393bf26 judged nothing there); with a slot the wrapper's
@@ -641,6 +667,18 @@ public class ConstraintBindingTest
     [InlineData("func g(x: ref/Box<S>) => ()", "UnsatisfiedConstraint_Kd 7:15 Box<S>")]
     public void ALayerFormingItsOperandsTypeIsThatOccurrence(string declaration, string records)
         => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords("contract C\nstruct Box<T>\n    T is C\nstruct S\nstruct K\n    Self is C\n" + declaration + "\npublic func main() => ()\n").Order(StringComparer.Ordinal)));
+
+    // PLAN G464 (SPEC 23.1.2, 8.3, 15.3.4; the Front's C-535 t1, t1f, t2, t3): the layers over a failed written occurrence rest on it
+    // (RestLayersOnType), and an outer occurrence's own failure, a borrow layer's relation and a nested result's relation stay
+    // independent records (t1, t1f: `Box<string> is i32` and `() -> Box<string> is i32` are Refuted at the outer Box too; t2: the
+    // Field's own record stays beside them); only a Field's record restating its written occurrence goes (t3, DECISIONS Q13, rule W).
+    [Theory]
+    [InlineData("func f(b: Box<Box<string>>) -> i32 => 0\n", "2*UnsatisfiedConstraint_Kd")] // t1
+    [InlineData("func f(b: Box<() -> Box<string>>) -> i32 => 0\n", "2*UnsatisfiedConstraint_Kd")] // t1f
+    [InlineData("struct H {q}\n    public let g: ref/(Box<string>, ref/i32 during q) during static\n", "1*UnprovenOriginRelation_Kd 2*UnsatisfiedConstraint_Kd")] // t2
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n\n    public init(x: ref/i32 during a) => self.x = x\nstruct H {q}\n    public let g: () -> (Box<string>, Option<T during q>)\n", "1*UnprovenOriginRelation_Kd 1*UnsatisfiedConstraint_Kd")] // t3
+    public void ALayerOverAFailedOccurrenceKeepsTheIndependentRecords(string declaration, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("struct Box<T>\n    T is i32\n" + declaration));
 
     // SPEC 7.5: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]

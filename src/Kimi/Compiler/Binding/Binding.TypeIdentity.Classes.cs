@@ -47,6 +47,8 @@ public sealed partial class Binding
         private readonly List<int> open = new();
         private readonly List<byte> cycle = new();
         private readonly List<(int Root, int Member, int Component)> stack = new();
+        private readonly HashSet<BoundType> groupSeen = new(ReferenceEqualityComparer.Instance); // InGroup's walk (R7-C3 C3d)
+        private readonly List<BoundType> groupWalk = new();
         private BindingScope? scope;
         private bool provisional;
         private bool meetProvisional;
@@ -159,10 +161,63 @@ public sealed partial class Binding
             return false;
         }
 
+        // R7-C3 C3d (PLAN G830): whether a Type or a part of it (Arity and Component, as Holds walks) is in the final error group `group`
+        // (OwnError's): one walk over the Type's parts, each once, linear in its distinct parts (no recursion; a Type shares its parts).
+        internal bool InGroup(BoundType? type, int group)
+        {
+            if (type is null)
+            {
+                return false;
+            }
+
+            this.groupSeen.Clear();
+            this.groupWalk.Clear();
+            this.groupWalk.Add(type);
+            while (this.groupWalk.Count != 0)
+            {
+                var part = this.groupWalk[^1];
+                this.groupWalk.RemoveAt(this.groupWalk.Count - 1);
+                if (!this.groupSeen.Add(part))
+                {
+                    continue;
+                }
+
+                if (this.ClassOf(part) is var root && root >= 0 && this.Group(root) == group)
+                {
+                    return true;
+                }
+
+                for (var i = 0; i < Arity(part); i++)
+                {
+                    this.groupWalk.Add(Component(part, i));
+                }
+            }
+
+            return false;
+        }
+
+        // R7-C3 C3d (F's C2/C3 rulings 332, 333; SPEC 8.3.4, 23.1.2): the whole of a pair layer in the final error group `group` whose binder
+        // admits no case in this view (PairHead's empty set, 8.3.4's Error: the failed input the group's meets read), else null. One scan
+        // of the nodes, on an error group only.
+        internal BoundType? EmptiedPair(int group)
+        {
+            for (var n = 0; n < this.types.Count; n++)
+            {
+                if (TryPairLayer(this.types[n], out var whole, out _) && this.Group(this.Find(n)) == group &&
+                    binding.AdmittedSemantics(whole, this.scope!) == SemanticsMask.None)
+                {
+                    return whole;
+                }
+            }
+
+            return null;
+        }
+
         // The worst final error class this table holds that the parent's table does not hold with the same state for the same member (the
         // premises that first form it are this scope's), whether an own error class is still waiting for its Origin declarations, and
-        // whether an own final class is at the closure limit, which a worse class hides from Worst.
-        internal (byte Worst, bool Waiting, bool Limited) OwnError(IdentityClasses? parent)
+        // whether an own final class is at the closure limit, which a worse class hides from Worst; each own final error group with its
+        // worst state, appended to `groups` (R7-C3 C3d: the recorder's one record per group, PLAN G830).
+        internal (byte Worst, bool Waiting, bool Limited) OwnError(IdentityClasses? parent, List<(int Group, byte State)> groups)
         {
             var (worst, waiting, limited) = (One, false, false);
             for (var root = 0; root < this.types.Count; root++)
@@ -181,9 +236,27 @@ public sealed partial class Binding
                 waiting |= this.incompleteClass[root];
                 worst = this.incompleteClass[root] ? worst : Math.Max(worst, this.state[root]);
                 limited |= !this.incompleteClass[root] && this.state[root] == Limit;
+                if (!this.incompleteClass[root])
+                {
+                    AddGroup(groups, this.Group(root), this.state[root]);
+                }
             }
 
             return (worst, waiting, limited);
+
+            static void AddGroup(List<(int Group, byte State)> groups, int group, byte state)
+            {
+                for (var i = 0; i < groups.Count; i++)
+                {
+                    if (groups[i].Group == group)
+                    {
+                        groups[i] = (group, Math.Max(groups[i].State, state));
+                        return;
+                    }
+                }
+
+                groups.Add((group, state));
+            }
         }
 
         // Verdict's Proven: one final class in state One, or one head and agreeing attributes over Proven parts.
@@ -712,7 +785,7 @@ public sealed partial class Binding
         // Limits): the nodes a ground adds remember the binding (conforming declaration, associated Type) and the node it grounded;
         // a chain uses one binding at most PremiseClosureLimit times (each use is one round of the premises' closure, the limit
         // G881b's request rounds count), whatever the spelling of its Types (ground-dec2 and its directly spelled twin alike). A
-        // ground past it is not taken and its class is in state Limit, recorded once at the declaration as PremiseClosureLimit_Kd
+        // ground past it is not taken and its class is in state Limit, recorded once at the declaration as AnalysisLimit_Kd
         // (a Resource record); a growing expansion (`associate C.X is Option<G<Option<A>>.(C).X>`) and a descent deeper than the limit
         // (ground-deep) reach it alike. Finite: each binding is used a bounded number of times along any chain.
         // R7-C3 (B4; SPEC 8.2.3 Projections, 8.5.4): a family application that is a node of its own (a premise's side, `U.(L).Lent(b)`)
@@ -968,6 +1041,10 @@ public sealed partial class Binding
                 }
             }
         }
+
+        // An error class's group, one premise error (SPEC 8.2.3): the class itself, or for a class on a cycle its strongly connected
+        // component (MarkCycles), so `T is Option<U>` with `U is Option<T>` is one `cyclic` error over its two classes.
+        private int Group(int root) => this.cycle[this.component[root]] != 0 ? this.component[root] : root;
 
         private bool Congruent(BoundType x, BoundType y)
         {

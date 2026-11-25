@@ -189,6 +189,15 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 8.6.3, 23.1.2 (PLAN G1278, G1321): the Subject Type is carried from the Subject, never formed by the match, so its formation
+        // is judged at its site (a written occurrence, or a call's own proof) and the plan reads that verdict once, at its root position
+        // (the first arm's Pattern; a `try`'s first synthesized Pattern), with no record. A refuted one is the coverage's prerequisite
+        // (plan.Invalid), never the arms': every position keeps its kind and test and every binding its part's Type (SPEC 15.1.6).
+        if (subject is not null && match.Arms.Count != 0)
+        {
+            this.ReadSubjectTypeVerdict(plan, KotoHelper.UnwrapParentheses(match.Arms[0].Pattern), subject, scope);
+        }
+
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         for (var i = 0; i < match.Arms.Count; i++)
         {
@@ -364,11 +373,6 @@ public sealed partial class Binding
             // A position that failed before the plan, such as a repeated binding name, is a part the match consulted.
             plan.Invalid = true;
             this.Consulted(syntax);
-        }
-
-        if (!this.ValidatePatternType(plan, syntax, matched, outer))
-        {
-            return index;
         }
 
         // SPEC 14.8.1: a Wildcard (and a grouping, bound as its operand) selects nothing.
@@ -598,18 +602,18 @@ public sealed partial class Binding
         }
     }
 
-    private bool ValidatePatternType(BoundMatch plan, Koto syntax, BoundType type, BindingScope scope)
+    // The plan's one reading of its Subject Type's formation verdict, at its root position `syntax` (BindMatch; its recheck,
+    // CompletePatternAcquisitions). The Subject carries that Type (PLAN G1278), so a refuted or unproven one records nothing here: its
+    // record is at the Type's formation site; the plan is Invalid or Pending. Invariant: this proof is never less decided than the
+    // judgment that records the Type's formation, a written site's in the same or an enclosing declaration, whose premises the match's
+    // scope includes, or, for a call result (its site is in the callee), the call's own proof at the call; so a Pending plan rests on an
+    // Unknown recorded at Final there, and a Pending plan with no record anywhere is a broken contract.
+    private bool ReadSubjectTypeVerdict(BoundMatch plan, Koto syntax, BoundType type, BindingScope scope)
     {
         var proof = this.CheckTypeConstraints(type, scope, syntax);
-        if (proof == ConstraintProof.Proven)
-        {
-            return true;
-        }
-
-        plan.Invalid |= proof != ConstraintProof.Unknown;
+        plan.Invalid |= proof is not (ConstraintProof.Proven or ConstraintProof.Unknown);
         plan.Pending |= proof == ConstraintProof.Unknown;
-        this.RecordConstraint(syntax, proof, [], proof == ConstraintProof.Unknown); // The recheck meets a node its first check failed: the read keeps it.
-        return false;
+        return proof == ConstraintProof.Proven;
     }
 
     private void CompletePatternAcquisitions()
@@ -618,24 +622,21 @@ public sealed partial class Binding
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
         foreach (var row in this.matches.Values.In(this.pass))
         {
+            // The root's verdict read again after late declaration/constraint validation, including discards (BindMatch's reading, once); a
+            // resting root matched no Type. A refuted one, here or at BindMatch, leaves each arm's root-level Binding, which reads the
+            // Subject Type, unacquired (one reached through a reference layer keeps BindMatch's Borrow, AcquireReferenceBindings); a
+            // position below selects a part, acquired without a proof (AcquireBinding).
             var plan = row!;
-            var scope = this.ConstraintScope(plan.Syntax);
+            var failed = plan.PositionStorage.Count != 0 && plan.PositionStorage[0].MatchedType is { } subject &&
+                !this.ReadSubjectTypeVerdict(plan, plan.PositionStorage[0].Source, subject, this.ConstraintScope(plan.Syntax));
+            if (failed)
+            {
+                plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
+            }
+
             for (var i = 0; i < plan.PositionStorage.Count; i++)
             {
-                // Recheck after late declaration/constraint validation, including discards; a resting leaf matched no Type to recheck.
-                var position = plan.PositionStorage[i];
-                if (position.MatchedType is not { } matched)
-                {
-                    continue;
-                }
-
-                if (!this.ValidatePatternType(plan, position.Source, matched, scope))
-                {
-                    plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
-                    continue;
-                }
-
-                if (position.Kind == BoundPatternKind.Binding)
+                if (plan.PositionStorage[i] is { Kind: BoundPatternKind.Binding } position && !(failed && position.Parent < 0))
                 {
                     this.AcquireBinding(plan, i);
                 }
@@ -663,9 +664,10 @@ public sealed partial class Binding
     // Copy capability changes no binding Type"), so it Moves and no Copy is asked (R7-C6 a, F's C8 ruling 24: a query is asked only
     // where a judgment needs its answer). The one binding left with Owned access, a whole-Subject binding of a Subject borrowed in place
     // or of a reference-typed temporary, has a reference layer's Type, whose Copy its Semantics decides (SPEC 3.5.2): Copied for `ref/`,
-    // `objref/` and raw, Moved (the Reborrow) for `uniq/` and `objuniq/`; its Pattern Type passed ValidatePatternType's recheck, so any
-    // other verdict there is a broken contract (F's C8 ruling 27, amending R4-M179). Its plan stays buildable and its coverage stays the
-    // Patterns' (Invalid means a located Pattern or guard failure; SPEC 14.8.4, 23.1.2).
+    // `objref/` and raw, Moved (the Reborrow) for `uniq/` and `objuniq/`; its plan's Subject Type passed ReadSubjectTypeVerdict's
+    // recheck, so any other verdict there is a broken contract (F's C8 ruling 27, amending R4-M179). Its plan stays buildable and its
+    // coverage stays the Patterns' (Invalid means a located Pattern or guard failure, or a Subject Type refuted at its formation site; SPEC
+    // 14.8.4, 23.1.2).
     private void AcquireBinding(BoundMatch plan, int index)
     {
         var position = plan.PositionStorage[index];
@@ -788,14 +790,15 @@ public sealed partial class Binding
     }
 
     // Completes what BindPattern left unvisited: Unit, or resting on the nearest failure above it, a failed position or the failure it
-    // starts from, the failed Subject or a Case leaf's unread payload Pattern (RestOnFailure).
+    // starts from, the failed Subject, the root position whose Subject Type BindMatch refuted or a Case leaf's unread payload Pattern
+    // (RestOnFailure).
     private sealed class PatternMarker(Binding binding) : KotoVisitor
     {
         private Koto? failure;
 
-        public void Mark(Koto pattern, Koto? subject)
+        public void Mark(Koto pattern, Koto? failure)
         {
-            this.failure = subject;
+            this.failure = failure;
             this.Visit(pattern);
             this.failure = null;
         }

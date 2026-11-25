@@ -55,13 +55,19 @@ public class InlineLayoutTest
 
     // R7-E2 E2-1 (SPEC 6.2, 6.7.1, 23.1.2): a C-layout struct split over two fragments that also stores itself by value fails two
     // independent requirements, the split Field's and its own inline cycle, and both are reported, the cycle beside the struct's
-    // InvalidTypeFormation_Kd that stands for the split (ValidateLayoutFragments' Transitional), also where a syntax error in the split
-    // Field's initializer derives that Field's record; with the split fixed the cycle alone stays, and with the cycle fixed the split alone
-    // (LayoutAttributeBindingTest.ASplitCLayoutStructIsReportedBesideItsFieldsSyntaxError, r1).
+    // InvalidTypeFormation_Kd that stands for the split (ValidateLayoutFragments' Transitional) and the split Field's own record, also
+    // beside a syntax error in that Field's initializer, which the Field's record, held before its frame read it, does not rest on (PLAN
+    // G1141's q1e); with the split fixed the cycle alone stays, and with the cycle fixed the split alone
+    // (LayoutAttributeBindingTest.ASplitCLayoutStructIsReportedBesideItsFieldsSyntaxError, r1). C-545 B2 (F's twins rv3-f and rv3-s,
+    // labelled before any run by SPEC 6.2, 23.1.2): the cycle check reads the Field Types only, so a struct's cycle is reported beside a
+    // syntax error in its conformance clause, which its walk reads after the cycle's record is held; with the clause well formed, the
+    // clause's InvalidConstraint_Kd rests on the struct's failure (a dependent record SPEC lets report).
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n    var next: P\nstruct P\n    var b: i32 = 0\n", "InvalidInlineLayout_Kd|InvalidTypeFormation_Kd|SplitCLayoutStorage_Kd")]
-    [InlineData("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\nstruct P\n    var b: i32 = 1 +\n    var next: P\n", "InvalidInlineLayout_Kd|InvalidTypeFormation_Kd|MissingSyntax_Kd")]
+    [InlineData("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\nstruct P\n    var b: i32 = 1 +\n    var next: P\n", "InvalidInlineLayout_Kd|InvalidTypeFormation_Kd|MissingSyntax_Kd|SplitCLayoutStorage_Kd")]
     [InlineData("struct P\n    var a: i32 = 0\n    var next: P\n", "InvalidInlineLayout_Kd")]
+    [InlineData("contract K<X>\n    func k(self: ref/Self) -> i32\nstruct R\n    Self is K<i32\n    var next: R\n    public func k(self: ref/Self) -> i32 => 0\npublic func main() => ()\n", "InvalidInlineLayout_Kd|MissingSyntax_Kd")]
+    [InlineData("contract K<X>\n    func k(self: ref/Self) -> i32\nstruct R\n    Self is K<i32>\n    var next: R\n    public func k(self: ref/Self) -> i32 => 0\npublic func main() => ()\n", "InvalidConstraint_Kd|InvalidInlineLayout_Kd")]
     public void ASplitStructsInlineCycleIsItsOwnRecord(string source, string records)
     {
         var c = MinimalEmissionTest.Analyze(source);

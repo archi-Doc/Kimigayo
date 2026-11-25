@@ -18,7 +18,7 @@ namespace Kimi.Compiler.Mir;
 // excluded entries' edges (Without), so with none excluded it is Spread's row. Keys answers a site of one view with its key and
 // slot row and classes; Summary gives a body view's row and classes; Items its classes and its atoms (what holds a published operation's
 // body within its row, SPEC 4.9.6); Field numbers a Field's bits, Initialization a static's entry and Slot a static's slot bit.
-// Invariant: an entry's initializer node keeps no atom (a definition that does not instantiate names only closed Types); a broken one is
+// Invariants: an entry's initializer node keeps no atom (a definition that does not instantiate names only closed Types); a broken one is
 // InternalInvariant.
 internal sealed partial class MirEffects
 {

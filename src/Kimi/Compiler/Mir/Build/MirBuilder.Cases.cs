@@ -5,15 +5,18 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Case branches (SPEC 8.14, 8.15.2, 4.7.1 step 3, 4.7.4; R7 plan Z23, the owner's O-446 (a)): a user index whose selection is by case
-// (HirTables.CaseDecider) selects indexUniq in the views where its decider acquires exclusively and index in the others. A frame's
-// owner is a standing take by case (Take): the first Mode-2 index of its Place whose decision splits the views of the side being built
-// locates the index's receiver and key, ends the block in a CaseSwitch on the decider and builds the exclusive side; the take's end
-// builds its Place again on the shared side, which reads the located receiver and key, into the same local, and both sides join. A
-// Mode-2 index whose decision the side's views already fix takes that side's call with no frame, so frames open only where a decision
-// splits a side's views and a node is built at most once per view region (at most MirCases.Count, PairBinder.CaseBound). An owner
-// closes only the frame it opened; two decisions meeting in one owner's own chain are a broken contract (Binding publishes one
-// decider per chain): InternalInvariant_Kd.
+// Case branches (SPEC 8.14, 8.15.2, 4.7.1 step 3, 4.7.4, 7.7.3; R7 plan Z23 and Z4, the owner's O-446 (a)): a user index whose selection
+// is by case (HirTables.CaseDecider) selects indexUniq in the views where its decider acquires exclusively and index in the others; a
+// value call whose Closure receiver is by case (HirTables.CaseDecider, MirBuilder.Calls) acquires its callee exclusively in the views
+// where its decider's case receiver is Exclusive and shared in the others. A frame's owner is a standing take by case (Take) or such a
+// call. A take's first Mode-2 index of its Place whose decision splits the views of the side being built locates the index's receiver
+// and key, ends the block in a CaseSwitch on the decider (Open) and builds the exclusive side; the take's end turns to the shared side
+// (Turn), builds its Place again there, reading the located receiver and key, into the same local, and both sides join (Close). A call
+// whose decision splits the side's views opens its frame before its callee, builds the call on each side into the one destination and
+// closes it. A Mode-2 index or a call whose decision the side's views already fix takes that side's acquisition with no frame, so
+// frames open only where a decision splits a side's views and a node is built at most once per view region (at most MirCases.Count,
+// PairBinder.CaseBound). An owner closes only the frame it opened; two decisions meeting in one take's own chain are a broken contract
+// (Binding publishes one decider per chain): InternalInvariant_Kd.
 internal sealed partial class MirBuilder
 {
     private readonly MirCases decisions = new(compilation.Types); // Decision's views (MirCases.Decision), per decider of the body (decided).
@@ -45,16 +48,13 @@ internal sealed partial class MirBuilder
             return operand;
         }
 
-        var (info, open) = (this.Info(node), this.frames[frame]);
+        var info = this.Info(node);
         if (operand is not { Kind: MirOperandKind.Move, Place: { Projection: 0, Root: >= 0 } first })
         {
             // A take by case forms its acquisition in a local (Acquired): a broken contract; the shared side only joins.
             this.Record(node, DiagnosticCode.InternalInvariant_Kd);
-            this.body.Terminate(this.current, MirTerminator.Goto(open.Join, info));
-            this.body.Terminate(open.Shared, MirTerminator.Goto(open.Join, info));
-            this.current = open.Join;
-            CollectionsMarshal.SetCount(this.located, open.Located);
-            this.frames.RemoveAt(frame);
+            this.Turn(frame, info);
+            this.Close(frame, info);
             this.owners.RemoveAt(owner);
             return operand;
         }
@@ -66,10 +66,8 @@ internal sealed partial class MirBuilder
             this.Set(result, MirRvalue.Use(this.body.AddOperand(MirOperand.Move(first))), node);
         }
 
-        this.body.Terminate(this.current, MirTerminator.Goto(open.Join, info));
-        this.frames[frame] = open with { Region = open.Parent & ~open.Decision };
-        (this.current, this.owners[owner]) = (open.Shared, -2); // -2: closing; no index of its chain opens a frame.
-        CollectionsMarshal.SetCount(this.located, open.Side);
+        this.Turn(frame, info);
+        this.owners[owner] = -2; // -2: closing; no index of its chain opens a frame.
         if (this.IsTemp(result))
         {
             this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageLive, result, this.body.Locals[result.Root].Source));
@@ -85,10 +83,7 @@ internal sealed partial class MirBuilder
             this.Set(result, MirRvalue.Use(this.body.AddOperand(again)), node);
         }
 
-        this.body.Terminate(this.current, MirTerminator.Goto(open.Join, info));
-        this.current = open.Join;
-        CollectionsMarshal.SetCount(this.located, open.Located);
-        this.frames.RemoveAt(frame);
+        this.Close(frame, info);
         this.owners.RemoveAt(owner);
         return given ? operand : MirOperand.Move(this.Made(result));
     }
@@ -122,7 +117,7 @@ internal sealed partial class MirBuilder
             }
             else if ((this.Views & ~decision) != 0)
             {
-                this.Open(node, decider, decision, mark);
+                this.owners[^1] = this.Open(node, decider, decision, mark);
             }
         }
 
@@ -150,17 +145,37 @@ internal sealed partial class MirBuilder
         return decision;
     }
 
-    // SPEC 8.14: the innermost owner's frame opened at an index whose receiver and key are located (from mark): the CaseSwitch on the
-    // decider, the exclusive side being built.
-    private void Open(Koto node, BoundType decider, ulong decision, int mark)
+    // SPEC 8.14, 7.7.3: an owner's frame opened where its decision splits the side's views, the nodes located from mark (an index's
+    // receiver and key; none for a call): the CaseSwitch on the decider, the exclusive side being built. The frame's index.
+    private int Open(Koto node, BoundType decider, ulong decision, int mark)
     {
         var region = this.Views;
         var (exclusive, shared, join) = (this.body.AddBlock(), this.body.AddBlock(), this.body.AddBlock());
         var operand = MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, decider)));
         this.body.Terminate(this.current, MirTerminator.CaseSwitch(operand, this.body.AddCase(1, exclusive), shared, this.Info(node)));
         this.frames.Add(new(decision, region, region & decision, shared, join, mark, this.located.Count));
-        this.owners[^1] = this.frames.Count - 1;
         this.current = exclusive;
+        return this.frames.Count - 1;
+    }
+
+    // A frame's exclusive side ended: it joins, and the shared side is built in the frame's other views, past the nodes that side located.
+    private void Turn(int frame, in SourceInfo info)
+    {
+        var open = this.frames[frame];
+        this.body.Terminate(this.current, MirTerminator.Goto(open.Join, info));
+        this.frames[frame] = open with { Region = open.Parent & ~open.Decision };
+        this.current = open.Shared;
+        CollectionsMarshal.SetCount(this.located, open.Side);
+    }
+
+    // A frame's shared side ended: it joins, and the frame and its located nodes end.
+    private void Close(int frame, in SourceInfo info)
+    {
+        var open = this.frames[frame];
+        this.body.Terminate(this.current, MirTerminator.Goto(open.Join, info));
+        this.current = open.Join;
+        CollectionsMarshal.SetCount(this.located, open.Located);
+        this.frames.RemoveAt(frame);
     }
 
     // A case branch's frame: its decision, the views of the side it was opened in (Parent) and of the side being built (Region), its

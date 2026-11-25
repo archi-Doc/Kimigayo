@@ -30,7 +30,8 @@ public sealed partial class Binding
     // use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a fixed Origin of an enclosing
     // function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same solution. A required signature
     // over an open evidence region (SPEC 10.8) is compared the same way, under the same premises, row sink and well-formedness proof, for
-    // both definitions (board D-822's B1: no premise-free known-signature comparison beside it).
+    // both definitions (board D-822's B1: no premise-free known-signature comparison beside it). None of its readers reads the definition's
+    // signature verdict, so every part is compared, one that failed where written too (no wildcard; DECISIONS Q13 rule W, ContractFits).
     internal bool DefinitionContractFits(BoundType item, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
@@ -52,7 +53,7 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            var fits = this.ContractFits(use, symbol, function, ContractComparison(required, rows), null, item, null, default, origins, inputs);
+            var fits = this.ContractFits(use, symbol, ContractComparison(required, rows), null, item, null, default, origins, inputs, 0);
             failure = fits ? default : this.contractFailure;
             return fits;
         }
@@ -109,12 +110,16 @@ public sealed partial class Binding
     // use proves for its instantiation (RequireResultPremises): a named function's other than a constructor's, and a getter's, since a
     // custom, computed or Contract `get` produces a function result. A getter is that definition as its accessor syntax, whose result a
     // computed or requirement Property's header is (HeaderGetter), and as the execution view each read calls (AccessorFunction).
-    private static BoundType? AssumedResult(Koto definition) => definition switch
+    private static BoundType? AssumedResult(Koto definition) => !AssumesResult(definition) ? null : definition switch
     {
-        FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result } => result,
-        PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Get, Parent: PropertyKoto { BoundSymbol.Property.Getter.Result: { } result } } => result,
+        FunctionKoto { BoundSymbol.Type: { } result } => result,
+        PropertyAccessorKoto { Parent: PropertyKoto { BoundSymbol.Property.Getter.Result: { } result } } => result,
         _ => null,
     };
+
+    // The definitions that assume their result well formed (AssumedResult's set), also while their result Type is being formed.
+    private static bool AssumesResult(Koto definition)
+        => definition is FunctionKoto { IsAnonymous: false, IsConstructor: false } or PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Get, Parent: PropertyKoto };
 
     // The definition a call's callee stands for: a getter's accessor syntax for its execution view (its inputs and its own clauses are
     // there), else the function itself.

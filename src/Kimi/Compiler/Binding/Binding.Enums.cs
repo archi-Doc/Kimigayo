@@ -26,9 +26,12 @@ public sealed class BoundEnumCase
     public ReadOnlySpan<Koto> Payload => ((SyntaxFormKoto)((SyntaxFormKoto)this.Symbol.Declaration).Operands[1]).Operands;
 }
 
-/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate. A resting construction's plan (a
-/// payload failed, PLAN G418 (2)) holds only its completed payloads and is judged only by the pass-end formation and acquisitions
-/// (CompleteEnumAcquisitions); no consumer reads it, since <see cref="Binding.TryGetEnumConstruction"/> returns a resolved use's plan.</summary>
+/// <summary>A committed construction in payload evaluation order. It is not an ownership certificate, nor a formed Type's: an acquisition
+/// that carries its Type (<see cref="FormsType"/> false, PLAN G1278) publishes a valid plan whatever that Type's verdict at its formation
+/// site, so a reader of a rejected program's model can read the plan of a refuted Type (HasFacts, the HIR adjust, MirBuilder's Aggregate,
+/// the lints). A resting construction's plan (a payload failed, PLAN G418 (2)) holds only its completed payloads and is judged only by the
+/// pass-end formation and acquisitions (CompleteEnumAcquisitions); no consumer reads it, since
+/// <see cref="Binding.TryGetEnumConstruction"/> returns a resolved use's plan.</summary>
 public sealed class BoundEnumConstruction
 {
     private BoundArgumentOperation[] operations = [];
@@ -41,16 +44,22 @@ public sealed class BoundEnumConstruction
 
     internal bool IsValid { get; set; }
 
+    /// <summary>Gets a value indicating whether the acquisition forms its Type (PLAN G1278, SPEC 6.5.2): it inferred an own slot or an
+    /// Origin, so its clause proof and its formation (CompleteEnumAcquisitions) judge that Type; otherwise its qualifier and expected Type
+    /// fixed every slot and Origin, and it carries a Type their formation site judges.</summary>
+    internal bool FormsType { get; private set; }
+
     /// <summary>Gets the construction of the enum Case value a node with the Aggregate Op makes, or null for another node.</summary>
     /// <param name="binding">The reader's Binding.</param>
     /// <param name="use">The node.</param>
     /// <returns>The construction the latest pass selected.</returns>
     internal static BoundEnumConstruction? Of(Binding binding, Koto use) => binding.TryGetEnumConstruction(use, out var construction) ? construction : null;
 
-    internal void Set(BoundEnumCase enumeration, BoundType type, ReadOnlySpan<BoundArgumentOperation> operations)
+    internal void Set(BoundEnumCase enumeration, BoundType type, ReadOnlySpan<BoundArgumentOperation> operations, bool formsType)
     {
         this.Case = enumeration;
         this.Type = type;
+        this.FormsType = formsType;
         if (this.operations.Length != operations.Length)
         {
             this.operations = new BoundArgumentOperation[operations.Length];
@@ -150,11 +159,13 @@ public sealed partial class Binding
         else if (WritesOwnList(qualifier))
         {
             // Only nested complete Type arguments carry annotations here. Enum Origin slots
-            // are determined by the construction's expected Type and payloads.
+            // are determined by the construction's expected Type and payloads. The written list forms the qualifier's Type (FormedTypeRows).
+            FormedTypeRows.Add(qualifier);
             type = this.BindTypeStructure(qualifier, scope, this.TypeContext(qualifier, scope));
         }
         else if (symbol.SelfOf is not null)
         {
+            FormedTypeRows.Add(qualifier);
             type = symbol.Type; // SPEC 9.1: a Self (the published SelfOf) names its declaration with all its bindings.
         }
         else
@@ -479,13 +490,21 @@ public sealed partial class Binding
 
             // SPEC 6.5.2 step 2, 9.7.1, 10.8: the slots the qualifier and the expected Type fix before any evidence; each payload's adaptation
             // reads them. An inferred qualifier fixes its environment and leaves its own slots open, each as its own parameter (FixedSlots);
-            // otherwise the qualifier and the expected Type each supply every slot (SPEC 8.1.3); none fixed is no Types.
+            // otherwise the qualifier and the expected Type each supply every slot (SPEC 8.1.3); none fixed is no Types. A slot or an Origin
+            // they leave open is inferred, so the acquisition forms its Type (BoundEnumConstruction.FormsType; an open Origin slot below).
             frame.Lengths[..slots].CopyTo(fixedLengths);
             var anyFixed = false;
+            var forms = false;
             for (var i = 0; i < slots; i++)
             {
                 fixedTypes[i] = frame.Types[i] ?? (inferred ? owner!.Components[i] : null);
                 anyFixed |= frame.Types[i] is not null;
+                forms |= frame.Types[i] is null or { Kind: BoundTypeKind.OpenSlot };
+            }
+
+            for (var i = 0; i < originCount; i++)
+            {
+                forms |= origins[i] is null;
             }
 
             var solution = this.Solution(call, declaration, scope, frame, origins);
@@ -518,6 +537,7 @@ public sealed partial class Binding
             solution.ContributePayloads(payload);
             this.RetainChildRows(ref solution); // R3: the payloads' composition, before their completion.
             var slotCount = solution.OriginInference?.SlotVariableCount ?? 0; // G1128 R1.3 (e) 2, as SolveLate's.
+            forms |= slotCount > 0;
             var slotValues = this.originScratch.Rent(slotCount);
             try
             {
@@ -591,7 +611,8 @@ public sealed partial class Binding
                 return null;
             }
 
-            var proof = this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope, use);
+            // PLAN G1278: an acquisition judges the Enum's clauses only where it forms its Type; else it carries a Type its site judges.
+            var proof = forms ? this.CheckConstraints(declaration.ConstraintNodes, new CallSubstitution(declaration, frame.Types[..slots]), scope, use) : ConstraintProof.Proven;
             if (proof != ConstraintProof.Proven)
             {
                 return proof == ConstraintProof.Unknown ? this.FailUnprovenConstraint(use, this.TakeUnknownFact(), unresolved: true) : this.RecordConstraint(use, proof, []);
@@ -604,7 +625,7 @@ public sealed partial class Binding
 
             // A resting construction's plan holds its completed payloads: its formation (the Origin clauses) and their acquisitions are
             // judged as every plan's (CompleteEnumAcquisitions), and no consumer reads it (TryGetEnumConstruction reads a resolved use's).
-            plan.Set(enumeration, result, operations.AsSpan(0, done));
+            plan.Set(enumeration, result, operations.AsSpan(0, done), forms);
             if (!completed)
             {
                 return null;
@@ -936,13 +957,11 @@ public sealed partial class Binding
                 continue;
             }
 
+            // SPEC 15.6.4 step 3 (PLAN G464): the construction forms its own Type; its instantiated payloads are its inputs, whose premises
+            // are RequireInputPremises' (BindEnumConstruction), as a call's. PLAN G1278: only an acquisition that forms its Type
+            // (BoundEnumConstruction.FormsType) judges it; one that carries it judges nothing.
             var scope = this.ConstraintScope(use);
-            var formation = this.CheckTypeConstraints(plan.Type, scope, use);
-            for (var i = 0; i < plan.PayloadOperations.Length; i++)
-            {
-                formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope, use), true);
-            }
-
+            var formation = plan.FormsType ? this.CheckTypeConstraints(plan.Type, scope, use) : ConstraintProof.Proven;
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
@@ -1010,7 +1029,7 @@ public sealed partial class Binding
                 }
 
                 var type = this.RewriteOrigins(construction.Type, declaration);
-                construction.Set(construction.Case, type, operations.AsSpan(0, source.Length));
+                construction.Set(construction.Case, type, operations.AsSpan(0, source.Length), construction.FormsType);
 
                 // A resting construction forms no result (DECISIONS BU-96 amended; whether it publishes one is PLAN G495's), so only a
                 // published result Type is rewritten.

@@ -132,6 +132,7 @@ public class ForeignEmissionTest
         var c = AnalyzeAs(TargetProfile.Linux, Ffi, "static", OutputKind.Application);
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Equal([("codec", "static"), ("c", "static")], c.Generated.Libraries);
+        Assert.Equal(TargetProfile.MainSymbol, c.Generated.Entry);
         Assert.Contains("define i32 @main() #0 {\nentry:\n  call void @__kimi_platform_start()\n", ir, StringComparison.Ordinal);
         Assert.Matches(@"\n  call void @[\w.]+\(\)\n  ret i32 0\n}\n", ir);
         Assert.DoesNotContain("__kimi_start", ir, StringComparison.Ordinal);
@@ -212,7 +213,8 @@ public class ForeignEmissionTest
         => Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
 
     // R9-B1: the generation result states what the written module declares and requires for its link: each called import's external
-    // symbol, unspelled, with its dllimport form, one per symbol in declaration order (a kernel32 one the runtime declares included), the
+    // symbol, unspelled, with its dllimport form and providing library (NamedProvider), one per symbol in declaration order (a kernel32
+    // one the runtime declares included), the runtime's other imports, each with its providing supply (kernel32, TargetProfile's), the
     // library and Kind of every validated import, called or not (SPEC 22.6: resolved when the program is built), and the output kind.
     [Theory]
     [InlineData(OutputKind.Application, "static")]
@@ -230,9 +232,11 @@ public class ForeignEmissionTest
         Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
         var module = c.Generated;
         Assert.Equal(output, module.OutputKind);
-        Assert.Equal([("?value@@YAHXZ", kind == "import"), ("GetLastError", true)], module.Externals.Select(static x => (x.Symbol, x.DllImport)));
+        Assert.Equal([("?value@@YAHXZ", kind == "import", "codec"), ("GetLastError", true, "kernel32")], module.Externals.Select(static x => (x.Symbol, x.DllImport, x.Library)));
+        Assert.Equal([.. new[] { "GetStdHandle", "WriteFile", "ExitProcess", "VirtualAlloc", "VirtualFree" }.Select(static x => (x, "kernel32"))], module.RuntimeImports);
         Assert.Equal(("codec", kind), Assert.Single(module.Libraries, static x => x.Library == "codec"));
         Assert.Contains(("kernel32", "import"), module.Libraries);
+        Assert.Equal(output == OutputKind.Library ? null : TargetProfile.Windows.EntrySymbol, module.Entry);
     }
 
     // R9-B1: a symbol outside LLVM identifiers is published unspelled through a whole generation (SPEC 22.6: "the exact external symbol"),
@@ -306,8 +310,8 @@ public class ForeignEmissionTest
     }
 
     // R9-B1 (the Back's C-389 (c)): a warm analysis and generation calling a root module's import, a kernel32 one the runtime declares and
-    // a dependency's (Kimi.Time's Windows counter functions), and the read of every external's symbol and every library through the
-    // result, allocate nothing.
+    // a dependency's (Kimi.Time's Windows counter functions), and the read of every external's symbol and library, every runtime import's
+    // symbol and library (NamedProvider) and every library through the result, allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("static")]
@@ -331,7 +335,12 @@ public class ForeignEmissionTest
             var module = c.Generated;
             for (var i = 0; i < module.Externals.Count; i++)
             {
-                read += module.Externals[i].Symbol.Length;
+                read += module.Externals[i].Symbol.Length + module.Externals[i].Library.Length;
+            }
+
+            for (var i = 0; i < module.RuntimeImports.Count; i++)
+            {
+                read += module.RuntimeImports[i].Symbol.Length + module.RuntimeImports[i].Library.Length;
             }
 
             for (var i = 0; i < module.Libraries.Count; i++)

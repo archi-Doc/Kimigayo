@@ -171,7 +171,7 @@ if (-not $NativeCompiler) {
         $output = Invoke-Kimi @('toolchain', 'verify', '--Report', $verifyReport)
         $verified = Get-Content -LiteralPath $verifyReport -Raw | ConvertFrom-Json
         if (-not $output.Contains("Tatara: build $($verified.tatara.build), ABI $($verified.tatara.abi), LLVM $($catalog.llvmVersion)") -or
-            -not $output.Contains("kernel32: $($catalog.kernel32.sha256) (the catalog's)") -or -not $output.Contains("kimi_backend: $($catalog.artifactSha256) (the catalog's)") -or
+            -not $output.Contains("windows-x64-v1 kernel32 kernel32.lib: $($catalog.kernel32.sha256) (the catalog's)") -or -not $output.Contains("windows-x64-v1 kimi_backend kimi_backend_windows_x64_v1.lib: $($catalog.artifactSha256) (the catalog's)") -or
             -not $output.Contains('Toolchain verification passed.') -or $verified.status -cne 'passed' -or
             (@($verified.PSObject.Properties.Name) -join ',') -cne 'status,compilerVersion,llvmVersion,tatara,supplies,seconds') { throw "toolchain verify must check only what Kimi carries: $output" }
         Remove-Item -LiteralPath (Join-Path $alone 'tatara.dll')
@@ -360,7 +360,8 @@ try {
     ($foreignManifest.externalDeclarations | Where-Object symbol -ceq 'read_total').symbol = 'missing_foreign_symbol' # The pair states its declarations.
     $foreignManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
     $output = Invoke-Kimi @('build', '--Manifest', $manifestPath) 1
-    if (-not $output.Contains('missing_foreign_symbol') -or -not $output.Contains('lld-link:')) { throw "Expected link failure: $output" }
+    if (-not $output.Contains("Native function 'missing_foreign_symbol' is imported from codec, which does not define 'missing_foreign_symbol'.") -or
+        $output.Contains('lld-link:')) { throw "Expected the dependency step's failure: $output" }
     if ((Get-FileHash -LiteralPath $previousExecutable).Hash -cne $previousHash) { throw 'A failed link replaced the previous executable' }
     $failedRecord = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($manifestPath, '.build.json')) -Raw | ConvertFrom-Json
     if ($failedRecord.status -cne 'incomplete') { throw 'A failed manifest build retained success' }

@@ -22,7 +22,7 @@ namespace Kimi.Compiler.Mir;
 // input's own address (its own, or one it holds by value at any holder: an element, a Field, a payload) also writes the storage its
 // Origin covers (Cover, PLAN G338, G598, G583), and with an argument A5 proves null only that (Keep, PLAN G598).
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
-// runs; the Call's plan.
+// runs (`replaying`, Carry's); the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
 // an untied storage), the values of the inputs an output sources into the write slot of each holder its store reaches (Keep, Sourcing;
 // MirBorrows.Holders' WriteSlots), and the result into the destination, which replaces the destination's write slot (Rewrite); Φ_E for an
@@ -73,7 +73,7 @@ internal sealed partial class MirBorrows
     // output's store reaches (Keep) and into E what the call may store past its result's raw layers (KeepResult), then the result into the
     // destination; Φ_E for an untied result. A Value callee's value is read with
     // the arguments', the callee operand's position (Input): a Closure's call receiver (R4-M148). In the checks replay, an undecided store sets the location's limit.
-    private void Call(ulong[] state, in MirTerminator call, bool checks)
+    private void Call(ulong[] state, in MirTerminator call)
     {
         MirDataflow.Grow(ref this.argValues, call.Count + 1);
         MirDataflow.Grow(ref this.argReferents, call.Count + 1);
@@ -91,10 +91,10 @@ internal sealed partial class MirBorrows
             this.Add(moved.Root, 0, 0, Cleared, issue: false);
         }
 
-        var untied = this.Plan(call);
+        var untied = this.Planned(call);
         if (this.planned is { Result.Pairs.IsEmpty: false } contract)
         {
-            var proven = this.Solved(state, call, contract.Result, checks);
+            var proven = this.Solved(state, call, contract.Result);
             for (var slot = 0; slot < contract.Result.Kinds.Length; slot++)
             {
                 this.resultKinds[this.slotPositions[slot]] = Proven(this.resultKinds[this.slotPositions[slot]], proven, slot);
@@ -117,13 +117,13 @@ internal sealed partial class MirBorrows
         foreach (var written in this.planned is null ? default : this.planned.Writes)
         {
             this.Cover(call, written.Output, this.planned!.Result.Kinds.Length);
-            this.Keep(state, call, this.planned, written, checks);
+            this.Keep(state, call, this.planned, written);
         }
 
         this.covering.Clear();
         if (resultWrites is not null)
         {
-            this.KeepResult(state, call, resultWrites, checks); // A diverging call (Target < 0, below) has a Never result: no ResultWrites.
+            this.KeepResult(state, call, resultWrites); // Not at a diverging call (Target < 0): a Never or Unit result, or a default template's call (no plan).
         }
 
         for (var p = 0; p <= call.Count; p++)
@@ -134,7 +134,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        this.Destroying(state, call, checks);
+        this.Destroying(state, call);
 
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
         result = this.sets.Union(result, this.unformedSet); // Never certainly null (PLAN G598): a call without a row may return any pointer.
@@ -156,7 +156,7 @@ internal sealed partial class MirBorrows
     // names a Loan, an address or E, and Φ_N marks the bytes of an exposed holder and every call result, the only values a pointer A5
     // does not see formed can reach (MirBorrows.Flow). A Drop's drops store through the same path (MirBorrows.Destructions). `plan` is
     // the retention `written` belongs to, a Call's or a drop row's: the walk composes as it does (walkComposes).
-    private void Keep(ulong[] state, in MirTerminator call, CallRetention plan, OutputRetention written, bool checks)
+    private void Keep(ulong[] state, in MirTerminator call, CallRetention plan, OutputRetention written)
     {
         this.walkComposes = plan.Composes;
         var position = this.slotPositions[written.Output];
@@ -180,9 +180,9 @@ internal sealed partial class MirBorrows
         }
 
         var (limited, deepHolder) = stored ? default : this.Writes(state, call, position, written, root);
-        this.limit |= limited && checks;
-        this.deep |= deepHolder && checks;
-        this.Deliver(state, call, written, referent, this.argValues[position], checks);
+        this.limit |= limited && this.replaying;
+        this.deep |= deepHolder && this.replaying;
+        this.Deliver(state, call, written, referent, this.argValues[position]);
     }
 
     // Rule 4 at the result (PLAN G841 (3), H2; SPEC 15.6.4 "a raw layer that the call may write, in its result, a nominal Type's Fields
@@ -191,25 +191,25 @@ internal sealed partial class MirBorrows
     // through it at the next layer, in storage the body does not own. A walk begun at the result's key (InputKey at the result slot), E its
     // one target, by rule 4 there (OwnPointer, folded under the output's Handed list; the layer's record, ResultWrites' entry), delivered
     // by the one loop (Deliver) at the result's Type, through no argument's value: none reaches the result's storage but by the records.
-    private void KeepResult(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
+    private void KeepResult(ulong[] state, in MirTerminator call, OutputRetention written)
     {
         var result = cases.TypeOf(call.Place);
         this.walkComposes = true;
         this.BeginWalk();
         this.OwnPointer(this.Key(this.InputKey(call, CallRetention.ResultOutput, result), this.Fold(written)), written);
-        this.Deliver(state, call, written, result, 0, checks);
+        this.Deliver(state, call, written, result, 0);
     }
 
     // The one delivery of a store's walk (Keep's): into each target W reached, what the output's store puts there (Received), arriving at
     // the receiving Type through the value `through` (Arrive), Φ_N besides into a holder, Φ_U besides into E where the walk rests; into a
     // target's write slot the values the output sources (Sourcing).
-    private void Deliver(ulong[] state, in MirTerminator call, OutputRetention written, BoundType? receiving, int through, bool checks)
+    private void Deliver(ulong[] state, in MirTerminator call, OutputRetention written, BoundType? receiving, int through)
     {
         var sourced = this.writeCount > 0 ? this.Sourcing(written) : 0;
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
-            var value = this.Arrive(target, receiving, false, through, this.Received(state, call, written, target, checks));
+            var value = this.Arrive(target, receiving, false, through, this.Received(state, call, written, target));
             value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
             value = target == Escaped && this.walkResting ? this.sets.Union(value, this.undecidedSet) : value; // MirBorrows.Puns' Φ_U.
             this.AddSlot(target, value, 0, JoinedThrough, issue: false);
@@ -239,19 +239,19 @@ internal sealed partial class MirBorrows
     // holder, the record is the Reached entry of the storage by which W reached it (PastEntry: a reading layer's pointee or referent, or
     // the reaching Loan's Place, Revision 8); E's is All, but one layer's pointee's Reached entry where the walk reached E only through
     // layers of that pointee (a punned reading's, the call's own pointer's: Punned, Unowned, OwnPointer; Written).
-    private int Received(ulong[] state, in MirTerminator call, OutputRetention written, int target, bool checks)
+    private int Received(ulong[] state, in MirTerminator call, OutputRetention written, int target)
     {
         var via = this.writingVia[target];
         var own = (via & ViaRoot) != 0 ? written.Own : null;
         var past = target == Escaped || (via & ViaPast) != 0 ? this.PastEntry(written, target) : null;
-        var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
+        var value = this.sets.Union(this.RecordValue(state, call, own), this.RecordValue(state, call, past));
         return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
     }
 
     // What one record stores: each input's value by its kinds, its pairs judged (Solved); none for no record.
-    private int RecordValue(ulong[] state, in MirTerminator call, StorageRetention? record, bool checks)
+    private int RecordValue(ulong[] state, in MirTerminator call, StorageRetention? record)
     {
-        var (value, proven) = (0, record is null ? 0 : this.Solved(state, call, record, checks));
+        var (value, proven) = (0, record is null ? 0 : this.Solved(state, call, record));
         for (var i = 0; record is not null && i < record.Kinds.Length; i++)
         {
             var kind = Proven(record.Kinds[i], proven, i);
@@ -269,7 +269,7 @@ internal sealed partial class MirBorrows
     // so it stores as an undecided one does and the call records nothing of its own. Memoized per record, body, view and site for the
     // program version:
     // Outlives resolves the pair's Origins at the site (OriginAtUse), so two calls sharing a record are judged apart.
-    private ulong Solved(ulong[] state, in MirTerminator call, StorageRetention record, bool checks)
+    private ulong Solved(ulong[] state, in MirTerminator call, StorageRetention record)
     {
         if (record.Pairs.IsEmpty)
         {
@@ -298,7 +298,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        for (var i = 0; checks && i < record.Kinds.Length && (entry.Undecided & ~entry.Proven) >> Math.Min(i, 63) != 0; i++)
+        for (var i = 0; this.replaying && i < record.Kinds.Length && (entry.Undecided & ~entry.Proven) >> Math.Min(i, 63) != 0; i++)
         {
             var (operand, position) = (this.Input(call, this.slotPositions[i]), this.slotPositions[i]);
             this.limit |= (entry.Undecided & ~entry.Proven & (1UL << Math.Min(i, 63))) != 0 && (record.Kinds[i] & RetentionKind.Value) == 0 &&

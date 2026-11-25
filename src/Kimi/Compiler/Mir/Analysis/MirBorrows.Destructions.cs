@@ -58,35 +58,35 @@ internal sealed partial class MirBorrows
 
     // A Drop's stores (SPEC 15.6.4, 16.3.1): its destruction composed over the receiver, the value a Reborrow of the destroyed Place
     // carries: the destroyed root's address, or past a Deref the Reborrow's parents.
-    private void Destroyed(ulong[] state, in MirTerminator drop, int block, bool checks)
+    private void Destroyed(ulong[] state, in MirTerminator drop, int block)
     {
         var entry = this.receivers[block];
         if (entry != -1)
         {
             var call = drop with { Operand = MirOperand.Copy(drop.Place) };
             var receiver = entry == Reborrowed ? this.Issued(state, drop.Place, reborrow: false, -1).Value : this.sets.Add(0, this.loanBase + entry);
-            this.Compose(state, call, receiver, cases.TypeOf(drop.Place), checks);
+            this.Compose(state, call, receiver, cases.TypeOf(drop.Place));
         }
     }
 
     // A published operation's cleanup (SPEC 4.9.6, 15.6.4; DECISIONS BU-70): the destruction of the Type below its row's Destroys parameter,
     // composed at the call after its own rows over the argument's value as the receiver: the borrow of the destroyed target (`clear`,
     // `truncate`, `removeAll`, `replace`), or a by-value input's own value (`insertOrReplace`'s unused key).
-    private void Destroying(ulong[] state, in MirTerminator call, bool checks)
+    private void Destroying(ulong[] state, in MirTerminator call)
     {
         if (call.Callee is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } symbol } && types.Published(symbol) is { Destroys: >= 0 } row &&
             effects.Below(symbol, call.Callee.Subst, row.Destroys) is { } type)
         {
             var position = MirCallee.Position(symbol, row.Destroys);
             var input = call with { Count = 0, Operand = this.body.Operands[call.Start + position] };
-            this.Compose(state, input, this.argValues[position], type, checks);
+            this.Compose(state, input, this.argValues[position], type);
         }
     }
 
     // A destruction of a case Type over a receiver value: each drop it runs, as a call whose input 0 is the receiver (the view's operand
     // `call.Operand`, position 0 = call.Count), through each output (Keep, with the drop row's retention as the plan: the drop composes
     // as its own call does, whatever call or terminator destroys the value); a Limit retention is the depth limit at the location.
-    private void Compose(ulong[] state, in MirTerminator call, int receiver, BoundType type, bool checks)
+    private void Compose(ulong[] state, in MirTerminator call, int receiver, BoundType type)
     {
         var (start, count) = this.DropRows(type);
         MirDataflow.Grow(ref this.argValues, 1);
@@ -96,7 +96,7 @@ internal sealed partial class MirBorrows
         for (var i = start; i < start + count; i++)
         {
             var retention = this.dropRows[i];
-            this.deep |= checks && retention.IsLimit;
+            this.deep |= this.replaying && retention.IsLimit;
             if (this.writeCount > 0 && !retention.IsLimit && !retention.Writes.IsEmpty)
             {
                 this.SourceSlots(call, retention.Result.Kinds.Length, 0); // Its receiver at position 0, for Keep's Sourcing.
@@ -104,7 +104,7 @@ internal sealed partial class MirBorrows
 
             foreach (var written in retention.IsLimit ? default : retention.Writes)
             {
-                this.Keep(state, call, retention, written, checks);
+                this.Keep(state, call, retention, written);
             }
         }
     }
@@ -156,7 +156,7 @@ internal sealed partial class MirBorrows
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
             this.Work++;
-            this.dropRows.Add(types.Retains(destructor, types.Synthesized(destructor, type, [], []), definition));
+            this.dropRows.Add(types.Retains(destructor, types.Synthesized(destructor, type, [], []), definition, []));
             return MirTypes.Parts(types, type, ref composer, depth);
         }
 
