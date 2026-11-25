@@ -72,7 +72,8 @@ public sealed partial class Binding
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
         if (!confined)
         {
-            this.ReadIdentityLimit(scope, classes); // e2-7 R3.3: false over cut rows is a negative answer
+            // e2-7 R3.3: false over cut rows is a negative answer, read by the open site frame's node (QuerySite's carrier).
+            this.ReadIdentityLimit(this.consultationNode, scope, classes);
         }
 
         return confined;

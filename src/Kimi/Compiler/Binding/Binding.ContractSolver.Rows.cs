@@ -138,7 +138,7 @@ public sealed partial class Binding
             var refines = RowsRefine(rows, contract) || RowsRefine(keyRows, contract);
             if (!refines && this.enumerateDepth == 1)
             {
-                this.ReadIdentityLimit(scope, classes);
+                this.ReadIdentityLimit(null, scope, classes);
             }
 
             if (keep && prepared && this.enumerateCompletion == Completion.Complete)
@@ -342,8 +342,8 @@ public sealed partial class Binding
     // Returns the request's identity classes, in which PremiseRows forms its column. G1406-12, e2-7 R3.3 (SPEC 8.3.3 Limits): it answers
     // no judgment. Its rows at a Limited reading are cut at the round bound, so a reader whose answer the cut rows could make negative
     // (CallableSelection, ValueCalls, EffectDeclarations, CallableEffects; Retention at `true`, G1406-16 C3) refuses through
-    // ReadIdentityLimit with these classes, once per reading; ExactAssumption, discovery (PremiseRows) and the adapter answer no rows
-    // judgment.
+    // ReadIdentityLimit with these classes and its asking node, once per reading; ExactAssumption, discovery (PremiseRows) and the
+    // adapter answer no rows judgment.
     private IdentityClasses? FirstRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
         var (view, serial, classes, key, final, keep) = this.RowsRequest(subject, scope);

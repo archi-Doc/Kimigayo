@@ -603,6 +603,36 @@ public partial class TypeIdentityTest
     public void ACheckReadingARefusedDeclarationRestsOnItsLimit(string row, string source, string records)
         => CompilationTestHelper.AssertRecordsAtLines(row, source, records);
 
+    // G1406-18 C1 (SPEC 8.3.3 Limits, 23.1.2; twins-c5c's c5c-nc and the selection and effect twins): a reader whose answer the cut
+    // rows of a Limited reading could make negative is refused, and its check's later records rest on that limit. Each program is
+    // valid: by the grounds (8.2.3) x at `T.(Pq).Up` is x at `T.Next^k.Up` for every k, so the premise at 40 links, past the round
+    // bound, applies; the allowed outcomes are acceptance or the limit once at the use (8.3.3), never a Language record from the cut
+    // rows (one failed requirement, the callee's premise, which the limit answers: 23.1.2). c5c-nc: x's one Callable premise past the
+    // bound (71dc3559a: NotCallable_Kd beside the limit); c5c-sel: two premises within the bound and the applicable one past it
+    // (FailCallableCandidates); c5c-ef: a confined Callable premise past the bound used through a confined requirement
+    // (UnsatisfiedEffectBound_Kd).
+    public static TheoryData<string, string, string> RefusedReadingReaderRows => new()
+    {
+        { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x()" },
+        {
+            "c5c-sel", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(2)}.(Pq).Up is Callable<() -> i32>\n    T{Next(3)}.(Pq).Up is Callable<(i32) -> i32>\n" +
+            $"    T{Next(40)}.(Pq).Up is Callable<(bool) -> i32>\n    return x(true)\n"),
+            "AnalysisLimit_Kd: return x(true)"
+        },
+        {
+            "c5c-ef", Called(
+                "func applyC<F>(f: ref/F, p: raw/u8) -> ()\n    F is Callable<(raw/u8) -> ()>\n        effect confined\n    f(p)\n    return\n",
+                "w: ref/T.(Pq).Up, p: raw/u8) -> ()",
+                $"    T{Next(40)}.(Pq).Up is Callable<(raw/u8) -> ()>\n        effect confined\n    applyC(w, p)\n"),
+            "AnalysisLimit_Kd: applyC(w, p)"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(RefusedReadingReaderRows))]
+    public void AReaderOverACutReadingRestsOnItsLimit(string row, string source, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(row, source, records);
+
     // PLAN G881 with G881b: a query made after the pass has counted its failures fails no node. MIR's destruction analysis asks Copy
     // of `T.(Pq).Up` (pqcallv, valid), a request that reaches the round bound: it keeps Unknown, as before the bound's rounds, and a
     // re-check finds the pass as it was counted (a version that failed `func f` there left a node failed after the count).
@@ -642,6 +672,11 @@ public partial class TypeIdentityTest
     private static string Spm(int x, string parameters, string body) => PqProgram(2, string.Empty, x, parameters, body);
 
     private static string Pq1(int x, string parameters, string body) => PqProgram(1, string.Empty, x, parameters, body);
+
+    // Pq of stride 1, the declarations before `f<T>`, f's signature after `(` and the rest of f after `T is Pq`.
+    private static string Called(string declarations, string signature, string rest)
+        => "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self" + Next(1) + ".(Pq).Up\n" + declarations +
+            $"func f<T>({signature}\n    T is Pq\n" + rest + "public func main() => ()\n";
 
     private static string PqProgram(int stride, string declarations, int x, string parameters, string body)
         => "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self" + Next(stride) + ".(Pq).Up\n" +

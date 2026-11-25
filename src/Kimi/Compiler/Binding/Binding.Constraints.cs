@@ -269,7 +269,7 @@ public sealed partial class Binding
                 // G1406-11 C-a (SPEC 8.3.3): an erroneous class reads its error (IdentityProven), else a Limited reading is refused.
                 if (read is { Limited: true } && this.IdentityPremiseErrorRead(scope, subject, required) is null)
                 {
-                    this.ReadIdentityLimit(scope, read);
+                    this.ReadIdentityLimit(null, scope, read);
                 }
 
                 return ConstraintProof.Unknown;
@@ -324,7 +324,7 @@ public sealed partial class Binding
                     return ConstraintProof.Refuted;
                 }
 
-                this.ReadIdentityLimit(scope, read); // G1406-11 C-a: an Unknown over a Limited reading is refused
+                this.ReadIdentityLimit(null, scope, read); // G1406-11 C-a: an Unknown over a Limited reading is refused
                 return ConstraintProof.Unknown;
             }
 

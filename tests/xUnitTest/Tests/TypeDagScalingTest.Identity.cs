@@ -318,6 +318,26 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // G1406-18 N1 (e2-7 R3.1): ReadingOf's key scan over the pass's readings, k scopes with one reading each (k = 8, 32, 128): each
+    // function asks the closure of `T.(K).A`, whose Contract clause makes it `T.(K).B` (SPEC 8.2.3's grounds; `U is i32` is a written
+    // identity), so its return reads R(A) with A not empty. The programs are valid (SPEC 8.2.3). Predicted before any run on 5c-3:
+    // quadratic, about k^2 / 2 readings compared per pass (every reading of the pass is scanned, ForgetClosures clears them per pass
+    // and publication only), about 16 times per factor 4 of k, so the linear bound fails; keyed by scope first it is linear.
+    [Fact]
+    public void ReadingKeysAreScannedPerScope()
+    {
+        var (w8, w32, w128) = (Work(8), Work(32), Work(128));
+        Assert.True(w32 <= 4 * w8 && w128 <= 4 * w32, $"{w8} at 8, {w32} at 32, {w128} at 128");
+
+        static long Work(int k)
+        {
+            var functions = string.Concat(Enumerable.Range(0, k).Select(static i => $"func f{i}<T, U>(x: ref/T.(K).A) -> ref/T.(K).B\n    T is K\n    U is i32\n    return x\n"));
+            var c = MinimalEmissionTest.Analyze("contract K\n    associate A\n    associate B\n    Self.(K).A is Self.(K).B\n" + functions + "public func main() => ()\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.IdentityReadingWork;
+        }
+    }
+
     private static string MateSource(string shape, int n)
     {
         if (shape == "members")

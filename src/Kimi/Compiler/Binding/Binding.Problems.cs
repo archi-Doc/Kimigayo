@@ -166,8 +166,8 @@ public sealed partial class Binding
     // key (RecordNumbered). e2-7 (G1406-11 C-a, G1406-12; SPEC 8.3.3 Limits, R2.1's Mismatch writers row): a mismatch whose sides'
     // reading is a Limited reading's table (R(A)) with no recorded error class is the analysis limit, not a Type mismatch: the reading's
     // one refusal (ReadIdentityLimit, in a site frame at the node where none is open), the declaration's AnalysisLimit_Kd once per run
-    // (RefuseProof), on which the node rests (rule W, RestOnPart) where the record stands at another node, only once it is recorded
-    // (RefuseProof answers null while a trial holds it, G1406-16 C4); it records nothing of its own.
+    // (RefuseProof), on which the node rests as its asking node (ReadIdentityLimit, rule W) where the record stands at another node, only
+    // once it is recorded (RefuseProof answers null while a trial holds it, G1406-16 C4); it records nothing of its own.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
         var scope = this.ConstraintScope(node);
@@ -178,13 +178,8 @@ public sealed partial class Binding
         else if (HasTypeIdentity(scope) && this.ClassesOf(scope, [actual.Type, expected.Type], out _) is { Limited: true } read)
         {
             var frame = this.OpenQuerySite(node);
-            var refused = this.ReadIdentityLimit(scope, read);
+            this.ReadIdentityLimit(node, scope, read);
             this.CloseQuerySite(frame);
-            if (refused is not null && !ReferenceEquals(refused, node))
-            {
-                this.RestOnPart(node, refused);
-            }
-
             return null;
         }
 

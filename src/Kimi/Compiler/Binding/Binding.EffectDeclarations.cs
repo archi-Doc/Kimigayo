@@ -187,7 +187,7 @@ public sealed partial class Binding
 
         if (!confined)
         {
-            this.ReadIdentityLimit(scope, classes); // e2-7 R3.3: not confined over cut rows is a negative answer
+            this.ReadIdentityLimit(site.Node, scope, classes); // e2-7 R3.3: not confined over cut rows is a negative answer
         }
 
         return confined;

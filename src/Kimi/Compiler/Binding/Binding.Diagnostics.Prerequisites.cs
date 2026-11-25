@@ -638,9 +638,10 @@ public sealed partial class Binding
     // failure of its own, so it is derived and records nothing. That holds only where the part's own record publishes: an attribute's
     // target on its rejected attribute (InvalidateAttributeTarget), whose record is direct, since an attribute carries no frame or part
     // another check writes, a layer of a written Type that forms its operand's Type (a wrapper, parentheses, `owner/`) on the Type
-    // node it is (RestLayersOnType, R7-V1c), whose record ValidateConstraintUses writes at that node, and a mismatch over a Limited
-    // reading on the node of its declaration's refusal (RecordTypeMismatch, e2-7), whose record RefuseProof writes (SPEC 8.3.3: reported
-    // once). The state change is a change signal (Invalidated; before the pass's first environment walk it moves none).
+    // node it is (RestLayersOnType, R7-V1c), whose record ValidateConstraintUses writes at that node, and a check whose answer reads a
+    // Limited reading (its asking node, ReadIdentityLimit; e2-7, G1406-18 C1) on the node of its declaration's refusal, whose record
+    // RefuseProof writes (SPEC 8.3.3: reported once). The state change is a change signal (Invalidated; before the pass's first
+    // environment walk it moves none).
     private void RestOnPart(Koto owner, Koto part)
     {
         this.Invalidated();

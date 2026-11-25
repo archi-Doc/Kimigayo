@@ -187,7 +187,8 @@ public sealed partial class Binding
     // first occurrence, Self one link deeper, so the walk is finite (probed for raw writers; an Origin writer at such a level is
     // unprobed). Each (subject, Contract) once; whether each substitutes (false: CallRetention.Limit). e2-7 (G1406-16 C3, SPEC 8.3.3):
     // "every row handed" is universal over the rows, so a completed walk (`true`) that read a Limited reading's rows (FirstRows: cut at
-    // the round bound) is refused once (ReadIdentityLimit, while the pass produces) and answers false; a `false` from a found row stands.
+    // the round bound) answers false in every state, refused once while the pass produces (ReadIdentityLimit at `use`, G1406-18 C2);
+    // a `false` from a found row stands.
     internal bool HandedSignatures(Koto use, ReadOnlySpan<BoundType> signature, List<ErasedSignature> handed)
     {
         handed.Clear();
@@ -260,7 +261,8 @@ public sealed partial class Binding
             }
         }
 
-        return this.ReadIdentityLimit(scope, cut) is null;
+        this.ReadIdentityLimit(use, scope, cut);
+        return cut is null;
     }
 
     // A fixed Origin of an erased signature (Revision 9): a carrier's hidden Origins (R4-M36), or an Origin neither `static` nor one of its

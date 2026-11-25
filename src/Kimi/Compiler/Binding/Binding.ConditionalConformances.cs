@@ -605,7 +605,7 @@ public sealed partial class Binding
                     {
                         if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope, site) != ConstraintProof.Refuted)
                         {
-                            this.ReadIdentityLimit(scope, read); // G1406-11 C-a: an answer resting on a Limited reading's Unknown is refused
+                            this.ReadIdentityLimit(null, scope, read); // G1406-11 C-a: an answer resting on a Limited reading's Unknown is refused
                             return true;
                         }
                     }

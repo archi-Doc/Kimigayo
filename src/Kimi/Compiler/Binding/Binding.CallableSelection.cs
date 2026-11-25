@@ -102,7 +102,7 @@ public sealed partial class Binding
             this.premiseRows.RemoveRange(start, rows);
             if (count != 1)
             {
-                this.ReadIdentityLimit(scope, classes); // e2-7 R3.3: no candidate or several over cut rows is a negative answer
+                this.ReadIdentityLimit(call, scope, classes); // e2-7 R3.3: no candidate or several over cut rows is a negative answer
             }
 
             var choices = candidates.AsSpan(0, count);

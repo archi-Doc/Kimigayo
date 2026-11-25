@@ -79,11 +79,13 @@ public sealed partial class Binding
     private readonly List<BoundType?> identitySides = new(); // OwnClasses' X, the own premises' sides, a stack of ranges
     private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
 
-    // The scaling rows' measures: the nodes the identity classes added in this compilation, and ClassKey's steps and the class members
-    // its Representative scanned.
+    // The scaling rows' measures: the nodes the identity classes added in this compilation, ClassKey's steps and the class members
+    // its Representative scanned, and the kept readings ReadingOf's key scan compared.
     internal int IdentityClassWork { get; private set; }
 
     internal long IdentityKeyWork { get; private set; }
+
+    internal long IdentityReadingWork { get; private set; }
 
     // A row of an identity table (ClassesOver; SPEC 8.2.3's grounds): the identity premise `Fact` and its Source, which its availability
     // is read by. A fact of a view's chain names its environment (Environment: read there, as every premise is, AvailableConstraintFact);
@@ -304,6 +306,7 @@ public sealed partial class Binding
         for (var k = 0; !based && at < 0 && k < this.identityReadings.Count; k++)
         {
             var reading = this.identityReadings[k];
+            this.IdentityReadingWork++;
             if (ReferenceEquals(reading.Scope, scope) && reading.Count == count && reading.Limited == limited && this.SameClosures(reading.Start, start, count))
             {
                 (at, kept) = (k, (reading.Serial, reading.Classes));
@@ -395,10 +398,18 @@ public sealed partial class Binding
     // G1406-11 C-a (SPEC 8.3.3 Limits), e2-7 R3.3: a judgment that its reading of a Limited table (R(A), ClassesOf) leaves unproven, or
     // a rows reader's answer that the cut rows could make negative (FirstRows' readers), is refused (RefuseProof: AnalysisLimit, at
     // the use whose check asked, else at the scope's owner), read from that reading alone, never from scope state; a judgment over a
-    // table that is not Limited reads nothing. Returns the refusal's site once the refusal is recorded (RefuseProof's), which a check
-    // over the same reading rests on (rule W, RecordTypeMismatch), else null.
-    private Koto? ReadIdentityLimit(BindingScope scope, IdentityClasses? classes)
-        => classes is { Limited: true } ? this.RefuseProof(scope, BindingFailure.AnalysisLimit) : null;
+    // table that is not Limited reads nothing. G1406-18 C1 (rule W, SPEC 23.1.2): the asking `node`, whose check reads the negative
+    // answer, rests on the refusal's recorded site where that is another node (RestOnPart), so the check's later records over the same
+    // reading derive from the limit (IsDerived); a refusal held (a trial or proof) or after the pass records nothing and rests nothing.
+    // A judge inside a proof passes null: its answer reaches its check through the proof's own limit.
+    private void ReadIdentityLimit(Koto? node, BindingScope scope, IdentityClasses? classes)
+    {
+        if (classes is { Limited: true } && this.RefuseProof(scope, BindingFailure.AnalysisLimit) is { } refused &&
+            node is not null && !ReferenceEquals(refused, node))
+        {
+            this.RestOnPart(node, refused);
+        }
+    }
 
     // R7-C2c2 c2-2, e2-7 R3.4: a closure's round table, the declaration's classes with the identity rows its walks recorded (SPEC 8.2.3's
     // grounds include the Constraints `T is C` supplies at every depth): ClassesOver those rows. A round with rows builds one reused
