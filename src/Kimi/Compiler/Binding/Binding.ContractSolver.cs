@@ -138,8 +138,9 @@
 //   are kept by their table alone; R7-C2c2 c2-4b, whose deletion of SubstituteIdentity and IdentityPremise left W7 for W2 and W3);
 //   ContractType, ContractPart, ContractTypeCore, ContractLength, ApplyContractEnvironment, SubstituteContractReference (W4);
 //   ProjectionSpecification, ResolveAssociated(receiver), BuiltinArithmeticOutput's and FixedArrayIteratorType's gates (W5);
-//   AvailableConstraintFact and AvailableContractPremise (W6: the meet of every source state read, a failed declaration context
-//   Provisional); the identity classes' Completion (W7); ReadSourceState (W8, SourceStates': a published Proven or Refuted); and
+//   AvailableConstraintFact and AvailableContractPremise (W6: the meet of every source state read; a read that consults a failure
+//   Provisional: a failed declaration context, a failed premise and a Refuted source read as the proof's limit); the identity
+//   classes' Completion (W7); ReadSourceState (W8, SourceStates': a published Proven or Refuted); and
 //   an outermost walk, PremiseRefines' or FirstRows' (the meet of its availability reads, which admits its rows; R7-C2e2 e2-3a). Provisional is a
 //   conservative superset of C1's: the derivation took a route not shown final in the publication (a source read Pending or in
 //   Error; a projection route past its gate; the batched route; a Callable fact; StoredType's null). Complete is final within one
@@ -236,9 +237,11 @@
 //   serial (not shown for an ancestor's or an enclosing declaration's failure: (i) carries the argument). The same holds for every
 //   table kept for the publication (readings, entries, identity tables).
 // - Not replayed: a kept answer skips the walk's per-check effects, which a capability result replays from its payload. A Complete
-//   walk read only Proven or Refuted states and valid contexts, so two are left, both records only (Q13): a read outside every
-//   proof scope opens and closes its own frame (ReadSourceState at proofNesting 0), and a context failed after the walk would
-//   have been consulted (SPEC 23.1.2), the dependent record of (i) above.
+//   walk read only Proven or Refuted states and valid contexts and wrote no proof limit (W6: a failed premise or a Refuted source
+//   read as the limit is Provisional; R7-C2c2 c2-5b2's b1-r2-failed: a capability work that read rows another reader kept lost the
+//   limit its cause rests on), so two are left, both records only (Q13): a read outside every proof scope opens and closes its own
+//   frame (ReadSourceState at proofNesting 0), and a context failed after the walk would have been consulted (SPEC 23.1.2), the
+//   dependent record of (i) above.
 
 using Kimi.Compiler.Parsing;
 
@@ -904,8 +907,9 @@ public sealed partial class Binding
     }
 
     // A Contract premise is available when the Contract and each ancestor (the deduplicated transitive closure) are valid sources: its
-    // declaration context and its published source state (Binding.SourceStates). W6: the meet of the states it read (W8); a failed or
-    // unresolved context is Provisional (its read consults the failure, which a kept answer would not replay).
+    // declaration context and its published source state (Binding.SourceStates). W6: the meet of the states it read (W8); a read that
+    // consults a failure is Provisional, since a kept answer would not replay it: a failed or unresolved context, and a Refuted source
+    // read as the proof's limit (R7-C2c2 c2-5b2: a walk that wrote a limit keeps no row, so every request's proof rests on it).
     private bool AvailableContractPremise(BindingSymbol contract, out Completion completion)
     {
         completion = Completion.Complete;
@@ -928,6 +932,7 @@ public sealed partial class Binding
                 // Refuted; an Error's it joins itself). The source's own checks are the failure's sites (ChecksOwnSite).
                 if (state == ConstraintProof.Refuted && !this.ChecksOwnSite(source.Declaration))
                 {
+                    completion = Completion.Provisional;
                     this.ScopeReads.Limit ??= ((DeclarationContainerKoto)source.Declaration).BoundSymbol!.SourceCause; // Published (RefutedCause).
                 }
 
@@ -970,7 +975,8 @@ public sealed partial class Binding
     // read (R7-M20's composite rule), and one not found is Provisional (a Pending source may still supply it).
     // R7-C3 (F's C2 rulings 272-273, 276): the environment's one premise consult. A failed premise is no evidence, and the read is the
     // proof's limit (ScopeReads.Limit, its PremiseFailure; SPEC 23.1.2): an answer the valid facts leave open (Unknown) rests on it where
-    // it is no longer combined (EndProof), and one they prove or refute holds or keeps its own record.
+    // it is no longer combined (EndProof), and one they prove or refute holds or keeps its own record. The read consults the failure,
+    // so it is Provisional (W6, as a failed context's).
     private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, out Completion completion)
     {
         completion = Completion.Complete;
@@ -981,6 +987,7 @@ public sealed partial class Binding
 
         if (environment.IsFailed(fact))
         {
+            completion = Completion.Provisional;
             this.ScopeReads.Limit ??= environment.CauseOf(fact);
             return false;
         }
@@ -992,6 +999,7 @@ public sealed partial class Binding
 
         if (this.DerivedFailure(environment, fact) is { } failure)
         {
+            completion = Completion.Provisional;
             this.ScopeReads.Limit ??= failure;
             return false;
         }
