@@ -18,8 +18,8 @@
 // native build); the compiler's Tatara and embedded supplies (toolchain verify).
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project,
 // Compilation.Diagnostics and Compilation.TargetTriple (its row), and its result Compilation.Generated (GeneratedModule: the output
-// kind, the required libraries, the external declarations, each an ExternalFunction read for its Symbol and DllImport, the runtime's
-// imports, symbols, and the module's entry; R9-B1, LinkAmbiguity, the Tatara plan's B7b7); the enum OutputKind, which project
+// kind, the required libraries, the external declarations, each an ExternalFunction read for its Symbol and Library, the runtime's
+// imports, each its Symbol and Library, and the module's entry; R9-B1, LinkAmbiguity, the Tatara plan's B7b7, NamedProvider); the enum OutputKind, which project
 // configuration states too (ProjectFile.OutputKind); the target table's rows (TargetProfile: a pair's row is its compilation's at
 // publication and its manifest's target's at the native build; a project's paths are windows-x64's until B7b8); CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads

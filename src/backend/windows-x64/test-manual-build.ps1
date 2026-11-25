@@ -28,8 +28,8 @@ try {
     $data.schemaVersion = 4.5
     Expect-Failure $data "'schemaVersion' is not this compiler's"
     $data = $original | ConvertFrom-Json
-    $data.externalDeclarations = @(@{ symbol = 'observer_notify'; dllimport = 'yes' })
-    Expect-Failure $data "'externalDeclarations.dllimport' is missing or not a JSON Boolean"
+    $data.externalDeclarations = @(@{ symbol = 'observer_notify'; library = 7 })
+    Expect-Failure $data "'externalDeclarations.library' is missing or not a JSON String"
     $data = $original | ConvertFrom-Json
     $data.PSObject.Properties.Remove('externalDeclarations')
     Expect-Failure $data "'externalDeclarations' is missing or not a JSON Array"
