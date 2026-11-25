@@ -13921,8 +13921,8 @@ resumed by R4-M86 (2026-10-20).
   - A Contract use's bound reference (SPEC 8.6.1, 9.7.1) is its Type (the Meaning column) at each level of the qualifier or
     selector, Unit when the reference is the declaration itself: `CompleteQualifier(use, selection, reference)` writes both,
     `QualifierReference` forms the reference, and readers take it through `ContractReferenceOf(use)`. Writers:
-    `ProjectionQualifier`, `BindAssociatedSpecification`, `BindAssociatedRefinement`, `EffectTarget`. Readers: `SpecifiesContract`,
-    `ArithmeticFactUse`.
+    `ProjectionQualifier`, `BindAssociatedSpecification`, `BindAssociatedRefinement`, `EffectTarget`. Reader: `PremiseUse`
+    (`Binding.ContractSolver.Rows.cs`; R7-M109 deleted `SpecifiesContract`, and `ArithmeticFactUse` no longer exists on 14400eeb0e).
   - Records: a reader of a failed published lookup forms nothing from it, so B1's receiver gives one QualificationRequired_Kd (t09,
     t12, v05). This holds at the readers that read; it is not general: MemberLookup still writes its own UnresolvedBinding_Kd over a
     qualifier whose published lookup is ambiguous (t02/t02b: 3 records against base's 1, Q13 by code; open, PLAN G575/G576).
@@ -27841,6 +27841,8 @@ Closure row of `MirCases.Branch`).
   Unsupported records (a second rule over every check, deriving independent failures too), resting the use on the conformance as a
   part (it would also derive the use of a conformance with its own record, beyond the ruled forms) and a cause type naming a
   specification (a new representation for an input the conformance publishes).
+  - Amended by R7-M109 (R7-C3 G1384/G1385, 2026-11-25): `SpecifiesContract` is deleted; a specification's paths are JoinMembers'
+    keys (`IsPathAssociated`, `SpecificationPart`), so the sentence "`SpecifiesContract` reads the admission test ..." no longer holds.
 - **R7-M83 An instantiated premise keeps its Statements (Z3-B1)** (Middle, 2026-11-23; stream Z's Z3, PLAN G396 (3), Q-691, D-1139;
   Major, an acceptance mover; designs `middle\notes\z3-design.md` Revision 1 and Z3-B1, O-502's split; the Front's repeated read on
   C-475, C5 and C6) SPEC 6.4.2 step 3, 8.11.4.
@@ -28853,6 +28855,10 @@ Closure row of `MirCases.Branch`).
     across root paths (a conditional root path forms under its own premises); a per-clause member table; a block-only representative,
     or the selection judged again at each reader (a second statement beside JoinMembers' keys); the count-once test restricted to the
     conformance loop (8.5.1 governs every receiver).
+  - Amended by R7-M109 (R7-C3 G1384/G1385, 2026-11-25): "The set's binding"'s sentence "A Type-level specification is judged in its
+    clause's scope D (`SpecifiesContract`)" is superseded; a Type-level specification belongs to each root path whose keys name its
+    identity, and `AssociatedInPath` counts a keyed set once. Records: f-cond (r6's records) and mg4n move to a1's
+    `InvalidAssociatedType_Kd` at the conditional clause.
 - **R7-M104 An index key's record names the conformances its selection weighed (R7-C3 C3b-3)** (Back, 2026-11-25; PLAN G1300's
   index half, Q-767, D-1268; Major, records only; design `artifacts\units\c3b-3\design.md` Revision 3, the Front's review C-552;
   commits 810538560, 75195fbe9) SPEC 4.7.1, 8.6.1, 8.9.1, 23.1.1. Amends R7-M82's index clause.
@@ -29078,6 +29084,48 @@ Closure row of `MirCases.Branch`).
     over per-problem input rows (the owner's O-509 (a) kept those rows out; PLAN G1323); `Fail` taking a node's range off at its
     first record (ruling 337: a record made later with no frame open reads that range); dev's exact records for one form under
     this rule (a per-form site exception).
+- **R7-M109 JoinMembers' keys are one associated Type for every reader (R7-C3 G1384, G1385)** (Back, 2026-11-25; PLAN G1384,
+  G1385; Major, an acceptance mover; design `artifacts\handoff\2026-11-13-weekly-pause\back\notes\g1384\design.md` Revision 1, B's
+  rulings 1-6, the Front's review C-569; commit c1963db2e) SPEC 8.4.3, 8.5.1, 8.5.5, 8.6.1, 8.8.1, 8.8.2, 8.9.2. Amends R7-M103
+  and R7-M82.
+  - **Rule.** The identities a root path keys to one binding (`JoinMembers`, in the path's scope: D, plus P for a conditional root
+    path) are one associated Type for every reader. A lookup counts them once: `AssociatedInPath` keeps its first match and counts a
+    later match keyed to the same binding once; a match of another binding stays an ambiguity (i0d, i4d), and before the keys exist
+    nothing changes. A specification belongs to each root path whose keys name its identity: the Type-level collection in
+    `PrepareAssociatedBindings` and `VerifyConformance`'s member loop read `AssociatedBindingOf` and `IsPathAssociated` alone, as the
+    block loops do, and `SpecificationPart` takes a clause whose identity the root path keys to the binding asked for
+    (`AssociatedBindingOf(root, named)` is `AssociatedBindingOf(root, identity)`). Inference collects a set's binding once, at the
+    member it was made for (`CollectRun`: `KeyedBinding(path, identity)` is the binding).
+  - **Reason (SPEC).** A Type-level specification's premises D are proved by every root path's premises (8.5.5 Completion: D + P
+    proves D); under them the members are one conformance (8.6.1, 8.9.2), so it specifies the conditional path's merged Type too, and
+    8.8.1 lets the block be omitted. R7-M103 judged the clause in its own scope D with no SPEC reason; under D alone `Iter<S.Item>` and
+    `Iter<R.Item>` are two references, so the conditional path got no Type (G1385), and `AssociatedInPath` still counted the set's
+    members as written (G1384), the miscount R7-M103 fixed in `SearchAssociated`. Superseded: R7-M103's "The set's binding": "A
+    Type-level specification is judged in its clause's scope D (`SpecifiesContract`)"; R7-M82's "`SpecifiesContract` reads the
+    admission test for a path's Contract and its ancestors, so a specification belongs to every member of the conformance its
+    qualifier names, never to one representative" (a specification's paths are now the keys').
+  - **Removes.** `SpecifiesContract` and its three gates (`PrepareAssociatedBindings`' Type-level loop, `VerifyConformance`'s member
+    loop, `SpecificationPart`); the `site` parameters of `SpecificationPart` and `InferenceHole`. A clause whose identity did not form
+    is no specification part, as on dev, whose symbol test failed the same way (`BindAssociatedName` sets the symbols only after the
+    projection formed; twins s1 and s2 unchanged).
+  - **Records (Q13).** Acceptance moves (valid, rejected on dev): i0 and i4 (`AssociatedInferenceTest`), c0 and c4 (TypeIdentityTest
+    mg5, mg5c). Invalid programs keep their failure with other records: i0w, i4w (`TypeMismatch_Kd` alone; dev added the inference
+    failure and `InvalidConstraint_Kd`); i2 and i4c (the conflict, naming both results, instead of "no eligible declaration result";
+    the same `AssociatedTypeInferenceFailed_Kd` at the conformance); c0w, c4w
+    (`IncompatibleContractImplementation_Kd` alone; dev: r6's records); c0k, c4k (one `InvalidAssociatedType_Kd` at the conditional
+    clause; dev: r6's records); c6 = mg4n, from R7-M103's "f-cond (r6's records)" (`IncompatibleContractImplementation_Kd` at the
+    conditional clause and `InvalidConstraint_Kd` at `Self is Iter<S.(HasItem).Item>`) to a1's `InvalidAssociatedType_Kd` at the
+    conditional clause, the disagreement now lying within its root path (R7-M103 Rule); c3 = mg5u, its conditional clause's record from
+    `AssociatedTypeInferenceFailed_Kd` to `InvalidAssociatedType_Kd`, resting on the same clause as the unconditional one (three
+    records, as on dev; PLAN G1405); c0m's conditional clause from `AssociatedTypeInferenceFailed_Kd` to `UnsatisfiedConstraint_Kd`
+    (once per clause declaring a conformance the clause specifies, mg3d); c2 = mg5m's conditional clause from
+    `AssociatedTypeInferenceFailed_Kd` to `UnsatisfiedConstraint_Kd`, beside G1260's `UnprovenConstraint_Kd` at the reference; c7's
+    `AssociatedTypeInferenceFailed_Kd` gone (G1260's record stays). Unchanged: mg1-mg3, mg4, mg4c, mg4o, mg4m; c0f and c4f (mg5f, mg5cf:
+    P does not identify, no join); i0k, i4k, i0d, i4d, c8, c8i, s1, s2.
+  - **Rejected.** A second, scope-aligned `SpecifiesContract` at every reader (a second statement beside the keys, R7-M103's rejected
+    "selection judged again at each reader"); normalized ImplTable keys (R7-M82); copying the Type-level Type into the conditional
+    path's binding; keeping a symbol test for a clause whose identity did not form (qualifier-blind: a sibling the qualifier excludes
+    would rest on the clause, C-569 B1).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
