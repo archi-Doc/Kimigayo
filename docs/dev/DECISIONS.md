@@ -5820,6 +5820,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Q4: one record per row, as the Unclassed limit is per row (the rows are what goes unjudged), not one per initializer.
   - Rejected: a rows-only judge for layers beside `Judge` (a second judging path); widening the limit to every initializer of such a
     layer (it would refuse valid forms like `= 0` without a census).
+  - Superseded in part by R7-M115 (2026-11-26, G215 (J)): a constructorless layer's Field initializers are a checked-only MIR body
+    of kind `Layer`, so the located limit and Q4's per-row record end; the reading of SPEC 6.3.3 and 15.6.5 and the rejected options
+    stay.
 - **R4-M169 An activation meets shared Loans at its parent Loans' Places (H3b U-A3, T63)** (2026-11-03). SPEC 15.6.3 and 15.6.7 judge
   overlap through the Loans an argument carries, its parent Loans included, so `change(entries[1])` meets `found`'s shared Loan on
   `entries` through indexUniq's receiver Loan in its result, a record of its own beside indexUniq's (SPEC 23.1.2;
@@ -29679,6 +29682,27 @@ Closure row of `MirCases.Branch`).
   - **Left to U2 (G1406):** the identity judge reads the view's table alone, so nts2c-rev, nts3c-rev, nts2ci-rev (class 1), rv-g-tpos2,
     rv-g-ntr2p, tpos3, tpos2i (class 3) and nts2n-pos, ti32-2 (class 4) stay as before; tconf2 (class 1) is PLAN G1423's. Supersedes
     R7-M110's "Not in the rule" clause on G1407; U2 supersedes this entry in part (the identity judge's read).
+- **R7-M115 G215 (J): a constructorless layer's Field initializers are a MIR body of kind `Layer`** (Middle, 2026-11-26; supersedes
+  R4-M168 in part; the owner approved (11-26, 「G215 (J)（Middle）a, a2」) the `MirBodyKind` entry (Question 1 (a)) and the reading of
+  SPEC 8.15.3 (Question 2 (a2)), 3b0472e583). SPEC 6.3.3 judges a Field initializer under the Type's public premises whether or not a
+  constructor exists, and SPEC 15.6 analyzes its Loans, Moves and drops; a struct with no Published constructor (an omitted base clause
+  selecting none, a Field without an initializer and no declared constructor, a constructor whose Body is missing, a Kimi constructor
+  without a definition) had them in no body. `MirBuilder`'s walk builds one `MirDefKey(struct, Layer)` body, its `Body` the layer key:
+  `_0` the struct's Self Type (Role Receiver), the initializers placed into its Fields by the step a constructor runs, no base step, no
+  exit request (SPEC 6.3.5 is a constructor body's rule), a Return at the declaration. A1 (by `_0`'s Receiver role), A3 and A5 judge it
+  as a constructor's; it is a checked-only root (SPEC 8.15.3): collected and checked by A3b, never generated
+  (`InstanceCollector.Generates`' Layer row).
+  - Reason R4-M168's (J) shape no longer holds: (J) put each initializer into a temporary of a Unit body, assuming the judgment does
+    not depend on where the value is stored. It does: SPEC 15.6.5's last paragraph frees a conflict only for the result or storage the
+    body does not own, and 15.6.6 makes a temporary's user drop a use. So in (J) a Loan conflict whose carrier is the temporary is a
+    failure of the Unit body itself, independent of the Origin relation, where the constructor's is caused only by the Refuted
+    relation (twin d_noctor_bad). With `_0` as the layer's object the records equal the constructor twin's by construction.
+  - Removes: `MirOrigins.Findings` (G215 (U)'s located limit) and its MirAnalysis step; `TyCtxt.OriginLayers`, `Binding.OriginLayers`
+    and its list. Closes PLAN G215 and G403.
+  - Rejected: (J)'s Unit body with temporaries (above); an Fn body keyed by the struct (`TyCtxt.Signature` reads a FunctionKoto, and
+    each Fn reader would test the declaration's syntax); deciding by `ConstructorAvailability` (an explicit constructor whose Body is
+    missing would leave the rows unjudged, SPEC 23.1.2); skipping it in the instance roots (SPEC 8.15.3 checks every instantiation a
+    checked body requires, whether or not it is reachable or generated).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
