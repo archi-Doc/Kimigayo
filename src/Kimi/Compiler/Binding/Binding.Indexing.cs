@@ -143,20 +143,6 @@ public sealed partial class Binding
         }
     }
 
-    // Index of `value` among `function`'s parameter defaults, or -1.
-    private static int DefaultIndex(FunctionKoto function, Koto value)
-    {
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (ReferenceEquals(function.Parameters[i].DefaultValue, value))
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
     // The indexer resets every semantic field of the pass's modules before any header or expression is evaluated: its source trees and
     // their module references, then, when it binds the library, the library's.
     private void Index()
@@ -302,7 +288,7 @@ public sealed partial class Binding
         }
 
         this.nodes.Add(node);
-        if (node.Parent is FunctionKoto { IsGenerated: false } template && DefaultIndex(template, node) is >= 0 and var index)
+        if (node.Parent is FunctionKoto { IsGenerated: false } template && DefaultIndex(node, template, out _) is >= 0 and var index)
         {
             this.EnterIndexBody(node, scope, new(this.symbols[template], index));
         }

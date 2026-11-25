@@ -318,6 +318,9 @@ public sealed partial class Binding
             case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }: // Role 0: an associated Type declaration, with its Instance.
                 this.ReportAssociatedAmbiguity(node, store, index, problem);
                 break;
+            case BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 8 }: // Role 8: a conformance an index key's selection weighed, with its Instance.
+                this.ReportKeyAmbiguity(node, store, index, problem);
+                break;
             case BindingFailure.NoApplicableCandidate or BindingFailure.Ambiguous when this.FactOf(index, ProblemFactKind.Related) is { Value: 3 }:
                 // Role 3, "candidate": a declaration a selection considered and rejected or could not order (CandidateFacts).
                 this.ReportCandidates(node, store, index, problem);

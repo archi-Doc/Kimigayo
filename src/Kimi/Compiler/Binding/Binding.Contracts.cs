@@ -10,6 +10,11 @@ public sealed partial class Binding
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
+
+    // SPEC 8.3.3 (R7-E3 E3e ruling 20): whether the pass's final conformance decision has begun (ValidateConformances' final reset;
+    // ResetContracts clears it). Before it a program path's Unknown waits on the bound bodies' validations (BodyBinding's second source,
+    // ResolveConformance), so an answer reading it is held pending; from it every answer is the verdict.
+    private bool conformancesDecided;
     private bool bindingConstraintTypes;
 
     /// <summary>Gets legacy unconditional definition metadata. Use ResolveConformance for use-site evidence.</summary>
@@ -85,35 +90,25 @@ public sealed partial class Binding
     /// <summary>
     /// SPEC 8.6.1, 8.4.3, 8.9 (R7-C3 b, PLAN G302): the one selection of a Type's conformance by a Contract, the declaration of
     /// `contract` with its bound reference `reference` (SPEC 8.6.1's pair) or with none (a query by declaration, which the compiler asks,
-    /// SPEC 8.4.3). Its candidates are the identities of `receiver`'s declaration that IsSelectionCandidate admits. Candidates naming one
-    /// bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement; 8.9.2: merging paths, PLAN G798's
-    /// `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a disagreement is the declaration's error
-    /// (8.9.2). The selection returns the first member in declaration order (ConformancesOf's registration order), the set's
-    /// representative, not a preference among members.
+    /// SPEC 8.4.3), folding SelectionMembers. Its candidates are the identities of `receiver`'s declaration that IsSelectionCandidate
+    /// admits. Candidates naming one bound reference are one conformance (SPEC 8.6.1: an explicit one and those implied by refinement;
+    /// 8.9.2: merging paths, PLAN G798's `Gx&lt;i32&gt;`), so any member represents it: their bindings and mappings must agree, and a
+    /// disagreement is the declaration's error (8.9.2). The selection returns the first member in declaration order (ConformancesOf's
+    /// registration order), the set's representative, not a preference among members.
     /// Two declared directly are distinct conformances that collide (SPEC 8.9.1; the clause has its DuplicateBinding_Kd), and without a
     /// reference several are distinct (SPEC 8.4.3): both are ambiguous, none is selected, and each reader says what an ambiguity is for
-    /// it. `candidates` counts the candidates read: 0 for none; with a selection, the members of the one conformance it represents (a
-    /// reader binding one member, a specification, reads it: BindAssociatedName); without one, more than one, an ambiguity. A query by
-    /// declaration reads declarations only and not `scope` (ContractSolver's unthreaded list); a bound reference's selection is a judgment.
+    /// it. `candidates` counts the candidates read: 0 for none; with a selection, the members of the one conformance it represents, whose
+    /// associated Types are one (PrepareAssociatedBindings keys the set's binding by each); without one, more than one, an ambiguity. A
+    /// query by declaration reads declarations only and not `scope` (ContractSolver's unthreaded list); a bound reference's selection is a
+    /// judgment.
     /// </summary>
     private BoundConformance? SelectConformance(BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site, out int candidates)
     {
         candidates = 0;
-        if (receiver.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
-        {
-            return null;
-        }
-
         BoundConformance? found = null;
         var direct = false;
-        for (var i = 0; i < identities.Count; i++)
+        foreach (var identity in new SelectionMembers(this, receiver, contract, reference, scope, site))
         {
-            var identity = identities[i];
-            if (!this.IsSelectionCandidate(identity.Contract, receiver, contract, reference, scope, site))
-            {
-                continue;
-            }
-
             candidates++;
             if ((found is not null && reference is null) || (direct && identity.DirectClause is not null))
             {
@@ -147,6 +142,7 @@ public sealed partial class Binding
         this.dependence = int.MaxValue;
         this.heldObligations = 0;
         this.contractHeadersReady = false;
+        this.conformancesDecided = false;
         this.bindingConstraintTypes = false;
         this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view and step are the pass's.
 
@@ -500,6 +496,8 @@ public sealed partial class Binding
             // Body/header validation may invalidate an earlier declaration-side witness of the sources. The Kimi library's
             // declarations are valid and fixed (a malformed library fails the pass), so a library conformance proven before the
             // bodies stays proven, and only an unproven one is judged again: the sources' are the program part (ImplTable's store rule).
+            // From here a program path's answer is its verdict (conformancesDecided).
+            this.conformancesDecided = true;
             foreach (var identity in this.impls.Identities.Program)
             {
                 identity.IsVerified = false;
@@ -673,6 +671,32 @@ public sealed partial class Binding
                     this.Fail(contract, BindingFailure.Access);
                 }
             }
+        }
+    }
+
+    // SPEC 8.6.1: a selection's members, the identities of `receiver`'s declaration (ConformancesOf, in declaration order) that
+    // IsSelectionCandidate admits for `contract`'s declaration with `reference` (none: a query by declaration) in `scope`. The one
+    // enumeration of a selection's candidates: SelectConformance folds it.
+    private ref struct SelectionMembers(Binding binding, BoundType receiver, BindingSymbol contract, BoundType? reference, BindingScope scope, QuerySite site)
+    {
+        private readonly List<BoundConformance>? identities = receiver.Symbol is { } owner ? binding.ConformancesOf(owner) : null;
+        private int next;
+
+        public readonly BoundConformance Current => this.identities![this.next - 1];
+
+        public readonly SelectionMembers GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            while (this.identities is not null && this.next < this.identities.Count)
+            {
+                if (binding.IsSelectionCandidate(this.identities[this.next++].Contract, receiver, contract, reference, scope, site))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

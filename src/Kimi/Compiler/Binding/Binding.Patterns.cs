@@ -111,8 +111,9 @@ public sealed partial class Binding
         }
     }
 
-    // A pattern left unbound rests on the failure that left it so (PatternMarker): the failed Subject `failure`, when there is one, or
-    // the payload Pattern of its Case whose Type was not read (BindPattern's Case leaf).
+    // A pattern left unbound rests on the failure that left it so (PatternMarker): `failure`, when there is one, the failed Subject or
+    // the root position whose Subject Type BindMatch refuted, or the payload Pattern of its Case whose Type was not read (BindPattern's
+    // Case leaf).
     private void MarkPatternTree(Koto pattern, Koto? failure)
         => (this.patternMarker ??= new(this)).Mark(pattern, failure);
 
@@ -189,12 +190,19 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 23.1.2 (rule W, PLAN G1321): the plan judges the Subject Type's formation once, at its root position (the first arm's
+        // Pattern; a `try`'s first synthesized Pattern, whose span is the `try`'s: never the `try` or its operand, which keep their own
+        // records), and every other arm rests on that record: each arm's Pattern reads the same Subject Type, and a part a Pattern
+        // selects is the Subject's under its arguments, so no other position judges a Type.
+        var root = match.Arms.Count == 0 ? null : KotoHelper.UnwrapParentheses(match.Arms[0].Pattern);
+        var failed = subject is null ? match.Expression : root is not null && !this.ValidatePatternType(plan, root, subject, scope) ? root : null;
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         for (var i = 0; i < match.Arms.Count; i++)
         {
-            // SPEC 23.1.2: a failed Subject is the prerequisite of an arm's positions and bindings, never of its guard or body.
+            // SPEC 23.1.2: a failed Subject, or Subject Type, is the prerequisite of an arm's positions and bindings, never of its guard
+            // or body.
             var arm = match.Arms[i];
-            if (subject is not null)
+            if (subject is not null && failed is null)
             {
                 // SPEC 15.1.6: the Subject Place of a ByValue Subject is owned by the match; a bare Place's is a borrow of it.
                 var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: plan.Mode == SubjectMode.ByValue);
@@ -202,12 +210,12 @@ public sealed partial class Binding
             }
             else
             {
-                // Its Pattern is a resting leaf, which matched no Type: it selects nothing, and its bindings rest on the Subject.
+                // Its Pattern is a resting leaf, which matched no Type: it selects nothing, and its bindings rest on the failure.
                 plan.ArmStorage.Add(new(arm, plan.PositionStorage.Count));
                 plan.PositionStorage.Add(new(arm.Pattern, null, BoundPatternKind.Invalid, -1, 0, plan.PositionStorage.Count + 1));
             }
 
-            this.MarkPatternTree(arm.Pattern, subject is null ? match.Expression : null);
+            this.MarkPatternTree(arm.Pattern, failed);
         }
 
         this.AcquireReferenceBindings(plan); // Before the guards and bodies, which state the bindings' atoms.
@@ -364,11 +372,6 @@ public sealed partial class Binding
             // A position that failed before the plan, such as a repeated binding name, is a part the match consulted.
             plan.Invalid = true;
             this.Consulted(syntax);
-        }
-
-        if (!this.ValidatePatternType(plan, syntax, matched, outer))
-        {
-            return index;
         }
 
         // SPEC 14.8.1: a Wildcard (and a grouping, bound as its operand) selects nothing.
@@ -598,6 +601,8 @@ public sealed partial class Binding
         }
     }
 
+    // The plan's one judgment of its Subject Type's formation, at its root position `syntax` (BindMatch; its recheck,
+    // CompletePatternAcquisitions): a failure is recorded there, once, through the constraint family's recorder.
     private bool ValidatePatternType(BoundMatch plan, Koto syntax, BoundType type, BindingScope scope)
     {
         var proof = this.CheckTypeConstraints(type, scope, syntax);
@@ -618,24 +623,21 @@ public sealed partial class Binding
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
         foreach (var row in this.matches.Values.In(this.pass))
         {
+            // The root's recheck after late declaration/constraint validation, including discards (BindMatch's judgment, once); a resting
+            // root matched no Type to recheck. A failed one leaves each arm's root-level Binding, which reads the Subject Type, unacquired
+            // (one reached through a reference layer keeps BindMatch's Borrow, AcquireReferenceBindings); a position below selects a part,
+            // acquired without a proof (AcquireBinding).
             var plan = row!;
-            var scope = this.ConstraintScope(plan.Syntax);
+            var failed = plan.PositionStorage.Count != 0 && plan.PositionStorage[0].MatchedType is { } subject &&
+                !this.ValidatePatternType(plan, plan.PositionStorage[0].Source, subject, this.ConstraintScope(plan.Syntax));
+            if (failed)
+            {
+                plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
+            }
+
             for (var i = 0; i < plan.PositionStorage.Count; i++)
             {
-                // Recheck after late declaration/constraint validation, including discards; a resting leaf matched no Type to recheck.
-                var position = plan.PositionStorage[i];
-                if (position.MatchedType is not { } matched)
-                {
-                    continue;
-                }
-
-                if (!this.ValidatePatternType(plan, position.Source, matched, scope))
-                {
-                    plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
-                    continue;
-                }
-
-                if (position.Kind == BoundPatternKind.Binding)
+                if (plan.PositionStorage[i] is { Kind: BoundPatternKind.Binding } position && !(failed && position.Parent < 0))
                 {
                     this.AcquireBinding(plan, i);
                 }
@@ -663,9 +665,9 @@ public sealed partial class Binding
     // Copy capability changes no binding Type"), so it Moves and no Copy is asked (R7-C6 a, F's C8 ruling 24: a query is asked only
     // where a judgment needs its answer). The one binding left with Owned access, a whole-Subject binding of a Subject borrowed in place
     // or of a reference-typed temporary, has a reference layer's Type, whose Copy its Semantics decides (SPEC 3.5.2): Copied for `ref/`,
-    // `objref/` and raw, Moved (the Reborrow) for `uniq/` and `objuniq/`; its Pattern Type passed ValidatePatternType's recheck, so any
-    // other verdict there is a broken contract (F's C8 ruling 27, amending R4-M179). Its plan stays buildable and its coverage stays the
-    // Patterns' (Invalid means a located Pattern or guard failure; SPEC 14.8.4, 23.1.2).
+    // `objref/` and raw, Moved (the Reborrow) for `uniq/` and `objuniq/`; its plan's Subject Type passed ValidatePatternType's recheck,
+    // so any other verdict there is a broken contract (F's C8 ruling 27, amending R4-M179). Its plan stays buildable and its coverage
+    // stays the Patterns' (Invalid means a located Pattern or guard failure; SPEC 14.8.4, 23.1.2).
     private void AcquireBinding(BoundMatch plan, int index)
     {
         var position = plan.PositionStorage[index];
@@ -788,14 +790,15 @@ public sealed partial class Binding
     }
 
     // Completes what BindPattern left unvisited: Unit, or resting on the nearest failure above it, a failed position or the failure it
-    // starts from, the failed Subject or a Case leaf's unread payload Pattern (RestOnFailure).
+    // starts from, the failed Subject, the root position whose Subject Type BindMatch refuted or a Case leaf's unread payload Pattern
+    // (RestOnFailure).
     private sealed class PatternMarker(Binding binding) : KotoVisitor
     {
         private Koto? failure;
 
-        public void Mark(Koto pattern, Koto? subject)
+        public void Mark(Koto pattern, Koto? failure)
         {
-            this.failure = subject;
+            this.failure = failure;
             this.Visit(pattern);
             this.failure = null;
         }

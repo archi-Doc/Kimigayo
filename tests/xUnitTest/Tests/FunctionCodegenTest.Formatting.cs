@@ -560,10 +560,11 @@ public sealed partial class FunctionCodegenTest
         Assert.Contains(LlvmModuleText.ErasedWriterRuntime, text, StringComparison.Ordinal);
     }
 
-    // PLAN G779 (O-195 (a)): the writer's reservation, Utf8Writer.reserve, the leaf's one library caller's callee, is the module's one
+    // PLAN G779 (O-195 (a)): the writer's reservation, Utf8Writer.reserve, the leaf's one library caller's callee, is the program's one
     // definition kept out of line (KimiLibraryCatalog.KeepsOutOfLine, `noinline`), so O2 cannot fold it into the leaf and the leaf stays
-    // small enough to inline at its callers; the leaf, the format bodies and every other definition carry no `noinline` (fail-before:
-    // no definition carries it).
+    // small enough to inline at its callers; the leaf, the format bodies and every other generated definition carry no `noinline`
+    // (fail-before: no definition carries it). The runtime text's own definitions, which GeneratedIr.Program leaves out, keep the
+    // allocator's run path out of line (PLAN G1311).
     [Fact]
     public void OnlyTheWritersReservationIsKeptOutOfLine()
     {
@@ -572,7 +573,7 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(Generate(c));
         var leaf = Assert.Single(FunctionsOf(ir, c, "writeUtf8"));
         var reserve = Assert.Single(FunctionsOf(ir, c, "reserve"), x => CallsOf(leaf).Any(y => y.Callee == x));
-        Assert.Same(reserve, Assert.Single(ir.Functions, static x => x.Attributes.Contains("noinline")));
+        Assert.Same(reserve, Assert.Single(ir.Program, static x => x.Attributes.Contains("noinline")));
     }
 
     // R8-S2c, R8-S2b2: each formatting intrinsic's module part is requested by its own call only: a module whose writes are an f32's and an

@@ -50,6 +50,13 @@ public partial class ImplicitBaseCallTest
     [InlineData(LateFailureBehindABaseClauseValid, "clean")]
     public void ARejudgeAfterTheBodiesReadsAKeptProven(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
+    // PLAN G464 (SPEC 15.6.1, 15.3.4; 6.3.6): a base clause's Type argument holding a Function Type is formed without the nested
+    // signature, so the implicit constructor is synthesized (dev: InvalidTypeFormation_Kd at D and UnprovenConstraint_Kd at the base).
+    [Theory]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nopen struct B<U>\n    public init() => ()\nstruct D {q}: B<(Option<T during q>) -> i32>\nfunc make(s: ref/i32) -> i32\n    let d: D during s = D.init()\n    return 0\n", "clean")] // c1ic
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\nopen struct B<U>\n    public init() => ()\nstruct D {q}: B<i32>\nfunc make(s: ref/i32) -> i32\n    let d: D during s = D.init()\n    return 0\n", "clean")] // c1icd
+    public void ANestedSignatureInABaseTypeIsNotFormedThere(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     [Fact]
     public void OmittedBaseCallUsesOrdinaryDefaultsBeforeOwnInitializers()
     {

@@ -37,7 +37,7 @@ public sealed partial class Binding
     private List<BindingIssue> issues;
     private List<LibraryImport> libraryImports;
     private List<BindingObligation> obligations;
-    private HashSet<BindingObligation> obligationSet;
+    private HashSet<ObligationKey> obligationSet;
     private List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> foreignFailures;
     private bool running;
 
@@ -110,6 +110,7 @@ public sealed partial class Binding
         this.inferredConstructionTargets = new(this);
         this.qualificationStops = new(this);
         this.formationCauses = new(this);
+        this.judgedOccurrences = new(this);
         this.knownBases = new(this);
         this.earlyReads = new(this);
         this.resolvedSlices = new(this);
@@ -247,11 +248,12 @@ public sealed partial class Binding
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
         // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
-        // module's edit columns stale, StampedColumn), local regions, item contexts with the atoms their plans hold at library binders
-        // (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
+        // module's edit columns stale, StampedColumn), local regions, member paths (keyed by SyntaxIds the edit renumbers), item contexts
+        // with the atoms their plans hold at library binders (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
         this.edit++;
         this.knownBases.Empty();
         this.localRegions.Clear();
+        this.memberPaths.Clear();
         this.functionItemContexts.Clear();
         this.programAtoms.Empty();
         this.types.ResetViews();
@@ -273,6 +275,7 @@ public sealed partial class Binding
         this.PublishInheritedOptOuts();
         this.VerifyEarlyObjectForms();
         this.RegisterInheritedConformances();
+        this.PrepareInheritedScopes(); // SPEC 8.8.2, PLAN G651 a2 (form M): the heir scopes at the end of the registrations.
         this.BindTypeOriginContracts();
         this.PrepareAssociatedInference();
         this.PrepareCases();
@@ -296,7 +299,6 @@ public sealed partial class Binding
         this.PrepareStorage();
         // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
-        this.PrepareInheritedScopes(); // SPEC 8.8.2: the heir scopes before their readers (inline layouts, verification).
         this.ValidateInlineLayouts();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ValidateSignatures();

@@ -306,26 +306,33 @@ public sealed partial class MirBuildTest
     }
 
     // IMPL A.4, 21.3.2 (PLAN G396 (3), G651): the copy forms its temp Option<W^k<W^8000<i32>>> after Binding's run. Within IMPL A.4's
-    // height (copy191) it is built with its written twin's record codes (Layout's limit); past it (copy192) the formation fails outside
-    // the collector's frame, so the copy keeps the located Unsupported_Kd at the omitting call beside G651's site-less record, where the
-    // written twin gets TypeHeightLimit_Kd at none(p40) in Binding's frame: the one arm left, until G651 U2c (the Back's; U2b gives the
-    // copy a formation owning its refusal). In a generic caller (outer192) the copy is built open and the collector's formation at the
+    // height (copy191) it is built with its written twin's record codes (Layout's limit); past it (copy192) the copy's formation
+    // (TyCtxt.Answered) owns the refusal and the builder's read of it marks the omitting call's node site: exactly TypeHeightLimit_Kd
+    // there, the copy an Opaque value resting on it, no Unsupported_Kd, InternalInvariant_Kd or site-less record (PLAN G651 U2b, K1; U2c:
+    // no arm is left); the written twin gets exactly the same code at none(p40) in Binding's frame (one code, two sites; C-485 N4).
+    // In a generic caller (outer192) the copy is built open and the collector's formation at the
     // instance passing the height records TypeHeightLimit_Kd at the copy's operation, as at the written twin's expression (the Back's
     // review N3). The built rows compare distinct codes: the copy and its twin form their Types at different sites, so their least-use
     // records (DECISIONS R5-M171, one per instance and declaration) differ in count (copy191: two GenerationResourceLimit_Kd, its
     // twin three), not in class. Fail-before: B3's Unsupported_Kd at the omitting call for copy191 and outer192; copy192, the arm,
-    // holds on both.
+    // held on both before G651 U2b.
     [Theory]
-    [InlineData("copy191", "takeh(p40)", "takeh(p40, count(none(p40)))", null)]
-    [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "Unsupported_Kd@takeh(p40) InternalInvariant_Kd@-")]
-    [InlineData("outer192", "outer(p40)", "outerw(p40)", null)]
-    public void ACopyPastTheHeightAfterBindingsRunIsTheOneArmLeft(string shape, string omitted, string written, string? records)
+    [InlineData("copy191", "takeh(p40)", "takeh(p40, count(none(p40)))", null, null)]
+    [InlineData("copy192", "takeh(p40)", "takeh(p40, count(none(p40)))", "TypeHeightLimit_Kd@takeh(p40)", "TypeHeightLimit_Kd@none(p40)")]
+    [InlineData("nest192", "_ = count(takeh(p40))", "_ = count(takeh(p40, count(none(p40))))", "TypeHeightLimit_Kd@takeh(p40)", null)]
+    [InlineData("outer192", "outer(p40)", "outerw(p40)", null, null)]
+    public void ACopyPastTheHeightIsItsOmittingCallsLimit(string shape, string omitted, string written, string? records, string? twin)
     {
         var k = int.Parse(shape.AsSpan(shape.Length - 3), System.Globalization.CultureInfo.InvariantCulture);
         var errors = Errors(Lifted(k, omitted));
         if (records is not null)
         {
             Assert.Equal(records.Split(' '), errors);
+            if (twin is not null)
+            {
+                Assert.Equal(twin.Split(' '), Errors(Lifted(k, written)));
+            }
+
             return;
         }
 
@@ -346,6 +353,71 @@ public sealed partial class MirBuildTest
                 string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + $"    {statement}\n    return\n";
 
         static string W(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
+    // IMPL A.4, 21.3.2, SPEC 12 (interpolation; PLAN G651 U2b, U2c ruling 7 N3; the Front's C-503 lint1, lint0): an owning interpolation as a
+    // default (takes' s = "\(G<W^k<T>>.init(null))", fmt its written form) copied at takes(p40) forms the write's borrow temp
+    // ref/G<W^k<W^8000<i32>>> after Binding's run. Past IMPL A.4's height (k = 191: 8,193) its formation owns the refusal and the builder's
+    // read marks the omitting call's node site: exactly TypeHeightLimit_Kd there beside A4's own depth limits in takes' and fmt's
+    // interpolations; at the height (k = 190) A4's depth limits alone. Never InternalInvariant_Kd or Unsupported_Kd (fail-before for k = 191:
+    // both, as copy192 before U2b).
+    [Theory]
+    [InlineData(191, "TypeHeightLimit_Kd@takes(p40)")]
+    [InlineData(190, null)]
+    public void AnInterpolationCopyPastTheHeightIsARecordAtItsCall(int k, string? record)
+    {
+        var source = "struct W<T>\n    public var v: T\nstruct G<T>\n    Self is Utf8Format\n    public var q: raw/T\n    public init(q: raw/T) => self.q = q\n" +
+            "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"g\")\n" +
+            $"func lift<T>(p: raw/T) -> raw/{Nest(200)} => null\nfunc takes<T>(p: raw/T, s: string = \"\\(G<{Nest(k)}>.init(null))\") => ()\n" +
+            $"func fmt<T>(p: raw/T) -> string => \"\\(G<{Nest(k)}>.init(null))\"\n" + "public func main() -> ()\n    let p0: raw/i32 = null\n" + string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) +
+            "    takes(p40)\n    return\n";
+        var errors = TestDiagnostics.Of(MinimalEmissionTest.Check(source)).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code}@{x.Text ?? "-"}");
+        string[] expected = record is null ? [] : [record];
+        Assert.Equal(
+            expected,
+            errors.Where(static x => !x.StartsWith(nameof(DiagnosticCode.OwnershipDepthLimit_Kd), StringComparison.Ordinal)));
+        Assert.Contains(errors, static x => x.StartsWith(nameof(DiagnosticCode.OwnershipDepthLimit_Kd), StringComparison.Ordinal));
+
+        static string Nest(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
+    // IMPL A.4, 21.3.2, SPEC 7.2.3, 22.10.5 (PLAN G651 U2c, B's ruling 9 D1): takes' default "\(p)\(p)" copied at takes(mkg(p40)) holds
+    // a Length constant (its hint's term over Tuple(T)) and the write's borrow temp ref/G<W^k<W^8000<i32>>>. The copy reads its locals
+    // before its constants (Instantiates' loop order, which the terms' dominance needs), so past IMPL A.4's height (k = 191: 8,193) the
+    // borrow's formation is HeightLimit first: exactly TypeHeightLimit_Kd at the omitting call, never InternalInvariant_Kd beside it (a
+    // constants-first order would read the term bare and add it); at the height (k = 190) the hint folds and A4's depth limits alone
+    // remain. Fail-before for k = 191 on dev before G651 U2b: InternalInvariant_Kd and Unsupported_Kd.
+    [Theory]
+    [InlineData(191, "TypeHeightLimit_Kd@takes(mkg(p40))")]
+    [InlineData(190, null)]
+    public void ACopyFormsItsWritesBorrowBeforeItsLength(int k, string? record)
+    {
+        var source = "struct W<T>\n    public var v: T\nstruct G<T>\n    Self is Utf8Format\n    public var q: raw/T\n    public init(q: raw/T) => self.q = q\n" +
+            "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"g\")\n" +
+            $"func lift<T>(p: raw/T) -> raw/{Nest(200)} => null\nfunc mkg<T>(p: raw/T) -> G<{Nest(k)}> => G<{Nest(k)}>.init(null)\n" +
+            "func takes<T>(p: T, s: string = \"\\(p)\\(p)\")\n    T is Utf8Format\n    return\n" + "public func main() -> ()\n    let p0: raw/i32 = null\n" +
+            string.Concat(Enumerable.Range(1, 40).Select(static i => $"    let p{i} = lift(p{i - 1})\n")) + "    takes(mkg(p40))\n    return\n";
+        var errors = TestDiagnostics.Of(MinimalEmissionTest.Check(source)).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code}@{x.Text ?? "-"}");
+        string[] expected = record is null ? [] : [record];
+        Assert.Equal(
+            expected,
+            errors.Where(static x => !x.StartsWith(nameof(DiagnosticCode.OwnershipDepthLimit_Kd), StringComparison.Ordinal)));
+
+        static string Nest(int n) => string.Concat(Enumerable.Repeat("W<", n)) + "T" + new string('>', n);
+    }
+
+    // SPEC 7.2.3, 8.3.3 (PLAN G651 U2c, G881b; the Middle's C-503 C5): a default reading an associated Type the round bound never
+    // normalizes (T.(Pq).Up), copied in a generic body: an after-pass Unknown in the copy's normalization never makes it Incomplete (no
+    // InternalInvariant_Kd); the copy and its written twin are accepted with no record.
+    [Theory]
+    [InlineData("takep(p)")]
+    [InlineData("takep(p, count(Option<T.(Pq).Up>.None))")]
+    public void ACopyOverAnUnnormalizedAssociatedTypeIsAccepted(string call)
+    {
+        var source = "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\n" +
+            "func count<X>(x: X) -> i32 => 0\nfunc takep<T>(p: raw/T, k: i32 = count(Option<T.(Pq).Up>.None))\n    T is Pq\n    return\n" +
+            $"func f<T>(p: raw/T)\n    T is Pq\n    {call}\npublic func main() => ()\n";
+        Assert.DoesNotContain(TestDiagnostics.Of(MinimalEmissionTest.Check(source)), static x => x.Severity == DiagnosticSeverity.Error);
     }
 
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M139; PLAN G396 (3)): a copy over storage Binding rejected is built in the call's instance, as the

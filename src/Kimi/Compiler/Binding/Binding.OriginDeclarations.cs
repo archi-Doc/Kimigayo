@@ -359,7 +359,11 @@ public sealed partial class Binding
             return written;
         }
 
-        // A name already visible names that Origin; only the remaining names are introduced by the signature (SPEC 15.3.4).
+        // SPEC 15.3.4: a name already bound in an enclosing scope (an Origin or a set of that scope's declaration, a parameter, a capture,
+        // or a local declared before the owner) introduces no Origin; only the remaining names are introduced by the signature. Bound is
+        // not visible: a later parameter of a function whose default holds the owner is bound here though no lookup may select it (SPEC
+        // 7.2.3, ParameterVisible), the reading the owner's D-1236 (A) requires: its name introduces nothing and selects nothing, so it
+        // fails where it is written.
         for (var i = names.Count - 1; i >= 0; i--)
         {
             var name = names[i];
@@ -427,8 +431,7 @@ public sealed partial class Binding
     {
         if (use.BindingFailure == BindingFailure.None)
         {
-            this.prerequisites[use] = (this.prerequisiteStore.Count, 1);
-            this.prerequisiteStore.Add(set);
+            this.RecordRead(use, set);
             this.Fail(use, BindingFailure.MissingName, true);
         }
     }
