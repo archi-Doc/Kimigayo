@@ -234,10 +234,9 @@ public sealed partial class CheckServiceTest : IDisposable
 
     // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1; design rows 1 and 3): artifact production takes the one selected target with a row.
     // linux-x64's pair is published under bin\x86_64-unknown-linux-musl\ (row 1's emit half); a target without a row is the location-only
-    // Unsupported_Kd at the project (row 3, D-1167 N6), and so is the staged none-x64 row until B9g lists it in Rows (B9b, site 4);
-    // several selected targets are their selection record; the check accepts each target. Fail-before: each is the gate's "Artifact
-    // production currently requires exactly one configured Windows x64 target."; without B9b's membership test the none-x64 row reaches
-    // generation, which has no frame for it.
+    // Unsupported_Kd at the project (row 3, D-1167 N6), and so is a staged row (none-x64, outside TargetProfile.Rows); several selected
+    // targets are their selection record; the check accepts each target. Fail-before: each is the gate's "Artifact production currently
+    // requires exactly one configured Windows x64 target.".
     [Theory]
     [InlineData("\"x86_64-unknown-linux-musl\"", "", null)]
     [InlineData("\"x86_64-unknown-linux-gnu\"", nameof(DiagnosticCode.Unsupported_Kd), null)]
@@ -595,9 +594,9 @@ public sealed partial class CheckServiceTest : IDisposable
     }
 
     // IMPL 20.6.1, SPEC 22 ¶1 (the Tatara plan's B7b8): the test target is one with a row in the target table; one without is the
-    // location-only Unsupported_Kd at the project (no note), as is the staged none-x64 row's until B9g (the artifact target, B9b), and a
-    // linux-x64 test unit is checked (front end only; whether this host runs it is the runner's rule). Fail-before: each is "Testing
-    // requires a configured Windows x64 target.".
+    // location-only Unsupported_Kd at the project (no note), as is a staged row's (none-x64, not an artifact target), and a linux-x64
+    // test unit is checked (front end only; whether this host runs it is the runner's rule). Fail-before: each is "Testing requires a
+    // configured Windows x64 target.".
     [Theory]
     [InlineData("x86_64-unknown-linux-gnu", false)]
     [InlineData("x86_64-unknown-none", false)]

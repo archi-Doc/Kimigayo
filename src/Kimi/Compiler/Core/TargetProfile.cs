@@ -192,6 +192,7 @@ internal sealed class TargetProfile
     /// <summary>Gets every row of the table, <see cref="Rows"/> then <see cref="Staged"/>, which <see cref="Find"/> and the reads over
     /// every row read (<see cref="ReservedSupply"/>, <see cref="Provides"/>, <see cref="TryGetRuntimeDeclaration"/> and
     /// <see cref="ReservedSymbols"/>' build); B9g deletes it with <see cref="Staged"/>.</summary>
+    [Transitional("B9g", Reason = "Every row while Staged holds the x86_64-unknown-none row (the Tatara plan's B9b): B9g appends None to Rows, so AllRows equals Rows, and its readers read Rows; B9g deletes it.")]
     internal static TargetProfile[] AllRows { get; } = [.. Rows, .. Staged];
 
     /// <summary>Gets the reserved external names of every target (IMPL 21.2; the Tatara plan's B7b5): for each row its float marker and

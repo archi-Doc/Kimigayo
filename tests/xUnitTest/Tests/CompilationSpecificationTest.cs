@@ -90,6 +90,7 @@ public class CompilationSpecificationTest
     [InlineData("x86_64-unknown-linuxfoo", "unknown", "x86_64", 64)]
     [InlineData("x86_64-unknown-none", "none", "x86_64", 64)]
     [InlineData("x86_64-unknown-none1.0", "none", "x86_64", 64)]
+    [InlineData("aarch64-unknown-none", "none", "aarch64", 64)]
     [InlineData("x86_64-unknown-nonex", "unknown", "x86_64", 64)]
     [InlineData("x86_64-unknown-unrecognized", "unknown", "x86_64", 64)]
     public void PreparedTargetValuesAreCanonicalAndConsistent(string target, string os, string arch, int width)
@@ -191,16 +192,17 @@ public class CompilationSpecificationTest
         }
     }
 
-    // SPEC 19.2.1: `os` is the target's OS family (IMPL 20.2.1), "none" for x86_64-unknown-none (the Tatara plan's decision 32), so the
-    // block is selected there; on windows-x64 it is excluded and the later use names an unknown name.
+    // SPEC 19.2.1: `os` is the target's OS family (IMPL 20.2.1), "none" for x86_64-unknown-none, so the block is selected there; on
+    // windows-x64 it is excluded and the later use names an unknown name. A Library, so its records come from the Condition alone.
     [Theory]
     [InlineData("x86_64-unknown-none", "")]
     [InlineData("x86_64-pc-windows-msvc", "UnresolvedBinding_Kd")]
     public void AnOsConditionSelectsTheBlockOfItsFamily(string target, string errors)
     {
         var compilation = Compilation.CreateForTest();
+        compilation.Project.ProjectFile.OutputKind = OutputKind.Library;
         Assert.True(compilation.Prepare(target));
-        compilation.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "#if os == \"none\"\n    let freestanding = 1\nlet used = freestanding"));
+        compilation.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "#if os == \"none\"\n    group Free\n        public func value() -> i32 => 1\ngroup Use\n    public func used() -> i32 => Free.value()"));
         compilation.Check();
         Assert.Equal(errors, string.Join(" ", TestDiagnostics.Of(compilation).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => x.Code)));
     }

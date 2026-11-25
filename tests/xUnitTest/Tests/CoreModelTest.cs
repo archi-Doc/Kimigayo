@@ -84,7 +84,7 @@ public class CoreModelTest
     }
 
     // The target table (IMPL 21.4, 21.5, 21.6): two selectable rows, windows-x64, whose triple is the literal the [InlineData] rows name,
-    // and linux-x64 (the Tatara plan's B7b2a), and the staged none-x64 (B9b: outside Rows until B9g; every row is Rows, then Staged).
+    // and linux-x64 (the Tatara plan's B7b2a), and the staged none-x64 (outside Rows; every row is Rows, then Staged).
     // Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
     // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), each one's kind among the
     // row's Kinds and the table's supply of its name (B7b5), and a C runtime, if any, that names one of them; each runtime declaration is
@@ -155,9 +155,9 @@ public class CoreModelTest
         Assert.Equal("c", linux.CRuntime);
         Assert.Equal("SystemV", linux.ArgumentExtension);
 
-        // The Tatara plan's B9b (IMPL 21.6.1; decisions 22, 44): none-x64's kernel code generation, no SSE or x87 state (soft float, whose
-        // System V ABI passes floating values in integer registers), no red zone and no stack probe (SPEC 17.4.3's freestanding
-        // exception); no supply, runtime declaration or C runtime; the static kind.
+        // IMPL 21.6.1: none-x64's kernel code generation, no SSE or x87 state (soft float, whose System V ABI passes floating values in
+        // integer registers), no red zone and no stack probe (SPEC 17.4.3's freestanding exception); no supply, runtime declaration or
+        // C runtime; the static kind.
         var none = TargetProfile.None;
         Assert.Equal("-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,+soft-float", none.Features);
         Assert.Equal("kernel", none.CodeModel);
@@ -169,7 +169,7 @@ public class CoreModelTest
         Assert.Null(none.CRuntime);
         Assert.Equal(["static"], none.Kinds);
 
-        // The Tatara plan's B9 (SPEC 22.4.5, decision 29): the program supplies the platform layer's routines on the freestanding row alone.
+        // SPEC 22.4.5: the program supplies the platform layer's routines on the freestanding row alone.
         Assert.Equal([false, false, true], TargetProfile.AllRows.Select(static x => x.ProgramPlatform));
 
         // The Tatara plan's B7b7: each row's input extension and executable format (IMPL 20.3.2, 20.4); a subsystem, a float marker and
@@ -199,12 +199,11 @@ public class CoreModelTest
     public void EveryRowNamesOneRuntimeLayer()
         => Assert.All(TargetProfile.Rows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
 
-    // The Tatara plan's B7b2a: Find gives each row for its triple, the staged row included (B9b), and none for a triple without a row.
+    // The Tatara plan's B7b2a: Find gives each row for its triple, the staged row included, and none for a triple without a row.
     [Fact]
     public void FindGivesTheRowOfATriple()
     {
         Assert.All(TargetProfile.AllRows, static row => Assert.Same(row, TargetProfile.Find(row.Target)));
-        Assert.Same(TargetProfile.None, TargetProfile.Find("x86_64-unknown-none"));
         Assert.Null(TargetProfile.Find(string.Empty));
         Assert.Null(TargetProfile.Find("x86_64-unknown-linux-gnu"));
     }

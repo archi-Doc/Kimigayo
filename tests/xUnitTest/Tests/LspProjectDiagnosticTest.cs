@@ -254,10 +254,9 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     }
 
     // IMPL 20.6.1 (the Tatara plan's B7b8): the test unit's target is the first product target with a row in the target table, so a
-    // linux-x64 project's test unit is checked, and a target without a row leaves none (TestTargetUnavailable_Kd). The staged none-x64
-    // row is a row (B9b), whose test preparation is the location-only Unsupported_Kd until B9g lists it in Rows, as the CLI's Test-mode
-    // check records. Fail-before: the linux-x64 row is TestTargetUnavailable_Kd too (the Windows x64 comparison), and so is none-x64
-    // before B9b.
+    // linux-x64 project's test unit is checked, and a target without a row leaves none (TestTargetUnavailable_Kd). A staged row
+    // (none-x64) is a row, whose test preparation is the location-only Unsupported_Kd, as the CLI's Test-mode check records.
+    // Fail-before: the linux-x64 row is TestTargetUnavailable_Kd too (the Windows x64 comparison).
     [Theory]
     [InlineData("x86_64-unknown-linux-musl", null)]
     [InlineData("x86_64-unknown-linux-gnu", "TestTargetUnavailable_Kd")]

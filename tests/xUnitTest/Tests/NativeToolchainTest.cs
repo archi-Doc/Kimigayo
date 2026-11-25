@@ -461,9 +461,9 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // IMPL 20.3: a build records its one selected target's output; several selected targets or one without a row (the Tatara plan's
-    // B7b8: Unsupported), the staged none-x64 row included until B9g (B9b), fail before the output's paths, so no record is written under
-    // any bin\ directory. Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated
-    // ("incomplete") whatever target was selected.
+    // B7b8: Unsupported), a staged row (none-x64) included, fail before the output's paths, so no record is written under any bin\
+    // directory. Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete")
+    // whatever target was selected.
     [Theory]
     [InlineData("", false)]
     [InlineData("aarch64-pc-windows-msvc", false)]
