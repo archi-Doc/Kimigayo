@@ -362,7 +362,7 @@ public sealed partial class Binding
                 for (var p = 0; p < this.impls.InPass.Paths.Count; p++)
                 {
                     var path = this.impls.InPass.Paths[p];
-                    if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.SeenRequirements.Contains(associated) ||
+                    if (!ReferenceEquals(path.Type, type) || !this.IsPathAssociated(path, associated) ||
                         (scope.ConformancePath is { } declaringPath && !ReferenceEquals(path.RootPath, declaringPath.RootPath)))
                     {
                         continue;
