@@ -12,6 +12,9 @@
 # catalog's, so a new musl's first run fails the match and its report gives the catalog's hashes.
 # Reproduction (T-M8) is a procedure of two runs around this script, not the script itself: run it twice with new build directories at
 # different depths; both runs passing the catalog match gives byte-equal products, equal to the committed files.
+# Adoption commits each product with its stored facts (<file>.facts beside it, Tatara's inspection that a native build reads instead
+# of inspecting the file): run NativeToolchainTest's facts row (EachCompilerSupplysFactsAreItsInspection) with KIMI_SUPPLY_FACTS=write,
+# build Kimi again and run the row again; the products, their catalog hashes and their facts land in one commit.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmRoot,

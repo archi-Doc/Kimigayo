@@ -116,6 +116,105 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
+    // SupplyFacts (PLAN G1374; design §2, §3, §7 T1): each compiler supply file carries Tatara's inspection of its bytes, read at
+    // adoption, as <file>.facts beside it, embedded beside its resource, and the build reads it instead of inspecting the file. This row is
+    // the one detector of a changed reading of unchanged bytes (src/Tatara, the pinned LLVM, the facts' codec): it inspects each committed
+    // file with the process's Tatara, which reports nothing, and requires the committed facts byte-equal to that inspection written with
+    // the SHA-256 of the bytes inspected, that hash the catalog's, the embedded copy the committed file, and the stored inspection parsed as
+    // the fresh one is. A malformed file is a fault, never a lenient read: libc.a's facts less their last byte, with one byte more or less
+    // their first (a hash line of 63 digits), and a file whose kinds 1 and 2 are swapped (in order, it reads). With KIMI_SUPPLY_FACTS=write
+    // the row writes the files after the inspection's check and compares nothing (adoption: write, build Kimi again, run the row, commit
+    // the files with the change).
+    // Fail-before: no facts file existed.
+    [Fact]
+    public void EachCompilerSupplysFactsAreItsInspection()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var write = Environment.GetEnvironmentVariable("KIMI_SUPPLY_FACTS") == "write";
+        var messages = new List<string>();
+        var context = TataraExecutorTest.Context with { Report = (_, message) => messages.Add(message) };
+        foreach (var supply in ToolchainIdentity.Supplies)
+        {
+            foreach (var file in supply.Files)
+            {
+                var path = Path.Combine(Repository.Root, "src", "backend", supply.Row == TargetProfile.Linux ? "linux-x64" : "windows-x64", file.Name);
+                var inspection = Tatara.Instance.InspectTexts(context, path);
+                Assert.Empty(messages);
+                using var fresh = new MemoryStream();
+                inspection.Write(fresh, Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))));
+                if (write)
+                {
+                    File.WriteAllBytes(path + ".facts", fresh.ToArray());
+                    continue;
+                }
+
+                var committed = File.ReadAllBytes(path + ".facts");
+                Assert.True(
+                    committed.AsSpan().SequenceEqual(fresh.ToArray()),
+                    $"{path}.facts is not Tatara's inspection of {file.Name}: run this row with KIMI_SUPPLY_FACTS=write, build Kimi again, run the row again and commit the files with the change.");
+                var (sha256, stored) = Tatara.Inspection.Read(new MemoryStream(committed));
+                Assert.Equal(file.Sha256, sha256);
+                using var embedded = new MemoryStream();
+                using (var stream = file.OpenFacts())
+                {
+                    stream.CopyTo(embedded);
+                }
+
+                Assert.Equal(committed, embedded.ToArray());
+                Assert.Equal(TataraExecutorTest.Describe(Tatara.Facts(inspection)), TataraExecutorTest.Describe(Tatara.Facts(stored)));
+            }
+        }
+
+        if (write)
+        {
+            return;
+        }
+
+        var libc = File.ReadAllBytes(Path.Combine(Repository.Root, "src", "backend", "linux-x64", "libc.a.facts"));
+        Assert.Equal(new string('0', 64), Tatara.Inspection.Read(new MemoryStream(Empty("1", "2"))).Sha256);
+        byte[][] malformed = [libc[..^1], [.. libc, (byte)'\n'], libc[1..], Empty("2", "1")];
+        foreach (var bytes in malformed)
+        {
+            Assert.Throws<InvalidOperationException>(() => Tatara.Inspection.Read(new MemoryStream(bytes)));
+        }
+
+        // An empty inspection's file with its first two kinds in the given order.
+        static byte[] Empty(string first, string second) => Encoding.UTF8.GetBytes($"{new string('0', 64)}\nflags 0 0\n{first} 0\n{second} 0\n4 0\n5 0\n6 0\n7 0\n");
+    }
+
+    // SupplyFacts (design §4, §7 T2; C-556 B-C2): the dependency step's per-input function takes a compiler supply file's facts from its
+    // stored inspection, never from its staged copy, and only when their first line is the staged hash. The input is libc.a's supply file
+    // on linux-x64 held as a "staged copy" that is a text file Tatara cannot read: under the catalog's hash (a reused copy's, StageSupply)
+    // the function returns libc.a's facts as a live inspection of the committed file reads them, so no supply is inspected at build time;
+    // under the text's own hash (a fresh stage of other bytes) it fails as the toolchain's InvalidDataException naming the facts. The
+    // store is never read. Fail-before: P3's base row (libc.a's first read 6.1-6.9 ms); the parent has no such function, and its live
+    // path cannot read the text file.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ACompilerSupplysFactsAreItsCatalogs(bool catalogHash)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var libc = Assert.Single(ToolchainIdentity.Of(TargetProfile.Linux.Supply("c"))!.Files, static x => x.Name == "libc.a");
+        var copy = Path.Combine(this.directory, "libc.a");
+        File.WriteAllText(copy, "not an archive");
+        var hash = catalogHash ? libc.Sha256 : ArtifactFiles.Hash(copy);
+        using var held = File.OpenRead(copy);
+        var input = new NativeToolchain.StagedLibrary("c", "static", hash, held, libc);
+        if (catalogHash)
+        {
+            var committed = Path.Combine(Repository.Root, "src", "backend", "linux-x64", "libc.a");
+            Assert.Equal(
+                TataraExecutorTest.Describe(Tatara.Instance.Inspect(TataraExecutorTest.Context, committed)),
+                TataraExecutorTest.Describe(NativeToolchain.ReadInputFacts(Tatara.Instance, TataraExecutorTest.LinuxContext, TargetProfile.Linux, input).Facts));
+            return;
+        }
+
+        var error = Assert.Throws<InvalidDataException>(() => NativeToolchain.ReadInputFacts(Tatara.Instance, TataraExecutorTest.LinuxContext, TargetProfile.Linux, input));
+        Assert.Equal("The compiler's linux-x64-v1 c libc.a facts do not describe its bytes.", error.Message);
+        Assert.True(NativeToolchain.IsToolchainFailure(error));
+    }
+
     // T's ruling 79 (a): the Linux record's reader places each file Start, Library or End, its one read of a place; a missing or other
     // place is the toolchain's InvalidDataException naming the file. Fail-before: an unknown place read (on 0e7a59618 any string did,
     // and the ELF writer left such a file off its line).
@@ -243,10 +342,11 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // toolchain verify (Tatara B6b3; decision 20 Q3 (a)): a self-check of what the compiler carries. It takes no toolchain directory: it
-    // reports the loaded Tatara and each compiler supply's file's hash, the catalog's, as Information lines in one form, "<row> <supply>
-    // <file>" (B7b7, O5: windows-x64's lines named their supply alone before), and its report is the self-check's record (passed;
-    // Tatara's build, ABI and LLVM version; each file's hash against its catalog's). That it reads no root and runs no tool is
-    // test-cli's row (a copy of the compiler outside any checkout, PATH clean).
+    // reports the loaded Tatara and each compiler supply's file's hash, the catalog's, and that its stored facts name those bytes and
+    // parse (SupplyFacts, design §3 (c): ", facts matched"), as Information lines in one form, "<row> <supply> <file>" (B7b7, O5:
+    // windows-x64's lines named their supply alone before), and its report is the self-check's record (passed; Tatara's build, ABI and
+    // LLVM version; each file's hash against its catalog's and factsMatched). That it reads no root and runs no tool is test-cli's row (a
+    // copy of the compiler outside any checkout, PATH clean).
     [Fact]
     public void VerificationIsASelfCheckOfWhatTheCompilerCarries()
     {
@@ -258,7 +358,7 @@ public sealed class NativeToolchainTest : IDisposable
         string[] expected =
             [
                 $"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}",
-                .. ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"Information: {x.Row.Name} {x.Supply.Name} {f.Name}: {f.Sha256} (the catalog's)")),
+                .. ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"Information: {x.Row.Name} {x.Supply.Name} {f.Name}: {f.Sha256} (the catalog's), facts matched")),
             ];
         Assert.Equal(expected, lines);
         using var record = JsonDocument.Parse(File.ReadAllText(report));
@@ -274,13 +374,13 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(ToolchainIdentity.LlvmVersion, tatara.GetProperty("llvmVersion").GetString());
         Assert.Equal(
             [
-                .. ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"name={x.Supply.Name} row={x.Row.Name} file={f.Name} sha256={f.Sha256} expectedSha256={f.Sha256} hashMatched=True")),
+                .. ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"name={x.Supply.Name} row={x.Row.Name} file={f.Name} sha256={f.Sha256} expectedSha256={f.Sha256} hashMatched=True factsMatched=True")),
             ],
             root.GetProperty("supplies").EnumerateArray().Select(static x => string.Join(' ', x.EnumerateObject().Select(static y => $"{y.Name}={y.Value}"))));
     }
 
     // A supply whose embedded bytes are not its row's SHA-256 (only a defective build of Kimi carries one) is the toolchain's failure,
-    // its statement kept in the report's supplies.
+    // its statement kept in the report's supplies, with its facts unchecked (factsMatched false; SupplyFacts, design §7).
     [Fact]
     public void VerificationRejectsASupplyThatIsNotItsCatalogsBytes()
     {
@@ -291,10 +391,13 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(NativeToolchain.IsToolchainFailure(error));
         Assert.Equal(ToolchainIdentity.BackendSha256, supplies[0]!["sha256"]!.GetValue<string>());
         Assert.False(supplies[0]!["hashMatched"]!.GetValue<bool>());
+        Assert.False(supplies[0]!["factsMatched"]!.GetValue<bool>());
         var c = ToolchainIdentity.Supplies[2];
         error = Assert.Throws<InvalidDataException>(() => NativeToolchain.VerifySupply(c, c.Files[2] with { Sha256 = new string('0', 64) }, supplies));
         Assert.Equal("The compiler's linux-x64-v1 c libc.a does not match its catalog SHA-256.", error.Message);
-        Assert.Equal($"c linux-x64-v1 libc.a {c.Files[2].Sha256} false", $"{supplies[1]!["name"]} {supplies[1]!["row"]} {supplies[1]!["file"]} {supplies[1]!["sha256"]} {supplies[1]!["hashMatched"]}");
+        Assert.Equal(
+            $"c linux-x64-v1 libc.a {c.Files[2].Sha256} false false",
+            $"{supplies[1]!["name"]} {supplies[1]!["row"]} {supplies[1]!["file"]} {supplies[1]!["sha256"]} {supplies[1]!["hashMatched"]} {supplies[1]!["factsMatched"]}");
     }
 
     [Fact]
@@ -1603,8 +1706,9 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // LinkAmbiguity's store (design §4, N5): a staged input's facts are read once per process and kept by its staged SHA-256, so a second
-    // build of the same library content, from another folder, reads the entry the first build kept. The store is process-wide and tests
-    // run in parallel: identity only, never absence or a count (T's ruling 4).
+    // build of the same library content, from another folder, reads the entry the first build kept; a compiler supply file's stored facts
+    // take the same path, under its catalog hash (SupplyFacts, design §7 T3). The store is process-wide and tests run in parallel:
+    // identity only, never absence or a count (T's ruling 4).
     [Fact]
     public async Task ASecondBuildReusesItsInputsFacts()
     {
@@ -1613,6 +1717,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         var hash = ArtifactFiles.Hash(Path.Combine(this.directory, "native", "codec.lib"));
         var first = NativeToolchain.LinkInputs[hash];
+        var (kernel32, backend) = (NativeToolchain.LinkInputs[ToolchainIdentity.Kernel32Sha256], NativeToolchain.LinkInputs[ToolchainIdentity.BackendSha256]);
         var copy = Path.Combine(this.directory, "copy");
         Directory.CreateDirectory(Path.Combine(copy, "native"));
         foreach (var file in new[] { "Hello.kimiproj", "main.kimi", Path.Combine("native", "codec.lib") })
@@ -1623,6 +1728,8 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(Project.TryCreate(new Kimigayo(this.console), null, Path.Combine(copy, "Hello.kimiproj"), out var second));
         Assert.True(await second.Build(TestContext.Current.CancellationToken), this.console.Text);
         Assert.Same(first, NativeToolchain.LinkInputs[hash]);
+        Assert.Same(kernel32, NativeToolchain.LinkInputs[ToolchainIdentity.Kernel32Sha256]);
+        Assert.Same(backend, NativeToolchain.LinkInputs[ToolchainIdentity.BackendSha256]);
     }
 
     [Fact]

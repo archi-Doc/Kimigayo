@@ -13,8 +13,9 @@ namespace Kimi.Build;
 internal static partial class NativeToolchain
 {
     // The staged inputs' facts for the dependency step (LinkAmbiguity, design §4): keyed by the staged copy's SHA-256, the hash staging
-    // computes, so an entry states that content and never changes; never invalidated or evicted, one per distinct staged input per
-    // process. A build of an input already kept reads no archive.
+    // computes, so an entry states that content and never changes, whichever source filled it (ReadInputFacts: a program's input's
+    // inspection or a compiler supply file's stored inspection, which NativeToolchainTest's facts row makes agree); never invalidated or
+    // evicted, one per distinct staged input per process. A build of an input already kept reads no archive and no stored facts.
     internal static readonly ConcurrentDictionary<string, LinkInput> LinkInputs = new(StringComparer.Ordinal);
 
     // A project's native build. A build reads no toolchain root and no LlvmBin: the options --ToolchainRoot and --LlvmBin (B6b4), a
@@ -119,8 +120,8 @@ internal static partial class NativeToolchain
 
     // A compiler's supply's file staged (IMPL 20.4; LC3 S1): the copy its catalog hash names is reused, held, when its bytes, the whole
     // file hashed, still have that hash, and the resource is not opened; otherwise the resource is staged as an input is, named by the
-    // copy's hash. The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8). The result
-    // is the held copy, as StageInput's.
+    // copy's hash. The build compares nothing with the catalog: the catalog row test owns the resource's hash (DECISIONS T-M8); the
+    // file's stored facts must name the staged hash, not the catalog's (SupplyFacts). The result is the held copy, as StageInput's.
     internal static FileStream StageSupply(SupplyFile file, string folder, out string hash)
     {
         var extension = Path.GetExtension(file.Name);
@@ -166,6 +167,27 @@ internal static partial class NativeToolchain
                 }
             }
         }
+    }
+
+    // A staged input's facts for the dependency step, which fill LinkInputs on a miss (CheckDependencies): a program's input's are
+    // Tatara's inspection of its staged copy; a compiler supply file's are its stored inspection (SupplyFacts), so no supply is inspected
+    // at build time and nothing falls back to an inspection (SupplyFacts, design §4).
+    internal static LinkInput ReadInputFacts(Tatara tatara, TataraContext context, TargetProfile row, StagedLibrary library)
+        => library.File is { } file ? SupplyFacts(Subject(row, library.Name, file), file, library.Sha256) : LinkInput.Read(tatara.Inspect(context, library.Held.Name));
+
+    // A compiler supply file's facts (SupplyFacts, design §4): its stored inspection (SupplyFile.OpenFacts, read at adoption), whose first
+    // line must be the given SHA-256, the staged copy's (the build) or that of the bytes just hashed (toolchain verify), compared ordinally,
+    // both lower-case hex, else the toolchain's InvalidDataException naming the facts; parsed by Tatara.Facts and derived by
+    // LinkInput.Read. A malformed file is a fault (Tatara.Inspection.Read). It neither reads nor fills LinkInputs.
+    internal static LinkInput SupplyFacts(string subject, SupplyFile file, string sha256)
+    {
+        (string Sha256, Tatara.Inspection Inspection) facts;
+        using (var stream = file.OpenFacts())
+        {
+            facts = Tatara.Inspection.Read(stream);
+        }
+
+        return facts.Sha256 == sha256 ? LinkInput.Read(Tatara.Facts(facts.Inspection)) : throw new InvalidDataException($"The compiler's {subject} facts do not describe its bytes.");
     }
 
     // IMPL 20.4's reuse rule and the hold's start in one step (StagedHold; DECISIONS T-M17's structural start): the staged copy the hash
@@ -245,8 +267,9 @@ internal static partial class NativeToolchain
     /// earlier compiler), Tatara (the compiler's, <see cref="Tatara.Instance"/>, identified in the record's tools by its build, ABI and LLVM
     /// version), the libraries (each staged: the compiler's supplies found by their catalog hash or staged from their resources, a program's
     /// from its input), the object, its inspection, the dependency check (an ambiguous native dependency, one inconsistent with its
-    /// declared Kind, or an import its named library does not define, fails before the link, CheckDependencies, over the libraries' facts
-    /// kept per process, LinkInputs), the link to a
+    /// declared Kind, or an import its named library does not define, fails before the link, CheckDependencies, over the libraries' facts,
+    /// a program's input's Tatara's inspection of its staged copy and a compiler supply file's its stored inspection, kept per process,
+    /// LinkInputs), the link to a
     /// private file, the report and the commit;
     /// the steps fill the record and <see cref="Run"/> writes each of its states. The commit, after the report and the last cancellation
     /// point, writes the success record, which names the private file's hash, and then moves the file to the executable's path, so an Application publishes its executable
@@ -559,8 +582,9 @@ internal static partial class NativeToolchain
         // IMPL 20.4: an ambiguous or unsupported native dependency, or one inconsistent with its declared Kind, is an error, never
         // resolved by link order (LinkAmbiguity; design Revisions 0-3a, its §2 and §3; Kind, kind-design.md §2 and §3), and SPEC 22.6
         // and IMPL 21.2 resolve an import in the library it names (NamedProvider, provider-design.md §2 and §3). Each library's
-        // facts are Tatara's inspection of its staged copy, read once per process (LinkInputs). The closure starts from the module's
-        // declared references, the manifest's external declarations in their referenced form and the fixed RuntimeReferences, the same
+        // facts are read once per process (LinkInputs, ReadInputFacts): a program's input's are Tatara's inspection of its staged copy, a
+        // compiler supply file's its stored inspection (its catalog facts, read at adoption; SupplyFacts). The closure starts from the
+        // module's declared references, the manifest's external declarations in their referenced form and the fixed RuntimeReferences, the same
         // at O0 and O2 (never the object's undefined symbols), and from the references of the library files the link loads whole
         // (DependencyClosure); a symbol it references that two or more libraries define, a library input that is no library (no archive
         // and no object: a linked image or a bare import member, an unsupported native dependency whatever its Kind; T's rulings 24 and
@@ -573,10 +597,10 @@ internal static partial class NativeToolchain
             var inputs = new (string Name, LinkClass Admits, LinkInput Input)[libraries.Count];
             for (var i = 0; i < inputs.Length; i++)
             {
-                var (name, kind, sha256, held, _) = libraries[i];
+                var library = libraries[i];
                 var facts = LinkInputs.GetOrAdd(
-                    sha256, static (_, read) => LinkInput.Read(read.Tatara.Inspect(read.Context, read.Path)), (Tatara: tatara, Context: this.context, Path: held.Name));
-                inputs[i] = (name, kind == "static" ? LinkClass.Code : LinkClass.Import, facts);
+                    library.Sha256, static (_, read) => ReadInputFacts(read.Tatara, read.Context, read.Row, read.Library), (Tatara: tatara, Context: this.context, Row: this.row, Library: library));
+                inputs[i] = (library.Name, library.Kind == "static" ? LinkClass.Code : LinkClass.Import, facts);
             }
 
             var closure = new DependencyClosure(inputs, module);
@@ -643,7 +667,7 @@ internal static partial class NativeToolchain
 
     /// <summary>One staged input of a build's link, in the manifest's order (a compiler's supply adds one per file): its library's
     /// manifest name and Kind, its staged hash, its staged copy, held to the build's end, and the compiler's supply file it stages (a
-    /// program library's: null), whose place the ELF line reads.</summary>
+    /// program library's: null), whose place the ELF line reads and whose stored facts the dependency step reads (ReadInputFacts).</summary>
     /// <param name="Name">The library's manifest name.</param>
     /// <param name="Kind">The library's Kind.</param>
     /// <param name="Sha256">The staged copy's SHA-256.</param>
@@ -651,8 +675,8 @@ internal static partial class NativeToolchain
     /// <param name="File">The compiler's supply file staged, or null for a program library.</param>
     internal readonly record struct StagedLibrary(string Name, string Kind, string Sha256, FileStream Held, SupplyFile? File);
 
-    /// <summary>A staged input's facts as the dependency step reads them (LinkAmbiguity, design §2): Tatara's inspection
-    /// (<c>Facts</c>); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, and whether that
+    /// <summary>A staged input's facts as the dependency step reads them (LinkAmbiguity, design §2): Tatara's inspection, live or stored
+    /// (<c>Facts</c>; ReadInputFacts); an archive's <c>Picks</c>, for each symbol its index names, the member the first entry names, and whether that
     /// member's definition of it is a copy (text kind 5): one rule on every format, since lld-link loads the member the index names and an
     /// llvm-ar or GNU index lists definers in member order, the member ld.lld loads (T's ruling 48); <c>Whole</c>, an input that is no
     /// archive and of form o, the only form either linker loads whole (lld-link refuses a short import file and a linked image given as
@@ -663,7 +687,7 @@ internal static partial class NativeToolchain
     internal sealed record LinkInput(ObjectFacts Facts, Dictionary<string, (int Member, bool Copy)> Picks, bool Whole, LinkClass[] Classes, bool Unindexed)
     {
         /// <summary>Reads an input's facts once.</summary>
-        /// <param name="facts">Tatara's inspection of the staged input.</param>
+        /// <param name="facts">Tatara's inspection of the staged input, live or stored.</param>
         /// <returns>The facts in the step's form.</returns>
         internal static LinkInput Read(ObjectFacts facts)
         {

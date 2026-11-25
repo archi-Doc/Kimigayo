@@ -300,7 +300,11 @@ internal sealed unsafe partial class Tatara
     }
 
     /// <summary>An inspection as tatara.h's inspect returns it, before <see cref="Facts"/> parses it: the texts of kinds 1, 2, 4, 5, 6
-    /// and 7, in kind order, and flags 1 and 2.</summary>
+    /// and 7, in kind order, and flags 1 and 2. Its stored form, a compiler supply file's facts (SupplyFacts, design §2), is written and
+    /// read here only: UTF-8 lines, each ended by '\n': the SHA-256 (64 lower-case hex digits) of the bytes inspected; "flags" and flags
+    /// 1 and 2, each 0 or 1; then kinds 1, 2, 4, 5, 6 and 7 in that order, each its kind and its text's length in UTF-8 bytes, then the
+    /// text as Tatara returned it. Anything else, a byte after kind 7's text included, is a fault (InvalidOperationException), never a
+    /// lenient read: only a defective build of Kimi carries one, since NativeToolchainTest's facts row pins the committed files.</summary>
     /// <param name="Undefined">Text kind 1: each member's undefined symbols, a block per member.</param>
     /// <param name="Defined">Text kind 2: each member's defined external symbols, a block per member.</param>
     /// <param name="Forms">Text kind 4: each member's form, a line per member.</param>
@@ -309,7 +313,78 @@ internal sealed unsafe partial class Tatara
     /// <param name="Index">Text kind 7: the archive's symbol index, a line per entry.</param>
     /// <param name="DefaultLibrary">Flag kind 1: a member names a default library.</param>
     /// <param name="Archive">Flag kind 2: the input is an archive.</param>
-    internal readonly record struct Inspection(string Undefined, string Defined, string Forms, string Comdats, string Directives, string Index, bool DefaultLibrary, bool Archive);
+    internal readonly record struct Inspection(string Undefined, string Defined, string Forms, string Comdats, string Directives, string Index, bool DefaultLibrary, bool Archive)
+    {
+        // The texts' kinds, in their order.
+        private static readonly int[] Kinds = [1, 2, 4, 5, 6, 7];
+
+        // A stored inspection: the SHA-256 its first line names and the inspection.
+        internal static (string Sha256, Inspection Inspection) Read(Stream stream)
+        {
+            var bytes = new byte[stream.Length];
+            stream.ReadExactly(bytes);
+            ReadOnlySpan<byte> rest = bytes;
+            var sha256 = Line(ref rest);
+            var flags = Line(ref rest);
+            if (sha256.Length != 64 || sha256.ContainsAnyExcept("0123456789abcdef"u8) || flags.Length != 9 || !flags.StartsWith("flags "u8) ||
+                !IsFlag(flags[6]) || flags[7] != ' ' || !IsFlag(flags[8]))
+            {
+                throw Malformed("its header");
+            }
+
+            var texts = new string[Kinds.Length];
+            for (var i = 0; i < texts.Length; i++)
+            {
+                var frame = Line(ref rest);
+                if (frame.Length < 3 || frame[0] != '0' + Kinds[i] || frame[1] != ' ' ||
+                    !int.TryParse(frame[2..], NumberStyles.None, CultureInfo.InvariantCulture, out var length) || length > rest.Length)
+                {
+                    throw Malformed($"kind {Kinds[i]}'s frame");
+                }
+
+                texts[i] = Encoding.UTF8.GetString(rest[..length]);
+                rest = rest[length..];
+            }
+
+            if (!rest.IsEmpty)
+            {
+                throw Malformed("a byte after kind 7's text");
+            }
+
+            return (Encoding.ASCII.GetString(sha256), new Inspection(texts[0], texts[1], texts[2], texts[3], texts[4], texts[5], flags[6] == '1', flags[8] == '1'));
+        }
+
+        // Writes the inspection's stored form, its first line the SHA-256 given: the bytes inspected (NativeToolchainTest's facts row).
+        internal void Write(Stream stream, string sha256)
+        {
+            stream.Write(Encoding.UTF8.GetBytes($"{sha256}\nflags {(this.DefaultLibrary ? '1' : '0')} {(this.Archive ? '1' : '0')}\n"));
+            string[] texts = [this.Undefined, this.Defined, this.Forms, this.Comdats, this.Directives, this.Index];
+            for (var i = 0; i < texts.Length; i++)
+            {
+                var text = Encoding.UTF8.GetBytes(texts[i]);
+                stream.Write(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{Kinds[i]} {text.Length}\n")));
+                stream.Write(text);
+            }
+        }
+
+        // The next line, without its '\n'; a line without one is a fault.
+        private static ReadOnlySpan<byte> Line(ref ReadOnlySpan<byte> rest)
+        {
+            var end = rest.IndexOf((byte)'\n');
+            if (end < 0)
+            {
+                throw Malformed("a line without its end");
+            }
+
+            var line = rest[..end];
+            rest = rest[(end + 1)..];
+            return line;
+        }
+
+        private static bool IsFlag(byte value) => value is (byte)'0' or (byte)'1';
+
+        private static InvalidOperationException Malformed(string part) => new($"A stored inspection is malformed: {part}.");
+    }
 
     // TataraText: bytes and their length, not NUL-terminated; UTF-8 text but emit's output (an object's bytes).
     [StructLayout(LayoutKind.Sequential)]
