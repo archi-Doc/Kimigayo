@@ -28533,6 +28533,55 @@ Closure row of `MirCases.Branch`).
       layer's owner case `LendsOwner` refuses, or an rc/arc payload whose handle neither lends nor is a borrowable temporary); no
       program reaching it was found (the implementer's reading, the review's c2 accepted on both CLIs); it records through
       RecordWrite like the others.
+  - **E4a-3 (Q-790, D-1293; F's R7-E4 rulings 11-14, 19 and 20). A lending denial records its written twin's failure at the
+    Place.**
+    - **The owners.** PlaceAuthority owns the lending verdicts: `OwnedLending` (an owned input lent in a mode, written or
+      implicit; `BindingFailure?`, null when nothing is lent) and `ExclusiveAcquisitionDenial` (a receiver through its own layers;
+      BU-13's two halves, read from the path fold's Grant as AccessFailure reads it, so a selection whose receiver's binding denies
+      the exclusive acquisition, a `let`-rooted Array element or user index (SPEC 4.7.1 step 3, 15.1.5), names
+      `InvalidAssignment_Kd` as the written twin does, not the shared access the fold's Access folds it into; null when
+      acquirable), read by every site that copied them (AdaptInput's owned branch, handle arm and
+      reference-slot arm, ExplicitAdaptations' borrowing case: the design review's C1). A denied implicit exclusive acquisition
+      goes through the acquisition out-channel (`RequireAcquisition`, written for deferring callers only) and records RecordWrite's
+      form at the Place (`AcquisitionFacts`: the Place as role 0; SPEC 7.3.3: writing the table's operation means the same);
+      outside a receiver a limit leaves the missing spelling as the error (ruling 12 B1); a limit is located at the Place
+      (`LocatedFact`, the one builder of a located limit's span). `AcquisitionFacts` takes exactly the two spellings, the two
+      denials (SharedPathAccess, InvalidAssignment) and the limit; any other kind, and a shared-layer receiver with no denial, is a
+      broken contract (InternalInvariant_Kd).
+    - **Behaviour-preserving commits.** Commit 1 (dc41fdbed: the fold into OwnedLending, ExclusiveAcquisitionDenial and
+      LocatedFact) is behaviour-preserving: c1 (dev 62e531705 + dc41fdbed) has 0 diagnostic-snapshot and 0 semantic differences.
+      Commit 2 (637670103: the out-channel written for deferring callers only, ruling 13 (1)) is a behaviour-preserving cleanup:
+      no program reaches the stale channel it removes (row dc1 records the declaration's AccessorReceiverShape_Kd alone on dev and
+      on the head).
+    - **Moves (Q13), all on invalid programs; no acceptance move (the A5 corpus moves no record).**
+      - Receivers (record selection): `NoApplicableOverload_Kd` at the receiver Expression -> the written twin's
+        `InvalidAssignment_Kd` (a `let` root or an owned-Type parameter, SPEC 15.1.5) or `SharedPathAccess_Kd` (a shared layer,
+        SPEC 15.6.2) at the Place: 18 test expectations: PLAN G453's five (PathCapabilityDiagnosticTest `entries[1].inner.mutate()`,
+        `vals[0].inner.mutate()`, ArraySortTest `let values; values.sort()`, PairFollowTest `values@follow.append(4)` to
+        `InvalidAssignment_Kd`; ArrayBindingTest `values@ref.append(1)` to `SharedPathAccess_Kd`), PairFollowTest
+        `SelectionsFollowPairLayers`' four shared-layer receivers through a pair layer (ruling 19), ReferenceLayerAdaptationTest
+        `AnExclusiveReceiverThroughLayersHasItsOneLayerVerdict`'s eight receivers through layers (ruling 20: seven shared layers or
+        an index without `indexUniq` to `SharedPathAccess_Kd`; `let vals = [rr@move]`, `vals[0].bump()` to `InvalidAssignment_Kd`,
+        its written twin's) and DynamicArrayIndexTest `values@ref.insert(^0, 1)` to `SharedPathAccess_Kd`.
+      - Bare arguments (rows al1, as1, ag1, ap1, vd1, ao1): a bare argument at an open `uniq/U` parameter whose path, root or
+        receiver rule (SPEC 16.3.1) denies `@uniq` records the denial at the Place (`SharedPathAccess_Kd` or `InvalidAssignment_Kd`), not `ExclusiveBorrowRequired_Kd`:
+        a repair that adds `@uniq` would claim a verification the program cannot get (SPEC 23.1.3; ruling 11's reading; 7.3.3's
+        sameness governs receivers). From `NoApplicableOverload_Kd`. One test expectation moves in this class:
+        GenericDestructorEmissionTest's `Support.take(self)` in `drop` at `uniq/Owner` (SPEC 16.3.1) to `InvalidAssignment_Kd` at
+        `self`, as its written twin `Support.take(self@uniq)` records.
+      - cr4 (`k.absorb(self.h)` in `init`, invalid by the missing `@uniq` alone, the initialized Field being a writable root: SPEC
+        10.2, 15.1.5, 6.3.4): `NoApplicableOverload_Kd` -> `ExclusiveBorrowRequired_Kd` at `self.h` (ruling 12 B1: a limit is no
+        SPEC denial; the repaired cr4w is valid and meets BU-15's located limit, which the repair does not promise against, ruling
+        13 (2)).
+      - A construction receiver's Field as receiver (cr1, valid): from a false `NoApplicableOverload_Kd` to BU-15's located
+        `Unsupported_Kd` at the Place.
+      - PLAN G762's located limit moves from the call to the Place (`take(y)` -> `y`, `y.peek()` -> `y`).
+    - **Supersedes in part** BU-13 ("a receiver or Reborrow fails overload resolution (`NoApplicableOverload_Kd`)") and BU-15 ("a
+      Receiver Expression stays overload resolution's `NoApplicableOverload_Kd`"): the reason, no fact for the Place, no longer
+      holds.
+    - **Rejected.** Recording inside AdaptInput (trials and probes would publish); a new `LendingDenied` failure (a second form for
+      one requirement); `NoApplicableOverload_Kd` with the Place as a party (7.3.3's sameness).
+    - **Not taken** (PLAN G453's remainder, G486 as E4a-4): see PLAN.
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
