@@ -602,18 +602,20 @@ public partial class ResultPremiseTest
         Assert.Equal(records, DiagnosticCorpus.Check(text).Diagnostics.Select(x => $"{x.Code}|{Text(text, x.Span)}|{x.Label}"));
     }
 
-    // SPEC 15.6.1, 15.2.3, 15.6.4 step 3 (DECISIONS BU-73's amendment, R7-O3 O3-B2, F's ruling O3-24): a definition's result premise holds
-    // a held Function Type's fixed Origins, but no call carries them yet (WellFormedPremises.EnterStored, PLAN's O3-B2 issue), so a row
-    // they form at the result Type that the definition's other premises do not prove is the located Unsupported_Kd at the written borrow
-    // layer (HeldResult; dev: UnprovenOriginRelation_Kd there, a Language record on a valid definition), and no program is accepted on that
-    // premise: sres_fix, sres_use, leak_mk, ret_mk (valid) the limit only; call_ok (valid) and call_bad, leak_use, ret_use (invalid, SPEC
-    // 15.6.4 step 3) rejected by mk's limit, beside A5's Loan record where the borrow is retained; sres_bad keeps its own record at `g`.
-    // The controls without a Function Type, and the input premise (in_prem, in_prem_bad), are unchanged.
+    // SPEC 15.6.1, 15.2.3, 15.6.4 step 3 (DECISIONS BU-73's amendment, R7-O3 O3-B2, F's rulings O3-24, O3-27): a definition's result premise
+    // holds a held Function Type's fixed Origins, but no call carries that part yet (WellFormedPremises.EnterStored, PLAN's O3-B2 issue), so
+    // a row they form at the result Type that the definition's premises without that part do not prove is the located Unsupported_Kd at the
+    // written borrow layer (HeldResult; dev: UnprovenOriginRelation_Kd there, a Language record on a valid definition), and no program is
+    // accepted on that part: sres_fix, sres_use, leak_mk, ret_mk (valid) the limit only; call_ok (valid) and call_bad, leak_use, ret_use
+    // (invalid, SPEC 15.6.4 step 3) rejected by mk's limit, beside A5's Loan record where the borrow is retained; sres_bad keeps its own
+    // record at `g`. Every other part of the result premise, which the calls carry, proves such a row: tw_pair's second component stores b
+    // below q (valid, accepted). The controls without a Function Type, and the input premise (in_prem, in_prem_bad), are unchanged.
     [Theory]
     [InlineData(HeldFixed + "    return .None\n\n", HeldLimit)] // sres_fix
     [InlineData(HeldFixed + "    let r: ref/i32 during q = b\n    return .None\n\n", HeldLimit)] // sres_use: the premise decides the initializer
     [InlineData(StoredFixed + "    return .None\n\n")] // sres_fix_ctl
     [InlineData(StoredFixed + "    let r: ref/i32 during q = b\n    return .None\n\n")] // sres_use_ctl
+    [InlineData("func mk(b: ref/i32, q: ref/i32) -> (Option<ref/((ref/i32 during b) -> i32) during q>, Option<ref/(ref/i32 during b) during q>)\n    return (.None, .None)\n\n")] // tw_pair
     [InlineData("func mk(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32)) -> Option<ref/((ref/i32 during b) -> i32) during q>\n    return .Some(g)\n\n", HeldLimit, Unproven + "g|requires g outlives q, which is not proven")] // sres_bad
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/((ref/i32 during b) -> i32) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem: the input's premise b outlives q
     [InlineData("func f(b: ref/i32, q: ref/i32, g: ref/(ref/i32 during b) during q) -> ref/i32 during q\n    return b\n\n")] // in_prem_ctl

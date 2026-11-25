@@ -62,25 +62,6 @@ public sealed partial class Binding
         => node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto or DeclarationContainerKoto || AssociatedHead(node) is OriginApplicationKoto ||
             HeaderGetter(node, previous) is not null;
 
-    // The signature whose inputs (R2) and result (R3) ExtractOriginPremises reads at `node`, reached from its child `previous`: the node
-    // itself, or a computed or requirement Property's getter at its header.
-    private static Koto? SignatureFrame(Koto node, Koto? previous) => node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto ? node : HeaderGetter(node, previous);
-
-    // The first signature ExtractOriginPremises reads from `use` outward, whose result premise (R3) a request at `use` may assume.
-    private static Koto? NearestSignature(Koto use)
-    {
-        Koto? previous = null;
-        for (Koto? node = use; node is not null; previous = node, node = node.Parent)
-        {
-            if (SignatureFrame(node, previous) is { } signature)
-            {
-                return signature;
-            }
-        }
-
-        return null;
-    }
-
     // The signature whose premises a request at `node` has: the innermost function (an anonymous one included), Function Type or
     // accessor at or above it; null at the top level.
     private static Koto? PremiseSignature(Koto? node)
@@ -99,8 +80,9 @@ public sealed partial class Binding
     // SPEC 15.3.6 (PLAN G74): whether the premises visible at `use` entail `longer outlives shorter`, both resolved at the use.
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
-    // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure).
-    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition)
+    // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure). The closure
+    // follows no edge of the rule `excluded` (Target, which no edge carries, excludes none).
+    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition, OriginPremiseRule excluded = OriginPremiseRule.Target)
     {
         if (OriginOutlives(longer, shorter))
         {
@@ -119,7 +101,7 @@ public sealed partial class Binding
         try
         {
             var closure = environment.Closure;
-            entailed = closure.Entails(closure.Node(longer, out _), closure.Node(shorter, out _), condition);
+            entailed = closure.Entails(closure.Node(longer, out _), closure.Node(shorter, out _), condition, excluded);
             this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
         }
         finally
@@ -139,7 +121,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                if (!this.EntailsOrigin(longer.Operands[i], shorter, use, comparison, condition))
+                if (!this.EntailsOrigin(longer.Operands[i], shorter, use, comparison, condition, excluded))
                 {
                     return false;
                 }
@@ -150,7 +132,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < shorter.Operands.Count; i++)
         {
-            if (this.EntailsOrigin(longer, shorter.Operands[i], use, comparison, condition))
+            if (this.EntailsOrigin(longer, shorter.Operands[i], use, comparison, condition, excluded))
             {
                 return true;
             }
@@ -370,7 +352,7 @@ public sealed partial class Binding
             }
 
             this.AddAssociatedRequirementPremises(environment, node);
-            if (SignatureFrame(node, previous) is { } signature)
+            if ((node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto ? node : HeaderGetter(node, previous)) is { } signature)
             {
                 // A Function Type quantifies well-formed inputs just as a declaration does. Their intrinsic
                 // relations are assumptions only while checking that signature, never in the enclosing body.
@@ -666,9 +648,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1 well-formedness as a premise: every Origin stored below a borrow layer of the result outlives that layer's Origin, a
-    // held Function Type's fixed Origins included (AddStoredPremises). A nested Function Type's own layers add none: its inputs'
-    // well-formedness is that signature's premise and its result is judged where it occurs (SPEC 15.3.4, 15.6.1), so the
-    // well-formedness inside it stays an obligation of the definition.
+    // held Function Type's fixed Origins included (AddStoredPremises; R3's held part, OriginPremiseRule.HeldResult). A nested Function
+    // Type's own layers add none: its inputs' well-formedness is that signature's premise and its result is judged where it occurs (SPEC
+    // 15.3.4, 15.6.1), so the well-formedness inside it stays an obligation of the definition.
     private void AddResultPremises(OriginPremiseEnvironment environment, BoundType type)
     {
         if (!type.StoresOrigin || type.Kind == BoundTypeKind.Function || !environment.Results.Add(type))
@@ -690,16 +672,18 @@ public sealed partial class Binding
 
     // Every Origin stored in `type` (OwnedOrigins, SPEC 15.2.3) outlives the node `shorter`. A held Function Type's part is its call
     // signature with its own per-call Origins closed (DECISIONS BU-73, StoredSignature): its fixed Origins are stored, its per-call
-    // Origins never are (SPEC 15.2.3, 15.3.4). `condition` is the Semantics case of the storage itself;
+    // Origins never are (SPEC 15.2.3, 15.3.4); on a result's walk its edges are R3's held part (OriginPremiseRule.HeldResult, F's ruling
+    // O3-27), passed down as the walk's rule. `condition` is the Semantics case of the storage itself;
     // a pair layer's own slot, the implicit `o` of an original `s/T` included (SPEC 8.1.1), is stored only in its binder's borrow cases,
     // while its target is stored in every case (SPEC 15.6.5).
-    // Each distinct part is visited once per call (DECISIONS BU-19, PLAN G309): a revisit adds the same edges, which the closure reaches
-    // anyway.
+    // Each distinct part is visited once per call and rule (DECISIONS BU-19, PLAN G309): a revisit adds the same edges, which the closure
+    // reaches anyway; a part met inside and outside a held Function Type forms the edges of both rules.
     private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, ulong condition = 0)
         => this.StoredPremisePart(environment, type, shorter, rule, condition, this.visitedParts.Begin(this.storageVersion));
 
     private void StoredPremisePart(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, ulong condition, uint query)
     {
+        rule = rule == OriginPremiseRule.Result && type.Kind == BoundTypeKind.Function ? OriginPremiseRule.HeldResult : rule;
         type = this.StoredSignature(type);
         if (!type.StoresOrigin)
         {
@@ -718,7 +702,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (this.FirstVisit(type.Components[i], query))
+            if (this.FirstVisit(type.Components[i], query, rule == OriginPremiseRule.HeldResult ? (byte)2 : (byte)1))
             {
                 this.StoredPremisePart(environment, type.Components[i], shorter, rule, condition, query);
             }

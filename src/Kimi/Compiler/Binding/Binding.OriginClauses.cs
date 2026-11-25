@@ -187,8 +187,8 @@ public sealed partial class Binding
     // BU-26 E3) is Binding's direct proof and forms no edge, as a relation Binding proves forms no row for A5 (2a0-D D1); region inference
     // and the rejected clauses never decide a row. A fixed-fixed row waits to be judged at once, one with an Unbound end for JudgeChains.
     // A fixed-fixed HeldResult row its premises do not entail is the located limit at its use, the written borrow layer (F's ruling
-    // O3-24), so no program is accepted on a result premise no call carries; one with an Unbound end is the limit there too, resting on
-    // its atom's cause (JudgeDeclarationRows).
+    // O3-24), so no program is accepted on the part of a result premise no call carries; one with an Unbound end is the limit there too,
+    // resting on its atom's cause (JudgeDeclarationRows).
     private void CollectDeclarationRows()
     {
         var remaining = 0;
@@ -234,27 +234,16 @@ public sealed partial class Binding
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
     }
 
-    // Whether the published premises at the row's use entail its relation, both ways for an equality. A HeldResult row's are its
-    // definition's premises other than its result premise (SPEC 15.6.1, 15.6.4 step 3; DECISIONS BU-73's amendment, F's ruling O3-24; as
-    // WellFormedPremises.DefinitionProves asks), since no call carries that premise's held Function Type part (WellFormedPremises.EnterStored):
-    // a relation they prove is the calls' too, from the substituted clauses and inputs.
+    // Whether the published premises at the row's use entail its relation, both ways for an equality. A HeldResult row's exclude the held
+    // Function Type parts of a result premise (OriginPremiseRule.HeldResult), the one part no call carries (WellFormedPremises.EnterStored):
+    // a relation the other premises prove, another component's stored Origins and the result Type's clauses included, is the calls' too,
+    // as each call proves those premises for its instantiation (SPEC 15.6.1, 15.6.4 step 3; DECISIONS BU-73's amendment, F's rulings
+    // O3-24, O3-27).
     private bool PublishedPremise(BindingObligation row, BoundOrigin longer, BoundOrigin shorter)
     {
-        var excluded = this.resultPremiseExcluded;
-        if (row.Discharge == OriginDischarge.HeldResult)
-        {
-            this.resultPremiseExcluded = NearestSignature(row.Use);
-        }
-
-        try
-        {
-            return this.ProvesOriginOutlives(longer, shorter, row.Use, row.Condition) &&
-                (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, row.Condition));
-        }
-        finally
-        {
-            this.resultPremiseExcluded = excluded;
-        }
+        var excluded = row.Discharge == OriginDischarge.HeldResult ? OriginPremiseRule.HeldResult : OriginPremiseRule.Target;
+        return this.ProvesOriginOutlives(longer, shorter, row.Use, default(CallableInstance), row.Condition, excluded) &&
+            (!row.Equality || this.ProvesOriginOutlives(shorter, longer, row.Use, default(CallableInstance), row.Condition, excluded));
     }
 
     // The clauses of one completed declaration that proof alone does not establish, judged by their owner's part.

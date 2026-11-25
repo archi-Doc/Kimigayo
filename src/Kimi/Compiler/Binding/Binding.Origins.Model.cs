@@ -238,16 +238,18 @@ public enum OriginDischarge : byte
     /// Owned obligation at the slot with no Type, judged at Final over the slot's deferred inputs (SPEC 15.4.4, 8.3.3).</summary>
     ResultDefault,
 
-    /// <summary>The well-formedness walk's state at a borrow layer of a definition's assumed result Type (SPEC 15.6.1, R3; AssumesResult),
-    /// never stored on an obligation (one carrying it is an InternalInvariant_Kd): its rows are Judgment rows, which the result premise
-    /// proves, and a held Function Type below the layer forms HeldResult rows. It goes with HeldResult (PLAN's O3-B2 issue).</summary>
+    /// <summary>The well-formedness walk's state at a borrow layer of a definition's assumed result Type (SPEC 15.6.1, R3; AssumesResult):
+    /// its rows are Judgment rows, which the result premise proves, and a held Function Type below the layer forms HeldResult rows. Never
+    /// stored on an obligation: RetainInnerOutlives, the one writer of the rows it reaches, stores Judgment or HeldResult in its place. It
+    /// goes with HeldResult (PLAN's O3-B2 issue).</summary>
     AssumedResult,
 
     /// <summary>A fixed Origin of a Function Type held below a borrow layer of a definition's assumed result Type (SPEC 15.2.3, 15.6.1):
-    /// the result premise assumes it (StoredPremisePart) but no call carries it yet (WellFormedPremises.EnterStored), so the definition
-    /// proves it from its other premises; where they do not, the row is the located Unsupported_Kd at its use, the written borrow layer
-    /// (CollectDeclarationRows). It goes when EnterStored carries a held Function Type's fixed Origins to each call and the whole-contract
-    /// comparison discharges them over the implementation's solvable call Origins (SPEC 15.3.7; PLAN's O3-B2 issue).</summary>
+    /// the result premise assumes it (StoredPremisePart, R3's held part: OriginPremiseRule.HeldResult) but no call carries that part yet
+    /// (WellFormedPremises.EnterStored), so the definition proves it from its premises without that part; where they do not, the row is
+    /// the located Unsupported_Kd at its use, the written borrow layer (CollectDeclarationRows, PublishedPremise). It goes when EnterStored
+    /// carries a held Function Type's fixed Origins to each call and the whole-contract comparison discharges them over the
+    /// implementation's solvable call Origins (SPEC 15.3.7; PLAN's O3-B2 issue).</summary>
     HeldResult,
 }
 
