@@ -4041,7 +4041,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // G308 D3, SPEC 13.4: the left operand of a comparison of a DAG Tuple with string leaves is inspected through a shared Loan live while
     // the right operand is evaluated, so moving it there is rejected; comparing it with another value is accepted. A plain string
-    // operand is inspected the same way (X-5 N5): bad2 is rejected and good2 accepted.
+    // operand is inspected the same way: bad2 is rejected and good2 accepted.
     [Fact]
     public void ADagComparisonsInspectionLoanRejectsAMoveOfItsOperand()
     {

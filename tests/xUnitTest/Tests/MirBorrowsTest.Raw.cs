@@ -1914,7 +1914,7 @@ public sealed partial class MirBorrowsTest
         Assert.Empty(MinimalEmissionTest.Analyze("func inspect<T>(value: ref/T) => ()\n" + PopLateOk + "public func main() => ()\n").Problems);
     }
 
-    // SPEC 5.4 (X-5 N4): a bare `@raw` "checks like an immediately ending `@ref`, reads nothing and leaves no Loan", so h's write while
+    // SPEC 5.4: a bare `@raw` "checks like an immediately ending `@ref`, reads nothing and leaves no Loan", so h's write while
     // p lives is valid; the clause's error half, a `@raw` while an exclusive borrow of h is live, is MirBorrowsTest.Derived's z-raw-ok.
     [Fact]
     public void ABareRawLeavesNoLoan()

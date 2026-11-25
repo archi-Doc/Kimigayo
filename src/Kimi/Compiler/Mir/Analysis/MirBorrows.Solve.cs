@@ -13,6 +13,7 @@ internal sealed partial class MirBorrows
 {
     private int chainHead = -1; // The checks replay's chain: its head and first block.
     private int chainFirst;
+    private bool replaying; // Whether Carry runs the checks replay.
 
     /// <summary>Checks a body under the selected view; view 0 of a body no view decides checks it for every view.</summary>
     /// <param name="program">The program, whose drop table it reads and whose problems it adds to.</param>

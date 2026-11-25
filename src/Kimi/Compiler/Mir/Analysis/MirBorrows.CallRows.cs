@@ -186,8 +186,7 @@ internal sealed partial class MirBorrows
     // (TyCtxt.ClosureReceiverIn), and an input of a pair layer is its case's Type, by value in the owner case, so the call writes nothing
     // through it there (SPEC 15.6.4); none for another terminator, an intrinsic without a declaration or a default template's call. Its
     // Limit, a genuine limit, retains nothing the stratum follows: the checks record it as OwnershipDepthLimit_Kd at the call (R4-M51,
-    // R4-M153, MirBorrows.Locations); a call
-    // over storage Binding rejected has its rows (G240).
+    // R4-M153, MirBorrows.Locations); a call over storage Binding rejected has its rows (G240).
     private CallRetention? Retaining(in MirTerminator call)
     {
         var callee = call.Callee;
