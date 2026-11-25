@@ -25234,6 +25234,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amended by R7-M63 (R7-C3 C3-1): "The environment stays valid" now holds for every failure: a failed premise is the premise's
     own Failed state, read through the one consult. The interim "Until R7-C2c2" bullet is done: `ClassForm` replaces dev's member
     substitution and ContractTypeCore's first-premise choice.
+  - Superseded in part by R7-M108 (R7-C3 C3d, 2026-11-25): the Records bullet's site ("at the declaration whose premises first
+    form it"; "Per error class at its premise clause: PLAN G830"): one record per error group at its last own premise clause, a
+    supplied group at its supplier, a limit at the owner.
 - **R7-M25 `Enumerate`'s subjects are keyed by identity class** (Front, 2026-11-13; R7-C2c2 c2-1, the plan's §5.0 C2 part c2; Major
   with design reviews 1-2, an implementation review ACCEPT WITH NOTES and the C-308 fix's review ACCEPT; RP17: the Middle's C-308
   consent, round 2; supersedes in part BU-199) SPEC 8.2.3, 8.3.2.
@@ -28909,6 +28912,46 @@ Closure row of `MirCases.Branch`).
   - Rejected: a clause or a second reader for `not Callable`; a polarity flag or mode on `PremiseCallable` or the rows' request; a second
     `ContractSupply` instantiation for negated clauses; widening to every kind's negation now (F's CC-8: RP8 risk on every program, P1
     beyond the hour); removing `Reading` in c2-5b (the owner's option (b): C2c3's request-by-class work for its three readers).
+- **R7-M108 SPEC 8.2.3's premise error per error group at its clause; a declaration's frame is its premise error's own check**
+  (Front, 2026-11-25; R7-C3 part d, Q-778; F's C2/C3 rulings 329-335, C3d-R1 (A), which supersedes in part ruling 338's
+  rejection of N1 and ruling 348's "d.v1 waits for G1323", and C3d-R2; Major) SPEC 8.2.3, 23.1.2.
+  - The record site: `Binding.TypeIdentity`'s recorder (`RecordIdentityPremiseError`) records one record per own error group
+    (`IdentityClasses.OwnError`'s groups; a cycle's strongly connected component is one group) at the last of the owner's premise
+    clauses with a Type in the group (`PremiseErrorClause`); a group no own clause reaches is the supplying declaration's where its
+    own classes hold the supplied clauses erroneous (`PremiseErrorSupplier`: a Contract for what its Constraints alone cause, never
+    again at a use), else the owner's; a limit (Unsupported, the closure limit, the Final pass's waiting class) stays the owner's
+    record. Two independent groups whose last reaching clause is one clause are one record there (SPEC 23.1.2 lets grouping vary);
+    groups at distinct clauses are distinct records.
+  - The owner's rest (ruling 331 (B), 335): an owner with no record and no failure of its own is Invalid with no failure and no
+    part; the identity component publishes its cause, the first record's site (`IdentityErrorSite`), which the cause queries read
+    (`HasFailureCauses`, `PushPrerequisites`) only while the declaration has no record of its own. The context reader reads no
+    site, so the owner keeps its context.
+  - The own-site rule (rulings C3d-R1 (A), C3d-R2): `ChecksOwnSite`, read by `Fail`, `Consulted` and `VerifyConformance`'s
+    conformance use alike, also answers true for an own premise clause of the frame's declaration that holds one of its scope's
+    group records (`HoldsGroupRecord`, published per scope in `identityRecorded` before each record): the declaration's frame is
+    its premise error's own check wherever the record stands, so its failures and reads of those clauses are no prerequisites of
+    it, and an own group clause's conformance (`T is K`) that `JudgeFacts` proves in that frame does not read the failed premises
+    of its scope chain, as in the clause's own frame. Its proofs still read the error as their limit while the records stand at
+    its clauses or its supplier (`IdentityPremiseErrorRead`). A supplier's record belongs to another declaration and stays a read.
+    With the rest's bound, one rule: a declaration rests on its own premise error only through the published site, and only
+    until it has a record of its own.
+  - One judge of a Type identity (rulings 333, 334): the atom judge's TypeIdentity arm reads the identity judge's verdict; over a
+    Type with a part in a recorded erroneous class (`IdentityPremiseErrorRead`) it reads Refuted where the judge refutes
+    (`IdentityRefuted`: a known difference such as heads, whatever the class; one erroneous class is no difference), else Unknown,
+    the read being the proof's limit, never Refuted by comparing the Types the class holds.
+  - 8.3.4's emptied set (ruling 332): a group whose meets read a binder's emptied admitted set (`IdentityClasses.EmptiedPair`)
+    rests on 8.3.4's Error at the emptying environment's owner (`Binding.EmptyingOwner`), a pending prerequisite read at
+    publication; that environment always records the Error at its owner, so the group's record rests on a reported record.
+  - Moves (Q13), rejected programs only: each premise-error record whose group a clause reaches moves from the declaration to that
+    clause (TypeIdentityTest.Premises, RecursiveContractTest's site rows, `spec-cases.json` 8.2.3-identity-premises), among them
+    VirtualDeclarationTest's v1 and v1c (`InvalidConstraint_Kd` from 2:25 to 4:9 and 3:9), which keep the dispatch limit's
+    `Unsupported_Kd` at 2:12; a Contract-only group is recorded at the Contract and no longer again at a function with `T is C`.
+  - Supersedes the record-site part of R7-M24.
+  - Rejected: a second reading in the context reader, a scoped P1 (ruling 331 (A), (C)); premise proofs before the identity
+    verdict (reverses rulings 320/324); a key merge or a class error state for the emptied set; the Guard's frame at the function
+    over per-problem input rows (the owner's O-509 (a) kept those rows out; PLAN G1323); `Fail` taking a node's range off at its
+    first record (ruling 337: a record made later with no frame open reads that range); dev's exact records for one form under
+    this rule (a per-form site exception).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
