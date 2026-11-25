@@ -57,6 +57,7 @@ public sealed partial class Binding
     private readonly List<Koto> identityClauses = new(); // identityRecorded's clause ranges, reused between passes
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
+    private readonly List<IdentityRow> identityRows = new(); // the views' rows while their tables are built (AddViewRows), a stack of ranges
     private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
 
     // The scaling rows' measures: the nodes the identity classes added in this compilation, and ClassKey's steps and the class members
@@ -64,6 +65,12 @@ public sealed partial class Binding
     internal int IdentityClassWork { get; private set; }
 
     internal long IdentityKeyWork { get; private set; }
+
+    // A row of an identity table (ClassesOver; SPEC 8.2.3's grounds): the identity premise `Fact` and its Source, which its availability
+    // is read by. A fact of a view's chain names its environment (Environment: read there, as every premise is, AvailableConstraintFact);
+    // a clause instance a request's walk recorded names the Contract supplying it and the clause it instantiates, as a DerivedFacts entry
+    // names its source (Source, Origin; Environment null), and is Provisional (a derived availability, R7-M27).
+    private readonly record struct IdentityRow(BoundConstraint Fact, ConstraintEnvironment? Environment, BindingSymbol? Source, IsKoto? Origin);
 
     // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
     private static bool HasTypeIdentity(BindingScope scope)
@@ -112,7 +119,8 @@ public sealed partial class Binding
         this.identityClauses.Clear();
     }
 
-    // The view's classes and their Completion; a re-entered build answers nothing (Provisional).
+    // The view's classes and their Completion; a re-entered build answers nothing (Provisional). The view's table is ClassesOver its
+    // rows (AddViewRows): every identity premise of its chain.
     private IdentityClasses? ClassesOf(BindingScope scope, out Completion completion)
     {
         var serial = SerialOf(scope);
@@ -128,39 +136,38 @@ public sealed partial class Binding
             return null;
         }
 
+        var start = this.identityRows.Count;
         try
         {
             // The view's one table of the pass is rebuilt in place when its premises moved or it was not Complete: no reader holds a
             // view's table across a build of the same view (the attribute domains read no identity), and a build nested in another one
-            // takes its own table.
+            // takes its own table and its own range of the rows.
             if (kept.Classes is not { } classes || this.identityBuilding.Count != 1)
             {
                 classes = this.identityPool.Count != 0 ? this.identityPool.Pop() : new IdentityClasses(this);
                 this.identityLent.Add(classes);
             }
 
-            classes.Open(scope);
-            this.ApplyIdentityPremises(classes, scope);
-            classes.Close();
-            this.IdentityClassWork += classes.Work;
+            this.AddViewRows(scope);
+            this.ClassesOver(classes, scope, this.identityRows, start);
             completion = classes.Completion;
             this.identityClasses[scope] = (classes.Final && SerialOf(scope) == serial ? serial : -1, classes); // -1: kept, not memoized
             return classes;
         }
         finally
         {
+            this.identityRows.RemoveRange(start, this.identityRows.Count - start);
             this.identityBuilding.Remove(scope);
         }
     }
 
     // R7-C2c2 c2-2: the declaration's classes with the identity rows a request's walk recorded (SPEC 8.2.3's grounds include the
-    // Constraints `T is C` supplies at every depth). Request-local: one reused table, never memoized as the view's; its rows are
-    // Provisional (a derived availability), so nothing keyed by it is kept, and at R7-C2e2 e2-1's merge what it keys stays the
-    // request's. Its keys follow the table's rule: a constructed member keys to itself (Representative). R7-C2c2 c2-4b (DECISIONS
-    // R4.13): its premises are the declaration's grounds alone (ConstraintEnvironment.Declares, asked of an identity fact only),
-    // never a use's supply, so the closure a request extends is a function of the declaration's premises and its own rows (SPEC
-    // 8.3.3 Limits).
-    private IdentityClasses? ExtendedClassesOf(BindingScope scope, List<(BoundType A, BoundType B)> rows)
+    // Constraints `T is C` supplies at every depth): ClassesOver those rows. Request-local: one reused table, never memoized as the
+    // view's; its rows are Provisional (a derived availability), so nothing keyed by it is kept, and at R7-C2e2 e2-1's merge what it
+    // keys stays the request's. Its keys follow the table's rule: a constructed member keys to itself (Representative). R7-C2c2 c2-4b
+    // (DECISIONS R4.13): its premises are the declaration's grounds alone (ClassesOver's, ConstraintEnvironment.Declares), never a
+    // use's supply, so the closure a request extends is a function of the declaration's premises and its own rows (SPEC 8.3.3 Limits).
+    private IdentityClasses? ExtendedClassesOf(BindingScope scope, List<IdentityRow> rows)
     {
         if (!this.identityBuilding.Add(scope))
         {
@@ -169,32 +176,7 @@ public sealed partial class Binding
 
         try
         {
-            var classes = this.identityExtended ??= new IdentityClasses(this);
-            classes.Open(scope);
-            for (var current = scope; current is not null; current = current.Parent)
-            {
-                if (current.Constraints is not { } environment)
-                {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact.Kind == ConstraintKind.TypeIdentity && environment.Declares(fact))
-                    {
-                        this.ApplyIdentityPremise(classes, environment, fact);
-                    }
-                }
-            }
-
-            for (var i = 0; i < rows.Count; i++)
-            {
-                classes.Premise(rows[i].A, rows[i].B, Completion.Provisional);
-            }
-
-            classes.Close();
-            this.IdentityClassWork += classes.Work;
-            return classes;
+            return this.ClassesOver(this.identityExtended ??= new IdentityClasses(this), scope, rows, 0);
         }
         finally
         {
@@ -202,7 +184,59 @@ public sealed partial class Binding
         }
     }
 
-    private void ApplyIdentityPremises(IdentityClasses classes, BindingScope scope)
+    // The one identity table builder (SPEC 8.2.3; e2-7's T(G ∪ rows)): `classes` opened for `scope`, its premises the declaration's
+    // grounds (each TypeIdentity fact of the chain that ConstraintEnvironment.Declares, asked of no other) and `rows` from `start`, each
+    // read by its Source (IdentityRow), then closed; its nodes are counted in IdentityClassWork. Input invariant: the rows that are facts
+    // of the chain come first, in the chain's order (innermost scope first, each environment in its order), as AddViewRows gives them. So
+    // a ground that is a row is applied once, as the row, and a table is built in its premises' order, which Members' index order and
+    // the premise error's groups read. The caller holds the re-entry guard (identityBuilding) and owns the table; no mode: what a table
+    // holds beyond the grounds is its rows.
+    private IdentityClasses ClassesOver(IdentityClasses classes, BindingScope scope, List<IdentityRow> rows, int start)
+    {
+        classes.Open(scope);
+        var row = start;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (row < rows.Count && ReferenceEquals(rows[row].Fact, fact) && ReferenceEquals(rows[row].Environment, environment))
+                {
+                    row++; // a row, applied in the rows' order below
+                }
+                else if (fact.Kind == ConstraintKind.TypeIdentity && environment.Declares(fact))
+                {
+                    this.ApplyIdentityPremise(classes, environment, fact);
+                }
+            }
+        }
+
+        // A nested build reads its own range past these rows and removes it before it returns, so the index stays this table's.
+        for (var r = start; r < rows.Count; r++)
+        {
+            if (rows[r].Environment is { } environment)
+            {
+                this.ApplyIdentityPremise(classes, environment, rows[r].Fact);
+            }
+            else
+            {
+                classes.Premise(rows[r].Fact.Subject!, rows[r].Fact.RequiredType!, Completion.Provisional);
+            }
+        }
+
+        classes.Close();
+        this.IdentityClassWork += classes.Work;
+        return classes;
+    }
+
+    // A view's rows (ClassesOf): each TypeIdentity fact of its chain, in the chain's order (innermost scope first, each environment in
+    // its order), read in its environment: the declaration's grounds and a use's supply alike, so the view's table holds every available
+    // identity premise of its chain in that order (ApplyIdentityPremise). Appended to identityRows; the caller removes its range.
+    private void AddViewRows(BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
@@ -213,7 +247,10 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                this.ApplyIdentityPremise(classes, environment, fact);
+                if (fact.Kind == ConstraintKind.TypeIdentity)
+                {
+                    this.identityRows.Add(new(fact, environment, null, null));
+                }
             }
         }
     }

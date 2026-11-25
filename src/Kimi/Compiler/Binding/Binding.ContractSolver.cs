@@ -743,7 +743,7 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (ancestor, declaration, item, _) in new ContractSupply(this, shape, root, view.Premises))
+        foreach (var (ancestor, declaration, item, clause) in new ContractSupply(this, shape, root, view.Premises))
         {
             if (item is null)
             {
@@ -762,11 +762,12 @@ public sealed partial class Binding
                 var premise = this.conjuncts[c];
 
                 // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
-                // deferred mate's walk keeps none (EnumerateClosed; the class header's Extension).
+                // deferred mate's walk keeps none (EnumerateClosed; the class header's Extension). One row per pair, with the source
+                // of its first supply: the Contract and the clause, as AddContractPremises files the same supply (IdentityRow).
                 if (premise is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } && this.enumerateDepth == 1 &&
-                    source.Available && !this.enumerateIdentities.Contains((left, right)))
+                    source.Available && !Recorded(this.enumerateIdentities, left, right))
                 {
-                    this.enumerateIdentities.Add((left, right)); // c2-2: an identity row (SPEC 8.2.3 grounds), for the request's classes
+                    this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause)); // c2-2: a row (SPEC 8.2.3 grounds) of the request's classes
                 }
 
                 if (RowAtom(premise) is { Subject: { } stated } &&
@@ -782,6 +783,20 @@ public sealed partial class Binding
             }
 
             this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
+        }
+
+        // Whether the walk recorded the identity row `a is b` (interned Types: by reference).
+        static bool Recorded(List<IdentityRow> rows, BoundType a, BoundType b)
+        {
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (ReferenceEquals(rows[i].Fact.Subject, a) && ReferenceEquals(rows[i].Fact.RequiredType, b))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
