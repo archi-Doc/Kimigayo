@@ -124,6 +124,7 @@ public sealed partial class Binding
         var fact = this.ProofFact(proof);
         var origin = proof == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
         var conformance = proof == ConstraintProof.Refuted ? this.ScopeReads.Conformance : null;
+        this.ScopeReads.Conformance = null; // Taken: no R fact outlives its scope in the popped slot (the library layer's proofScopes).
         if (--this.proofNesting == 0)
         {
             this.CloseFrame(this.judgmentEnclosing);
