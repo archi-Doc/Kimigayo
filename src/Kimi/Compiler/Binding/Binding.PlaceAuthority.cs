@@ -181,13 +181,15 @@ public sealed partial class Binding
     // needs: its path is not shared (ReferentAuthority) and its binding permits it (AcquirableByBinding), both read from one fold.
     private bool ExclusivelyAcquirable(Koto receiver) => this.ExclusiveAcquisitionDenial(receiver) is null;
 
-    // SPEC 7.3.3, 15.6.2: ExclusivelyAcquirable's denial as the failure its written twin `p@follow@uniq` records (AccessFailure's codes):
-    // a shared layer on the referent's path SharedPathAccess, a binding that does not permit it InvalidAssignment; null when acquirable.
+    // SPEC 7.3.3, 15.6.2, 15.1.5: ExclusivelyAcquirable's denial as the failure its written twin `p@follow@uniq` records (AccessFailure's
+    // codes, read from the fold's Grant as AccessFailure reads it): a shared layer on the referent's path SharedPathAccess; a binding that
+    // does not permit it, the receiver's own or a selection's receiver's on its path (Grant.Denied, which Access folds into Ref),
+    // InvalidAssignment; null when acquirable.
     private BindingFailure? ExclusiveAcquisitionDenial(Koto receiver)
     {
         var path = this.PathFold(receiver, []);
-        return this.ReferentAuthority(receiver, path.Access) == SemanticsKind.Ref ? BindingFailure.SharedPathAccess
-            : this.AcquirableByBinding(receiver, path, []) ? null : BindingFailure.InvalidAssignment;
+        return this.ReferentAuthority(receiver, path.Grant.Authority) == SemanticsKind.Ref ? BindingFailure.SharedPathAccess
+            : path.Grant.Denied || !this.AcquirableByBinding(receiver, path, []) ? BindingFailure.InvalidAssignment : null;
     }
 
     // SPEC 3.4, 3.4.3, 15.1.5 (the invariant: one path computation decides writes, Moves and borrows): a Place's path folded from its

@@ -466,9 +466,10 @@ public sealed partial class Binding
             {
                 if (receiver && !explicitBorrow)
                 {
-                    // SPEC 7.3.3, 15.6.2: a receiver whose referent a shared layer reaches (its own `ref` layer, or its path) is denied as its
-                    // written twin `p@follow@uniq` is; its Type is formed as lent, for the fit. The shared layer makes its ReferentAuthority
-                    // Ref, so ExclusiveAcquisitionDenial names SharedPathAccess; no denial is a broken contract.
+                    // SPEC 7.3.3, 15.6.2, 15.1.5: a receiver whose referent a shared layer reaches (its own `ref` layer, or its path) or whose
+                    // path passes a selection its receiver's binding denies (ReachedThroughShared reads both) is denied as its written twin
+                    // `p@follow@uniq` is; its Type is formed as lent, for the fit. ExclusiveAcquisitionDenial names SharedPathAccess for the
+                    // shared layer and InvalidAssignment for the binding; no denial is a broken contract.
                     adapted = this.types.Reference(target, actualReferent, actual.Origin);
                     var denied = this.ExclusiveAcquisitionDenial(source) ?? throw new InvalidOperationException("A receiver a shared layer reaches has no exclusive-acquisition denial (InternalInvariant; R7-E4 E4a-3).");
                     return this.RequireAcquisition(source, denied, false, fixedExpectation, deferAcquisition);
