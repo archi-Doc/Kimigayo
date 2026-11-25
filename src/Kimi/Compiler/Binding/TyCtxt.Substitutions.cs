@@ -41,6 +41,9 @@ internal sealed partial class TyCtxt
     // A function item's own Type arguments before interning, reused.
     private BoundType?[] itemTypes = [];
 
+    // CaseSubst's case Types before interning, reused.
+    private BoundType?[] caseTypes = [];
+
     // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
     private BoundLength?[] noLengths = [];
 

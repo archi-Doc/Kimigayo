@@ -57,6 +57,7 @@ public class MinimalEmissionTest
         var hello = Analyze(TargetProfile.Linux, Hello, "Hello.kimi", OutputKind.Application);
         var ir = CompilationTestHelper.WriteIr(hello);
         Assert.Empty(hello.Generated.Libraries);
+        Assert.Equal(TargetProfile.Linux.EntrySymbol, hello.Generated.Entry);
         Assert.StartsWith(
             "; Kimigayo checked pre-optimization IR (linux-x64-v1)\ntarget triple = \"x86_64-unknown-linux-musl\"\ntarget datalayout = \"" +
             TargetProfile.Linux.DataLayout + "\"\n%kimi.string = type { ptr, i64, i8 }\n@",
