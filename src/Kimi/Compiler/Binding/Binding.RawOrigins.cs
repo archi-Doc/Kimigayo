@@ -16,9 +16,9 @@ namespace Kimi.Compiler;
 //   retention and A5 read, and the borrows its Origin belongs to, at one arm by the layer's position (within a scope, RawMembers, which
 //   InvalidRawOrigin also reads; or where the Origin is bound, AtomMembers, through retention's BinderReading and A5's StoredMembers),
 //   each slot keeper walked once, a keeper cycle that changes its Type arguments, an Origin kind without a row or a raw layer's region
-//   slot an unanswered one (CallRetention.Limit, A5's located Unsupported_Kd), never a silent stop; the named limits a layer's Origin's
-//   limit marks give (Marks, one reader of Binding.AtomMarks; LimitsDeclared, LimitsBinder: A5's false, retention's binder reading with
-//   no members); the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
+//   slot an unanswered one (CallRetention.Limit, A5's OwnershipDepthLimit_Kd at the call, R4-M153), never a silent stop; the named
+//   limits a layer's Origin's limit marks give (Marks, one reader of Binding.AtomMarks; LimitsDeclared, LimitsBinder: A5's false,
+//   retention's binder reading with no members); the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
 //   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
 //   layer's Place reached through no dereference (JudgeHolderPlace, OQ-R1 (a)), which with ReadHolder reads one decision, whether a
 //   constructor's or drop's receiver holds the layer (ReceiverHolds); the borrows keeping a declared slot (Keepers, D15);
