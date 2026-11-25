@@ -13,6 +13,7 @@ public sealed partial class Binding
             return ConstraintProof.Refuted;
         }
 
+        var held = this.heldPairs; // The held sink's mark (RestsOnHeld): a judgment of the comparison that read a held pair is Unknown.
         var inference = this.BeginOriginInference(this.RentInference(requirement.Binder, implementation.Binder));
         var demanded = this.RentTypes(requirement.InputCount);
         var written = this.RentTypes(requirement.InputCount);
@@ -81,7 +82,7 @@ public sealed partial class Binding
                 ? this.SolveCallOriginInference(inference, origins, inputs, [], declaringType)
                 : this.SolveOriginInference(inference, origins, inputs, [], declaringType)))
             {
-                return ConstraintProof.Refuted;
+                return this.RestsOnHeld(held, ConstraintProof.Refuted); // SPEC 15.3.6: no candidate or a conflict may rest on a skipped held pair.
             }
 
             for (int i = 0, j = 0; i < requirement.InputCount; i++)
@@ -102,7 +103,7 @@ public sealed partial class Binding
 
             if (!this.CheckCallOriginRelations(implementation.Binder, origins, inputs, requirement.Binder, declaringType, comparison))
             {
-                return ConstraintProof.Refuted;
+                return this.RestsOnHeld(held, ConstraintProof.Refuted); // It reads the solution above.
             }
 
             var result = implementation.Result is { } output ? Translate(output) : null;
@@ -122,7 +123,7 @@ public sealed partial class Binding
             // above and the Origin inference read the Types as given.
             var (formedResult, formedExpected) = (this.ClassForm(result, scope, out _), this.ClassForm(expected, scope, out _));
             var fits = this.IsSubtypeAt(formedResult, CompatibleResult(formedResult, formedExpected), requirement.Binder, comparison);
-            return fits ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return fits ? this.RestsOnHeld(held, ConstraintProof.Proven) : ConstraintProof.Refuted;
         }
         finally
         {
@@ -153,6 +154,7 @@ public sealed partial class Binding
     // premises and its pair binders their admitted sets (Binding.RelationScope; PLAN G801). The one producer of a comparison's scope:
     // a callable implementation's comparison (CompareCallableContracts) and a stored Field's bridge (MatchPropertyOperation) form theirs here.
     // It has no row sink (CallableInstance.Rows): a contract match is no reader of region conjuncts, so its premises alone decide (B-3).
+    // Its scope gives its relations the held arm (heldPairs), which its readers read.
     private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder, BindingScope scope)
     {
         var demanded = inputs.Length == 0 ? BoundType.Unit : this.types.Tuple(inputs);

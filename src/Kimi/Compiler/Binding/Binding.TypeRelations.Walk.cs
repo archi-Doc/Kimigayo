@@ -21,6 +21,8 @@ namespace Kimi.Compiler;
 //   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
 //   that this walk meets reversed, under a contravariant one). A walk with a row sink appends to it each region conjunct its
 //   comparisons left as rows (LeavesBodyRows); the reader that set the sink forms or drops them, so "holds" there is conditional on them.
+//   Under a comparison's scope (CallableInstance.Scope) a pair with a held side (HeldProjection) holds, binds nothing and is counted in
+//   the held sink (heldPairs), so "holds" there is Unknown for the comparison's readers, which read the sink against their mark.
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
 //   inputs, its result, then the implementation's own well-formedness. A Callable comparison stops at its first failure, which is its
 //   one fact (SPEC 15.6.1); outside every comparison a recording root's walk goes on past an Origin position's or a Function
@@ -179,6 +181,11 @@ public sealed partial class Binding
     // meeting of the same two interned Types in the same invariance within one walk relates them as the first did, reading the same
     // premises and Origins, so its verdict, resting and facts are the first's (DECISIONS BU-19's table, one query per root walk; warm 0 B).
     private readonly TypeMemo<(BoundType Actual, BoundType Expected, bool Invariant), int> enteredParts = new();
+
+    // SPEC 8.6.3, 8.3.1, 15.3.6 (R7-C2e2 e2-5b, design R2.2 and R2.10 N1): the held sink, the count of pairs a comparison's relations held
+    // because a side is a held projection (Relate's and CollectOriginInference's arms): such a pair neither holds nor fails, so a reader
+    // marks the count before its judgments and reads a verdict that may rest on one (`heldPairs != mark`) as Unknown. Only grows.
+    private int heldPairs;
 
     // Which Origin bindings a relation walk compares: every one (Judged), every one as a whole-contract comparison's Origin part, from the
     // premises alone, so a member that only an inferred or body-local region decides is no limit (Contract, SPEC 15.6.1, 15.3.7: a
@@ -359,6 +366,12 @@ public sealed partial class Binding
             if (actual.Kind == BoundTypeKind.OpenSlot || expected.Kind == BoundTypeKind.OpenSlot)
             {
                 this.metOpenSlot = true; // Binding.OpenSlots: an atom holds against any part and binds nothing.
+                return true;
+            }
+
+            if (instance.Scope is { } scope && (this.owner.HeldProjection(actual, scope, this.Site) || this.owner.HeldProjection(expected, scope, this.Site)))
+            {
+                this.owner.heldPairs++; // A held part holds and binds nothing; the comparison's reader reads the held sink (heldPairs).
                 return true;
             }
 

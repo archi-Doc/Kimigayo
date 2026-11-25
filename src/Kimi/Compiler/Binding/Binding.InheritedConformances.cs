@@ -307,19 +307,19 @@ public sealed partial class Binding
                     }
 
                     var matches = this.MatchesRequirement(requirement, implementation, self, scope, selection);
-                    if (matches != true)
+                    if (matches != ConstraintProof.Proven)
                     {
                         // Object receiver projection is a separate implementation limit of the conformance, as OCC-X is
                         // (UnsupportedProof), not evidence of a Self mismatch.
                         var receiver = requirement.BoundSymbol!.ReceiverIndex;
-                        if (matches == false && receiver >= 0 && requirement.Parameters[receiver].Type.BoundType?.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
+                        if (matches == ConstraintProof.Refuted && receiver >= 0 && requirement.Parameters[receiver].Type.BoundType?.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
                         {
                             path.Unsupported = true;
                             continue;
                         }
 
-                        path.RejectedSelfSignature = matches == false ? witness.Implementation : null;
-                        return matches is null ? ConstraintProof.Unknown : ConstraintProof.Refuted;
+                        path.RejectedSelfSignature = matches == ConstraintProof.Refuted ? witness.Implementation : null;
+                        return matches;
                     }
 
                     var (compatible, _) = this.CompatibleRequirement(path, requirement, implementation, self, scope, selection);

@@ -32,7 +32,7 @@ public sealed partial class Binding
             return pending;
         }
 
-        pending = type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
+        pending = PendingProjection(type);
         for (var i = 0; !pending && i < type.Components.Count; i++)
         {
             pending = this.PendingAssociatedType(type.Components[i]);
@@ -41,6 +41,11 @@ public sealed partial class Binding
         this.pendingAssociatedTypes[type] = pending;
         return pending;
     }
+
+    // SPEC 8.5.5: whether `type` itself is a projection on a nominal receiver that no Type decides yet (its parts aside): the pending
+    // node PendingAssociatedType finds anywhere in a Type and SignatureRelation reads as Unknown at its position.
+    private static bool PendingProjection(BoundType type)
+        => type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
 
     private static bool InferenceBinderInScope(Koto binder, BindingSymbol owner)
     {
@@ -597,13 +602,13 @@ public sealed partial class Binding
 
             this.BindHeader(candidate);
             var match = this.MatchesRequirement(requirement, implementation, self, path.Scope, selection);
-            if (match is null && IncompleteSignature(implementation) is { } incomplete)
+            if (match == ConstraintProof.Unknown && IncompleteSignature(implementation) is { } incomplete)
             {
                 this.Consulted(incomplete); // SPEC 23.1.2: a pending match read the implementation's incomplete signature (IsDerived).
             }
 
-            pending |= match is null;
-            if (match == true)
+            pending |= match == ConstraintProof.Unknown;
+            if (match == ConstraintProof.Proven)
             {
                 matches++;
                 selected = candidate;

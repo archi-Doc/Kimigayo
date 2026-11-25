@@ -110,6 +110,7 @@ public sealed partial class Binding
             }
 
             var getter = requirement.Kind == PropertyAccessorKind.Get;
+            var held = this.heldPairs; // The held sink's mark (RestsOnHeld): a bridge fit that read a held pair is Unknown.
             if (receiver.Kind != BoundTypeKind.Semantics || receiver.Semantics != (getter ? SemanticsKind.Ref : SemanticsKind.Uniq) || !ReferenceEquals(receiver.Components[0], self))
             {
                 return ConstraintProof.Refuted;
@@ -121,12 +122,14 @@ public sealed partial class Binding
                 proof = input is not null && implementation.Property.Declaration.DeclarationKind == PropertyDeclarationKind.Var &&
                     SignatureEquals(input, field, requirement.Binder, implementation.Binder) &&
                     this.IsSubtypeAt(input, field, requirement.Binder, Bridge()) && ReferenceEquals(result, BoundType.Unit) ?
-                    ConstraintProof.Proven : ConstraintProof.Refuted;
+                    this.RestsOnHeld(held, ConstraintProof.Proven) : ConstraintProof.Refuted;
             }
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope, conformance.Use) : ConstraintProof.Refuted;
+                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge())
+                    ? CombineProof(this.RestsOnHeld(held, ConstraintProof.Proven), this.ProveCopy(field, scope, conformance.Use), true)
+                    : ConstraintProof.Refuted;
             }
             else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && ReferenceEquals(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {

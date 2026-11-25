@@ -548,28 +548,31 @@ public sealed partial class Binding
             };
     }
 
-    private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
+    // SPEC 8.6.3, 8.5.5: whether `implementation` is `requirement`'s candidate (its identification): Refuted where the generic shape,
+    // a parameter's role or name, or a parameter's Type (SignatureRelation) differs; Unknown where a parameter's Type is not bound yet or
+    // reads a pending part; else Proven. The parameters are conjoined (CombineProof), and the first Refuted answers.
+    private ConstraintProof MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
         var demanded = new FnSig(requirement);
         var declared = new FnSig(implementation);
         if (implementation.IsSpecialization || demanded.GenericCount != declared.GenericCount || !SameGenericShape(requirement, implementation) || demanded.InputCount != declared.InputCount)
         {
-            return false;
+            return ConstraintProof.Refuted;
         }
 
-        var pending = false;
+        var proof = ConstraintProof.Proven;
         for (var i = 0; i < demanded.InputCount; i++)
         {
             var a = requirement.Parameters[i];
             var b = implementation.Parameters[i];
             if ((a.InternalName == "self") != (b.InternalName == "self") || a.ExternalName != b.ExternalName)
             {
-                return false;
+                return ConstraintProof.Refuted;
             }
 
             if (demanded.Input(i) is not { } required || declared.Input(i) is not { } actual)
             {
-                pending = true;
+                proof = CombineProof(proof, ConstraintProof.Unknown, true);
                 continue;
             }
 
@@ -579,31 +582,32 @@ public sealed partial class Binding
                 required = this.ProjectRequirementReceiver(required, self, selection.DeclaringType)!;
                 if (required is null)
                 {
-                    return false;
+                    return ConstraintProof.Refuted;
                 }
             }
 
             actual = this.MemberType(actual, selection.DeclaringType)!;
             if (actual is null)
             {
-                pending = true;
+                proof = CombineProof(proof, ConstraintProof.Unknown, true);
                 continue;
             }
 
             actual = this.ContractType(actual, scope);
             if (this.PendingAssociatedType(required) || this.PendingAssociatedType(actual))
             {
-                pending = true;
+                proof = CombineProof(proof, ConstraintProof.Unknown, true);
                 continue;
             }
 
-            if (!SignatureEquals(required, actual, demanded.Binder, declared.Binder))
+            proof = CombineProof(proof, SignatureRelation(required, actual, demanded.Binder, declared.Binder), true);
+            if (proof == ConstraintProof.Refuted)
             {
-                return false;
+                return proof;
             }
         }
 
-        return pending ? null : true;
+        return proof;
     }
 
     // SPEC 8.3.1: a requirement or an implementation whose declaration failed supplies no evidence, a function's or an accessor's alike.

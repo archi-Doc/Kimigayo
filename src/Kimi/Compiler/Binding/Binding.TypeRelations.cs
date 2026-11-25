@@ -155,6 +155,10 @@ public sealed partial class Binding
     }
 
     // The required signature an implementation's is compared against (CompatibleResult): the required one, its result replaced.
+    // R7-C2e2 e2-5b (SPEC 8.6.3, 8.3.1): a judgment's verdict as its reader reads it against the held sink: Unknown when a relation the
+    // judgment read held a pair since `mark` (heldPairs grew: the verdict may rest on a part no evidence decides yet), else `verdict`.
+    private ConstraintProof RestsOnHeld(int mark, ConstraintProof verdict) => this.heldPairs != mark ? ConstraintProof.Unknown : verdict;
+
     private BoundType CompatibleSignature(BoundType implementation, BoundType required)
     {
         if (implementation.Kind != BoundTypeKind.Function || required.Kind != BoundTypeKind.Function ||
