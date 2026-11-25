@@ -20,7 +20,8 @@ namespace Kimi.Compiler;
 // callee for which `for`'s witness test selects the Iterator conformance of its receiver's referent (SelectsWitness), that conformance
 // proven under the premises (a conditional one at the instance: OwningIterator<I> when I is Iterator).
 // Invariant: TyCtxt memoizes a contract per callee, Subst and premise scope, so each key is read once per instance, never per call.
-// Must not: reach a library Type outside these sections (DictionaryStorage, HeapBuffer), or narrow a row rule A does not form.
+// Must not: reach a library Type outside these sections (DictionaryStorage, HeapBuffer; StatesWrites names one DictionaryStorage
+// identity, placeEntry, the body of SPEC 4.9's insertion: 12.4.3, 4.9.6, 5.2.1, PLAN G442), or narrow a row rule A does not form.
 public sealed partial class Binding
 {
     // `exchange`'s target, the input whose chain its result keeps (KimiLibraryShapeTest pins the declaration's shape).
@@ -82,11 +83,14 @@ public sealed partial class Binding
 
     // SPEC 15.6.4 ("Except for the operations whose writes SPEC states, namely `replace`, `exchange` and `swap` (15.7), `Raw.initialize`
     // (5.6) and the operations of 4.6 to 4.9 (4.9.6), a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): whether
-    // the callee is one of them, by declaring identity: the operations TransferKey names and `replace` and `Raw.initialize`
+    // the callee is one of them, by declaring identity: the operations TransferKey names, `replace`, `Raw.initialize` and
+    // DictionaryStorage.placeEntry, the body of the 4.9 insertion by which the Dictionary literal (12.4.3; its `Places` Call, PLAN G442)
+    // and Dictionary's `tryInsert` and `insertOrReplace` insert, whose writes are 4.9.6's (5.2.1; PLAN G941, F's G941-F4)
     // (CallRetention.Composes).
     private bool StatesWrites(FunctionKoto? callee)
         => this.TransferKey(callee) != Transfer.None ||
-            callee?.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Replace or KimiDeclarationId.RawInitialize;
+            callee?.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Replace or KimiDeclarationId.RawInitialize or
+                KimiDeclarationId.DictionaryStoragePlaceEntry;
 
     // The Iterator key of a callee TransferKey does not name (the file's contract), its Iterator conformance proven under `premises`
     // (null: the library root's).

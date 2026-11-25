@@ -739,8 +739,8 @@ internal sealed partial class MirBorrows
         // name (SPEC 15.6.4; O-312 (a)): route 1 at the hidden key (HiddenCarried, the named step) whatever the key Type's guard. Past
         // a stepping guard (Through, Named) it is the named step every call takes, a transfer's included; at a None guard the key's Type
         // holds nothing the call stores, so only the call's own write through the hidden layer reaches a carried holder, which a call
-        // whose writes SPEC states never makes (Composes false: `replace`, `exchange`, `swap`, `Raw.initialize`, 4.6 to 4.9). A Deep or
-        // Limit guard leaves the step undecided (ViaDeep, the Limit).
+        // whose writes SPEC states never makes (Composes false: Binding's StatesWrites). A Deep or Limit guard leaves the step undecided
+        // (ViaDeep, the Limit).
         if (facts.Hidden && (guard is MirWrites.Through or MirWrites.Named || (guard == MirWrites.None && this.walkComposes)))
         {
             this.HiddenCarried(Placed(state[node.Slot]), node.Key);

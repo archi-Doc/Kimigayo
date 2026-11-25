@@ -222,8 +222,8 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
 
     /// <summary>Gets a value indicating whether the call's writes and reads compose within it (SPEC 15.6.4: "Except for the operations whose
     /// writes SPEC states, ... a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): false for `replace`,
-    /// `exchange`, `swap`, `Raw.initialize` and the operations of SPEC 4.6 to 4.9, by declaring identity (Binding.Retention.Transfers.cs,
-    /// StatesWrites over TransferKey's table), whose stated stores stay in their Reached entries. A5's
+    /// `exchange`, `swap`, `Raw.initialize`, the operations of SPEC 4.6 to 4.9 and the body of 4.9's insertion, by declaring identity
+    /// (Binding.Retention.Transfers.cs, StatesWrites over TransferKey's table), whose stated stores stay in their Reached entries. A5's
     /// rule 4 (the call's own pointer) and H2 read it before they take any entry.</summary>
     internal bool Composes { get; } = composes;
 

@@ -1875,6 +1875,125 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     value = 99
                 """));
 
+    // SPEC 12.4.3, 4.9.6, 5.2.1, 15.6.4 (PLAN G941, G442; F's G941-F4): a Dictionary literal inserts each entry by placeEntry, the body of
+    // 4.9's insertion, whose writes SPEC states: it stores the key and the value in the Dictionary and nothing past their raw layers, so
+    // the literal's storage keeps no Loan of the Dictionary's own borrow past a value's declared layer (HRaw.p) or a Closure's environment
+    // layer (m). Valid: the storage past such a layer (cell) is used after the literal, with or without the Loan r, and a second entry
+    // inserted by insertOrReplace. Invalid: the Dictionary is used after the Loan its value or key keeps ends (kk, x), or after the local a
+    // captured reference names is moved (s). Fail-before: C1c without the row rejected every valid row at the literal's `Move(built)`.
+    [Fact]
+    public void ADictionaryLiteralWritesOnlyWhatItsInsertionStates()
+        => Assert.Equal(
+            ["dictDeclBad: kk = 2", "dictCapBad: kk = 2", "dictValLoanBad: x = 2", "dictKeyLoanBad: x = 2", "dictCapRefMoveBad: s"],
+            Problems("""
+                func useu8(x: u8) => ()
+                struct HRaw
+                    public var p: raw/u8
+                    public init(p: raw/u8) => self.p = p
+                func dictDeclOk()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: u8 = 0
+                    var a = HRaw.init(p: null)
+                    a.p = cell@raw
+                    var b = HRaw.init(p: null)
+                    b.p = spare
+                    var d: Dictionary<i32, HRaw> = [1: a@move]
+                    _ = d.insertOrReplace(2, b@move)
+                    kk = 2
+                    useu8(cell)
+                func dictDeclBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: u8 = 0
+                    var a = HRaw.init(p: null)
+                    a.p = cell@raw
+                    var b = HRaw.init(p: null)
+                    b.p = spare
+                    var d: Dictionary<i32, HRaw> = [1: a@move]
+                    _ = d.insertOrReplace(2, b@move)
+                    kk = 2
+                    inspect(d@ref)
+                func dictCapOk()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: u8 = 0
+                    let m: raw/u8 = cell@raw
+                    let c = func [m] (v: u8)
+                        unsafe => *m = v
+                    let none: raw/u8 = null
+                    var t1 = (c, none)
+                    var t2 = (c, spare)
+                    var d = [1: t1]
+                    _ = d.insertOrReplace(2, t2)
+                    kk = 2
+                    useu8(cell)
+                func dictCapBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: u8 = 0
+                    let m: raw/u8 = cell@raw
+                    let c = func [m] (v: u8)
+                        unsafe => *m = v
+                    let none: raw/u8 = null
+                    var t1 = (c, none)
+                    var t2 = (c, spare)
+                    var d = [1: t1]
+                    _ = d.insertOrReplace(2, t2)
+                    kk = 2
+                    inspect(d@ref)
+                func dictMinDeclNull()
+                    var cell: u8 = 0
+                    var a = HRaw.init(p: null)
+                    var d: Dictionary<i32, HRaw> = [1: a@move]
+                    useu8(cell)
+                func dictOneCap()
+                    var cell: u8 = 0
+                    let m: raw/u8 = cell@raw
+                    let c = func [m] (v: u8)
+                        unsafe => *m = v
+                    let none: raw/u8 = null
+                    var t1 = (c, none)
+                    var d = [1: t1]
+                    useu8(cell)
+                func dictTwoDecl()
+                    var cell: u8 = 0
+                    var a = HRaw.init(p: null)
+                    a.p = cell@raw
+                    var b = HRaw.init(p: null)
+                    var d: Dictionary<i32, HRaw> = [1: b@move, 2: a@move]
+                    useu8(cell)
+                func dictValLoanBad()
+                    var x: i32 = 1
+                    var cell: u8 = 0
+                    var a = HRaw.init(p: null)
+                    a.p = cell@raw
+                    var d = [1: (a@move, x@ref)]
+                    x = 2
+                    inspect(d@ref)
+                func dictKeyLoanBad()
+                    var x: i32 = 1
+                    var cell: u8 = 0
+                    var a = HRaw.init(p: null)
+                    a.p = cell@raw
+                    var d = [x@ref: a@move]
+                    x = 2
+                    inspect(d@ref)
+                func dictCapRefMoveBad()
+                    var s = HRaw.init(p: null)
+                    let sr = s@ref
+                    let c = func [sr] () -> i32 => 0
+                    let none: raw/u8 = null
+                    var t1 = (c, none)
+                    var d = [1: t1]
+                    var moved = s@move
+                    inspect(d@ref)
+                """));
+
     // SPEC 13.7.1, 14.10.3, 15.6 (DECISIONS R4-M62, per value and so per path; the owner's O-371 (a)): on a path on which an assignment's
     // right side has no value nothing is destroyed and nothing is written, as for the static `x = fail()` (n1s), so the builder sends
     // that path around the overwrite's Drop and Use and A5 sees neither there. A Loan of the target that is live after the assignment
