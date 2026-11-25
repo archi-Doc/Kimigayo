@@ -44,7 +44,7 @@ public static class EmissionArtifacts
             {
                 var project = compilation.Project;
                 directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
-                paths ??= ArtifactPaths.Create(project);
+                paths ??= ArtifactPaths.Create(project, row);
                 destination = paths.Ir;
                 manifest = paths.Manifest;
                 outputDirectory = Path.GetDirectoryName(destination)!;

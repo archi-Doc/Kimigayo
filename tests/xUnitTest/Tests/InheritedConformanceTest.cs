@@ -410,6 +410,23 @@ public class InheritedConformanceTest
         }
     }
 
+    // SPEC 8.6.2, 23.3 (PLAN G1386): a refuted clause names the retained implementation of the conformance its proof selected, however the
+    // base spells the Contract reference: over a concrete (ri1) or generic base argument (ri1g), or under a premise (ri1p); a clause the
+    // conformance does not answer names none (ri1n).
+    [Theory]
+    [InlineData("ri1", "struct Derived: Base<SrcI>\n", "i32", "let value = Derived.init()\nuse(value)", true)]
+    [InlineData("ri1g", "struct Derived<X>: Base<X>\n    X is HasItem\n", "i32", "let value = Derived<SrcI>.init()\nuse(value)", true)]
+    [InlineData("ri1p", "struct Derived<X>: Base<X>\n    X is HasItem\n", "i32", "func g<X>(value: ref/Derived<X>)\n    X is HasItem\n    X.(HasItem).Item is i32\n    use(value)\npublic func main() => ()", true)]
+    [InlineData("ri1n", "struct Derived: Base<SrcI>\n", "i64", "let value = Derived.init()\nuse(value)", false)]
+    public void ARefutedClauseNamesTheRetainedImplementationOfItsSelectedConformance(string form, string derived, string argument, string use, bool retained)
+    {
+        const string Types = "contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n    public init() => ()\ncontract C<E>\n    func same(self: ref/Self, other: ref/Self) -> bool\nopen struct Base<S>\n    S is HasItem\n    Self is C<S.(HasItem).Item>\n    public init() => ()\n    public func same(self: ref/Self, other: ref/Self) -> bool => true\n";
+        var source = Types + derived + "    public init() : base() => ()\nfunc use<T>(value: ref/T)\n    T is C<" + argument + ">\n    ()\n" + use;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), error.Code);
+        Assert.True(retained == error.Note!.Contains("The retained implementation Base.same keeps Base as Self", StringComparison.Ordinal), form + ": " + error.Note);
+    }
+
     [Theory]
     [InlineData("i32", true)]
     [InlineData("string", false)]

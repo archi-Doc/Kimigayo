@@ -714,9 +714,9 @@ public sealed partial class Binding
     // SPEC 15.6.4, 15.1.5: a prepared argument of a value call completed at `parameter` (CompleteValueCallPart) and adapted to it: its
     // operation and the Type it acquires, which the call's substitution then instantiates; an unfitted literal, which waits for the
     // solve (WaitsForValueCallSolve), adapts as a Literal. An acquisition is deferred, as a payload's is (CompletePayloads): where the
-    // argument fits structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it
-    // supplies kept. A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the
-    // part is taken and acquired.
+    // argument fits structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5). A part that fails,
+    // or misfits (the call's record), takes no operation (rule W), and so does a refused one, whose lent Type is read for structure only
+    // (R7-M95 E4a-4, superseding BU-96 for its own relation). `formed` turns false unless the part is taken and acquired.
     [Transitional("R7", Reason = "A part's misfit fails the call with no problem (R7-E3 E3b-1, ruling 8 (2)): it runs once per argument, so its input is the call's NoApplicableCandidate from an earlier argument, and a Record per misfit may duplicate a problem, until R7-E5's per-problem inputs (D-924) decide a dependent record.")]
     private void AcquireValueCallPart(
         InvocationKoto call,
@@ -751,6 +751,7 @@ public sealed partial class Binding
         {
             this.FailAcquisition(call, acquisition.Kind, acquisition.Place, acquisition.Object, unresolved: true);
             formed = false;
+            return;
         }
 
         // ArgumentType includes the already selected expected adaptation. Retain the original syntax

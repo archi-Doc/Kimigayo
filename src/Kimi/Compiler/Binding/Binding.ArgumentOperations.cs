@@ -142,15 +142,17 @@ public sealed partial class Binding
     // spelling (SPEC 15.1.5), the Place that needs it and, for an exclusive borrow, whether the Place is an object handle (@objuniq)
     // (SPEC 23.1.3), or the access the lending rule denies an implicit exclusive acquisition of it (OwnedLending,
     // ExclusiveAcquisitionDenial; SPEC 7.3.3, 15.6.2), or a limit located at it. Only a deferring caller writes it (RequireAcquisition):
-    // a trial's receiver and arguments, ValueCalls and Enums, which read it, and ResultPremises, whose writes the enclosing trial takes as
-    // its candidate's acquisition. Structs, ShapeEvidence and BindCall save and restore it, a selection query restores it at its end
-    // (EndSelectionQuery), and each trial (TryCandidate) and SelectAt start from none. A caller that does not defer refuses the input
-    // and records its own failure, so it never leaves the channel set for an enclosing trial (a closure body bound per candidate).
+    // a trial's receiver and arguments, ValueCalls, Enums and a fixed destination's selected adaptation (ExpectedAdaptation), which read
+    // it, and ResultPremises, whose writes the enclosing trial takes as its candidate's acquisition. Structs, ShapeEvidence, BindCall and
+    // ExpectedAdaptation save and restore it, a selection query restores it at its end (EndSelectionQuery), and each trial (TryCandidate)
+    // and SelectAt start from none. A caller that does not defer (an explicit borrow, a property update, an accessor receiver, a probe of a
+    // fixed destination) refuses the input and records its own failure, so it never leaves the channel set for an enclosing trial (a
+    // closure body bound per candidate).
     private AcquisitionFailure? acquisitionFailure;
 
-    private bool RequireAcquisition(Koto source, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
+    private bool RequireAcquisition(Koto source, BindingFailure failure, bool @object, bool deferAcquisition)
     {
-        if (fixedExpectation || !deferAcquisition)
+        if (!deferAcquisition)
         {
             return false;
         }
@@ -166,7 +168,8 @@ public sealed partial class Binding
     // fails the input, before its Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged
     // (BorrowFailure). Otherwise a Reborrow whose supplied Type `supplied` no one Type carries (BareReborrowLimit on `read`, the Type the
     // operation adapted) is the bare Reborrow rule's limit, recorded beside its Resolved source (RecordLocatedLimit), so every other case's
-    // verdict stands (SPEC 8.15.2). True when the input fails.
+    // verdict stands (SPEC 8.15.2). A refused acquisition's operation is not final, so its limits are never judged: each reader of the
+    // channel takes the refusal first (ExpectedAdaptation, Enums, ValueCalls; R7-M95 E4a-4). True when the input fails.
     private bool JudgeSelectedInput(Koto source, ArgumentOperationKind kind, SemanticsKind mode, BoundType? read, BoundType? supplied)
     {
         if (this.BorrowsStaticRoot(source, kind, mode))
@@ -183,34 +186,65 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 10.2: fixed destinations and candidate result filtering use the argument adaptation rules. A probe
-    // records no pair-follow plan; the selected destination records the one operation consumed by later phases.
-    private BoundAdaptation? ExpectedAdaptation(Koto node, BoundType actual, BoundType expected, bool recordPair = true)
+    // SPEC 10.2: fixed destinations and candidate result filtering use the argument adaptation rules. Returns the Type the node delivers
+    // at the destination: its operation's, or `actual` itself where the common adaptation forms none (it does not apply, or adapts by
+    // Value). The selected destination is the one writer of its record consumed by later phases (its acquisition, its limits and its
+    // adaptation row); a probe defers nothing and records no row and no pair-follow plan.
+    // SPEC 7.3.3, 15.1.5, 15.6.1, 23.1.2 (R7-M95 E4a-4): the selected destination defers its acquisition, on a channel of its own, so an
+    // enclosing trial's (a closure body bound per candidate) is left as it was found. A refused one whose structure fits fails the Place,
+    // which delivers no Type (null), as its written twin does: its lent Type is read for structure only, and its operation, never formed,
+    // has no row and no limit. The node's readers rest on it by the prerequisite rule.
+    private BoundType? ExpectedAdaptation(Koto node, BoundType actual, BoundType expected, bool recordPair = true)
     {
         if (IsTransfer(node) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
-            return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
+            return actual; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if (!this.AdaptInput(node, FixedPattern.Open(expected), actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
-            !this.FitsStructuralPartAt(adapted, expected, node))
+        var enclosing = this.acquisitionFailure;
+        this.acquisitionFailure = null;
+        try
         {
-            return null;
-        }
+            if (!this.AdaptInput(node, FixedPattern.Open(expected), actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair, deferAcquisition: recordPair) ||
+                !this.FitsStructuralPartAt(adapted, expected, node))
+            {
+                return actual;
+            }
 
-        if (recordPair)
-        {
-            _ = this.JudgeSelectedInput(node, operation, adapted.Semantics, actual, adapted); // The selected destination's limits; a probe adapts a call result.
-        }
+            if (this.acquisitionFailure is { } refused)
+            {
+                return this.FailAcquisition(node, refused.Kind, refused.Place, refused.Object); // Null: the Place fails.
+            }
 
-        return operation switch
+            if (recordPair)
+            {
+                _ = this.JudgeSelectedInput(node, operation, adapted.Semantics, actual, adapted); // The selected destination's limits; a probe adapts a call result.
+            }
+
+            ExpectedAdaptationKind? formed = operation switch
+            {
+                ArgumentOperationKind.CopyRead => ExpectedAdaptationKind.ReferentRead,
+                ArgumentOperationKind.Borrow => ExpectedAdaptationKind.SharedBorrow,
+                ArgumentOperationKind.Reborrow => ExpectedAdaptationKind.Reborrow,
+                ArgumentOperationKind.ReferenceRead => ExpectedAdaptationKind.ReferenceRead,
+                _ => null,
+            };
+            if (formed is not { } adaptation)
+            {
+                return actual;
+            }
+
+            if (recordPair)
+            {
+                this.adaptations[node] = new(adaptation, adapted);
+            }
+
+            return adapted;
+        }
+        finally
         {
-            ArgumentOperationKind.CopyRead => new(ExpectedAdaptationKind.ReferentRead, adapted),
-            ArgumentOperationKind.Borrow => new(ExpectedAdaptationKind.SharedBorrow, adapted),
-            ArgumentOperationKind.Reborrow => new(ExpectedAdaptationKind.Reborrow, adapted),
-            ArgumentOperationKind.ReferenceRead => new(ExpectedAdaptationKind.ReferenceRead, adapted),
-            _ => null,
-        };
+            this.acquisitionFailure = enclosing;
+        }
     }
 
     // SPEC 3.5.3 value read: the safe value-reference layers of an operand are followed to their terminal Type, which is
@@ -245,7 +279,7 @@ public sealed partial class Binding
     private bool AcquiresBare(Koto source, BoundType judged, bool deferAcquisition)
         => judged.Semantics is not (SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) || !this.IsBarePlace(source) ||
             this.BareAcquire(judged, source, out _) != HirAcquire.Move ||
-            this.RequireAcquisition(source, BindingFailure.TransferRequired, @object: false, fixedExpectation: false, deferAcquisition);
+            this.RequireAcquisition(source, BindingFailure.TransferRequired, @object: false, deferAcquisition);
 
     /// <summary>
     /// Adapts an input to a parameter Type. <paramref name="receiver"/> marks a Receiver Expression, which SPEC 7.3
@@ -306,14 +340,8 @@ public sealed partial class Binding
                 }
             }
 
-            if (fixedExpectation)
-            {
-                this.acquisitionFailure ??= before;
-                return false;
-            }
-
             this.acquisitionFailure ??= before;
-            return this.acquisitionFailure is null ? this.RequireAcquisition(source, BindingFailure.Unsupported, true, false, deferAcquisition) : deferAcquisition;
+            return this.acquisitionFailure is null ? this.RequireAcquisition(source, BindingFailure.Unsupported, true, deferAcquisition) : deferAcquisition;
         }
 
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
@@ -446,7 +474,7 @@ public sealed partial class Binding
             if (!explicitBorrow && !projected && (target == SemanticsKind.Ref || (receiver && target == SemanticsKind.Uniq && BelowLayer(actualReferent) is not null)) &&
                 this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared &&
                 (target == SemanticsKind.Uniq
-                    ? layers > 1 && (this.ExclusiveAcquisitionDenial(source) is not { } layered || this.RequireAcquisition(source, layered, false, fixedExpectation, deferAcquisition))
+                    ? layers > 1 && (this.ExclusiveAcquisitionDenial(source) is not { } layered || this.RequireAcquisition(source, layered, false, deferAcquisition))
                     : layers > 1 || actual.Semantics == SemanticsKind.Uniq))
             {
                 // SPEC 10.2, 7.3.3, 15.6.3: safe value-reference layers ending in the parameter's referent yield one reference to it,
@@ -472,13 +500,13 @@ public sealed partial class Binding
                     // shared layer and InvalidAssignment for the binding; no denial is a broken contract.
                     adapted = this.types.Reference(target, actualReferent, actual.Origin);
                     var denied = this.ExclusiveAcquisitionDenial(source) ?? throw new InvalidOperationException("A receiver a shared layer reaches has no exclusive-acquisition denial (InternalInvariant; R7-E4 E4a-3).");
-                    return this.RequireAcquisition(source, denied, false, fixedExpectation, deferAcquisition);
+                    return this.RequireAcquisition(source, denied, false, deferAcquisition);
                 }
 
                 // SPEC 3.5.1: a stored uniq reached through a shared path has no Reborrow, so its bare acquisition needs the Move a bare
                 // Place never makes (TransferRequired, DECISIONS BU-45), deferred as every bare acquisition's; a written one is its own.
                 return actual.Semantics == SemanticsKind.Uniq && !explicitBorrow &&
-                    this.RequireAcquisition(source, BindingFailure.TransferRequired, @object: false, fixedExpectation, deferAcquisition);
+                    this.RequireAcquisition(source, BindingFailure.TransferRequired, @object: false, deferAcquisition);
             }
 
             referent = actualReferent;
@@ -506,7 +534,7 @@ public sealed partial class Binding
             // acquisition fails as written (SPEC 7.3.3).
             var lending = judged ? this.OwnedLending(source, scope, target == SemanticsKind.Uniq, explicitBorrow, receiver, fixedExpectation) : BindingFailure.None;
             if (lending is not { } verdict ? !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal)
-                : verdict != BindingFailure.None && !this.RequireAcquisition(source, verdict, false, fixedExpectation, deferAcquisition))
+                : verdict != BindingFailure.None && !this.RequireAcquisition(source, verdict, false, deferAcquisition))
             {
                 return false;
             }
@@ -566,7 +594,7 @@ public sealed partial class Binding
             {
                 // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
                 return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&
-                    this.RequireAcquisition(source, BindingFailure.TransferRequired, @object: true, fixedExpectation, deferAcquisition);
+                    this.RequireAcquisition(source, BindingFailure.TransferRequired, @object: true, deferAcquisition);
             }
 
             if (actual.Semantics == SemanticsKind.ObjRef)
@@ -583,7 +611,7 @@ public sealed partial class Binding
             // SPEC 13.5.5, 13.5.6: a handle lends its object from a Place or a Temporary Value (OwnedLending); an owned handle is lent
             // exclusively by @objuniq except as a receiver, and a denied implicit acquisition fails as written (SPEC 15.1.5, 7.3).
             if (lending != BindingFailure.None &&
-                !this.RequireAcquisition(source, lending, true, fixedExpectation, deferAcquisition))
+                !this.RequireAcquisition(source, lending, true, deferAcquisition))
             {
                 return false;
             }

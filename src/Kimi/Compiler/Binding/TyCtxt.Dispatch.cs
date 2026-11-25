@@ -118,8 +118,11 @@ internal sealed partial class TyCtxt
     // SPEC 17.4: the compiler-only $abort (KimiLibrary.Abort), which is no library declaration, so no MIR callee names it as one (MirValidator).
     internal BindingSymbol Abort => library.Abort;
 
-    // A library declaration's own Type, each of its parameters standing for itself (Layout: a sequence handle's component, IMPL 21.1.3).
-    internal BoundType SelfType(KimiDeclarationId id) => binding.SelfType(library.GetSymbol(id)!);
+    // A declaration's own Type, each of its parameters standing for itself (Binding.SelfType): a struct's object Type, a layer body's _0
+    // (MirValidator), or a library declaration's by its catalog identity (Layout: a sequence handle's component, IMPL 21.1.3).
+    internal BoundType SelfType(BindingSymbol symbol) => binding.SelfType(symbol);
+
+    internal BoundType SelfType(KimiDeclarationId id) => this.SelfType(library.GetSymbol(id)!);
 
     // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness), the instance of the view's Body and of
     // A4's target (Binding.Witnesses), under the given Origins; null where the function's slots do not resolve.

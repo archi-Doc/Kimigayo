@@ -367,20 +367,13 @@ public sealed partial class Binding
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
         // reference is Reborrowed (SPEC 3.5.1, 10.2.2), as at a bare acquisition position.
         if (expected is not null && actual is not null && node.ErasedFunctionType is null &&
-            (!this.FitsType(actual, expected) || this.StoresExclusiveReference(node, actual)) &&
-            this.ExpectedAdaptation(node, actual, expected) is { } adaptation)
+            (!this.FitsType(actual, expected) || this.StoresExclusiveReference(node, actual)))
         {
-            this.adaptations[node] = adaptation;
-            return adaptation.Type;
+            return this.ExpectedAdaptation(node, actual, expected);
         }
 
         // SPEC 3.5: without a fixed expected Type, the bare acquisition of a Place storing an exclusive reference Reborrows it.
-        if (expected is null && this.StoredReborrow(node, actual) is { } reborrowed)
-        {
-            return reborrowed;
-        }
-
-        return node.ErasedFunctionType ?? actual;
+        return expected is null ? this.StoredReborrow(node, actual) : node.ErasedFunctionType ?? actual;
     }
 
     private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)

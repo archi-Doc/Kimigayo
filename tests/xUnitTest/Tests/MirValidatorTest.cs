@@ -345,6 +345,24 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
     }
 
+    // DECISIONS R7-M115: a layer body's _0, its Receiver, is its struct's Self Type, which its Return gives; an _0 of another Type (an
+    // i32) is a Type finding at the Return.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ALayerBodysReturnLocalIsItsStructsSelfType(bool broken)
+    {
+        var c = MirBuildTest.Compile("struct S\n    public let p: i32\n    public var n: i32 = 1\n");
+        var symbol = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "S").SymbolOf()!;
+        var body = new MirBody();
+        body.Reset(new(symbol, MirBodyKind.Layer), default);
+        body.AddLocal(new(broken ? BoundType.I32 : c.Types.SelfType(symbol), MirLocalKind.Return, At, Role: MirLocalRole.Receiver));
+        body.Terminate(body.AddBlock(), MirTerminator.Return(At));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(broken ? [MirViolation.Type] : [], findings.Select(static x => x.Rule));
+    }
+
     // SPEC 4.8.1, 8.15.3 (PLAN G597): a keyed Storage has two operands, its start position, an isize, and the token of its key's Type,
     // whose start is open in the body (R; the S of Range<S, End> and Range<S, E>, keys whose own IsAbstract is false): no finding. A key
     // that decides its start takes the unkeyed form, so its token is an Operation finding either way: one that starts at the storage

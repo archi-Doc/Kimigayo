@@ -310,7 +310,7 @@ public sealed partial class Binding
         {
             if (Waited(variable))
             {
-                var region = this.CallRegion(use, variable.Origin.Slot);
+                var region = this.CallRegion(use, RegionKey(variable.Origin));
                 Set(variable.Origin, Get(variable.Origin, origins, inputs, slotValues) is { } solved ? this.Meet(inference.Open(region, solved), region) : region, origins, inputs, slotValues);
             }
         }
@@ -566,7 +566,13 @@ public sealed partial class Binding
         // name (WaitingNamed) is a variable the waiting part's check bounds too, which the solve does not see: its solution is its
         // evidence candidate met with the region of the call, judged after selection by each fit at its source.
         bool Waited((BoundOrigin Origin, int Polarity) variable)
-            => variable is { Polarity: 1, Origin.Kind: OriginKind.Parameter } && ReferenceEquals(variable.Origin.Binder, binder) && inference.WaitingNamed.Contains(variable.Origin.Slot);
+            => variable is { Polarity: 1, Origin.Kind: OriginKind.Parameter or OriginKind.Input } && ReferenceEquals(variable.Origin.Binder, binder) &&
+                inference.WaitingNamed.Contains(RegionKey(variable.Origin));
+
+        // A waited variable's CallRegion index (WaitingNamed's key): an Origin parameter k at k, a per-call input i at -1 - i. By design it
+        // is BU-104's key for the call's unsolved Origins (OpenUnsolvedOrigins), so the call has one region per (call, Origin): an input
+        // that J2 opens and the solve leaves unsolved (a Never argument's) is that one region.
+        static int RegionKey(BoundOrigin origin) => origin.Kind == OriginKind.Input ? -1 - origin.Slot : origin.Slot;
 
         BoundOrigin Project(BoundOrigin origin) => declaringType?.Symbol is { } owner ?
             this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments) : origin;
@@ -746,7 +752,8 @@ public sealed partial class Binding
         // its solution does not carry.
         internal List<BoundOrigin> Marked { get; } = new();
 
-        // J2 (SPEC 15.3.6; the owner's O-362 (a); PLAN G936): the slots of the callee's own Origin parameters that an evidence position
+        // J2 (SPEC 15.3.6, 15.3.4; the owner's O-362 (a); PLAN G936): the callee's own Origin parameters and per-call inputs, by their
+        // CallRegion index (RegionKey), that an evidence position
         // and a position without evidence both name (SlotSolution.OpenWaited, the one writer, a candidate's late solve only): the solve
         // writes a covariant one as its evidence candidate met with the call's region (CallRegion), which the waiting part's check
         // bounds as the evidence's fit does; empty for any other solve.

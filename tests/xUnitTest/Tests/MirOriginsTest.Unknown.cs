@@ -95,7 +95,7 @@ public sealed partial class MirOriginsTest
     // start's region, a fixed Origin equal to its candidate x, R7-O2 A1 with SPEC 15.6.5's Closure sentence, O-443 (a)), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
     // since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
-    // its written Type is a local's (PLAN G215's twin); a nested result's relation among enclosing Origins, the containing declaration's,
+    // its written Type is a local's (PLAN G215's twin), with a constructor and in a constructorless layer's body (DECISIONS R7-M115); a nested result's relation among enclosing Origins, the containing declaration's,
     // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), p4's value call without its clause (SPEC 15.6.4), and an
     // unrelated Constraint set's slot, fixed in the body, reached from an input no premise relates to it (DECISIONS BU-100).
     [Theory]
@@ -111,6 +111,7 @@ public sealed partial class MirOriginsTest
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", "q@follow@follow@uniq: b > a")]
     [InlineData(LayerCount, "ref/(ref/i32 during a) during b: a > b")]
     [InlineData("struct Pair {a, b}\n" + PairInit + InitP, "ref/(ref/i32 during b) during a: b > a")]
+    [InlineData("struct Pair {a, b}\n" + PairInit, "ref/(ref/i32 during b) during a: b > a")]
     [InlineData(EnclosingHead + EnclosingClosure, "ref/(ref/i32 during q) during r: in0 > in1")]
     [InlineData(EnclosingHead + EnclosingFunctionType, "ref/(ref/i32 during q) during r: in0 > in1")]
     [InlineData("func call(a: ref/i32, s: ref/(ref/i32 during b)) -> i32\n" + ValueCall, "s: b > in0")]
