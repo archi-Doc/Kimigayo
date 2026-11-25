@@ -105,8 +105,27 @@ public sealed partial class Binding
     // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state. The verification is the path's own judgment, whichever reader asks (its conformance check, an
     // agreement, a resolution's disjunction): its verdict is kept on the path and its records are at the path's use, so every query it
-    // asks names conformance.Use (QuerySite; R7-C6 a, F's C8 ruling 22: one site source, not the first reader's).
+    // asks names conformance.Use (QuerySite; R7-C6 a, F's C8 ruling 22: one site source, not the first reader's). SPEC 8.3.3 Limits,
+    // 23.1.1-23.1.2 (C4 rulings 17-19): every exit of the check passes here, its single exit after its own judgment, where the
+    // component's one Resource record is written when this conformance's use holds it (DecideAtLimit's decision, read by
+    // HoldsInferenceLimit), so the record depends on nothing the check found (an early exit over a failed declaration context included),
+    // every Resource binding's use rests on it, and the check's own records stay beside it (one written before the check would fail the
+    // declaration it reads and drop them).
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
+    {
+        var proof = this.CheckConformance(conformance, inheritedProof);
+        if (!this.HoldsInferenceLimit(conformance))
+        {
+            return proof;
+        }
+
+        conformance.Invalid = true;
+        this.RecordNumbered(conformance.Use, BindingFailure.AnalysisLimit, [new(ProblemFactKind.Reason, this.FactSite(conformance.Use), (long)AnalysisBound.InferenceStates)]);
+        return ConstraintProof.Error;
+    }
+
+    // The conformance's check (VerifyConformance's): its own judgment, every exit returning its verdict.
+    private ConstraintProof CheckConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof)
     {
         // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance). Stored only on
         // a change, so a verified frozen path, never Unsupported (FreezeLibrary's UnsettledPath check), is never written (PLAN G949
@@ -116,7 +135,7 @@ public sealed partial class Binding
             conformance.Unsupported = false;
         }
 
-        if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && batch.State != 2)
+        if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && !batch.Published)
         {
             return ConstraintProof.Unknown; // Type-value scheduling never certifies a collecting definition.
         }
@@ -205,6 +224,7 @@ public sealed partial class Binding
             var proof = declarationProof;
             IsKoto? specification = null;
             Koto? failedRequirement = null;
+            (Koto Use, BoundRequirement Identity, AssociatedBinding Binding)? limited = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -228,6 +248,14 @@ public sealed partial class Binding
                     if (this.InferenceHole(conformance, identity, conformance.Use))
                     {
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
+                        if (binding.Problem == InferenceProblem.Limit)
+                        {
+                            // SPEC 8.3.3 Limits, 23.1.2 (C4 ruling 17 B2): a Resource binding rests on the component's one record
+                            // (DecideAtLimit's); the conformance's own failing hole, if it has one, is its record beside it.
+                            limited ??= (binding.ProblemDetail!, identity, binding);
+                            continue;
+                        }
+
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
                         {
                             return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous, []);
@@ -245,6 +273,17 @@ public sealed partial class Binding
                     // specification or an inferred one, outside the use's syntax, so no part (RecordAccess' rule).
                     return Invalid(BindingFailure.Access, [this.AccessFact(inaccessible)]);
                 }
+            }
+
+            if (limited is { } limit)
+            {
+                if (ReferenceEquals(limit.Use, conformance.Use))
+                {
+                    return ConstraintProof.Error; // its use holds the component's one record (VerifyConformance writes it)
+                }
+
+                this.AddPendingPrerequisite(conformance.Use, limit.Use); // a pending part: its state is read at publication
+                return Invalid(BindingFailure.AssociatedInference, this.InferenceFacts(limit.Identity, limit.Binding));
             }
 
             if (specification is not null)
@@ -315,7 +354,7 @@ public sealed partial class Binding
                             return RestOnSpecification(clause);
                         }
 
-                        if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
+                        if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && this.IsPathAssociated(conformance, identity))
                         {
                             var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
                             proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity), conformance.Use), true);
@@ -326,7 +365,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < container.Members.Count; i++)
             {
-                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
+                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && this.IsPathAssociated(conformance, identity) &&
                     this.SpecifiesContract(clause, conformance.Type, conformance.Contract, conformance.Use))
                 {
                     if (clause.BindingState == BindingState.Invalid)
@@ -449,6 +488,27 @@ public sealed partial class Binding
             (this.specificationLinks ??= new()).Add(conformance.Use);
             return Invalid(BindingFailure.InvalidAssociatedType, []);
         }
+    }
+
+    // Whether the conformance's use holds its component's one inference-limit record (DecideAtLimit: a Resource binding's ProblemDetail),
+    // the published fields read first, since every exit of a check asks it; a Contract without a shape has no hole.
+    private bool HoldsInferenceLimit(BoundConformancePath conformance)
+    {
+        if (conformance.Contract.Contract is not { } shape)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < shape.AssociatedTypes.Count; i++)
+        {
+            if (this.AssociatedBindingOf(conformance.RootPath, shape.AssociatedTypes[i]) is { Problem: InferenceProblem.Limit } binding &&
+                ReferenceEquals(binding.ProblemDetail, conformance.Use) && this.InferenceHole(conformance, shape.AssociatedTypes[i], conformance.Use))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence, that the specified Types meet a Contract clause (or a

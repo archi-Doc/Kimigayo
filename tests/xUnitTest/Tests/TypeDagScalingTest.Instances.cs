@@ -40,7 +40,7 @@ public partial class TypeDagScalingTest
                 }
 
                 var function = (FunctionKoto)definition;
-                Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), function.SymbolOf()));
+                Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), function.SymbolOf(), []));
                 calls.Add($"{function.Name} {call.Target.Name}");
             }
         }
@@ -61,7 +61,7 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var gg = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gg");
         var call = KotoTree.Walk(gg).OfType<InvocationKoto>().Single().CallOf()!;
-        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gg.SymbolOf()));
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gg.SymbolOf(), []));
     }
 
     // PLAN G935 (blocker 1; DECISIONS Q20 B1): Writes' walk (WrittenThrough, its reach set by WriteReach) over a handed writer's parameter,
@@ -81,7 +81,7 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var gw = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gw");
         var call = KotoTree.Walk(gw).OfType<InvocationKoto>().Single().CallOf()!;
-        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gw.SymbolOf()));
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gw.SymbolOf(), []));
     }
 
     // D-933 (DECISIONS Q20 B1): the raw-source walk of a struct's stored parts (Binding.StoredRawSources) over a diamond chain `N_i { a:
@@ -97,7 +97,7 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var gn = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "gn");
         var call = KotoTree.Walk(gn).OfType<InvocationKoto>().Single().CallOf()!;
-        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gn.SymbolOf()));
+        Assert.NotNull(c.Types.Retains(call.Target, c.Types.SubstOf(call), gn.SymbolOf(), []));
     }
 
     // SPEC 8.2: a projection chain over a Type parameter, `Dup<…Dup<T>.Item…>.Item`, normalizes to a Tuple DAG of T in a generic body: each

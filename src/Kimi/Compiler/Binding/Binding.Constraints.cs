@@ -501,7 +501,7 @@ public sealed partial class Binding
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
-        Complete(clause.Left, subject);
+        this.PublishType(clause.Left, subject);
         var subjectEnd = this.projectionUses.Count; // The requirement's own projection uses come after it and stay its own (SPEC 23.1.2).
         // SPEC 23.1.2: a subject that formed no Type because of a failure in it, its own or a part's (the published HasFailureCauses),
         // supplies none: the requirement binds against no subject, and a rejecting verdict rests on the subject.
