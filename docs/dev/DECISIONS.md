@@ -32130,7 +32130,8 @@ Closure row of `MirCases.Branch`).
       `MirDropTable.Holds(ordinal)`, the fact that the body's entry is closed in its segment's store (a kept library body's in its
       library version). A round of a consumer of step-2 facts that reads a body A2 does not hold misses: it adds nothing, goes on to
       its end and commits nothing; the consumer's driver steps and runs it again until a round is clean. A4 reads a body's nodes
-      only through `Compose`; the collector follows the same rule (U1b). A consumer steps only after a missed round, and a round
+      only through `Compose`; the collector follows the same rule (U1b; superseded for the collector by R9-M14: its run stops
+      before such a body and the next run resumes there). A consumer steps only after a missed round, and a round
       misses only at a body built since the last step, so a `Step` with every body stepped is a broken contract (InternalInvariant),
       never a rerun.
     - The demand table gains Judging between Open and Sealed (`MirProgram.Enter`; Seal is `Enter(Sealed)`, a Sealed version stays
@@ -32151,7 +32152,8 @@ Closure row of `MirCases.Branch`).
       read A2's facts (`DropTargets` requests nothing for a body A2 does not hold), so their targets wait for the next run and a
       chain through them takes another (three runs or more); and it commits nothing: no record (A3b's in the root loop included), no
       end-of-run record (`RecordLimits`, R5-M171) and no checked set (a missed run's set holds no version, so `Run`'s version check
-      holds only after a clean run).
+      holds only after a clean run). Superseded by R9-M14: a run stops before such a body, keeps its set, admission state and
+      round, and the version's next run resumes there.
     - The one commit rule is `MirReport`'s round, which A4's rounds and the collector's runs share: one round at a time;
       `Begin(body)` holds the round's problems of its body value (A4's NoBody, the Collection class), which carry no facts (one with
       facts is the recording rule's `InternalInvariant_Kd` defect, held as the round's), until `Commit` adds them or `Drop` discards
@@ -32160,16 +32162,18 @@ Closure row of `MirCases.Branch`).
       kept library row (R8-M50's `Keep`/`Replay`) was committed when kept and is replayed outside any round. `Report` stays the one
       record path (R5-M151).
     - A template records nothing (R8-M50), so the program segment's templates are kept across a version's runs and extend in build
-      order over the bodies built since (`extent`, a build position; `Replay` extends them when a lookup built bodies during the
-      run), each read from its segment's store (`TemplatesOf`, by `ordinal < D` until U2-K-a, by `MirDropTable.LibraryHolds` since).
+      order over the bodies built since (`extent`, a build position; `Replay` extended them when a lookup built bodies during the
+      run, until R9-M14: each run walks at its start), each read from its segment's store (`TemplatesOf`, by `ordinal < D` until U2-K-a,
+      by `MirDropTable.LibraryHolds` since).
       The driver (`Compilation.Collect`) steps the bodies built since (`MirAnalysis.Step`) and runs again until a run is clean; a
       clean run replays only stepped bodies from the same roots in the same FIFO order, so it equals one run over an eager build,
       and every body code generation reads is stepped, with no step after it within a version (across versions under the kept
       library segment: U2-K-b, the Back's C1). `Work`, `RunCount` and `Templated` sum the runs of one version.
   - **Amends R8-M50:** A3b runs in the collector's root loop in every run (inside the run's round, so a missed run's A3b records
-    drop with it), not once per version; `Templated` counts the version's runs.
-  - **Rejected (U1's and U1b's).** Ending a round at its first missed read (one round per body); a per-ordinal A4 stamp beside A2's
-    `Holds` (a second copy of the stepped fact); step 2 at the demand (nested steps and unstepped program-pass bodies, re-review
+    drop with it), not once per version; `Templated` counts the version's runs. Superseded by R9-M14: A3b runs once per version,
+    in the version's first run, inside the version's round.
+  - **Rejected (U1's and U1b's).** Ending a round at its first missed read (one round per body; superseded for the collector by
+    R9-M14, whose runs resume); a per-ordinal A4 stamp beside A2's `Holds` (a second copy of the stepped fact); step 2 at the demand (nested steps and unstepped program-pass bodies, re-review
     R2-B1); a Judging row that throws on every miss (null means only "no body" in every row); a pending buffer in each round's owner
     (two copies of the commit rule; C-378 §3); reverting the report to the round's start (it drops the construction records of
     bodies built during the round); a step after the clean collector run (no body a clean run replays is unstepped); a throw for a
@@ -32459,6 +32463,48 @@ Closure row of `MirCases.Branch`).
     `TestCommand`'s raw `--format` scan. Command names keep the parser's case-insensitive reading (IMPL is silent).
   - Rejected: the parser's binding kept for every command, test on a `[SimpleOption]` class (value sets, bare Booleans, flags and removed
     rows would still need a reader beside it: two owners); a pre-check before the parser binds (a second copy of the rule).
+- **R9-M14 A collector run stops before an unheld body and the next run resumes there (PLAN G337 U2)** (Back, 2026-11-25; Q-777, D-1278;
+  design `back\notes\g337\u2\design.md` with B's rulings 1-7; the Middle's design review C-536, ACCEPT WITH CONDITIONS) Major. Amends
+  R9-M9 U1b and its amendment of R8-M50; supersedes, for the collector only, R9-M9's U1 collector clause and its Rejected option "Ending
+  a round at its first missed read".
+  - **Adopted.** A collector run replays its version's items in FIFO order from the item the version's last run stopped before (0 at
+    the version's first run, which clears the set and the admission state, opens the round, templates the bodies, judges A3b in the
+    root loop, adds the roots and lays out the imports), after templating the bodies built since, and stops before the first body item
+    whose body A2 does not hold (`MirDropTable.Holds`: one a lookup built since the last step). The stopped set keeps every item
+    admitted and every target made and holds no version (no reader reads it); the admission state (`counts`, `refused`, `glueKeys`,
+    `declaring`) and the round stay. The driver (`Compilation.Collect`) steps and runs again until a run reaches the FIFO's end, which
+    flushes the limit table (`FlushLimits`, R5-M171), commits the round and stamps the set with the version (`CheckedSet.End`). The
+    collector's round thus spans its version's runs and the steps between, which open none and add their problems at once
+    (`MirReport`'s Rounds). A run replays only bodies A2 holds, so every replay reads eager facts: the collection equals one run over
+    the eager build (its items, their order and indices, targets and records) and its work is one run's (`Work` summed over the
+    version's runs equals the eager run's and a fresh collector's run over the stepped program); `RunCount` is one more than the stops.
+    Every run of a version takes its first run's root range (another is `InternalInvariant`). A run that throws leaves nothing to
+    resume: the version's next run drops the round it left open and starts the version again, never resuming over a partially replayed
+    item (C-536 N2).
+  - **Stated difference (C-536 C1, B's ruling 7).** The bodies built and not stepped when the collection ends are neither the eager
+    build's (none) nor R9-M9's (a missed run's lookups were stepped before its rerun): a refused library lookup (an instance the
+    collector refuses after its lookup built the body, capacity91's class) that a run reaches after the version's last stop stays
+    unstepped, and one behind an unheld body's Drop site with a later stop is stepped. No record or output moves (code generation reads
+    held items only; the shipped library has no A1 or A2 problem). `MirProgram.Keeps` reads it (a warm process rebuilds the library
+    segment once after such a program, or keeps one R9-M9 rebuilt), as does hover's ownership line on that body
+    (`G950KeptPathTest.ARefusedLibraryInstanceAfterAStopEndsTheKeptSegment`). A step of the bodies built since at the clean end is not
+    taken: it is R9-M9's rejected "a step after the clean collector run" and would make the end set differ from both.
+  - **Reason.** R9-M9's round rule replayed the whole FIFO after a missed run: est. 12 % of stage 4 on Interpolation and 17-39 % on
+    Generic 1-128 (PLAN G337 U1); P1 (`back\notes\g337\u2\p1\p1.md`): Work and replays twice one run's, and the checked sets equal item
+    by item on 7 inputs and about 8,100 test collections. R9-M9 rejected ending a round at its first missed read because such a round
+    restarts, one round per body (g951 §R1.10); a resumed run restarts nothing, so that reason does not hold for the collector (it
+    holds for A4's fixed point, whose rule stays). g951 §R2.1's second reason, that a missed run goes on to its end so that it
+    "collects every demand its replays make, not just the first" (at most one extra run, R9-M9's Measured line), no longer decides:
+    a further run replays nothing again. Runs are 1 + stops, 3-5 on P1's inputs and up to 6 in the tests, each adding a `Run` and a
+    `Step`; P1's step total rose (Generic 32 0.44 to 1.24 ms) while its collect loop fell (B/A 0.56-0.89, under load); U2's RP8 slot
+    reports step time beside stage 4 (C-536 N1).
+  - **Removes.** The missed flag; the missed run's drop of its records and set; `Replay`'s template extension; `DropTargets`'
+    unheld-body return (a chain through a Drop still takes a run per body it first demands, each resuming, with no replay); the per-run
+    clears of the admission state and A3b in every run (now once per version, inside the version's round).
+  - **Rejected.** (d1e): a missed run goes on to its end and keeps the prefix before its first miss (the tail replayed twice, a
+    rollback of six state pieces, a third run for a Drop chain; P1: the prefix is 7-9 % of the FIFO); a snapshot of the admission state
+    at the miss (a second copy of each piece); a per-process store of analysed library bodies (B's ruling 1 on the parent design,
+    O-381 (b)); the clean-end step (above).
 
 ## Tatara (adopted 2026-11-19)
 
