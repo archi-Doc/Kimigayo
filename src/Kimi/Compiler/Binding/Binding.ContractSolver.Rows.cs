@@ -87,7 +87,8 @@ public sealed partial class Binding
     // (IdentityClasses.Same: decomposition and constructed members included; ClassKey is the supply's index of subjects and keys a
     // constructed member to itself, so it cannot answer this). One of them stays non-Alias, the more determined spelling: a closed
     // one first (its members' signatures need no identity reading), then Binding.TypeIdentity's total Order; never premise order
-    // (SPEC 8.3.3). Without classes, each reference is its own Contract. A leaf row has no reference and is never Alias.
+    // (SPEC 8.3.3). Without classes, each reference is its own row; a candidate reader identifies references that are one Type by
+    // another ground (SameNormalizedRequirement, IsSelectionCandidate). A leaf row has no reference and is never Alias.
     private static void FormAliases(List<PremiseRow> rows, int start, IdentityClasses? classes)
     {
         for (var r = start; classes is not null && r < rows.Count; r++)

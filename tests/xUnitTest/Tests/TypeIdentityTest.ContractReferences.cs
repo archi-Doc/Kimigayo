@@ -181,6 +181,15 @@ public partial class TypeIdentityTest
     [InlineData("guard", "ef3", HasItem + Effect + "contract Q<A>: P<A.(HasItem).Item>\n    A is HasItem\n    effect (P<A.(HasItem).Item>).value confined\nstruct Wrapper<T>\n    T is Q<SrcI>\n" + Run, "")]
     [InlineData("guard", "ef3n", HasItem + Effect + "contract Q<A>: P<A.(HasItem).Item>\n    A is HasItem\nstruct Wrapper<T>\n    T is Q<SrcI>\n" + Run, "IncompatibleContractImplementation_Kd: Self is Safe")]
 
+    // SPEC 8.2.3, 8.6.1 (R7-C2c2 c2-5c, F's CC-35): a completed binding is a ground of identity with no premise, so a requirement reached
+    // through `P<SrcI.(HasItem).Item>` and `P<i32>` is one candidate, whatever other premises the declaration has (-w: an unrelated
+    // identity premise) and whether the references are written or inherited (sh1-p: P written; sh1-2: both written).
+    [InlineData("c2-5c", "ef2-w", HasItem + Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T, W>\n    T is Q<SrcI.(HasItem).Item>\n    W is i32\n" + Run, "")]
+    [InlineData("c2-5c", "sh1-w", HasItem + Shape + "func g<T, W>(x: ref/T) -> i32\n    T is Q<SrcI>\n    W is i32\n    return x.size(1)\n", "")]
+    [InlineData("guard", "sh1-p", HasItem + Shape + "func g<T>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "sh1-pw", HasItem + Shape + "func g<T, W>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    W is i32\n    return x.size(1)\n", "")]
+    [InlineData("c2-5c", "sh1-2", HasItem + Shape + "func g<T>(x: ref/T) -> i32\n    T is P<SrcI.(HasItem).Item>\n    T is P<i32>\n    return x.size(1)\n", "")]
+
     // SPEC 8.5.1, 8.5.5, 8.6.1: a specification's qualifier is a direct conformance, normalized; a Tag left unspecified and uninferred fails at the
     // conformance on its own.
     [InlineData("C3", "sp2", HasItem + Tagged + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Iter<S.(HasItem).Item>\n    associate Iter<i32>.Tag is bool\nfunc f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
