@@ -26,10 +26,10 @@
 // (closed upward and backward through the carries), so a source's parts whose counterparts lie under different Move Paths have
 // different owners. A fact on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part"
 // (A1's Unplaced lane); a fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking
-// entry. A published fact is a path's number, or its complement for the Unplaced lane. Invariants: a carry's source lies in a run
-// recorded before the carry's (a temp is defined at a location the walk visits before the one that takes it, and runs are appended) and
-// differs from its destination (MirValidator: no placing location takes its own destination temp, no insertion's value holds its
-// construction), so one reverse pass over the carries closes them.
+// entry. A published fact is a path's number, or its complement for the Unplaced lane.
+// Invariants: a carry's source lies in a run recorded before the carry's (a temp is defined at a location the walk visits before the
+// one that takes it, and runs are appended) and differs from its destination (MirValidator: no placing location takes its own
+// destination temp, no insertion's value holds its construction), so one reverse pass over the carries closes them.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.

@@ -29,7 +29,7 @@ public sealed class MirCensusTest(ITestOutputHelper output)
     // (MirBuildTest.LibraryRange, analyzed as Compilation analyzes its own) after asserting its premise: the census covers every body of
     // that build, the library's bodies, as many as the build holds and at least one. MirAnalysisTest.TheLibraryHasNoAnalysisProblem runs
     // the check itself, which adds the second target, a second version through one builder, analysis and collector, the collection
-    // records and the judgment counts (PLAN G396 (7) N10: both kept).
+    // records and the judgment counts.
     [Fact]
     public void TheLibraryHasNoProblems()
         => this.Census("library", LibraryBuilt, Corpus(static x => x == "library"));
