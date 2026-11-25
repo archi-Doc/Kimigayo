@@ -14,11 +14,15 @@ namespace Kimi.Compiler;
 //   ancestors and its own and inherited clauses; an `and` split, 8.3.1; an `or`, a `not` or an identity premise supplies no conformance);
 //   the Contract's parameters and each reference's arguments in the Contract's view, read as a proposition's are (NormalizedForm: SPEC's
 //   "normalized under K's premises", a completed projection interpreted, 8.2.3; F's Q1 (a) and G563C-3: one interpretation).
-// - Outputs: one InvalidConstraint_Kd at each erroneous Contract (DECISIONS R4-M115: the 8.3.3 errors use existing codes), before the
-//   source states' publication, so every use and refiner reads the failed Contract and rests (R7-M46); each premise that forms a pass of
-//   such a set failed in the view of the Contract whose supply holds it (FailPremise), so the adapter's InvalidConstraint row relates
-//   the Contract's own clauses among them (FailedPremiseClauses, F's Q2 (a)). A forming ancestor reference is a base, not a clause, and
-//   is not related (PLAN G563's open issue: a "reference" role).
+// - Outputs: one InvalidConstraint_Kd at each erroneous Contract (DECISIONS R4-M115: the 8.3.3 errors use existing codes), after
+//   admission point 3, where the arguments' normalization exists (a binding is admitted only from there; F's G563C-5). Every use and
+//   refiner reads the failed Contract through the failed-context read (AvailableContractPremise's InvalidDeclarationContext) and rests,
+//   and ValidateConformances' publication carries it into the source states (R7-M46). The window: PrepareAssociatedBindings forms its
+//   bindings before an expanding Contract fails, which only a program carrying that Contract's own record can show, so no acceptance
+//   moves and the failed-context read rests every later read. Each premise that forms a pass of such a set failed in the view of the
+//   Contract whose supply holds it (FailPremise), so the adapter's InvalidConstraint row relates the Contract's own clauses among them
+//   (FailedPremiseClauses, F's Q2 (a)). A forming ancestor reference is a base, not a clause, and is not related (PLAN G563's open
+//   issue: a "reference" role).
 // - Invariants: the pass graph (a node per Contract parameter; a pass with its expanding flag and the premise that forms it) is call
 //   scratch in pooled fields, built and emptied in one call (warm 0 B), never published: no IR form, no vocabulary entry. Linear in the
 //   supplies' references, their arguments' parts (each once) and the passes; the strongly connected sets by an iterative Tarjan walk with
@@ -42,7 +46,7 @@ public sealed partial class Binding
     private readonly List<(int Node, int At)> expansionStack = new();
 
     // SPEC 8.3.3's Expanding recursion over the pass's Contracts (the contract above), once per BindConstraints, after every Contract
-    // clause is bound and every Contract view expanded (ExpandContractPremises).
+    // clause is bound, every Contract view expanded (ExpandContractPremises) and the associated bindings admitted (point 3).
     private void CheckExpandingRecursion()
     {
         try

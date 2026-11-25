@@ -427,10 +427,12 @@ public sealed partial class Binding
         }
 
         this.ExpandContractPremises();
-        this.CheckExpandingRecursion(); // SPEC 8.3.3: an erroneous Contract fails before the publication its uses read (R7-M46)
         this.PublishSourceStates();
         this.PrepareAssociatedBindings();
         this.impls.Advance(ImplTable.AdmissionPoint.AssociatedBindings); // Point 3 (rule (a)).
+        // SPEC 8.3.3: after point 3, where the arguments' normalization exists ("normalized under K's premises": a binding is admitted
+        // from here). Uses read the failure through the failed-context read, the states through ValidateConformances' publication.
+        this.CheckExpandingRecursion();
         this.bindingConstraintTypes = false;
         this.ValidateConstraintProjectionAccess();
     }
