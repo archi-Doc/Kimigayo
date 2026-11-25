@@ -13152,6 +13152,7 @@ resumed by R4-M86 (2026-10-20).
     Reason, like `PerCallSlotFact`'s (U1). It is a fact with a payload (the argument and the slot), not a closed cause, so BU-111's
     rejected EffectBound shape does not apply. `ArchitectureRulesTest`'s "String explanations in Binding failure facts" keeps the one
     left, `UnboundSlotFact.Note` (PLAN G499).
+    Superseded in part by R7-M75's G1356 sub-bullet (Q-802): the `ArithmeticSelectionCause` causes are three; NonNumericLeft is gone.
 
 - **BU-108 A contract judges a layer a Type argument supplies by its own inputs** (2026-11-06; PLAN G148 (1), unit bu164; superseded
   in part by BU-113 (its gate, inputs and Closure-environment route); Major
@@ -27691,12 +27692,14 @@ Closure row of `MirCases.Branch`).
         4 added after a refused destination, the admitted path's (`u += n` i32/i64 and `u = n` at `n`; `p += n` on `raw/i32` with
         `n: i32` at `n`, expected isize; `s[0] = true` on a `Slice<i64>` parameter at `true`, beside SharedPathAccess_Kd); 3 recoded
         from NonNumericOperand_Kd (at the operand: `n += b` i32/bool, `item += n` over `uniq/Array<i32>` with `n: bool`; at the
-        operation: `s[0] += true` on a `Slice<i64>` parameter, now at `true` beside SharedPathAccess_Kd); 5 removed (the false one
+        operation: `s[0] += true` on a `Slice<i64>` parameter, now at `true` beside SharedPathAccess_Kd) (superseded in part by G1356
+        below); 5 removed (the false one
         at `1` in `item += 1` over `uniq/raw/i32`, the mode and OperatorNotDefined_Kd staying; the literal's at `5` in
         `pair.indexUniq(0) = 5`, `view.indexUniq(0) = 5` and `values.indexUniq(0) = 5`, a value bound at a call result's
         `uniq/i32`, and at `1.5` in `get() += 1.5`, `get` returning i32, a value bound at a call result's read Type:
         InvalidAssignment_Kd alone).
-      - NonNumericOperand_Kd: 3 recoded to TypeMismatch_Kd (above); 1 removed over a target that designates no destination
+      - NonNumericOperand_Kd: 3 recoded to TypeMismatch_Kd (above; superseded in part by G1356 below); 1 removed over a target that
+        designates no destination
         (`get() += true`, `get` returning bool: dev's `FailRoute` read of the call result; InvalidAssignment_Kd alone).
       - ArithmeticSelection_Kd: 1 added after a refused destination (`x += y` on T).
       - NonIntegerOperand_Kd: 1 added (`x++` on a `ref/i32` parameter).
@@ -27709,6 +27712,70 @@ Closure row of `MirCases.Branch`).
     node's first failure ...; a dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5". E4's B1
     statement is by input: a check that reads none of the node's failed inputs records beside the node's earlier failure (SPEC
     23.1.2), and one that reads a failed input keeps `Fail` with an R7-E5 Transitional naming that input.
+  - **G1356 (Q-802, D-1305; PLAN G1356; Major; B's rulings 1 (OP1-OP4), 2, 3, 4, 5, 6 and 7).** SPEC 13.3.3, 13.3.4, 13.7.2, 23.1.2: the
+    no-provider record of the route table's last row is the operator table's operand verdict at the operation, for the left operand
+    and the counterpart alike. `NumericApplicability`'s last row is `IntegerApplicability(.., OperatorNotDefined)`: a Type parameter
+    is built-in numeric only with a proven `T is PrimitiveInteger` (unknown: UnprovenConstraint_Kd), a non-numeric primitive is
+    NonNumericOperand_Kd, and any other Type (a Tuple, a fixed array, a Callable or object Type) OperatorNotDefined_Kd.
+    `BindBinary`'s one decision reads the right operand's independent Type, which `TryArithmetic` publishes (`out right`), and the
+    counterpart row runs for every left the table admits but a raw pointer (numeric, a proven integer parameter), so a counterpart
+    that defeats every row fails the operation, never its fit; a Never counterpart fits. A Never left proves no direction (SPEC
+    13.3.4 Literals, 3.1.3): the left verdict is OperatorNotDefined_Kd at the operation, and `CompleteBinary`'s tail, its former
+    second copy, is Internal. A user provider's routes stay `TryArithmetic`'s, decided first; its deferral over a resting operand
+    keeps only the string restriction for a left that may take a Contract route (its own, or the right's through a numeric domain:
+    a Left premise of this operation's Contract), and any other left keeps its verdict. A PrimitiveInteger proof that is Error read
+    a failed premise or Type context whose record is reported (SPEC 8.2.3, 23.1.2, rule W): every single-requirement operator decision
+    (`OperatorRequirement`: `+ - * /`, `% & | ^`, `<< >>`, `++ --`, Wrapping's and Negatable's `-`, the shift count, a non-composite
+    Equatable or Comparable) takes the cause the proof left (`TakeFailedCause`) and carries it as the decision's field
+    (`OperatorApplicability.Cause`); `FailOperator`, the operator failure's one recorder, rests the record on it through `RestOnCause`,
+    RequireClauses' rest (R7-C3 B1: an Invalid cause, not the node the record rests on) made the one member of both (F's C1), dev's
+    path for a Type mismatch over a premise error, so its InvalidConstraint_Kd is derived (B's ruling 7). A composite comparison's decision (`ComparisonProof`) carries no cause and keeps its
+    own record (PLAN G1432); a decision its caller discards (the comparison's PrimitiveInteger probe) takes its cause with it.
+    A compound assignment never swaps sides (13.7.2), so a Never destination has no provider whatever its right is. E3d's
+    rule stays; its three recodes (`n += b`, `item += n`, `s[0] += true`) return to NonNumericOperand_Kd through the admitted path.
+    Supersedes in part E3d's Moves line '3 recoded from NonNumericOperand_Kd (`n += b`, `item += n`, `s[0] += true`)' (the earlier
+    text is at commit ed439442c3). That recode held while BindBinary's admitted path decided without the right's Type; the one
+    decision now reads it.
+    Deleted: `ArithmeticSelectionCause.NonNumericLeft`, its note and branch (a non-numeric left beside a right provider takes the
+    table's verdict), `RecordArithmeticSelection`'s planless form, and `NumericApplicability`'s copies of the integer row's
+    NonNumericOperand and raw-pointer verdicts.
+    - **Rejected:** ArithmeticSelection_Kd NoFit kept for a non-primitive left only (a left/counterpart mode: a Symptom fix); two
+      stages, (a)+(b) before (c) (`n + t` would stay TypeMismatch_Kd at the counterpart in between); the cause read in `FailOperator`
+      from the channel (a composite comparison's Error leaf leaves its cause beside an independent Refuted leaf, so the read would
+      derive the operation's own record, ComparisonCompositionTest; and there the right's binding has taken it); a clause in
+      `NumericApplicability` alone (ruling 5: the integer, shift-count, negation and comparison rows over the same failed premise kept
+      their records); RequireClauses' guard copied into `OperatorRequirement` (a second copy of one rule; F's C1).
+    - **Moves (Q13; invalid programs only, no acceptance move), by code:**
+      - TypeMismatch_Kd -> NonNumericOperand_Kd at the operation: 10 (`n += b` i32/bool twice, after a refused destination and
+        writable; `item += n` over `uniq/Array<i32>` with `n: bool`; `n + "a"`; `f1(1) + "t"`; `h.x += true` on `HY<i32>` and
+        `HG<i32>`; `h.x += b` and `h.x += "a"` beside a wrong getter's record; `s[0] += true` on a `Slice<i64>` parameter beside
+        SharedPathAccess_Kd).
+      - TypeMismatch_Kd -> OperatorNotDefined_Kd: 10 (`n + p` with `n: isize`, `p: ref/raw/i32`; `1 + c` on a Tuple; a Callable,
+        an `obj/V` and a fixed-array operand: `g + n`, `n + g`, `o + n`, `n + o`, `n + a`; `factor * 2` with `factor: s/i32`
+        under an unconstrained `s`; `y += b` and `y += 1` over a Never destination).
+      - TypeMismatch_Kd -> UnprovenConstraint_Kd: 3 (`1 + t` on T; `n + v` with only `V is Addable<i32>`; `total += value` with
+        `value: I.(Iterator).Item`).
+      - TypeMismatch_Kd: 1 removed by rule W (`left + right` under `L is Addable<R>` + `R is LeftAddable<L>`: the route reads
+        only the failed premises).
+      - ArithmeticSelection_Kd -> UnprovenConstraint_Kd: 8 (`a + b` on an unconstrained T, twice; on `P is Position`; on `T is C`
+        with a C that does not refine PrimitiveInteger; on `T is Copy` with `s/T` beside it, twice; `x += y` on T after a refused
+        destination; `stop() + t`).
+      - ArithmeticSelection_Kd -> OperatorNotDefined_Kd: 5 (`a += (3, 4)` on a Tuple; `stop() + stop()`; `stop() + (1, 2)`;
+        `a + a` on fixed arrays; `stop() + v` with a user provider V, NonNumericLeft before).
+      - ArithmeticSelection_Kd -> NonNumericOperand_Kd: 1 (`true + value` with a right provider: NonNumericLeft's only row).
+      - UnprovenConstraint_Kd: 1 added (`t + missing` on T, beside UnresolvedBinding_Kd; independent by SPEC 23.1.2).
+      - NonIntegerOperand_Kd: 1 removed by rule W (`x % missing` with `x: f64`: the f64 left may take a `LeftRemainderProvider<f64>`
+        right's route, SPEC 13.3.4 row 3, so its `%` verdict rests on the unresolved right; `x % 2` keeps it).
+      - NonIntegerOperand_Kd: 1 more removed by rule W (`value % missing` with a user provider V `Self is RemainderProvider<i32>`:
+        V's ordinary route rests on the unresolved right).
+      - OperatorNotDefined_Kd: 2 added (`c + missing` on a Tuple and `y += missing` over a Never destination, each beside
+        UnresolvedBinding_Kd; independent by SPEC 23.1.2: such a left takes no row whatever the right is).
+      - TypeMismatch_Kd -> InvalidConstraint_Kd at the operation: 3 (`total += value`, `total += try iterator.next()` and
+        `total %= try iterator.next()` under `I.Iterator.Item is i64` over its UnresolvedBinding_Kd: a dependent record at the
+        operation for one at the operand; the unresolved premise leaves no cause for the decision, PLAN G1431).
+      - InvalidConstraint_Kd at the operation: 7 removed by rule W (an operation over a Type whose premise is a
+        reported error: x4's conflicting identity premise under `%`, `<<`, `++`, Wrapping's `-`, Negatable's `-`, a shift count
+        and a non-composite `<`; the premise's record at the declaration stays; B's ruling 7).
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.
