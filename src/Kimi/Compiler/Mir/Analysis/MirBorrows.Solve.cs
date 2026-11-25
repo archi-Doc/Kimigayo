@@ -126,7 +126,7 @@ internal sealed partial class MirBorrows
                 this.End(state, this.inspected[block]);
             }
 
-            this.Plan(state, block, i, checks);
+            this.Plan(state, block, i);
             if (checks)
             {
                 this.Advance(location);
