@@ -109,8 +109,9 @@ public partial class Compilation
     }
 
     /// <summary>Collects the checked set of an analyzed program (SPEC 8.15.3: its layout obligations are judged at check), whose records join
-    /// the program's report, by the collector's round rule (PLAN G951): a run that missed (its set holds no version) built bodies the
-    /// analyses' one stepping path steps before the next run, until a run is clean.</summary>
+    /// the program's report, by the collector's round rule (PLAN G951, G337 U2): a run that stopped (its set holds no version) stopped before
+    /// a body built since the last step, which the analyses' one stepping path steps before the next run resumes there, until a run reaches
+    /// its end.</summary>
     /// <param name="analysis">The analysis that ran on the program.</param>
     /// <param name="collector">The collector.</param>
     /// <param name="program">The program.</param>

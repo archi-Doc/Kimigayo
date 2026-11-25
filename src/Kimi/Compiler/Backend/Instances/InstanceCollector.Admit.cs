@@ -285,8 +285,8 @@ internal sealed partial class InstanceCollector
 
     // K 4.9 (DECISIONS R5-M171): the declaration whose body holds the subjects of an item's records (Subject): the body of the nearest item
     // on its admission chain, itself included, whose body lies in a root module, since every other item's Site is its parent's located
-    // site. Memoized per item for the run (declaring, cleared by Run, grown with the items), each walk filling every item it passed, so an
-    // item is walked once per run; each step counts in Work.
+    // site. Memoized per item for the version (declaring, cleared at its first run, grown with the items), each walk filling every item it
+    // passed, so an item is walked once per version; each step counts in Work.
     private MirDefKey Declaration(int item)
     {
         var items = this.Set.Items;

@@ -89,6 +89,8 @@ public partial class AssociatedInferenceTest
 
     private const string InferredBase = "open struct B0<X>\n    public func get(self: ref/Self) -> i32 => 1\n";
 
+    private const string MergedIter = "contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n    public init() => ()\ncontract Iter<T>\n    associate Tag\n    func tag(self: ref/Self) -> Self.Tag\ncontract Q<U, V>: Iter<U>, Iter<V>\n";
+
     // PLAN G375: a signature completed by associated inference is judged complete; its clause fails or holds as written.
     [Theory]
     [InlineData(InferredHeaderFails, "2*NoApplicableOverload_Kd 3*UnsatisfiedConstraint_Kd")]
@@ -519,6 +521,25 @@ public partial class AssociatedInferenceTest
     [InlineData("mutual-mismatch", Mutual + MutualMismatch, MismatchRecords)]
     public void MutualDefinitionsInferFromTheirDeclaredResults(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 8.5.5, 8.4.3, 8.9.2 (PLAN G1384): under the premises the two Iter paths of `Q<U, V>: Iter<U>, Iter<V>` are one conformance, so one
+    // declaration result infers its one Tag, whether both arguments are projections (i0) or one is the Type the other's premise names (i4);
+    // the inferred Type is bool (i0w).
+    [Theory]
+    [InlineData("i0", MergedIter + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\nfunc f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
+    [InlineData("i4", MergedIter + "struct B<S>\n    S is HasItem\n    S.(HasItem).Item is i32\n    Self is Q<i32, S.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\nfunc f(a: ref/B<SrcI>) -> ()\n    let t: B<SrcI>.(Iter<i32>).Tag = true\n    return\n", "")]
+    [InlineData("i0w", MergedIter + "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\nfunc f(a: ref/B<SrcI, SrcI>) -> ()\n    let t: B<SrcI, SrcI>.(Iter<i32>).Tag = 1\n    return\n", "TypeMismatch_Kd: let t: B<SrcI, SrcI>.(Iter<i32>).Tag = 1")]
+    public void AMergedConformanceInfersItsOneAssociatedType(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
+
+    // SPEC 8.5.5 Completion (PLAN G1384): two declaration results of differing Types for the merged conformance's one Tag are a conflict.
+    [Fact]
+    public void AMergedConformancesDifferingResultsConflict()
+    {
+        var record = Assert.Single(CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(MergedIter.Replace("-> Self.Tag\n", "-> Self.Tag\n    func tag2(self: ref/Self) -> Self.Tag\n", StringComparison.Ordinal) +
+            "struct B<S, R>\n    S is HasItem\n    R is HasItem\n    S.(HasItem).Item is i32\n    R.(HasItem).Item is i32\n    Self is Q<S.(HasItem).Item, R.(HasItem).Item>\n    public func tag(self: ref/Self) -> bool => true\n    public func tag2(self: ref/Self) -> i64 => 0\n()")));
+        Assert.Equal((nameof(DiagnosticCode.AssociatedTypeInferenceFailed_Kd), "Iter<S.Item>.Tag: declaration results supply conflicting complete Types"), (record.Code, record.Label));
+    }
 
     private static Compilation Bound(string source)
     {

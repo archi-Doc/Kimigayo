@@ -39,38 +39,6 @@ public sealed partial class Binding
     private static BindingSymbol ProjectionEvidence(BindingSymbol associated, BindingSymbol? reference, BindingSymbol? qualifier)
         => qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
 
-    // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the one
-    // conformance that reference names at `type`'s Self in the clause's scope (SPEC 8.5.1, 8.5.5: a qualifier is a direct conformance,
-    // normalized), so to a path whose Contract or one of its ancestors is a candidate of that selection (IsSelectionCandidate: every
-    // member, never one representative), not to a sibling reference of the same declaration.
-    private bool SpecifiesContract(IsKoto clause, BindingSymbol type, BindingSymbol contract, QuerySite site)
-    {
-        var head = AssociatedHead(clause);
-        head = head is OriginApplicationKoto applied ? UnwrapTransparentType(applied.Type) : head;
-        if (head is not MemberAccessKoto member || this.ContractReferenceOf(member.Left) is not { } reference || !IsBoundContractReference(reference))
-        {
-            return true;
-        }
-
-        var self = this.SelfType(type);
-        var scope = this.ConstraintScope(clause);
-        if (this.IsSelectionCandidate(contract, self, reference, reference.Type, scope, site))
-        {
-            return true;
-        }
-
-        var ancestors = contract.Contract?.Ancestors ?? [];
-        for (var i = 0; i < ancestors.Count; i++)
-        {
-            if (this.IsSelectionCandidate(ancestors[i], self, reference, reference.Type, scope, site))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // The Type that `Self` denotes inside a declaration: a Contract's Self parameter, or the declared Type applied to its own
     // Type parameters.
     private BoundType DeclarationSelf(BindingSymbol owner) => owner.Declaration is ContractKoto ? this.ContractSelfType(owner) : this.SelfType(owner);
@@ -640,7 +608,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.SpecifiesContract(clause, path.Type, path.RootContract, path.Use))
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause)
                 {
                     Collect(constraint, path);
                 }
@@ -829,6 +797,9 @@ public sealed partial class Binding
     private BoundType? SpecifiedBinding(BoundConformancePath path, BoundRequirement associated)
         => this.AssociatedBindingOf(path.RootPath, associated) is { Candidates.Count: > 0 } binding ? binding.Candidates[0] : null;
 
+    // SPEC 8.5.1 Qualification: the identity of `associated` in `path`'s shape that `qualifier` (none: any) names at `receiver` in
+    // `scope`, else null, also when two do. Identities the root path keys to one binding (JoinMembers) are one associated Type and count
+    // once, as the first; two of distinct bindings are an ambiguity.
     private BoundRequirement? AssociatedInPath(
         BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope, QuerySite site)
     {
@@ -842,6 +813,11 @@ public sealed partial class Binding
                 {
                     if (found is not null)
                     {
+                        if (this.AssociatedBindingOf(path.RootPath, found.Value) is { } set && ReferenceEquals(this.AssociatedBindingOf(path.RootPath, identity), set))
+                        {
+                            continue;
+                        }
+
                         return null;
                     }
 
@@ -856,7 +832,9 @@ public sealed partial class Binding
     // SPEC 8.6.1, 8.9.2 (R7-C3 C3b-2): the members of `associated`'s conformance at a root path's Self in its scope (SelectionMembers,
     // one conformance: one bound reference, at most one declared directly) have one associated Type, `binding`, the set's binding: each
     // member's identity of it is keyed on the path, its own binding joining the set's for the pass (AssociatedBinding.Set). Two members
-    // declared directly are two conformances (8.9.1): none joins.
+    // declared directly are two conformances (8.9.1): none joins. The keys are the one statement of membership for every reader: a
+    // lookup counts a set once (AssociatedInPath), and a specification belongs to each root path whose keys name its identity (the
+    // Type-level collection, IsPathAssociated, SpecificationPart; 8.5.5 Completion: a root path's premises prove the clause's).
     private void JoinMembers(BoundConformancePath path, BoundRequirement associated, AssociatedBinding binding)
     {
         var self = this.SelfType(path.Type);
