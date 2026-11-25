@@ -30,8 +30,9 @@ public enum ConstraintKind : byte
 /// <summary>An immutable, compilation-interned proposition. Types and symbols retain their binding identities.</summary>
 public sealed class BoundConstraint
 {
-    // `projection`: whether a part of the subject or the required Type is an associated projection, which Binding's walk decides
-    // (Binding.ContainsAssociatedProjection, DECISIONS BU-19).
+    // `projection`: whether a part of the subject, the required Type or the Contract reference's Type (its arguments) is an associated
+    // projection, which Binding's walk decides (Binding.ContainsAssociatedProjection, DECISIONS BU-19): what the proof's intake
+    // interprets (NormalizeProofConstraint, SPEC 8.2.3).
     internal BoundConstraint(ConstraintKey key, bool projection)
     {
         this.Kind = key.Kind;

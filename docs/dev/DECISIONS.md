@@ -5664,7 +5664,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     its instantiated parameter Type. The walk reads no `PositionKind` row and changes no evidence or fit walk. A composite borrowed at
     `ref/T` (SPEC 10.2) is walked at its value Type, the operation's `SourceType` (b01_ref). The fit checked the literal's shape
     against that Type, so a child position whose parameter Type cannot be derived is a broken contract, `InternalInvariant_Kd` at the
-    argument, never a skip (U1d; U2's review N6).
+    argument, never a skip (U1d; U2's review N6). Amended by R7-M113 (PLAN G1379): S1 places the call's own records; an element's place fit inside an argument is the literal's, at
+    the element.
   - U2j: join arguments (jt1, mj1, jt2, mj2, kd, dn2), after revision B lands, on its representation (B2b's per-source evidence,
     B3's removal of `PositionKind`'s join rows and `ClassifiedByCall`). Until then a completed join argument is bound (`KindOf`
     Typed), gives no child position and stays Evidence; its rows stay on the T2 branch.
@@ -10547,7 +10548,8 @@ resumed by R4-M86 (2026-10-20).
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
   - Superseded in part by BU-96 (2026-11-05, G421): a value call's failed acquisition stops none of its other judgments, so that
-    UnprovenOriginRelation_Kd is published beside Binding's TransferRequired_Kd.
+    UnprovenOriginRelation_Kd is published beside Binding's TransferRequired_Kd. It no longer holds for the refused input (R7-M95's E4a-4 line): `g(x@follow)` records TransferRequired_Kd alone; another
+    input's relation is still published beside it.
 - **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
   `TyCtxt.RawStated`** (amended by BU-58: the Local row's walk enters each part once) (2026-10-27; design 1 revision 1 with design 2's
   findings; PLAN G148 (1), U0's revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls
@@ -12617,7 +12619,7 @@ resumed by R4-M86 (2026-10-20).
     then child rows).
   - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
     holds references; rented ones keep warm allocation at 0 B).
-- **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; PLAN G421; BU's design, accepted by the
+- **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; superseded in part by R7-M95 (E4a-4); PLAN G421; BU's design, accepted by the
   planning session without a separate design review; Major) SPEC 3.8, 10 and 10.1 step 5, 23.1.2.
   - Rule: a value call selects no callee, so an argument's failed acquisition (TransferRequired, ExclusiveBorrowRequired) leaves its
     Type known. `AcquireValueCallArguments` adapts with `deferAcquisition`, as `FitTyped` and `CompletePayloads` do, and records the
@@ -12627,7 +12629,8 @@ resumed by R4-M86 (2026-10-20).
     (`IsDerived`; implementation review 1, B-1). Removed: the acquisition fork in `AcquireValueCallArguments`.
   - Boundary: a named function, method or constructor call keeps its one record. There the Copy proof is the candidate's
     applicability (SPEC 10.1 step 5), so the relations judged after selection rest on the failed selection.
-  - Records (Q13): A5's Origin relations at value calls return beside the acquisition record, and a later argument's own located
+  - Records (Q13): the other inputs' Origin relations at value calls (A5's) return beside the acquisition record (the refused input's own goes: R7-M95's E4a-4
+    line), and a later argument's own located
     limit (a static root's Borrow, `Unsupported_Kd`) beside it; no verdict moves
     (`BorrowAcquisitionTest.AValueCallsAcquisitionAndRelationsAreEachRecorded`). Open in PLAN: a call keeps one acquisition record (a
     second failing argument) and a failed callee stops its arguments' judgments; a failed part binding no longer stops the other
@@ -17139,14 +17142,17 @@ resumed by R4-M86 (2026-10-20).
   it stands, with no further full review, though its third design review was REVISE); F's J2 rulings (`front\notes\J2\ruling.md`);
   design `J2\design.md` and its fix `J2\design-fix.md` revision 3, Re-check 5 ACCEPT; the Middle's CONSENT on C-383) SPEC 10.5.1,
   10.8, 10.8.1, 15.2.2, 15.3.3, 15.3.6, 15.3.7, 15.6.1, 15.6.4 step 3, 8.3. Amends BU-104.
-  - Rule (O-358 (a), O-362 (a)): a callee variable, a Type slot's Origin or a written Origin parameter, that evidence binds at a
-    covariant position and a position without evidence also names is bounded by both, so it is a region of the call:
+  - Rule (O-358 (a), O-362 (a)): a callee variable, a Type slot's Origin, a written Origin parameter or a per-call input (SPEC
+    15.3.4), that evidence binds at a covariant position and a position without evidence also names is bounded by both, so it is a
+    region of the call:
     `same3<T>(x: Option<ref/T during c>, y: ref/T during c)` called as `same3(.Some(a@ref), b@ref)` over two `var` captures in a
     Closure gives T = `ref/i32 during (R_a and R_b)` (rc3v; o2v its written-Origin twin). In a candidate's late solve (`SolveLate`
     -> `SlotSolution.OpenWaited`), one walk of the retained F1 rows and the receiver (`CollectPositionNames`) records each callee
     variable as named by a position without evidence (a Signature leaf row, or a Signature root without child rows), by evidence at
     a covariant position (`EvidenceNames`' reading), or blocked: evidence at another variance, any position inside a Function Type,
-    and a Constraint of the candidate. A variable named by the first two and not blocked is opened.
+    and a Constraint of the candidate. A variable named by the first two and not blocked is opened. Amended by R7-M113 (PLAN G1379): a
+    per-call input is opened as `(E and ρ)` with ρ its `CallRegion` keyed as BU-104's unsolved input (`-1 - i`), one region per
+    (call, input); witnesses jc1 (`same3` with the per-call `b` for the written `c`) and jo4n.
   - Solution (D1): an opened variable is solved as any covariant variable, to its evidence candidate E (so a variable its clauses
     bound through it is solved as without the waiting part), and written as 15.3.6's covariant candidate `(E and ρ)`, ρ a region of
     the call standing for the bounds the waiting part gives after selection (ρ alone where E is `static`). A Type slot bound without
@@ -17154,7 +17160,7 @@ resumed by R4-M86 (2026-10-20).
     written (`OpenSlotOrigins`, in pre-order; ρ a `SlotRegion(call, slot, ordinal)`, keyed
     `SlotRegionKey - ((slot & 0x3FFF) << 14 | ordinal & 0x3FFF)` with `SlotRegionKey = UnsolvedKey / 2 - 1`, so `IsCallRegion` holds
     and every key lies above the `CallRegion` keys; past 2^14 slots or positions regions are shared, which only joins bounds). An
-    Origin parameter is published to the solve (`OriginInference.WaitingNamed`), which writes the meet with its `CallRegion` once
+    Origin parameter or a per-call input is published to the solve (`OriginInference.WaitingNamed`), which writes the meet with its `CallRegion` once
     its variables are solved. Kept as the evidence binds them: an open region, a raw anchor, a Constraint set's slot, a meet holding
     one, a raw layer's Origin. Every run of the candidate (the first, the re-run after `CompleteWaiting`, 10.8.1's fixed-binding
     re-check) writes the same spelling, so every reader (the formation proof, the re-check, the fill of open Origins, the solve of
@@ -27645,7 +27651,8 @@ Closure row of `MirCases.Branch`).
       by the fit's structural part (`FitsStructuralPartAt`) on the Type its adaptation gave, its misfit recorded at the element through
       `FailMismatch(.., ComparisonFailure.Shape)` (`RecordMismatch`'s Owned-conversion arm stays the one path); only fitting elements
       meet (`CommonOriginType`), for the Origin evidence a local's omitted Origins are inferred from. The element-to-element comparison
-      goes; a misfit names the expected element Type, never the first element's.
+      goes; a misfit names the expected element Type, never the first element's. Superseded in part by R7-M113 (PLAN G1379): the elements meet by `PlaceCommonType` (an invariant position included), and each
+      fitting element's adapted Type fits the place's Type once, at every site, forming its Origin rows.
     - **A failed destination's route (G502/G509 cause A; SPEC 13.7.1, 13.7.2, 23.1.2).** A compound assignment's or update's route,
       and the value fit of a plain write its destination check refuses, are judged by the path an admitted destination takes (the
       decision, the counterpart, `CompleteBinary`: the counterpart's fit, the shift count, the pointer offset, the arithmetic
@@ -28640,6 +28647,50 @@ Closure row of `MirCases.Branch`).
     - **Rejected.** Recording inside AdaptInput (trials and probes would publish); a new `LendingDenied` failure (a second form for
       one requirement); `NoApplicableOverload_Kd` with the Place as a party (7.3.3's sameness).
     - **Not taken** (PLAN G453's remainder, G486 as E4a-4): see PLAN.
+  - **E4a-4 (Q-795, D-1298; F's R7-E4 rulings 22-26). Every fixed destination is a deferring caller, and a refused implicit
+    acquisition has one representation** (PLAN G486).
+    - **The writer.** ExpectedAdaptation is the one writer of the selected destination's record (its adaptation row, its limits
+      and now its acquisition) and returns the Type the node delivers there (`BoundType?`: its operation's, or `actual` where none
+      forms; null on a refusal); it adapts with deferral, the channel saved and restored. BindNode, StoredReborrow and
+      AdaptAtPosition stop writing. The three probes (TryCandidateCore, ItemPartFails, ProbeValueCall) and LateAdaptation read "no
+      operation" as `!FitsStructuralPartAt(actual, expected) && ReferenceEquals(delivered, actual)`, one form at all four;
+      ArchitectureRulesTest's TypeComparisonSites lists the four under `unchanged`, its reason for a Type derived from another
+      against its input. LateAdaptation's guard has no pinning row: no program was found to reach a formed operation delivering
+      its input at a late part, and it stays as the rule's one structure-first condition at every fixed destination.
+    - **The representation.** A refused implicit acquisition (a spelling, a lending denial, a transfer or a limit) fails its
+      subject, which delivers no Type, as its written twin does (SPEC 7.3.3): at a fixed destination the Place, at a receiver or
+      argument the call (the trial, ValueCalls), at an unsettled payload the construction. Its lent Type is read for structure only
+      (SPEC 15.6.1): no record and no delivered Type outside the failing subject reads it, so the RawOrigins.Borrows invariant holds
+      without an exception. Readers rest on the failed node by the existing prerequisite rule; nothing is suppressed afterwards. An
+      Origin relation or limit that would read the lent Type is dependent (AGENTS rule W).
+    - **Rule** (E4a-5 adds PLAN G453 (d) under it): an implicit exclusive acquisition is refused only by the lending verdict
+      (OwnedLending, ExclusiveAcquisitionDenial), and only RequireAcquisition writes it.
+    - **Supersedes in part** BU-96, for the refused input's own Origin relation and its own located limit: its reason, "an
+      argument's failed acquisition leaves its Type known", served judgments over that Type, and the lent Type is now read for
+      structure only. `g(x@follow)` with `g: (uniq/i32 during c) -> ()` records TransferRequired_Kd alone, and `f(Totals.count)`
+      with `f: (uniq/i32) -> ()` ExclusiveBorrowRequired_Kd alone; every other input's relation and limit stands (`g(x@follow, p)`
+      keeps `UnprovenOriginRelation_Kd p`). With it, BU-45's line "Superseded in part by BU-96 ... that UnprovenOriginRelation_Kd is
+      published beside Binding's TransferRequired_Kd" no longer holds for the refused input. And PLAN G262's F4 reading, for both
+      halves: `.Some(State.counter)` into `Option<uniq/i32>` and `g(State.counter)` each record ExclusiveBorrowRequired_Kd alone,
+      as the named call does.
+    - **Behaviour-preserving commit.** Commit 1 (60ed14cf4: `fixedExpectation` removed, the writer and the delivered Type) has 0
+      diagnostic-snapshot and 0 semantic HIR+MIR differences against shared-base/191e831c2; commit 2 (f5e7c5e6e) is the rule.
+    - **Removed:** RequireAcquisition's `fixedExpectation`, the pair-layer arm's fixed clause, three callers' row writes, Enums' fit
+      and limit beside a deferred acquisition, ValueCalls' operation for a refused part.
+    - **Moves (Q13), on invalid programs and four valid ones; no acceptance move (the A5 corpus moves no record):**
+      - A fixed destination's TypeMismatch_Kd becomes the written twin's record at the Place: ExclusiveBorrowRequired_Kd (`let y:
+        uniq/i32 = q` with `var q`; `return h.n` into `uniq/i32 during h` with `h: uniq/H`; a join source at a `uniq/i32` part,
+        `let j = if c => (y, u@uniq) else => (2, v)` with `var v: i32`, at `v`), InvalidAssignment_Kd (a `let` root),
+        SharedPathAccess_Kd (a shared path).
+      - Valid programs rejected with a Language error get PLAN G762's located `Unsupported_Kd` at the object pair layer (`let v:
+        objref/Node = y` with `y: s/Node`, `s is objref or objuniq`; rows fp1, rv-p3, r2-p2, r2-p2c).
+      - Dependent records go (rule W): the Origin record of a refused input (rv-e3p's UnsatisfiedOriginRelation_Kd; a value call's
+        refused part's UnprovenOriginRelation_Kd) and its own limit (`.Some(Totals.count)`, `f(Totals.count)`: P42's
+        `Unsupported_Kd`).
+      - An unsettled payload's record moves from the construction to the Place; StoredReborrow's records (bs1, rv-b1-3) keep their
+        text, recorded at binding time.
+    - **Rejected:** the lent Type delivered with no operation (Revision 1's (i): it carries a dependent Origin record to every fixed
+      destination, rv-e3p); a named adaptation (a vocabulary entry and an AdaptationBorrow exception, removing nothing).
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
@@ -29353,6 +29404,244 @@ Closure row of `MirCases.Branch`).
     a reader per kind; restricting the reader's domain to restore the counts or the FAULT (CC-25: SPEC 8.3.2 refutes any `P` by
     `not P`, and the restriction moves A and B rows back); keeping C2 rulings 301/308 by a relevance rule for an unresolved Contract
     row in the Copy walk (a dependence decision beyond the unit, CC-27 (2)).
+- **R7-M111 A Contract reference's clauses are instantiated by one rule, the declaration's own reference included; its formation
+  judges only reference input conditions** (Front, 2026-11-25; R7-C2c2 c2-5a, Q-794; PLAN G837, G849 and G1260 closed, G402 restated,
+  G1418 opened; F's rulings CC-1 to CC-10; the independent design review's REVISE on F's run, revised by CC-10; Major, an acceptance
+  mover; commits f6e55673a, e98489598, d04836056, f4c7d60ec, 97265aabf, 596577d1c, 6b82f943c, 895c533eb, 0ad304304, f4cb50715, b281727a4, ae8743f6e). SPEC 8.3.1, 8.3.2 (Contract refinement), 8.4.1, 8.4.3, 6.1.4.
+  - Instantiation (Binding.BoundContracts, ContractTypes, Constraints.Substitution): `MT<A>` written in MT binds to MT's declaration
+    symbol (`BoundContractReference` collapses a declaration's SelfType to it), whose Type is the nominal `MT`. `InstantiatedContract`
+    returned it unchanged, so `T is MT<i32>` supplied `T.(Tree).Child is MT` with A free and no `Mark<i32>` below depth 0, and
+    `SubstituteConstraint` left it unsubstituted, so forming `R<i32>` queried `i32 is R` while the supply held `i32 is R<i32>`. Both
+    now read `ContractReferenceType` (BoundContractReference's inverse: a bound reference's Type, a declaration symbol's `SelfType`;
+    `ProjectionContract` reads it too) and bind or substitute it as any reference; `InstantiatedContract` binds it as R4-M166 binds
+    one, the declaration's Self first, then the reference's arguments.
+  - Formation (Binding.Constraints): a Contract clause is its conditions (8.3.1's requirement precedence splits `and`; `or` and `not`
+    are one condition each), each with one 6.1.4 role. `IsImplementationRequirement(condition)` (one of its Types, the Contract
+    reference's included, names the Contract's Self) and `ReferenceInputCondition(clause)` (the conditions that are not, conjoined;
+    none: the clause is skipped) replace `IsAssociatedConstraint` in `CheckConstraints`' Contract-binder skip, so forming `C<X>` (a
+    written occurrence's judgment, a Type's formation) judges only its reference input conditions: `Self.(K<A>).X is Copy` and
+    `Self.(Tree).Child is P2<B, A>` were judged with no conforming Self, Unknown at every premise `T is CK<i32>`, and `A is E and
+    D<Self>` keeps `A is E`'s judgment. An associated requirement stays one whole. The other `IsAssociatedConstraint` uses read the
+    `associate` form (declaration, specification, binding order, Origin owner, effect form, conditional members, documentation) and
+    keep it; closedness (ConstraintValidation's closed-clause test, SourceStates' `ClosedClause`) reads it with `IsSelfConstraint`
+    and `DependentConstraint` to decide 6.1.4's declaration-obligation role, without a clause's Contract arguments (PLAN G1418).
+    `DependentConstraint(contractSelf: true)` stays `ContractSupply`'s gate, "not closed" (8.3.2 supplies input conditions too:
+    `T is D<A>` supplies `A is E`).
+  - Interpretation (Binding.Constraints; the review's B3, F's CC-21): the proof's intake (`NormalizeProofConstraint`, J1's: the
+    request and every fact's reading) interprets a proposition's Contract arguments as its subject and required Type
+    (`NormalizeProofType`, then `ClassForm`; SPEC 8.2.3, 8.3.1), and an interned proposition's projection flag (the intake's early
+    exit and Supply's scan gate) covers the Contract reference's Type, so `U is MT<Src.(HasItem).Item>` and a supplied
+    `Src<U>.(HasItem).Item is R<Src<U>.(HasItem).Item>` meet `U is MT<i32>` and `U is R<U>`; dev's collapsed own reference matched
+    any `MT<X>` and hid the gap.
+  - Readings (F's CC-10): a function premise's own refinement supply proves its formation's reference input condition (F-1 (a), the
+    landed guard x-carried-v's reading: `T is R<U>` supplies `U is R<U>`); a premise whose supply is refuted on a concrete Type is
+    contradictory evidence at the function even when nothing queries it (F-2 (a); R7-M35, R7-M41: `T is C<S>` with `A is D<Self>`
+    and S without D).
+  - Moves (valid, accepted): x-args1..3-v, x-argsrow2-v, b-args-v, contractargs-i32, m2-v1, m2-v2, rq-v1 (the own reference);
+    x-swap0..2-v, b-cargs2-v, k-nonrec, k-nonrec-marker, contractargs-single, p05, cc-v1, sa-v2, pa-v1, tf-v1, tf-v2, or-v2, an-v2
+    (formation). Invalid, newly rejected (accepted before, the collapsed reference read as any `MT<X>`): gs-n1, gs-n3 (a generic
+    struct's conformance, the ancestor path too), rc-n1 (a requirement call). Invalid, a false or dependent record removed (Q13,
+    counted by code): `UnprovenConstraint_Kd` 9 (the premise of x-swap0..2-n, b-cargs-n2, p05-n1, p05-n3, pa-n1, pa-n2; b-args-mixn's
+    i32 call), `UnsatisfiedConstraint_Kd` 4 (the premise of sa-v1, or-v1, an-v1, invalid by F-2; sa-n1's `C<S>` in the conformance,
+    measured by the CLI runs, two records on line 7 on dev and one at the head, not by its row, which passes on both because the
+    test helper groups records by code and line), `InvalidConstraint_Kd` 1 (er-n1's premise, resting on its unresolved clause).
+    Record selection (Q13): the function's premise error no longer relates the premise on sa-v1, or-v1, an-v1 (the contradictory
+    fact is now a supplied one: a related location, DECISIONS Q4); cc-n1's record at `T is CK<i32>` is `InvalidConstraint_Kd`
+    (8.3.2's Error for the supplied, refuted `i32 is E`), not `UnprovenConstraint_Kd`. No valid program newly rejected (B3's
+    sr-alias-v and rc2-alias-v, rejected at 4f7526287, pass with the interpretation above); no invalid program newly accepted but
+    SPEC 8.3.3's expanding recursion (the Middle's x.mg-decl and m.r-expand-q), which dev rejected only through the formation
+    judgment this entry skips and G563-C's Contract-level rule, landing with it, rejects (F's CC-16); no new `InternalInvariant_Kd`;
+    an-n1, rf-n1 and sr-alias-n keep dev's records. B3's moves (by b281727a4's rows and twins against 4f7526287): sr-alias-v,
+    rc2-alias-v and gs2-alias-v (a generic struct's conformance, `T is MT<Src.(HasItem).Item>` with Item = i32) accepted;
+    sr-alias-n `InvalidConstraint_Kd` at the premise (rf-n1's form; 4f7526287: `UnsatisfiedConstraint_Kd`); gs2-alias-n gs-n1's single
+    record (4f7526287: two at `Self is MT<i32>`); TypeIdentityTest's C3 rows ef2, s5, pr1 and k1c (Contract arguments written as
+    completed projections; valid) fail on dev 62e531705 (`UnprovenConstraint_Kd`: ef2 two, the others one) and pass at the head, so
+    they are no longer Explicit (ae8743f6e). Their `Seq` spellings pr1s and s5s (c2-5c's guards; dev bc7428e3b rejects both at `return use(x)`, 54785cb01 accepts; F's CC-33) move by the same cause. Against dev 62e531705 (`rv/out2`, 76 twins): gs2-alias-v newly accepted (dev: two
+    `UnprovenConstraint_Kd` at `Self is MT<i32>`), gs2-alias-n keeps one of dev's two records (a dependent record removed, measured
+    by the CLI like sa-n1's: `UnprovenConstraint_Kd` 10 with it), sr-alias-v, rc2-alias-v and sr-alias-n keep dev's records; every
+    other twin keeps K4's records on both sides (`b3/out/cmp-k4.txt`). The review's K4 twins (against dev c18e1306a,
+    `rv/out2-k4/new/results.md`): valid, newly accepted (class 3; dev rejects each with `UnprovenConstraint_Kd` at the premise,
+    an2-gen-use-v with three records; G563C-6 B1 names them here and on the Q row): an2-rev-v, an2-nest-v,
+    an2-par-v, an2-proj-v, an2-gen-v, an2-gen-use-v, an2-alias-v (formation), im-v (an implementation's requirement premise under the
+    own reference); invalid, newly rejected: rc2-gen-n, rc2-alias-n (requirement calls, as rc-n1) and the Middle's r-gs2-n, r-put-n,
+    r-refine-n (CC-16). These moves are stated against the dev each run used (62e531705, or c18e1306a where named); the forms
+    re-run against dev bc7428e3b (kq1x, pr1s, s5s and G1260's) are stated against it. G563-C's record moves on the forms c2-5a
+    alone accepts are counted by code on R7-M112's moves line. Rows in RecursiveContractTest's
+    `APremiseSuppliesItsRefinementsByDemand` (cc-n1 and an-n1 pinned to the head's records with the premise).
+    PLAN G1260's forms (F's G563C-10; labelled from SPEC before the run, `g563c/p7/probes-g1260.txt`; against dev bc7428e3b, the
+    head 7 of 7 as labelled): valid, newly accepted (dev `UnprovenConstraint_Kd` at the Contract reference): e1t (`T is A<U, i32>`;
+    the identity A's Self clauses derive between P and Q is a supplied ground, not an input condition) and B's G1384 probes c7 and
+    c8; invalid, the reference's record removed: e1 (its second `InvalidConstraint_Kd`, at `A<U, U>`; the clause's premise error
+    stays), c2 (TypeIdentityTest mg5m) and c8i (`UnprovenConstraint_Kd` at the reference; the conformance's
+    `UnsatisfiedConstraint_Kd` stays): `InvalidConstraint_Kd` 1, `UnprovenConstraint_Kd` 2; invalid, newly rejected: kq1x (c2-5c's
+    label: `T is not Iter<i32>` against the supplied `Iter<i32>`, contradictory evidence, `InvalidConstraint_Kd` at the function).
+    Rows: RecursiveContractTest e1t and e1; TypeIdentityTest mg5m, mg5mv (c7), mg6 (c8), mg6m (c8i) and kq1x.
+  - Rejected: `DependentConstraint(contractSelf: true)` as the formation filter (it counts every parameter, so it would skip the
+    input condition `U is E` and accept `D<i32>`); a whole clause naming Self as one implementation requirement (an-n1 loses its
+    input condition's record while cc-n1 keeps it: one rule, two answers by form); the nominal declaration Type as the own
+    reference's written form; a clause for the own reference; the declaration's Self first for the clause's Types (R4-M166's
+    rejected option, below).
+  - Limit (PLAN G402): a clause's Types keep the reference-first order, so the valid cs1 stays rejected. Self first there lets the
+    expansion of a Contract's own associate premise supply that premise's reference input condition to its own formation (traced:
+    cs1bad's `Self.X.N is F<Self.X>` Proven from `G<Self.X.N, Self.X>`'s `Z is F<W>`; exp1's `Self.Y is E`), so cs1bad, exp1,
+    exp2 and exp2bad would lose their records (SPEC 8.3.3 Finality). Removed with R4-M166's availability gap.
+- **R7-M112 SPEC 8.3.3's expanding recursion is Binding.Contracts' check over a per-call pass graph** (Front, 2026-11-25; PLAN
+  G563-C, landing with R7-C2c2 c2-5a (CC-16: the Middle's RP17 B1 on c2-5a, C-562); Major, an acceptance mover; plan
+  `artifacts/units/g563c/plan.md` §3, labels `labels.md`; F's rulings G563C-1 (Q0 (a), Q1 (a), Q2 (a), Q3 (a), Q4 (a)), G563C-3,
+  G563C-5, G563C-6 (the independent implementation review's B2, C1-C7), G563C-8 and G563C-9 (every Contract reference in a
+  supplied premise, a projection's qualifier in any of its Types included), G563C-11 and G563C-12 (the Phase B review: h6 class 1;
+  an ancestor conformance's reference walked as a premise's)) SPEC 6.1.4, 8.2.3, 8.3.2, 8.3.3, 8.4.3, 23.1.2.
+  - **The rule.** Each Contract reference in what `Self is K` supplies to Self or a projection of Self ("an ancestor conformance or
+    a Constraint": an ancestor; a Contract premise among the operands of K's own or inherited clauses, each clause supplied whole
+    by 8.3.2's Contract-refinement row, whatever its connective: `and`, `or` and `not` alike, G563C-6; and each projection's qualifier
+    in an ancestor reference's arguments, G563C-12: `contract MQ<A>: Mark<A.(R2).W.(HasY<A.(R2).V>).Y>` refers to HasY, and in the
+    Types of such an operand about Self or a projection of Self, its subject, its required Type and its Contract reference's
+    arguments, G563C-8 and G563C-9: `Self.(MQ<A>).X is Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y` and
+    `Self.(Tree).Child is Mark<Self.(Tree).Child.(R).W.(HasY<Wrap<A>>).Y>` refer to HasY) passes each parameter of K to
+    each parameter of the referenced Contract whose argument contains it (the walk enters every component, a projection's subject and
+    Contract arguments included): flat where the argument is the parameter, expanding otherwise. Each supplied reference, an
+    ancestor's or a Contract premise's, passes through one member: its own arguments and the qualifiers in its Type, with the forming
+    premise where one forms it (an ancestor has none). A premise naming no Self is a
+    reference input condition (SPEC 6.1.4), not a supply, and passes nothing. Every strongly connected set of passes with an
+    expanding pass makes each Contract with a parameter in it erroneous: one `InvalidConstraint_Kd` at the Contract (R4-M115's code;
+    SPEC 8.3.3 "at each Contract on it", G563C-6 C7), decided from the declarations alone.
+  - **Owner and representation.** Binding.Contracts (`Binding.Contracts.Expansion.cs`, beside BuildContract's refinement cycle),
+    `CheckExpandingRecursion`, called once in `BindConstraints` after `Advance(AssociatedBindings)`, where its arguments'
+    normalization exists (SPEC 8.3.3: normalized under K's premises); its uses read the failure through the failed-context read, and
+    the states through `ValidateConformances`' publication. This replaces the plan's placement "after `ExpandContractPremises` and
+    before `PublishSourceStates`" (G563C-5): a completed projection's binding is admitted only from admission point 3 (`KeyedBinding`),
+    so before it `Src<A>.(HasItem).Item` stays as written. R7-M46's reason holds by two paths: every use and refiner reads the failed
+    Contract through `AvailableContractPremise`'s failed-context read (`InvalidDeclarationContext`, SPEC 23.1.2) at every read, before
+    any published state, and `ValidateConformances` publishes the states again after the check. The window: `PrepareAssociatedBindings`
+    forms its bindings before an expanding Contract fails; a binding formed through such a Contract's premise occurs only in a program
+    that carries the Contract's own record, so no acceptance moves, and the failed-context read rests every later read (dependent
+    records only; window twins g5-window, g5-window-v keep b5fc3d442's records). Its pass graph (a node per Contract parameter; a pass with its expanding flag and
+    forming premise) is call scratch in pooled fields, built and emptied in one call: never published, no IR form, no vocabulary entry.
+    Input: the pass's Contract shapes (a Contract never refers to a later layer's) and `ContractSupply` (its third reader; no second
+    enumeration). Linear in the supplied elements and their Types' parts (each once per element: a premise's subject, required Type
+    and reference Type, an ancestor's reference Type) and in the passes (an iterative Tarjan walk), and linear per argument in its
+    parts; a qualifier nested in a qualifier's argument walks the inner parts once per enclosing qualifier (bounded by the source;
+    G563C-11 N2).
+  - **Normalization (Q1 (a), G563C-3).** The Contract's parameters and each supplied reference are read in the Contract's view as a
+    proposition's Types are: `NormalizedForm`, J1's one reading (`NormalizeProofType`, a completed projection interpreted, SPEC 8.2.3,
+    then `ClassForm`), extracted from `NormalizeProofConstraint` by a behaviour-preserving commit and read by both; ClassForm's closed
+    reader list names the row (iv) through it (an intake of this judgment; not an exception). A second reading of a Contract argument
+    beside the proposition's would call `MA<Src<A>.(HasItem).Item>` expanding (the Middle's C-562 re-read B4): rejected.
+  - **Moves (Q13, against dev 62e531705, landing with c2-5a; the forms re-run against dev bc7428e3b are stated against it at the
+    bullet's end).** Newly
+    rejected, invalid, dev accepts: spec-nested, g563-assoc, n.parent and the Middle's it.assoc-alias-grow, it.second-assoc,
+    it.second-proj, it.ancestor and it.use-spec (one `InvalidConstraint_Kd` at each Contract of the set); and the Nested form of two
+    RecursiveContractTest programs (`AProjectionHasARecursiveBase`'s Seq row and `AWarmRebindAndItsQueriesAllocateNothing`: `contract
+    Seq<E>` with `associate Next is Seq<Option<E>>`), newly invalid, whose programs now read `associate Next is Seq<i32>` with their
+    assertions unchanged (b5fc3d442; the owner's answer 「G563-C a」, 10:40; C6). Dev rejects with other records, c2-5a accepts and
+    G563-C rejects at the Contract: x.mg-decl and m.r-expand-q (the RP17 B1 forms) and nine forms of B1's family, it.alias-grow,
+    it.and-premise, it.deep-proj, it.array, n.two, n.swap-grow, n.proj-arg, n.refiner and n.scc, so c2-5a and G563-C land in one
+    window; and G563-C's own twins r2-base, r2-clause-use, r2-refiner-gen, r2-refiner-rest, r2-requirement, r2b-and, g5-window and,
+    by G563C-6, r2b-or (dev `UnprovenConstraint_Kd` at the `or` clause; the previous head 30d523b4c and c2-5a accepted it). **Counted
+    by code (C1; dev 62e531705's records against G563-C's)** over these 19 programs: `UnprovenConstraint_Kd` 21 removed (the forming
+    clause's formation judgment, which c2-5a's skip removes, and the uses' unproven calls: rule W, each reads the failed Contract),
+    `InvalidConstraint_Kd` 12 removed (the uses' and refiners' records: `T is MG<i32>`, `contract Sub: MG<i32>`, n.two's and n.scc's
+    clause, r2-clause-use's `B is MG<i32>`, the refiners' bases, g5-window's five; rule W), `InvalidConstraint_Kd` 21 added (one at
+    each Contract of a growing set, independent). The 11 forms count the Middle's `check.tsv` (one record per code and line), the 8
+    twins the CLI's records (`p1/out/twins-dev.txt`, `twins-head.txt`; r2b-or's head record is confirmed by Phase 2's run). Valid,
+    newly accepted (class 3; dev rejects with one `UnprovenConstraint_Kd`, B1): v.norm-const (SPEC 8.2.3, 8.3.3: under KN's identity
+    premise the argument is i32, no pass), r2-base-v (MG's pass is flat, Base and its use clean) and r2-clause-use-v (UseMG's clause
+    names a valid recursive Contract), besides c2-5a's own. With c2-5a: vt.mutual-const, av.nested-alias-v and vt.alias-flat-second
+    (valid, newly accepted) and ai.rc2-gen-n, ai.rc2-recv-n and ai.gs2-self-n (invalid, dev accepts, now rejected). vt.alias-flat and
+    vt.alias-flat-assoc stay accepted. **Record site (C7):** the record sits at the Contract (SPEC 8.3.3 "at each Contract on it");
+    ContractSelfTest's h6 (the g563-assoc form) expects `InvalidConstraint_Kd: contract D<U> | ...` instead of the associate line,
+    a guard; it is class 1 (dev accepts it; G563C-11 C1). **The Middle's consent-2 twins** (against dev 90f6878e0, as the
+    Middle read them; Phase 2 counts them by code): vt2.alias-const, vt2.premise-in and vt3.or-alias valid, newly accepted (class 3;
+    dev a false `UnprovenConstraint_Kd`); the it2 rows and gr.r2b-or, gr.rv.not-grow, gr.rv.or-two, it3.or-in-and, it3.not-or and
+    it3.or-alias invalid, dev's `UnprovenConstraint_Kd` at the clause becoming `InvalidConstraint_Kd` at each Contract on the cycle
+    (30d523b4c accepted the six `or` / `not` forms: the Middle's B5, taken by G563C-6); vt3.not-or and vt3.or-in-and accepted on both.
+    **Against dev bc7428e3b** (the Phase B review's twins and B1's, G563C-11 C5, G563C-12): class 1, invalid newly rejected: h6,
+    p8.assoc-qual, p8.sq-inh3 (one `InvalidConstraint_Kd` at each Contract of the set) and p8.anc-qual (the MQ form above, with
+    HasY's `associate Y is MQ<B>`: one at MQ and one at HasY; MQ's projections `A.(R2)` and the use `MQ<B>` read MQ's premise `A is R2`,
+    which fails by reading MQ's own record: dependent records, rule W); class 3, valid newly accepted: rv.a-const and p8.sq-normq-flat
+    besides those named above and in R7-M111; with c2-5a, record moves on 57 invalid programs both sides reject, by code: `InvalidConstraint_Kd` +32,
+    `UnprovenConstraint_Kd` -62. No class 2. TypeIdentityTest's oi2 is accepted on both sides, a guard, no move (G563C-12 C7).
+  - **Related locations (Q2 (a)).** Each premise forming a pass inside a growing set fails in the view of the Contract whose supply holds
+    it (`FailPremise`), so the adapter's InvalidConstraint row relates the Contract's own forming clauses through the existing "premise"
+    role (`FailedPremiseClauses`). A forming ancestor reference is a base and is not related, nor is the clause of a forming
+    reference under an `or` or a `not` (its forming premise is an operand, no fact of the environment): PLAN G1419.
+  - **Which Contracts (Q3 (a)).** Each Contract with a parameter in such a set (SPEC's "Among Contracts that refer to one another").
+  - **Rejected:** a second walk of an ancestor reference's qualifiers beside the premise's, or a clause for the ancestor form
+    (G563C-12: one member for every supplied reference); the plan's reading that an `or`, a `not` or an identity premise supplies no conformance and passes nothing
+    (G563C-6, B2: SPEC 8.3.3 counts each reference in a supplied Constraint, and the Disjunction and Negation rows decide proof
+    results, not what is supplied; the reading would narrow the rule); leaving a projection's qualifier in a supplied premise's Type
+    unwalked (G563C-6's "Out of this ruling", superseded by G563C-8: the qualifier is a reference to its Contract, and dev bea55492d
+    rejects g6-ident-qual, so accepting it would be a Q13 regression); a second interpretation of a Contract argument (ClassForm alone, G563C-3); moving the publication after point 3
+    with the check before it (G563C-4's order, withdrawn by G563C-5: `PrepareAssociatedBindings` reads the published source states,
+    through `JoinMembers`/`SpecifiesContract` -> `ProveConstraint` and `ResolveAssociated` -> `IdentityProven` ->
+    `AvailableContractPremise` -> `ReadSourceState`, and keeps its results for the pass); a row of R7-M45's class graph (one view's identity classes; the growth runs through ever new subjects, so no view holds
+    the cycle, and a conformance is no edge there); placing it in RecursiveContracts (its contract keeps it out of Bind but the inline
+    layout); only the Contracts on a simple cycle through an expanding pass (NP-complete in general, directed two disjoint paths); the
+    arguments as written with `Unsupported_Kd` under an identity premise (Q1 (b)); a limit (8.3.3: never a limit); a new "reference"
+    related role now (Q2 (b), a catalog change: PLAN G1419); SPEC's `Stream` in this unit (Q4 (b): Unbounded Types along a projection
+    path, a second structure; PLAN G563); the record at the forming clause, as SPEC's example marks it (C7: the text puts it "at each
+    Contract on it"; the clause is a related location).
+- **R7-M113 A place's common Type meets its parts' Origins; each element's adapted Type fits the place once (PLAN G1379)** (Back,
+  2026-11-25; Q-796, D-1299; Major: design `back\notes\g1379\design.md` Revisions 1, 3 and 4, B's rulings 1, 7 and 10; the Front's
+  design review C-567, ACCEPT WITH CONDITIONS C1-C7, its consent to Revision 3 and, as BU-223's owner, to Revision 4 (C1-C4); the
+  Middle's consent to amend R4-M164 U2 S1 and its RP17 conditions on C-573) SPEC 4.3.1 Places, 14.9.2 steps 1-2, 10.5.1, 10.8,
+  15.3.4, 15.3.5, 15.3.6, 15.6.1, 15.6.4 steps 1-3, 23.1.2. Amends R4-M164 U2 S1 and BU-223. Supersedes in part R7-M75's E3d line
+  (array elements: "only fitting elements meet (`CommonOriginType`)").
+  - **Rule** (`Binding.TypeRelations.Origins.cs`, its contract). `PlaceCommonType` is the common Type of a place's parts whose
+    structural parts agree: each Origin is a place variable taking its candidate, the meet of the parts' Origins at a covariant and at
+    an invariant position (a bound a part's fit gives is no proven equality, so the invariant variable takes the covariant candidate
+    and each part's bound is checked against it: one record per failing part, independent of source order); differing raw Origins
+    stay unstated (5.7). The polarity is the canonical table's (`ComposeVariance`, `ComponentVariance`, `OriginArgumentVariance`),
+    entered covariant. The outer Origins follow the fit's one decision (`FitOuterOrigins`): two that relate take their candidate;
+    nothing to relate (equal Origins, an inactive slot, an unformed pair layer, whose formation record explains it) keeps only an
+    equal Origin; a presence difference no relation explains is structural. It forms no relation and no record.
+  - **Three failure kinds**: the meet succeeds; `Shape` (a structural difference: the Type mismatch); `Limit` (a contravariant
+    position whose Origins differ, whose candidate this search does not form: the located `Unsupported_Kd`, PLAN G1421). Each reader
+    records the failure at the part (`FailMismatch`), the Dictionary literal's included (it dropped it without a record).
+  - **A stated element Type (B's ruling 1; the Front's C4).** The contextual array literal's place Type is the elements' common Type
+    with the expected element Type's stated Origins (`StatedPlaceType`, through `TyCtxt.Rebuild`): only an omitted Origin (an
+    inference variable that is no local region) keeps the meet (15.3.6: only variables take candidates; 4.3.1: the stated element
+    Type is every element's expected Type). The literal's Type is `Array<place>`, so `InferLocalOrigins` reads the meet at the
+    omitted positions. The Dictionary literal's key and value places read `StatedPlaceType` the same way (B's ruling 10), so both
+    forms judge one place rule alike.
+  - **A per-call input is a region of the call (amends BU-223; B's ruling 10, R4a).** J2 names every abstract Origin of the callee
+    that a call gives a fresh region (15.3.4, 15.6.4 step 1): a Type slot's Origin, a written Origin parameter and a per-call input.
+    A waited per-call input is opened as `(E and ρ)`, ρ its `CallRegion` keyed `-1 - i` as BU-104's unsolved input, so BU-104's and
+    J2's region is one per (call, input) (`RegionKey`'s contract). `StatedPlaceType` reads the published form unchanged: an Origin
+    the call opened is no stated Origin. Witnesses: jc1 (BU-223's `same3` with the per-call `b` for the written `c`) and jo4n.
+  - **Each element's Origin fit is the literal's (B's ruling 7).** After the whole meet, `BindContextualArrayLiteral` fits each
+    fitting element's adapted Type (its binding's result at the expected element Type: a value read, an erasure, a completed Case)
+    to the place once (`FitsValueAt`), at every site, call arguments included, its failure recorded at the element. The enclosing
+    fit (a declaration's, a return's, an assignment's, or a call's `FitArgument`/`RequireType`) fits the literal's Type, and a call's
+    step 3 judges only the instantiated parameter's well-formedness. The independent literals fit each part by `RequireAtPosition`.
+  - **Readers.** The place readers (the contextual and independent array literals, an awaiting element's default, an element hole,
+    a waiting part's default, the Dictionary literal) read `PlaceCommonType`. `CommonOriginType` is `PlaceCommonType` whose result
+    both inputs fit, judged once at its root, for the readers that need a supertype (an equality's operands, a function reference's
+    bindings, a join, until PLAN G394/G443's unit fits each join source to the result). Where premises prove an invariant equality
+    between distinct atoms (an outlives cycle), the place's forms newly succeed (k1, k1u); the supertype readers keep their
+    verdicts, since the root `IsSubtype` reads no premise (k1j, PLAN G394/G443).
+  - **Amends R4-M164 U2 S1.** S1 places the call's own records; an element's place fit inside an argument is the literal's, at the
+    element. Reason: the element fit is no longer the call walk's: the walk judges the instantiated parameter's well-formedness at
+    each leaf (`RequireInputPremises`) and the completion fits the literal's whole Type, and neither fits an element's invariant
+    Origin to the place. Class 1 witness against keeping the element fit at the call: a2u (`func inner(x: Array<uniq/(ref/i32 during
+    p) during p>)`, `inner([a@move, b@move])` with b's inner Origin q) is accepted without the literal's fit. Where both fail, as in
+    a nested literal whose parameter is not well formed (cv3_n, a2n), the two records are independent checks (23.1.2).
+  - **Moves (Q13).** From `InternalInvariant_Kd`: two `UnprovenOriginRelation_Kd` (t17 and its place forms), one (a stated element
+    Type, g5; a call parameter's invariant element, a2u, a2uj), `Unsupported_Kd` (valid c1, c1c, c1v: PLAN G1421), the formation
+    record alone (p1), accepted (e1, e1c, k1, k1u). The contextual Dictionary's dependent `PrerequisiteUnavailable_Kd` goes (rule W;
+    g11, l_dict_stated). A rejected program's element record moves from the literal or the argument to the element (a2r, a2a, a2k,
+    x1), and beside a call's step-3 record at the argument the element's own is added (cv3_n, a2n). Newly accepted valid programs
+    with a per-call input or a slot a late join source bounds: jo4n, jo4o, jo4r, jg1 (from BU-156's interim `Unsupported_Kd` at the
+    source `[c]`) and jc1 (from a record at `c`); the invalid jo4s moves from the interim to one record at `c` ("requires c outlives
+    static"). BU-156 and PLAN G443 stand (jo1n, a Tuple source, keeps the interim). No order-free record is claimed at a call slot
+    or a per-call place (a_gen, a_pc2: PLAN G1208).
+  - **Rejected**: the consumer accepting a rowless position (`RecordComparisonFacts`); a fit to the running Type (order-dependent: the
+    record lands on whichever element comes second, a spurious row at a covariant position not yet met); no literal-owned fit, the
+    enclosing fit judging the meet (accepts g1, g13, g10 and a2u: the meet hides an invariant difference); skipping the literal's fit
+    where a call's walk fits the argument through a P1 Aggregate record (accepts a2u, for the same reason as the S1 amendment);
+    fitting the element's own Type before its adaptation (fails value reads, erasures and completed Cases); restating g5's records to
+    the meet's two (a record at `a@move` SPEC does not require; the array and Dictionary forms would differ); fresh local-region
+    variables at the place (new state for the same verdicts).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -34049,7 +34338,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `string? TestRuntime`: Windows' layer `Testing.TestRuntime.Resource` (`"Kimi.Testing.TestRuntime.ll"`, one constant, which
     `TestRuntime`'s reader uses), Linux's null (the test runtime calls kernel32). The frame builds the runtime's test variant only where
     the layer names one (Linux's `ModuleFrame.TestRuntime` is null), and a test build reaching `WriteRuntime` on such a row throws (a
-    broken contract; B7b8 refuses a Linux `test` before any build). Rejected: a `bool Tests` capability flag (the first commit's; a
+    broken contract; B7b8 refuses a Linux `test` before any build). It is removed when a Linux test runtime lands; the Linux test entry then goes through the layer's start form (`ModuleCodegen.WriteStart` with the test dispatcher as its body, with the layer's `StartCalls`, `__kimi_platform_start`), never a plain function defined under the row's `EntrySymbol` (C-575, the Back's N1). Rejected: a `bool Tests` capability flag (the first commit's; a
     `Supports*`-shaped gate). `WriteExternals` reads the runtime's declarations from `Runtime` (its test variant adds calls only).
   - **`bcmp` (Reading 9):** the unit's probe found none: a Linux module whose string comparisons run in a loop (a == b over two
     runtime strings), and a second whose 16-field struct comparison chain runs in a loop, emitted by Tatara at O2 and inspected,
@@ -34719,3 +35008,27 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     - `_load_config_used` in `RuntimeReferences` (`Inspect` would allow it unjudged);
     - a `Format` test in the step;
     - the root on every row (a false error on linux-x64).
+
+- **T-M51 The table's host and the artifact target selected once** (Tatara, 2026-11-25; PLAN G1416, G1417, Q-793, D-1296; Major; design
+  Revision 2.5.x §3.12; implementation review C-575 (the Back ACCEPT; the Middle REVISE on B1, fixed by commit 3); T's rulings 85, 97,
+  104, 106-112).
+  - **The host from the table:** `TargetProfile.ExecutionHost` (the host whose processes run a row's executables, spelled as
+    `HostName` spells one: Windows `"windows x64"`, Linux null until B8, O1), `TargetProfile.HostName` (this process's `"<os> <arch>"`,
+    read once) and `TargetProfile.Host` (the one row whose `ExecutionHost` is `HostName`, or null). The column is `ExecutionHost`, not
+    `Host` (C# CS0102: the static `Host`; ruling 109). The second host rule (`WorkspaceCheck.HostTarget`) is gone.
+  - **The artifact target, published once (C-575 N1, ruling 112):** `Project.ArtifactTarget(out NoArtifactTarget reason)`: the row of
+    the one selected target, or none with why (`Selection`, `Several`, `NoRow`; a nested internal enum). Readers, each with its own
+    text: the gate (several: `ProjectPreparationFailed_Kd` "Artifact production requires one selected target; select one with
+    --Target."; no row: the location-only `Unsupported_Kd` at the project, D3), `Project.Build` (before the output's paths: no lock and
+    no record without one), `Solution.PrepareRun` (several: the command input error, ruling 85 (2)), `PrepareTests` (several: "Select
+    --Target when a test project has more than one configured target."; no row: `Unsupported_Kd`, brief site 8) and
+    `NativeToolchain.RunProject` (the row its build used, on any host; none: no build).
+  - **The host rule of run and test (D2):** `Project.RunsOnHost`, before any build, generation or record write: the selected targets
+    are `TargetProfile.Host`'s, else the location-only `Unsupported_Kd` at the project (ruling 97 Q3 (a)). `run` calls it from
+    `PrepareRun` (with or without `--no-build`); `test` after `--list` returns, before the run directory. Test preparation keeps only
+    the table rule, so every Test-mode check reads the same unit on every host. JobProcess keeps the launch's own Win32 precondition
+    (D5).
+  - **Rejected:** the host rule in test preparation, which every Test-mode check shares (D2); a Linux `ExecutionHost` before B8 (O1);
+    the design's text as a `ProjectPreparationFailed_Kd` note for a target without a row (D3); `RunProject` reading the host's row with
+    a broken-contract throw off a host with one (commit 2; C-575 B1: the public `Project.Run` became host-dependent); three counts of
+    "one selected target" (C-575 N1); a new not-started reason for the host refusal (vocabulary; PLAN G1416).

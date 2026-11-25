@@ -37,10 +37,11 @@ public sealed partial class Binding
         var subject = this.Substitute(constraint.Subject, substitution);
         var required = constraint.RequiredType is null ? null : this.Substitute(constraint.RequiredType, substitution);
         var contract = constraint.Contract;
-        if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract))
+        if (contract?.Type is not null)
         {
-            // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own.
-            var substituted = this.Substitute(reference, substitution);
+            // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own. The
+            // declaration's own reference (`R<A>` written in R) is substituted as any reference is (ContractReferenceType, SPEC 8.4.1).
+            var substituted = this.Substitute(this.ContractReferenceType(contract), substitution);
             subject = substituted is null && incomplete ? null : subject;
             contract = substituted is null ? contract : this.BoundContractReference(substituted);
         }
@@ -69,9 +70,11 @@ public sealed partial class Binding
         for (var i = 0; i < clauses.Count; i++)
         {
             var constraint = (IsKoto)clauses[i];
-            // A bound Contract reference supplies its parameters; its associated requirements
-            // are obligations of a conforming Self, not of forming the reference (SPEC 8.4.3).
-            if (binder is ContractKoto && constraint.IsAssociatedConstraint)
+            var bound = constraint.BoundConstraint;
+            // A bound Contract reference supplies its parameters; forming it judges only a clause's reference input condition, never its
+            // implementation requirements, obligations of a conforming Self (SPEC 6.1.4, 8.4.3): an associated requirement whole, its
+            // failed or unbound clause included, any other clause by its conditions (ReferenceInputCondition).
+            if (binder is ContractKoto && (constraint.IsAssociatedConstraint || (bound is { } stated && (bound = this.ReferenceInputCondition(stated)) is null)))
             {
                 continue;
             }
@@ -82,7 +85,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (constraint.BoundConstraint is not { } bound)
+            if (bound is null)
             {
                 result = ConstraintProof.Error;
                 best = FirstAtVerdict(best, new(constraint, null, ConstraintProof.Error, Limit: false));

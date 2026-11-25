@@ -132,7 +132,7 @@ internal sealed partial class ModuleCodegen
         }
         else if (this.IsTestBuild)
         {
-            Testing.TestRuntime.WriteEntry(output, this.Tests, this.caseCall);
+            Testing.TestRuntime.WriteEntry(output, this.Tests, this.row.EntrySymbol, this.caseCall);
             this.Entry = this.row.EntrySymbol;
         }
 

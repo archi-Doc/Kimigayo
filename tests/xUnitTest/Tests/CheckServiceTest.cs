@@ -217,7 +217,8 @@ public sealed partial class CheckServiceTest : IDisposable
     }
 
     // SPEC 23.1.2: artifact production's target restriction reads the configured targets, the graph's resolution and the root's target
-    // read their own inputs, so a build reports all three (row P2 of a build); no phase runs (SPEC 23.2.2).
+    // read their own inputs, so a build reports all three (row P2 of a build; the restriction a target without a row, the location-only
+    // Unsupported_Kd, the Tatara plan's B7b8); no phase runs (SPEC 23.2.2).
     [Fact]
     public async Task ArtifactProductionReportsTheTargetsOwnRecords()
     {
@@ -225,10 +226,49 @@ public sealed partial class CheckServiceTest : IDisposable
         var console = new CapturingConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, path, out var project));
         Assert.False(await project.Generate(TestContext.Current.CancellationToken));
-        Assert.Contains("Artifact production currently requires", console.Output, StringComparison.Ordinal);
+        Assert.Contains(nameof(DiagnosticCode.Unsupported_Kd), console.Output, StringComparison.Ordinal);
         Assert.Contains(nameof(DiagnosticCode.UnsupportedTarget_Kd), console.Output, StringComparison.Ordinal);
         Assert.Contains("Leaf.kimiproj", console.Output, StringComparison.Ordinal);
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
+    }
+
+    // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1; design rows 1 and 3): artifact production takes the one selected target with a row.
+    // linux-x64's pair is published under bin\x86_64-unknown-linux-musl\ (row 1's emit half); a target without a row is the location-only
+    // Unsupported_Kd at the project (row 3, D-1167 N6); several selected targets are their selection record; the check accepts each
+    // target. Fail-before: each is the gate's "Artifact production currently requires exactly one configured Windows x64 target.".
+    [Theory]
+    [InlineData("\"x86_64-unknown-linux-musl\"", "", null)]
+    [InlineData("\"x86_64-unknown-linux-gnu\"", nameof(DiagnosticCode.Unsupported_Kd), null)]
+    [InlineData("\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-musl\"", nameof(DiagnosticCode.ProjectPreparationFailed_Kd), "Artifact production requires one selected target; select one with --Target.")]
+    public async Task ArtifactProductionTakesOneSelectedTargetWithARow(string targets, string code, string? note)
+    {
+        var folder = this.PathOf("Hello");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "Hello.kimiproj");
+        File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{{targets}}}");
+        File.WriteAllText(Path.Combine(folder, "Hello.kimi"), "::Kimi.Console.writeLine(\"Hello, world!\")\n");
+        foreach (var target in targets.Split(", ").Select(static x => x.Trim('"')))
+        {
+            Assert.True(this.Run(path, CheckMode.Product, target).Accepted, target);
+        }
+
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, path, out var project));
+        Assert.Equal(code.Length == 0, await project.Generate(TestContext.Current.CancellationToken));
+        var bin = Path.Combine(folder, "bin");
+        if (code.Length == 0)
+        {
+            Assert.Equal("x86_64-unknown-linux-musl", Path.GetFileName(Assert.Single(Directory.GetDirectories(bin))));
+            Assert.True(File.Exists(Path.Combine(bin, "x86_64-unknown-linux-musl", "Hello.ll")));
+            Assert.True(File.Exists(Path.Combine(bin, "x86_64-unknown-linux-musl", "Hello.link.json")));
+            return;
+        }
+
+        // The record at the project file, with its note or with none (the location-only form; C-575 N6).
+        Assert.Contains($" : {code}\n --> Hello.kimiproj\n\n" + (note is null ? string.Empty : $"Note: {note}\n\n"), console.Output, StringComparison.Ordinal);
+        Assert.Equal(note is not null, console.Output.Contains("Note: ", StringComparison.Ordinal));
+        Assert.DoesNotContain("Artifact production currently requires", console.Output, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(bin));
     }
 
     // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
@@ -551,24 +591,29 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.True(output.Accepted, string.Join("; ", output.Diagnostics.Select(x => $"{x.Source}{x.Span}: {x.Message}")));
     }
 
-    [Fact]
-    public void TestModeRejectsAnUntestableTarget()
+    // IMPL 20.6.1, SPEC 22 ¶1 (the Tatara plan's B7b8): the test target is one with a row in the target table; one without is the
+    // location-only Unsupported_Kd at the project (no note), and a linux-x64 test unit is checked (front end only; whether this host runs it
+    // is the runner's rule). Fail-before: each is "Testing requires a configured Windows x64 target.".
+    [Theory]
+    [InlineData("x86_64-unknown-linux-gnu", false)]
+    [InlineData("x86_64-unknown-linux-musl", true)]
+    public void TestModeRejectsAnUntestableTarget(string target, bool checkedUnit)
     {
-        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "Targets={\"x86_64-unknown-linux-gnu\"}");
-        var output = this.Run(project, CheckMode.Test, "x86_64-unknown-linux-gnu");
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: $"Targets={{\"{target}\"}}");
+        var output = this.Run(project, CheckMode.Test, target);
 
-        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
-        Assert.Contains(output.Diagnostics, static x => x.Note?.Contains("Windows x64", StringComparison.Ordinal) == true);
+        (string Code, string? Note)[] records = checkedUnit ? [] : [(nameof(DiagnosticCode.Unsupported_Kd), null)];
+        Assert.Equal(checkedUnit ? CheckOutcome.Completed : CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(records, output.Diagnostics.Select(static x => (x.Code, x.Note)));
     }
 
     // IMPL 20.2, 20.3 and 20.6.1, DIAGNOSTICS §6 (PLAN G1011): the test target is the project's own selection (no target, a --Target the
-    // project does not configure) and then one Windows x64 target; each failure is one ProjectPreparationFailed_Kd record through the
-    // preparation's owner and leaves no target to prepare: Blocked in the check entry, and rendered by a command, whose preparation fails
-    // without an exception.
+    // project does not configure) and then one target; each failure is one ProjectPreparationFailed_Kd record through the preparation's
+    // owner and leaves no target to prepare: Blocked in the check entry, and rendered by a command, whose preparation fails without an
+    // exception.
     [Theory]
     [InlineData("Targets={}", "", "At least one compilation target must be configured.")]
     [InlineData("Targets={\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-gnu\"}", "", "Select --Target when a test project has more than one configured target.")]
-    [InlineData("Targets={\"x86_64-unknown-linux-gnu\"}", "", "Testing requires a configured Windows x64 target.")]
     [InlineData("", "x86_64-unknown-linux-gnu", "The selected target is not configured in this project.")]
     public void EachTestTargetFailureIsAPreparationRecord(string settings, string target, string note)
     {

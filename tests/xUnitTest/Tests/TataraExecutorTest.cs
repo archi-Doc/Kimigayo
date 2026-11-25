@@ -302,9 +302,12 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
-    // Two emits and links of the probe in two folders give equal objects and executables (§6.1).
-    [Fact]
-    public void ElfBuildsInTwoFoldersAreEqual()
+    // Two emits and links of the probe in two folders give equal objects and executables (§6.1), at O0 and O2 (the Tatara plan's B7b8,
+    // C-560 N8).
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void ElfBuildsInTwoFoldersAreEqual(int level)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var probe = this.LinuxProbe("probe", string.Empty);
@@ -313,7 +316,7 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var folder = Directory.CreateDirectory(Path.Combine(this.directory, "elf" + i)).FullName;
             var (obj, exe) = (Path.Combine(folder, "probe.o"), Path.Combine(folder, "probe"));
-            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, probe, obj, 2));
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, probe, obj, level));
             Tatara.Instance.Link(LinuxContext, ["ld.lld", .. ElfLinkArguments(obj, exe, [])]);
             products[i] = Hash(obj) + Hash(exe);
         }
@@ -344,7 +347,7 @@ public sealed class TataraExecutorTest : IDisposable
             var manifest = Manifest(rows[i % 2]);
             await NativeToolchain.BuildManifest(manifest, (_, _) => { }, TestContext.Current.CancellationToken);
             var built = ArtifactPaths.Create(ArtifactPaths.IrOf(manifest), Level(manifest), TargetProfile.Windows);
-            var products = ArtifactFiles.Hash(built.Stem + ".obj") + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
+            var products = ArtifactFiles.Hash(built.Object) + ArtifactFiles.Hash(built.Executable); // Both exist: a missing one throws.
             first[i % 2] ??= products;
             Assert.Equal(first[i % 2], products);
         }

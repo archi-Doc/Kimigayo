@@ -73,6 +73,43 @@ public sealed partial class MirBuildTest
         }
     }
 
+    // The Middle's C-563 (SPEC 11.3, 11.3.1, 23.1.2; DECISIONS R4-M149): the method-receiver form AnOpaqueTempLendsNothing's `Missing` key
+    // cannot reach (`w.inner.mutate()` rests whole). A setter whose written receiver fails (`uniq/Missing`, its one record; SPEC 11.3.1
+    // fixes it as `uniq/Self`) executes over the failed self slot (PLAN G1073), and its `storage` keeps the Property's Type `In` (SPEC
+    // 11.3), so the method is selected and bound: `storage` is the slot's derived value in an Opaque temp, and the receiver's borrow of
+    // that temp is the call's derived value. The valid twin borrows `self`. This key observes existing behavior; no fail-before was run.
+    [Theory]
+    [InlineData("storage.mutate()", "TwoPhaseUniq self")]
+    [InlineData("storage.look()", "Shared self")]
+    public void AStorageReceiverOverAFailedSelfLendsNothing(string statement, string valid)
+    {
+        foreach (var (key, expected) in new[] { ("Missing", "derived | derived"), ("Self", valid) })
+        {
+            var c = Compile($"""
+                struct In
+                    public var n: i32 = 0
+                    public init() => ()
+                    public func mutate(self: uniq/Self) => ()
+                    public func look(self: ref/Self) => ()
+                struct HW
+                    public var x: In = In.init()
+                        set(self: uniq/{key}, value: In) -> ()
+                            {statement}
+                    public init() => ()
+                public func main() => ()
+
+                """);
+            string[] records = key == "Missing" ? ["UnresolvedBinding_Kd Missing"] : [];
+            Assert.Equal(records, c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            Assert.Empty(program.Records(MirRecordClass.Construction));
+            var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "x.Set");
+            Assert.Equal(expected.Split(" | "), Lending(c, body, 0));
+            Assert.Equal(key == "Missing", body.HasOpaque);
+        }
+    }
+
     // A function `f<s/T>(value: s/T)` whose locals `w` (a struct), `h` (a Dictionary) and `b` (a struct of a pair-typed item) take a key
     // Type: `Missing`, which names nothing, so that each local's written Type is unresolved and each use of it rests (a local of no Type,
     // MirLocal's own Opaque source; PLAN G1278: a written Type with a failed clause is judged only where it is written, so its locals'
