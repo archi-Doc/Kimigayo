@@ -421,7 +421,7 @@ public class ArchitectureRulesTest
         "Binding.TypeArities.cs:AddTypeCandidates=1 declared",
         "Binding.TypeHeight.cs:Mark=1 key",
         "Binding.TypeOrigins.cs:OriginFormationSite=2 record",
-        "Binding.TypeRelations.Origins.cs:CommonOriginType=2 sufficient",
+        "Binding.TypeRelations.Origins.cs:PlaceCommonType=1 sufficient",
         "Binding.TypeRelations.Walk.cs:Discharged=1 formed",
         "Binding.TypeRelations.Walk.cs:FunctionFits=1 formed",
         "Binding.TypeRelations.Walk.cs:Names=1 unchanged",

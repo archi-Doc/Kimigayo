@@ -34,15 +34,17 @@ public sealed partial class Binding
                 continue;
             }
 
+            // SPEC 4.3.1 Places (PLAN G1379): each part fitted its place's Type above; the literal's Type takes the parts' common Type, whose
+            // failure is the part's record.
             if (!ReferenceEquals(actualKey, BoundType.Never))
             {
-                key = key is null ? actualKey : this.CommonOriginType(key, actualKey, literal, out _);
+                key = key is null ? actualKey : this.PlaceCommonType(key, actualKey, literal, out var failure) ?? this.FailMismatch(entry.Key, entry.Key, actualKey, key, failure);
                 complete &= key is not null;
             }
 
             if (!ReferenceEquals(actualValue, BoundType.Never))
             {
-                value = value is null ? actualValue : this.CommonOriginType(value, actualValue, literal, out _);
+                value = value is null ? actualValue : this.PlaceCommonType(value, actualValue, literal, out var failure) ?? this.FailMismatch(entry.Value, entry.Value, actualValue, value, failure);
                 complete &= value is not null;
             }
         }

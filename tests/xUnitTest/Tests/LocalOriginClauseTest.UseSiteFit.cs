@@ -164,7 +164,7 @@ public partial class LocalOriginClauseTest
         // orientations (x4, x5; 8.1.2, 10.7), the same forms with a later sibling (y4, y6o), and a Type mismatch after a failed Function
         // part (w2).
         // invalid: `a == b` is not proven, and the declared element Type needs `b outlives q` (as e3p).
-        { "x1", Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/(ref/i32 during a) during p>) -> i32\n    origin q outlives p\n    let r: [_ of R<uniq/(ref/i32 during b) during q>] = [r0@move]\n    return 0\n", "UnprovenOriginRelation_Kd@7:20 requires b outlives q, which is not proven|UnprovenOriginRelation_Kd@7:57 requires a == b, which is not proven" },
+        { "x1", Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/(ref/i32 during a) during p>) -> i32\n    origin q outlives p\n    let r: [_ of R<uniq/(ref/i32 during b) during q>] = [r0@move]\n    return 0\n", "UnprovenOriginRelation_Kd@7:20 requires b outlives q, which is not proven|UnprovenOriginRelation_Kd@7:58 requires a == b, which is not proven" },
         // invalid: the Function Types do not relate both ways: the argument's input `s/T` is per call, the declared one at `b`.
         { "x4", Reader + "func f<s/T>(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((s/T) -> i32) during p>) -> i32\n    s is ref or uniq\n    origin q outlives p\n    origin b outlives q\n    let r: R<uniq/((s/T during b) -> i32) during q> = r0@move\n    return 0\n", "UnprovenOriginContract_Kd@9:55 the 1st parameter requires b == the omitted Origin of s/T, which is not proven" },
         // invalid: x4 mirrored under `s is owner or ref` (the argument's input at `a`), with the declared Type's record for the omitted

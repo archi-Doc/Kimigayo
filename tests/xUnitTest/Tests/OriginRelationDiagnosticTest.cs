@@ -36,6 +36,25 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Holder2 = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
 
+    // PLAN G1379's signatures: distinct inner Origins under one outer (S_pq), equal inner ones (S_pp), both distinct (S_ps); a Type
+    // argument at a Function input only, so contravariant (SPEC 15.3.5).
+    private const string G1379Pq = "func f(a: uniq/(ref/i32 during p) during r, b: uniq/(ref/i32 during q) during r) -> i32\n";
+
+    private const string G1379Pp = "func f(a: uniq/(ref/i32 during p) during r, b: uniq/(ref/i32 during p) during s) -> i32\n";
+
+    private const string G1379Ps = "func f(a: uniq/(ref/i32 during p) during r, b: uniq/(ref/i32 during q) during s) -> i32\n";
+
+    private const string G1379Sink = "struct Sink<T>\n    let f: (T) -> i32\n\n";
+
+    // An element `v` that fits `ref/i32 during r` only if q outlives r, which nothing proves; and an argument position of an array literal
+    // nested in an array literal.
+    private const string G1379Weak = "func k(q: ref/i32, r: ref/i32, v: ref/i32 during q)";
+
+    // An invariant element position at a call's parameter (the enclosing function's Origin p), and a nested literal at a call's parameter.
+    private const string G1379InvInner = "    func inner(x: Array<uniq/(ref/i32 during p) during p>) -> i32 => 0\n";
+
+    private const string G1379NestedInner = "    func inner(p: Array<Array<Option<ref/(ref/i32 during q) during r>>>, x: ref/i32 during q) -> ref/i32 during r => x\n";
+
     private const string Discarding = Holder2 + "func f(h: uniq/(Holder2 during a) during s, c: bool) -> ()\n";
 
     private const string Box = "struct Box<T>\n    public var item: T\n";
@@ -230,6 +249,64 @@ public partial class OriginRelationDiagnosticTest
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal(records, string.Join(" | ", errors.Select(x => $"{Text(source, x.Span)}: {(x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? x.Label : x.Code)}")));
     }
+
+    // SPEC 4.3.1 Places, 14.9.2 step 2, 10.8, 15.3.6 (PLAN G1379): a place's common Type meets its parts' Origins at a covariant and at an
+    // invariant position, and each part's fit to it forms its rows: a bound a part's fit gives is no proven equality, so an invariant
+    // variable takes the meet and each part's bound fails on its own, one record per part (g1, g2, g10-g13u; dev: InternalInvariant_Kd,
+    // g11 a dependent PrerequisiteUnavailable_Kd beside its two). A stated Origin of the expected element Type stays fixed (B's ruling 1):
+    // g5's one record is b's, as its assignment twin g5t's. Valid twins: equal inner Origins (g3, g3u), a covariant inner `ref` (g4), a
+    // premise (g7) or a cycle (k1, k1u; dev: InternalInvariant_Kd) proving `p == q`, and equal Types (c1s, p1s); the cycle at a join is
+    // PLAN G394's (its root IsSubtype reads no premise). A contravariant position whose Origins differ (c1, c1c, and the valid c1v) is the
+    // located Unsupported_Kd, its candidate (a lower bound proven to outlive the others) not formed; SPEC gives c1 and c1c Origin records.
+    // An unformed pair layer (p1) is its formation record alone, as the fit's FitOuterOrigins decides (dev: InternalInvariant_Kd beside).
+    // Each element's adapted Type (a value read, an erasure, a completed Case) fits the place once, after the whole meet, at every site,
+    // its record at the element: at a return (a2r) and an assignment (a2a) as at a declaration, in either source order (g1r, g13r), with
+    // function items and closures fitting `(i64) -> i64` (g050d, valid, g050's declaration twin). At a call's argument (SPEC 10.5.1) the
+    // call judges the instantiated parameter's well-formedness at the argument (R4-M164 U2 S1 as amended by PLAN G1379): an element
+    // Origin nothing proves is the element's record (a2k; invariant: a2u, its join form a2uj; a2u_ok valid), and a nested literal (a2n)
+    // gets both independent records (23.1.2). cv3_d's two are the annotation's well-formedness (15.6.1) and the Case argument's payload
+    // fit (10.2), none at the element. A literal argument of a construction (a2c), a Case (a2e) and a method call (a2m) nested in an
+    // argument is recorded at the outer argument, as their nested-call rows are.
+    [Theory]
+    [InlineData("g1", G1379Pq + "    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("g2", G1379Pq + "    let arr = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:16 UnprovenOriginRelation@2:24")]
+    [InlineData("g3", G1379Pp + "    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g3u", G1379Pp + "    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g4", "func f(a: ref/(ref/i32 during p) during r, b: ref/(ref/i32 during q) during r) -> i32\n    let arr: Array<ref/ref/i32> = [a, b]\n    return 0\n", "")]
+    [InlineData("g5", G1379Pq + "    let arr: Array<uniq/(ref/i32 during p) during r> = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:65")]
+    [InlineData("g5t", G1379Pq + "    var w: uniq/(ref/i32 during p) during r = a@move\n    w = b@move\n    return 0\n", "UnprovenOriginRelation@3:9")]
+    [InlineData("g7", G1379Pq + "    origin p == q\n    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g10", G1379Pq + "    let arr: [_ of _] = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:26 UnprovenOriginRelation@2:34")]
+    [InlineData("g11", G1379Pq + "    let d: Dictionary<i32, uniq/ref/i32> = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:48 UnprovenOriginRelation@2:59")]
+    [InlineData("g12", G1379Pq + "    let d = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:17 UnprovenOriginRelation@2:28")]
+    [InlineData("g13", G1379Ps + "    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("g13u", G1379Ps + "    let arr = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:16 UnprovenOriginRelation@2:24")]
+    [InlineData("k1", G1379Pq + "    origin p outlives q\n    origin q outlives p\n    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("k1u", G1379Pq + "    origin p outlives q\n    origin q outlives p\n    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("c1", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during q>) -> i32\n    let arr = [a@move, b@move]\n    return 0\n", "Unsupported@5:24")]
+    [InlineData("c1c", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during q>) -> i32\n    let arr: Array<Sink<ref/i32>> = [a@move, b@move]\n    return 0\n", "Unsupported@5:46")]
+    [InlineData("c1v", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during q>) -> i32\n    origin q outlives p\n    let arr = [a@move, b@move]\n    return 0\n", "Unsupported@6:24")]
+    [InlineData("c1s", G1379Sink + "func g(a: Sink<ref/i32 during p>, b: Sink<ref/i32 during p>) -> i32\n    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("p1", "func g<s/T>(w: s/T, a: Option<s/i32>, b: Option<s/i32 during r>) -> i32\n    s is ref or uniq\n    let arr = [a@move, b@move]\n    return 0\n", "MissingOriginBinding@1:31")]
+    [InlineData("p1s", "func g<s/T>(w: s/T, a: Option<s/i32 during r>, b: Option<s/i32 during r>) -> i32\n    s is ref or uniq\n    let arr = [a@move, b@move]\n    return 0\n", "")]
+    [InlineData("g050d", Twice + Idg + "func k(gv1: (i64) -> i64) -> i32\n    let fs: Array<(i64) -> i64> = [idg, func [] (v) => v, gv1@move, twice]\n    return 0\n", "")]
+    [InlineData("cv3_d", WeakPayloadHead + "    let a: Array<Option<ref/(ref/i32 during q) during r>> = [Option.Some(v), Option.None]\n    return r\n", "UnprovenOriginRelation@2:25 UnprovenOriginRelation@2:74")]
+    [InlineData("a2r", G1379Weak + " -> Array<ref/i32 during r>\n    return [r, v]\n", "UnprovenOriginRelation@2:16")]
+    [InlineData("a2r_ok", G1379Weak + " -> Array<ref/i32 during r>\n" + WithPremise + "    return [r, v]\n", "")]
+    [InlineData("a2a", G1379Weak + " -> i32\n    var a: Array<ref/i32 during r> = [r]\n    a = [r, v]\n    return 0\n", "UnprovenOriginRelation@3:13")]
+    [InlineData("a2n", WeakPayloadHead + G1379NestedInner + "    return inner([[Option.Some(v)], [Option.None]], q)\n", "UnprovenOriginRelation@3:18 UnprovenOriginRelation@3:20")]
+    [InlineData("a2n_ok", WeakPayloadHead + WithPremise + G1379NestedInner + "    return inner([[Option.Some(v)], [Option.None]], q)\n", "")]
+    [InlineData("a2c", LayerBox + WeakPayloadHead + "    func inner(p: Box<Array<Option<ref/(ref/i32 during q) during r>>>, x: ref/i32 during q) -> ref/i32 during r => x\n    return inner(Box.init(item: [Option.Some(v), Option.None]), q)\n", "UnprovenOriginRelation@6:18")]
+    [InlineData("a2e", WeakPayloadHead + "    func inner(p: Option<Array<Option<ref/(ref/i32 during q) during r>>>, x: ref/i32 during q) -> ref/i32 during r => x\n    return inner(Option.Some([Option.Some(v), Option.None]), q)\n", "UnprovenOriginRelation@3:18")]
+    [InlineData("a2m", PassStruct + WeakPayloadHead + InnerArray + "    let s = S.init()\n    return inner(s.pass([Option.Some(v), Option.None]), q)\n", "UnprovenOriginRelation@7:18")]
+    [InlineData("g1r", G1379Pq + "    let arr: Array<uniq/ref/i32> = [b@move, a@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("g13r", G1379Ps + "    let arr: Array<uniq/ref/i32> = [b@move, a@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
+    [InlineData("a2u", "func k(p: ref/i32, q: ref/i32, a: uniq/(ref/i32 during p) during p, b: uniq/(ref/i32 during q) during p) -> i32\n" + G1379InvInner + "    return inner([a@move, b@move])\n", "UnprovenOriginRelation@3:27")]
+    [InlineData("a2u_ok", "func k(p: ref/i32, q: ref/i32, a: uniq/(ref/i32 during p) during p, b: uniq/(ref/i32 during p) during p) -> i32\n" + G1379InvInner + "    return inner([a@move, b@move])\n", "")]
+    [InlineData("a2uj", "func k(c: bool, p: ref/i32, q: ref/i32, a: uniq/(ref/i32 during p) during p, b: uniq/(ref/i32 during q) during p) -> i32\n" + G1379InvInner + "    return inner(if c => [a@move, b@move] else => [a@move])\n", "UnprovenOriginRelation@3:35")]
+    [InlineData("a2k", G1379Weak + " -> i32\n    func inner(p: Array<ref/i32 during r>) -> i32 => 0\n    return inner([r, v])\n", "UnprovenOriginRelation@3:22")]
+    public void APlacesCommonTypeMeetsItsPartsOrigins(string form, string body, string records)
+        => AssertPositions(form, body, records);
 
     // SPEC 15.6.1: a relation that a premise proves is no failure.
     [Theory]
