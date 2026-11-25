@@ -10,91 +10,11 @@ namespace XunitTest;
 /// after release, a region change, large runs, the alignment of every result, and the failures of the platform layer's pages.</summary>
 public class HeapRuntimeTest
 {
-    // The allocator program of design §5 row 14 (BlocksOfEveryClassAreAlignedAndReused, below), which the Linux module rows emit
-    // and link too (TataraExecutorTest).
-    internal const string AllocatorProgram = Helpers + """
-        var block: isize = 32
-        while block <= 262144
-            let small = block / 2 - 15
-            let large = block - 16
-            let a = Raw.allocate<u8>(small)
-            let b = Raw.allocate<u8>(large)
-            require aligned(a) and aligned(b) and a != b else => $abort("class")
-            fill(a, small, 1)
-            fill(b, large, 2)
-            require holds(a, small, 1) and holds(b, large, 2) else => $abort("bytes")
-            unsafe
-                Raw.release(a)
-                Raw.release(b)
-            let c = Raw.allocate<u8>(large)
-            let d = Raw.allocate<u8>(small)
-            require c == b and d == a else => $abort("reuse")
-            unsafe
-                Raw.release(c)
-                Raw.release(d)
-            let above = Raw.allocate<u8>(large + 1)
-            let below = Raw.allocate<u8>(small - 1)
-            require aligned(above) and above != c and above != d and (block == 32 or (below != c and below != d)) else => $abort("boundary")
-            fill(above, large + 1, 3)
-            require holds(above, large + 1, 3) else => $abort("boundary bytes")
-            unsafe
-                Raw.release(above)
-                Raw.release(below)
-            block *= 2
-        let r1 = Raw.allocate<u8>(262128)
-        let r2 = Raw.allocate<u8>(262128)
-        let r3 = Raw.allocate<u8>(262128)
-        let r4 = Raw.allocate<u8>(262128)
-        let r5 = Raw.allocate<u8>(262128)
-        require aligned(r1) and aligned(r2) and aligned(r3) and aligned(r4) and aligned(r5) else => $abort("region aligned")
-        fill(r1, 262128, 11)
-        fill(r2, 262128, 12)
-        fill(r3, 262128, 13)
-        fill(r4, 262128, 14)
-        fill(r5, 262128, 15)
-        require holds(r1, 262128, 11) and holds(r2, 262128, 12) and holds(r3, 262128, 13) and holds(r4, 262128, 14) and holds(r5, 262128, 15) else => $abort("region bytes")
-        unsafe
-            Raw.release(r1)
-            Raw.release(r2)
-            Raw.release(r3)
-            Raw.release(r4)
-            Raw.release(r5)
-        let big = Raw.allocate<u8>(307200)
-        let huge = Raw.allocate<u8>(1048576)
-        require aligned(big) and aligned(huge) and big != huge else => $abort("large")
-        fill(big, 307200, 21)
-        fill(huge, 1048576, 22)
-        require holds(big, 307200, 21) and holds(huge, 1048576, 22) else => $abort("large bytes")
-        unsafe
-            Raw.release(big)
-            Raw.release(huge)
-        var n: isize = 0
-        while n <= 40
-            let words = Raw.allocate<u64>(n)
-            require words != null and aligned(words) else => $abort("words")
-            unsafe => Raw.release(words)
-            n += 1
-        var i: isize = 0
-        var total: isize = 0
-        while i < 100000
-            let values = Array<u8>.init(repeating: 1, count: i % 300 + 1)
-            total += values.length
-            i += 1
-        require total == 15040000 else => $abort("arrays")
-        Console.writeLine("heap ok")
-        """;
-
-    // Whether an address is 16-aligned, and a block's first and last bytes written and read back, so overlapping blocks would fail.
-    private const string Helpers = """
-        func aligned<T>(p: raw/T) -> bool => p@usize % 16 == 0
-        func fill(p: raw/u8, length: isize, value: u8)
-            unsafe
-                Raw.initialize(p, value)
-                if length > 1 => Raw.initialize(p + (length - 1), value)
-        func holds(p: raw/u8, length: isize, value: u8) -> bool
-            unsafe => return *p == value and p[length - 1] == value
-
-        """;
+    // The allocator program of design §5 row 14 (BlocksOfEveryClassAreAlignedAndReused, below), committed once as
+    // tests/linux-elf/Heap/Heap.kimi (Tatara B7b9; CI's linux-elf job builds it), which the Linux module rows emit and link too
+    // (TataraExecutorTest). Its helpers: whether an address is 16-aligned, and a block's first and last bytes written and read
+    // back, so overlapping blocks would fail.
+    internal static readonly string AllocatorProgram = LinuxPair.Program("Heap", "Heap.kimi");
 
     // Every class (2^k bytes with the 16-byte header, k = 5 to 18) by its smallest and largest payload, aligned and apart; their release
     // and the class's LIFO reuse (the last released block first); each boundary pinned by the payloads one byte past it, which take another

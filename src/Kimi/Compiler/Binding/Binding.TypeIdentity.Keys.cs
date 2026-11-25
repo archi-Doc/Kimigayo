@@ -123,8 +123,8 @@ public sealed partial class Binding
     //   identity premise in the view, else the table's (W7); a re-entered build (no table) answers the Type itself, Provisional, and
     //   keeps nothing.
     // - Readers (closed; ArchitectureRulesTest "Readers of a class's form"): the one intake of each judgment SPEC states over identical
-    //   Types. J1, a proposition's identity (8.3.1): NormalizeProofConstraint (subject, required Type, Contract reference) and the
-    //   Contract judge's entry ProveConformance (subject after MemberOf, Contract reference). J3, the Type relation at a use: the relation
+    //   Types. J1, a proposition's identity (8.3.1): NormalizedForm (NormalizeProofConstraint's subject, required Type, Contract
+    //   reference) and the Contract judge's entry ProveConformance (subject after MemberOf, Contract reference). J3, the Type relation at a use: the relation
     //   walk's root with a use (RelationWalk.Fits), CallableContractType, and a failed fit's record (RecordMismatch: its structure
     //   gate and Origin search read the pair the walk compared, F's C2 ruling 307 (2)). J4, a slot's bindings agree (10.8 Solving): Infer's
     //   bound-slot branch, in SlotFrame.View. (ii), a use's binding input: BindAndAdaptNode (the expected and the bound Type, BU-72),
@@ -132,7 +132,10 @@ public sealed partial class Binding
     //   PLAN G1240). The inline walk (VisitInlineProjection, SPEC 6.2) reads a by-value projection's form in the walking node's scope, a
     //   judgment of that scope's storage (F's C2 ruling 304). (iii), a member step's receiver (SPEC 9.6; R7-N1 c-b): QualifierSelection's
     //   receiver Type, in the use's view, and EvaluateProjection's normal form, in the left evaluation's view (its kept layer); each form
-    //   is read by its step alone. J2, the identity proposition, reads the classes (IdentityProven, among
+    //   is read by its step alone. (iv), SPEC 8.3.3's expanding recursion (Binding.Contracts.Expansion; F's G563C-1 Q1 (a)): a
+    //   Contract's parameters and each reference its supply makes, in the Contract's view, through J1's NormalizedForm ("normalized
+    //   under K's premises", G563C-3). J2, the
+    //   identity proposition, reads the classes (IdentityProven, among
     //   others ResolveAssociated's candidate agreement), no form. Every comparison of identical Types whose inputs are formed is one of
     //   J1-J4; one input is not formed: an anonymous function's written header Types, which the unifier's decomposition, Infer's
     //   TargetProjection and array-length-hole branches and 10.7's fixed parts compare as written (open issue D-779, PLAN G999:

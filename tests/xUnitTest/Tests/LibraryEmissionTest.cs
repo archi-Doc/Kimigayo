@@ -72,7 +72,7 @@ public class LibraryEmissionTest
         try
         {
             Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-            var paths = ArtifactPaths.Create(c.Project);
+            var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
             using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
             var root = manifest.RootElement;
             Assert.Equal(testBuild ? "Application" : "Library", root.GetProperty("outputKind").GetString());

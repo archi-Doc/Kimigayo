@@ -98,3 +98,62 @@ jobs:
       id: archive
     - name: Publish and check kimi.exe
       run: ./scripts/build-kimi.ps1 -LlvmRoot '${{ steps.archive.outputs.root }}'
+
+  # The Linux ELF evidence (the Tatara plan's B7b9): linux-elf-build builds tests/linux-elf's programs (design §5's Linux rows) at O0
+  # and O2 and every natively verified milestone (one with a test-milestoneN.ps1 harness) at O2 for Linux on Windows, and runs each
+  # such milestone's Windows build for its expectation; linux-elf runs those ELFs on ubuntu-latest's Linux kernel, printing it,
+  # against the expectations. Both run beside the other jobs, so a failure here is reported independently of theirs.
+  linux-elf-build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+    - uses: actions/cache@v4
+      id: llvm
+      with:
+        path: toolchain
+        key: llvm-windows-x64-${{ hashFiles('src/backend/windows-x64/profile.json', 'src/backend/windows-x64/setup.ps1', 'src/backend/windows-x64/build.ps1', 'src/backend/windows-x64/kernel32.ps1', 'src/backend/windows-x64/src/**', 'src/Tatara/**') }}
+    - uses: ./.github/actions/llvm-archive
+      id: archive
+      if: steps.llvm.outputs.cache-hit != 'true'
+    - name: Install pinned LLVM tools
+      if: steps.llvm.outputs.cache-hit != 'true'
+      run: ./src/backend/windows-x64/setup.ps1 -LlvmRoot '${{ steps.archive.outputs.root }}'
+    - run: dotnet restore
+    - run: dotnet build src/Kimi/Kimi.csproj --configuration Release --no-restore
+    - name: Build the Linux programs and milestones
+      run: ./scripts/build-linux-elf.ps1 -Configuration Release
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: linux-elf
+        path: artifacts/linux-elf/**
+        retention-days: 14
+
+  linux-elf:
+    needs: linux-elf-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/download-artifact@v4
+      with:
+        name: linux-elf
+        path: artifacts/linux-elf
+    - name: Run the ELFs on the Linux kernel
+      run: ./scripts/run-linux-elf.ps1 -Directory artifacts/linux-elf -Expectations artifacts/linux-elf/expectations.json
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: linux-elf-results
+        path: artifacts/linux-elf/results.json
+        retention-days: 14

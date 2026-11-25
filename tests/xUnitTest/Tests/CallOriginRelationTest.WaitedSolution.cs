@@ -172,6 +172,9 @@ public partial class CallOriginRelationTest
     [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    var x = p\n    var w = x\n    x = w\n    let h = func [x] () -> ref/i32 during p => x\n    return 0\n")]
     // f4v
     [InlineData("func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    var s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    see(v)\n")]
+    // jc1 (PLAN G1379, B's ruling 10; DECISIONS BU-223 as amended): rc3v's `same3` with the per-call `b` for the written `c` (SPEC
+    // 15.3.4): J2 opens the input as it opens an Origin parameter, so `b` is the meet of `c` and k's `b` (O at `c` before).
+    [InlineData("func h(x: Option<ref/i32 during b>, b: ref/i32) -> i32 => 0\nfunc k(b: ref/i32, c: ref/i32) -> i32\n    return h(.Some(c), b)\n")]
     public void AWaitedVariablesSolutionIsOneValueForEveryReader(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
@@ -332,6 +335,20 @@ public partial class CallOriginRelationTest
     [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    var r = p\n    let g = func [r] () -> i32\n        var b = r\n        let h = func [b] () -> ref/i32 during q => b\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@b")]
     // s3i
     [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    var x = p\n    var w = x\n    x = w\n    let h = func [x] () -> ref/i32 during q => x\n    return 0\n", "UnprovenOriginRelation_Kd@x")]
+    // jc1's invalid twins (PLAN G1379; the Front's C-567 C1): a fixed `static` (jc1s), the input at an invariant position (jc1i), a written
+    // clause on the input that the Case's payload breaks (jc1w, h's `c` the enclosing fixed `c`, SPEC 15.3.4), and an input named only
+    // inside a Function Type, which J2 does not open (jc1f): jc1s and jc1f one record each. jc1i and jc1w each still record SPEC's failure
+    // (the equality; `e outlives c` at the Case); the further records (jc1i: the equality's two halves; jc1w: `e outlives (b and c)` at
+    // the waited element) are J2's record selection, which the written Origin parameter gives on dev too (PLAN G1379, B's ruling 11;
+    // DECISIONS Q13).
+    // jc1s
+    [InlineData("func h(x: Option<ref/i32 during static>, b: ref/i32) -> i32 => 0\nfunc k(b: ref/i32, c: ref/i32) -> i32\n    return h(.Some(c), b)\n", "UnprovenOriginRelation_Kd@c), b)")]
+    // jc1i
+    [InlineData("func h(x: Option<uniq/(ref/i32 during b) during u>, b: ref/i32) -> i32 => 0\nfunc k(b: ref/i32, c: uniq/(ref/i32 during p) during r) -> i32\n    return h(.Some(c@move), b)\n", "UnprovenOriginRelation_Kd@c@move), b)|UnprovenOriginRelation_Kd@c@move), b)|UnprovenOriginRelation_Kd@c@move), b)|UnprovenOriginRelation_Kd@c@move), b)")]
+    // jc1w
+    [InlineData("func k(b: ref/i32, c: ref/i32, e: ref/i32) -> i32\n    origin b outlives c\n    func h(x: Option<ref/i32 during bb>, bb: ref/i32) -> i32\n        origin bb outlives c\n        return 0\n    return h(.Some(e), b)\n", "UnprovenOriginRelation_Kd@.Some(e), b)|UnprovenOriginRelation_Kd@e), b)")]
+    // jc1f
+    [InlineData("func h(x: Option<(ref/i32 during b) -> i32>, b: ref/i32) -> i32 => 0\nfunc k(b: ref/i32, c: ref/i32) -> i32\n    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n    return h(.Some(cl@move), b)\n", "UnprovenOriginContract_Kd@cl@move), b)")]
     public void AWaitedVariablesReadersKeepTheirRecords(string body, string records)
     {
         var source = body + Main;

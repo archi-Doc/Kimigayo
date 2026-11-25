@@ -134,6 +134,18 @@ public sealed class MirInitTest
         Assert.Equal(["MovedPlace_Kd x.name = \"n\" 1", "MovedPlace_Kd x 1"], Problems(written));
     }
 
+    // SPEC 15.1.1 (PLAN G215; DECISIONS R7-M115): a Field initializer's second Move is MovedPlace in its constructor's body and in a
+    // constructorless layer's body alike (m_; accepted before), whose Field without an initializer is not judged unset; one Move is valid.
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("        let u = s@move\n", "", "MovedPlace_Kd s 1")]
+    [InlineData("        let u = s@move\n", "    public init(p: ref/i32 during a) => self.p = p\n", "MovedPlace_Kd s 1")]
+    public void AFieldInitializersMoveIsJudgedInItsBody(string second, string constructor, params string[] expected)
+        => Assert.Equal(
+            expected,
+            Problems("struct Holder {a}\n    public let p: ref/i32 during a\n    public var n: i32 = if true\n        let s: Array<i32> = []\n" +
+                $"        let t = s@move\n{second}        yield 0\n    else => 0\n{constructor}public func main() => ()\n"));
+
     // SPEC 15.1.1: a let binding is initialized once per binding lifetime: a loop body's let starts a lifetime per iteration, one outside
     // the loop does not, and neither a Move nor a destruction resets the first initialization.
     [Fact]

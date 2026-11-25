@@ -38,6 +38,43 @@ public sealed partial class RecursiveContractTest
 
     private const string Marks = "contract Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\n";
 
+    // R7-C2c2 c2-5a (G837, the Middle's C-304 R2, rebuilt from its text): MT's clause names MT's own parameter.
+    private const string MarkArgs = MarkTree + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc needMT<V, W>(v: ref/V)\n    V is MT<W>\n    ()\n";
+
+    private const string MarkTree = "contract Tree\n    associate Child is Tree\ncontract Mark<A>\ncontract MT<A>: Tree, Mark<A>\n    Self.(Tree).Child is MT<A>\n";
+
+    // MT's requirement whose clause names MT's own reference, and a generic struct conforming to MT<i32> that implements it.
+    private const string Put = "    func put<U>(self: ref/Self, u: ref/U) -> i32\n        U is MT<A>\n";
+
+    private const string PutS = "struct S<T>\n    T is MT<i32>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n    public func put<U>(self: ref/Self, u: ref/U) -> i32\n";
+
+    private const string Second = "contract MT2<A, B>: Tree, Mark<B>\n    Self.(Tree).Child is MT2<A, B>\n";
+
+    private const string SelfArg = "contract D<U>\ncontract C<A>\n    A is D<Self>\n";
+
+    private const string Either = "contract E\ncontract D<U>\ncontract C<A>\n    A is E or D<Self>\n";
+
+    private const string Both = "contract E\ncontract D<U>\ncontract C<A>\n    A is E and D<Self>\n";
+
+    // c2-5a's B3 rows: Src.(HasItem).Item is a completed projection identical with i32 (SPEC 8.2.3).
+    private const string SrcItem = "contract HasItem\n    associate Item\nstruct Src\n    Self is HasItem\n    associate HasItem.Item is i32\n    public var tag: i32 = 0\n";
+
+    private const string KArgs = "contract K<A>\n    associate X\n";
+
+    private const string KTwice = "group H\n    public func twice<T>(x: T.(K<i32>).X) -> (T.(K<i32>).X, T.(K<i32>).X)\n";
+
+    // b1-r5's form (SPEC 6.1.1: a Container body does not see document-local functions, so the struct calls a group's function).
+    private const string MarkHolder = "group N\n    public func needMark<V, W>(v: ref/V)\n        V is Mark<W>\n        ()\n" +
+        "struct Holder<T>\n    T is MT<i32>\n    public var tag: i32 = 0\n    public func probe(self: ref/Self, c: ref/T.(Tree).Child)\n";
+
+    private const string Swap = "contract P2<A, B>: Tree, Mark<A>\n    Self.(Tree).Child is P2<B, A>\n";
+
+    private const string Fixed = "contract MF<A>: Tree, Mark<A>\n    Self.(Tree).Child is MF<i32>\n";
+
+    private const string GTwice = "contract GTree<A>\n    associate Child\ngroup H\n    public func twice<T>(x: T.(GTree<i32>).Child) -> (T.(GTree<i32>).Child, T.(GTree<i32>).Child)\n";
+
+    private const string NeedE = "contract E\nfunc needE<V>(v: ref/V)\n    V is E\n    ()\n";
+
     // R7-C2c2 c2-5b2's programs (artifacts/units/r7-c25b2/programs.py's): a recursive Contract whose one clause states V, with V's
     // accessors at depth 1, 2 and 3: a negated user Contract atom (NM), its positive twin (PM), none (NB), `not Copy` (NC), Contract
     // arguments (NA, also with a projection argument K), a negated identity atom (KS) and its positive twin (KP); and the callees.
@@ -80,6 +117,43 @@ public sealed partial class RecursiveContractTest
 
     private const string Runner = "contract Runner\n    func run(self: ref/Self) -> i32\n";
 
+    // PLAN G1407's programs (artifacts/units/g1406/programs.py, with r7-c25b2's helpers): a recursive Contract with `next` whose own
+    // `Self` clause states every link, `not ObjectPayload` (NP) or Copy (CP), Copy as a parent (CPA) or nothing (NB0); V's conjunction
+    // clauses, negated (NA2), positive (PA2) and nested (PA3), a disjunction (NOR2) and a negated conjunction (NNA2); and the callees.
+    private const string NotPayloads = "contract NP\n    associate Next is NP\n    Self is not ObjectPayload\n    func next(self: ref/Self) -> ref/Self.(NP).Next\n";
+
+    private const string SelfCopies = "contract CP\n    associate Next is CP\n    Self is Copy\n    func next(self: ref/Self) -> ref/Self.(CP).Next\n";
+
+    private const string ParentCopies = "contract CPA: Copy\n    associate Next is CPA\n    func next(self: ref/Self) -> ref/Self.(CPA).Next\n";
+
+    private const string BareNexts = "contract NB0\n    associate Next is NB0\n    func next(self: ref/Self) -> ref/Self.(NB0).Next\n";
+
+    private const string NegatedConjuncts = "contract Marker\ncontract Tag\ncontract NA2\n    associate Next is NA2\n    associate V\n    Self.(NA2).V is (not Marker) and (not Tag)\n    func near(self: ref/Self) -> ref/Self.(NA2).V\n    func deep(self: ref/Self) -> ref/Self.(NA2).Next.(NA2).V\n    func deep3(self: ref/Self) -> ref/Self.(NA2).Next.(NA2).Next.(NA2).V\n";
+
+    private const string PositiveConjuncts = "contract Marker\ncontract Tag\ncontract PA2\n    associate Next is PA2\n    associate V\n    Self.(PA2).V is Marker and Tag\n    func near(self: ref/Self) -> ref/Self.(PA2).V\n    func deep(self: ref/Self) -> ref/Self.(PA2).Next.(PA2).V\n    func deep3(self: ref/Self) -> ref/Self.(PA2).Next.(PA2).Next.(PA2).V\n";
+
+    private const string NestedConjuncts = "contract Marker\ncontract Tag\ncontract Other\ncontract PA3\n    associate Next is PA3\n    associate V\n    Self.(PA3).V is Marker and (Tag and Other)\n    func near(self: ref/Self) -> ref/Self.(PA3).V\n    func deep(self: ref/Self) -> ref/Self.(PA3).Next.(PA3).V\n    func deep3(self: ref/Self) -> ref/Self.(PA3).Next.(PA3).Next.(PA3).V\n";
+
+    private const string NegatedDisjuncts = "contract Marker\ncontract Tag\ncontract NOR2\n    associate Next is NOR2\n    associate V\n    Self.(NOR2).V is (not Marker) or (not Tag)\n    func near(self: ref/Self) -> ref/Self.(NOR2).V\n    func deep(self: ref/Self) -> ref/Self.(NOR2).Next.(NOR2).V\n    func deep3(self: ref/Self) -> ref/Self.(NOR2).Next.(NOR2).Next.(NOR2).V\n";
+
+    private const string NegatedConjunction = "contract Marker\ncontract Tag\ncontract NNA2\n    associate Next is NNA2\n    associate V\n    Self.(NNA2).V is not (Marker and Tag)\n    func near(self: ref/Self) -> ref/Self.(NNA2).V\n    func deep(self: ref/Self) -> ref/Self.(NNA2).Next.(NNA2).V\n    func deep3(self: ref/Self) -> ref/Self.(NNA2).Next.(NNA2).Next.(NNA2).V\n";
+
+    // The review's twins (artifacts/units/g1406/review-twins.py, F's G1406-3 C1): an identity clause stating its own link (KI), and an
+    // identity atom inside a conjunction (KC).
+    private const string LinkIdentities = "contract Marker\ncontract KI\n    associate Next is KI\n    associate X\n    Self.(KI).X is Self\n    Self.(KI).X is Marker\n    func next(self: ref/Self) -> ref/Self.(KI).Next\n";
+
+    private const string ConjunctIdentities = "contract Marker\ncontract KC\n    associate Next is KC\n    associate V\n    associate W\n    Self.(KC).V is Self.(KC).W and Copy\n    Self.(KC).W is Marker\n    func near(self: ref/Self) -> ref/Self.(KC).V\n    func deep(self: ref/Self) -> ref/Self.(KC).Next.(KC).V\n    func deep3(self: ref/Self) -> ref/Self.(KC).Next.(KC).Next.(KC).V\n";
+
+    private const string NeedNotPayload = "func needNotOP<V>(v: ref/V) -> i32\n    V is not ObjectPayload\n    return 0\n";
+
+    private const string NeedPayload = "func needOP<V>(v: ref/V) -> i32\n    V is ObjectPayload\n    return 0\n";
+
+    private const string NeedCopy = "func needCopy<V>(v: ref/V) -> i32\n    V is Copy\n    return 0\n";
+
+    private const string NeedMarker = "func needMark<V>(v: ref/V) -> i32\n    V is Marker\n    return 0\n";
+
+    private const string NeedOther = "func needOther<V>(v: ref/V) -> i32\n    V is Other\n    return 0\n";
+
     // The Middle's C-313 B1 views (c2-2): AT2 supplies `T.(Tree).Child is AT3`, whose identity clause makes `T.(Tree).Child.(Tree).Alias`
     // identical with `T.(Tree).Child.(Tree).Child`, an AT3 (SPEC 8.2.3), so it is Copy; the view has no identity premise, so it keeps rows.
     private const string Orders = OrdersHead + "    Self.(Tree).Alias is Self.(Tree).Child\n" + OrdersTail;
@@ -103,7 +177,7 @@ public sealed partial class RecursiveContractTest
     [InlineData(Mutual, "T is B", "T.(B).Y", true)]
     [InlineData(Refinement, "T is Rec", "T.(Node).Child", true)]
     [InlineData(Refinement, "T is Node", "T.(Node).Child", false)]
-    [InlineData("contract Seq<E>\n    associate Next is Seq<Option<E>>\n", "T is Seq<i32>", "T.(Seq<i32>).Next", true)]
+    [InlineData("contract Seq<E>\n    associate Next is Seq<i32>\n", "T is Seq<i32>", "T.(Seq<i32>).Next", true)]
     [InlineData(TwoStep, "T is A", "T.(A).X", true)]
     [InlineData(TwoStep, "T is B", "T.(B).Y", false)]
     [InlineData("contract Leafy\ncontract Bush\n    associate Child is Bush or Leafy\n", "T is Bush", "T.(Bush).Child", false)]
@@ -135,7 +209,7 @@ public sealed partial class RecursiveContractTest
     [Fact]
     public void AWarmRebindAndItsQueriesAllocateNothing()
     {
-        var c = Bind(Forest + Mutual + "contract Seq<E>\n    associate Next is Seq<Option<E>>\n" +
+        var c = Bind(Forest + Mutual + "contract Seq<E>\n    associate Next is Seq<i32>\n" +
             "func probe<T, U, V>(value: T.(Forest).Root.(Tree).Child, other: U.(A).X, next: V.(Seq<i32>).Next)\n    T is Forest\n    U is A\n" +
             "    V is Seq<i32>\n    ()\n");
         var probe = Probe(c);
@@ -188,6 +262,9 @@ public sealed partial class RecursiveContractTest
     // proposition, R7-C2c2 c2-5b2, F's CC-25): 44, 94 and 104 (24, 74 and 84 without the forget). N3's observable: an
     // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (104 -> 84; reopening by the
     // table's finality did: a round with no rows builds a Final table).
+    // R7-C2c2 c2-5c (F's CC-35): IndexNormalized files the reading of a Contract fact over a projection in a view with no identity
+    // premise too (the per-fact domain; plan section 2's cost), so the view's entries index those readings beside AT2's facts: 24 more
+    // pairs in each program, (44, 94, 104) -> (68, 118, 128).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
@@ -197,7 +274,7 @@ public sealed partial class RecursiveContractTest
         probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
         var copy = Work(Orders + probe) - orders;
         probe += "    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal((44, 94, 104), (tree, copy, Work(Orders + probe) - orders));
+        Assert.Equal((68, 118, 128), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }
@@ -375,7 +452,7 @@ public sealed partial class RecursiveContractTest
     // written premise against it is contradictory evidence (nc2c to ncs2c, class 1). Its twins keep their verdicts: depth 1, another
     // Contract or reference, no clause, the positive clause, the use on T itself, a negated disjunction (8.3.1: no De Morgan), the
     // positive clause against a written negation, a Contract's own premises meeting, a Semantics atom (the admitted set decides, 8.3.4).
-    // nts2c-rev is invalid and accepted until PLAN's open issue against c2-5c's constructed roots: its identity at depth is no row.
+    // nts2c-rev is invalid and accepted until PLAN G1406 (F's CC-32 Q4 (a)): its identity at depth is no row.
     // ncs2g's noMark is a group's (SPEC 6.1.1: a Container body never finds a root function; ncs2, a guard row, keeps that record).
     // twcall keeps b1-r2-failed's records with a name discovery before the copy (W6: a walk that consulted a failure keeps no rows).
     [InlineData("c2-5b2", "nc2", "contract NC\n    associate Next is NC\n    associate V\n    Self.(NC).V is not Copy\n    func near(self: ref/Self) -> ref/Self.(NC).V\n    func deep(self: ref/Self) -> ref/Self.(NC).Next.(NC).V\nfunc noCopy<V>(v: ref/V) -> i32\n    V is not Copy\n    return 0\nfunc probe<T>(t: ref/T) -> i32\n    T is NC\n    let v = t.deep()\n    return noCopy(v)\n", "")]
@@ -411,7 +488,7 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "nts2n-other", NegatedTexts + NotI32 + "func probe<T>(t: ref/T) -> i32\n    T is KS\n    let v = t.deep()\n    return notI32(v)\n", "UnprovenConstraint_Kd: return notI32(v)")]
     [InlineData("guard", "nts2n-pos", PositiveTexts + NotText + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return notText(v)\n", "UnprovenConstraint_Kd: return notText(v)")]
     [InlineData("guard", "nm2c-rev", PositiveMarks + "func probe<T>(t: ref/T) -> i32\n    T is PM\n    T.(PM).Next.(PM).V is not Marker\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
-    [InlineData("c2-5c", "nts2c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32", Explicit = true)]
+    [InlineData("G1406", "nts2c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32", Explicit = true)]
     [InlineData("guard", "nh2c", "contract Marker\ncontract H2\n    associate Next is H2\n    associate V\n    Self.(H2).V is Marker\n    Self.(H2).Next.(H2).V is not Marker\n    func near(self: ref/Self) -> ref/Self.(H2).V\n    func deep(self: ref/Self) -> ref/Self.(H2).Next.(H2).V\n    func deep3(self: ref/Self) -> ref/Self.(H2).Next.(H2).Next.(H2).V\n", "InvalidConstraint_Kd: contract H2 | ...")]
     [InlineData("guard", "nmr2-pos", PositiveMarks + PickMark + "func probe<T>(t: ref/T) -> i32\n    T is PM\n    let v = t.deep()\n    return pickm(v)\n", "")]
     [InlineData("guard", "nmr2n-bare", BareMarks + PickMark + "func probe<T>(t: ref/T) -> i32\n    T is NB\n    let v = t.deep()\n    return pickm(v)\n", "UnprovenConstraint_Kd: return pickm(v)")]
@@ -431,6 +508,151 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "rv-nc2-need", NegatedCopies + "func needCopy<V>(v: ref/V) -> i32\n    V is Copy\n    return 0\nfunc probe<T>(t: ref/T) -> i32\n    T is NC\n    let v = t.deep()\n    return needCopy(v)\n", "NoApplicableOverload_Kd: return needCopy(v)")]
     [InlineData("guard", "rv-sp-field", NegatedMarks + NoMark + "struct Box<T>\n    T is NM\n    public var f: T.(NM).Next.(NM).V\nfunc probe<T>(b: ref/Box<T>) -> i32\n    T is NM\n    let v = b.f@ref\n    return noMark(v)\n", "")]
     [InlineData("guard", "b1-r12-userchild", "contract IntP: PrimitiveInteger\nstruct S\n    Self is IntP\n    public var tag: i32 = 0\n", "UnsatisfiedConstraint_Kd: Self is IntP")]
+
+    // PLAN G1407 (U1; artifacts/units/g1406/plan.md section 3, labelled from SPEC first): a Contract row supplies at its link what a
+    // premise supplies at its subject (SPEC 8.3.2, 8.2.3). Form A: a Contract's own `Self` clause (8.7.1: `contract C: Copy` means
+    // `Self is Copy`) holds at every link of its recursion, one and two links up; a written premise against it is contradictory evidence
+    // (8.7.3, class 1); a positive use the negation refutes has no applicable overload (10.1); a bare Contract supplies nothing. Form B:
+    // a conjunction clause at depth supplies each conjunct, nested ones too (8.3.1, 8.3.2 Conjunction); a disjunction supplies neither
+    // side, and a negated conjunction no negated conjunct (no De Morgan). cp1a, nop0 and pand1 are guards (an ancestor, the eager supply).
+    [InlineData("g1407", "nop1", NotPayloads + NeedNotPayload + "func probe<T>(t: ref/T) -> i32\n    T is NP\n    let n = t.next()\n    return needNotOP(n)\n", "")]
+    [InlineData("g1407", "cp1", SelfCopies + NeedCopy + "func probe<T>(t: ref/T) -> i32\n    T is CP\n    let n = t.next()\n    return needCopy(n)\n", "")]
+    [InlineData("g1407", "nop2", NotPayloads + NeedNotPayload + "func probe<T>(t: ref/T) -> i32\n    T is NP\n    let n = t.next()\n    let m = n.next()\n    return needNotOP(m)\n", "")]
+    [InlineData("guard", "cp1a", ParentCopies + NeedCopy + "func probe<T>(t: ref/T) -> i32\n    T is CPA\n    let n = t.next()\n    return needCopy(n)\n", "")]
+    [InlineData("guard", "nop0", NotPayloads + NeedNotPayload + "func probe<T>(t: ref/T) -> i32\n    T is NP\n    return needNotOP(t)\n", "")]
+    [InlineData("g1407", "nop1c", NotPayloads + "func probe<T>(t: ref/T) -> i32\n    T is NP\n    T.(NP).Next is ObjectPayload\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1407", "cp1c", SelfCopies + "func probe<T>(t: ref/T) -> i32\n    T is CP\n    T.(CP).Next is not Copy\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1407", "nop2c", NotPayloads + "func probe<T>(t: ref/T) -> i32\n    T is NP\n    T.(NP).Next.(NP).Next is ObjectPayload\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1407", "nop1-pos", NotPayloads + NeedPayload + "func probe<T>(t: ref/T) -> i32\n    T is NP\n    let n = t.next()\n    return needOP(n)\n", "NoApplicableOverload_Kd: return needOP(n)")]
+    [InlineData("guard", "nb1", BareNexts + NeedNotPayload + "func probe<T>(t: ref/T) -> i32\n    T is NB0\n    let n = t.next()\n    return needNotOP(n)\n", "UnprovenConstraint_Kd: return needNotOP(n)")]
+    [InlineData("g1407", "nand2", NegatedConjuncts + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NA2\n    let v = t.deep()\n    return noMark(v)\n", "")]
+    [InlineData("g1407", "pand2", PositiveConjuncts + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.deep()\n    return needMark(v)\n", "")]
+    [InlineData("g1407", "nand2t", NegatedConjuncts + NoTag + "func probe<T>(t: ref/T) -> i32\n    T is NA2\n    let v = t.deep()\n    return noTag(v)\n", "")]
+    [InlineData("g1407", "pand3n", NestedConjuncts + NeedOther + "func probe<T>(t: ref/T) -> i32\n    T is PA3\n    let v = t.deep()\n    return needOther(v)\n", "")]
+    [InlineData("guard", "pand1", PositiveConjuncts + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.near()\n    return needMark(v)\n", "")]
+    [InlineData("g1407", "nand2c", NegatedConjuncts + "func probe<T>(t: ref/T) -> i32\n    T is NA2\n    T.(NA2).Next.(NA2).V is Marker\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1407", "pand2c", PositiveConjuncts + "func probe<T>(t: ref/T) -> i32\n    T is PA2\n    T.(PA2).Next.(PA2).V is not Tag\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1407", "pand2-neg", PositiveConjuncts + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.deep()\n    return noMark(v)\n", "NoApplicableOverload_Kd: return noMark(v)")]
+    [InlineData("guard", "nor2", NegatedDisjuncts + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NOR2\n    let v = t.deep()\n    return noMark(v)\n", "UnprovenConstraint_Kd: return noMark(v)")]
+    [InlineData("guard", "nnand2", NegatedConjunction + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NNA2\n    let v = t.deep()\n    return noMark(v)\n", "UnprovenConstraint_Kd: return noMark(v)")]
+    // The review's twins (F's G1406-3 C1; fail-before: the review's base run on 3cbde9881). The link's own identity item is recorded in
+    // the same intake: `Self.(KI).X is Self` with `Self.(KI).X is Marker` makes `T.(KI).Next` a Marker (f-idl1, 8.2.3 grounds), and a
+    // written `T.(KI).Next is not Marker` is contradictory evidence (f-idl1c, 8.3.2); an identity atom inside a conjunction is recorded
+    // per conjunct (f-idand2); a class mate's row read at the link supplies there as the link's own (h-nop1i, `U is T`; row (5)).
+    [InlineData("g1407", "f-idl1", LinkIdentities + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is KI\n    let n = t.next()\n    return needMark(n)\n", "")]
+    [InlineData("g1407", "f-idl1c", LinkIdentities + "func probe<T>(t: ref/T) -> i32\n    T is KI\n    T.(KI).Next is not Marker\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1407", "f-idand2", ConjunctIdentities + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is KC\n    let v = t.deep()\n    return needMark(v)\n", "")]
+    [InlineData("g1407", "h-nop1i", NotPayloads + NeedNotPayload + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is NP\n    let n = t.next()\n    return needNotOP(n)\n", "")]
+
+    // SPEC 8.3.2 Contract refinement, 8.4.1, 8.4.3 (R7-C2c2 c2-5a; PLAN G402, G837, G849): `T is C<i32>` supplies C's own and
+    // inherited Constraints with T for Self and i32 for C's parameter, at every projection a query needs: a clause naming the Contract's
+    // parameter (x-args, MT), swapping two (x-swap), over an ancestor reference's projection (b-cargs, k-nonrec, contractargs, p05) or
+    // over the parameter alone (x-carried). The invalid twins keep their records: an abstract projection's other Contract argument is
+    // Unknown (8.3.2 Closed world). Programs rebuilt from the Middle's C-304 R2 and C-310 F3 texts (artifacts\units\r7-c25\labels.md).
+    [InlineData("guard", "x-args0-v", MarkArgs + "func probe<T>(t: ref/T)\n    T is MT<i32>\n    needMark<T, i32>(t)\n", "")]
+    [InlineData("guard", "x-args1-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "x-args2-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "x-args3-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "x-argsrow2-v", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "b-args-v", MarkArgs + MarkHolder + "        N.needMark<T.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "x-args1-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-args2-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-args3-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-argsrow2-n", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMT<T.(Tree).Child.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-args1-nmt", MarkArgs + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMT<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMT<T.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-args-noclause-n", "contract Tree\n    associate Child is Tree\ncontract Mark<A>\ncontract MT<A>: Tree, Mark<A>\nfunc needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MT<i32>\n    needMark<T.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i32>(c)")]
+    [InlineData("guard", "b-args-n", MarkArgs + MarkHolder + "        N.needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: N.needMark<T.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "b-args-mixn", MarkArgs + MarkHolder + "        N.needMark<T.(Tree).Child, i32>(c)\n        N.needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: N.needMark<T.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-swap0-v", MarkArgs + Swap + "func probe<T>(t: ref/T)\n    T is P2<i32, i64>\n    needMark<T, i32>(t)\n", "")]
+    [InlineData("guard", "x-swap1-v", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child, i64>(c)\n", "")]
+    [InlineData("guard", "x-swap2-v", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "x-swap0-n", MarkArgs + Swap + "func probe<T>(t: ref/T)\n    T is P2<i32, i64>\n    needMark<T, i64>(t)\n", "UnprovenConstraint_Kd: needMark<T, i64>(t)")]
+    [InlineData("guard", "x-swap1-n", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i32>(c)")]
+    [InlineData("guard", "x-swap2-n", MarkArgs + Swap + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is P2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-fixed1-i32", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "x-fixed2-i32", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "")]
+    [InlineData("guard", "x-fixed1-i64", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-fixed2-i64", MarkArgs + Fixed + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MF<i32>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i64>(c)")]
+    [InlineData("guard", "x-argsplain2-v", "contract Tree\n    associate Child is Tree\ncontract Plain\ncontract MP<A>: Tree, Plain\n    Self.(Tree).Child is MP<A>\nfunc needPlain<V>(v: ref/V)\n    V is Plain\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MP<i32>\n    needPlain<T.(Tree).Child.(Tree).Child>(c)\n", "")]
+    [InlineData("guard", "b-cargs-v", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Copy\n", "")]
+    [InlineData("guard", "b-cargs2-v", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Copy\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "")]
+    [InlineData("guard", "k-nonrec", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is PrimitiveInteger\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "")]
+    [InlineData("guard", "k-nonrec-marker", "contract Marker\n" + KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Marker\nfunc needMarker<V>(v: ref/V)\n    V is Marker\n    ()\nfunc probe<T>(x: ref/T.(K<i32>).X)\n    T is CK<i32>\n    needMarker<T.(K<i32>).X>(x)\n", "")]
+    [InlineData("guard", "contractargs-i32", "contract K<A>\n    associate X\n    associate Child is K<A>\ncontract CK<A>: K<A>\n    Self.(K<A>).Child is CK<A>\n    Self.(K<A>).X is PrimitiveInteger\ngroup H\n    public func twice<T>(x: T.(K<i32>).Child.(K<i32>).X) -> (T.(K<i32>).Child.(K<i32>).X, T.(K<i32>).Child.(K<i32>).X)\n        T is CK<i32>\n        return (x, x)\n", "")]
+    [InlineData("guard", "contractargs-single", "contract K<A>\n    associate X\n    associate Child is K<A>\ncontract CK<A>: K<A>\n    Self.(K<A>).Child is CK<A>\n    Self.(K<A>).X is PrimitiveInteger\nfunc probe<T>(t: ref/T)\n    T is CK<i32>\n    ()\n", "")]
+    [InlineData("guard", "b-cargs-n1", KArgs + "contract CK<A>: K<A>\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "b-cargs-n2", "contract Marker\n" + KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Marker\n" + KTwice + "        T is CK<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "b-cargs-n3", KArgs + "contract CK<A>: K<A>\n    Self.(K<A>).X is Copy\n" + KTwice + "        T is K<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    // SPEC 6.1.4 (R7-C2c2 c2-5a): forming `CK<S>` judges CK's reference input condition `A is E` and never its implementation
+    // requirement `Self.(K<A>).X is Copy`; the twins' input condition fails at the clause. cc-n1's supplied `i32 is E` is refuted: 8.3.2's
+    // Error at the premise, which the function's record relates (an-n1 likewise).
+    [InlineData("guard", "cc-v1", "contract E\nstruct S\n    Self is E\n    public var n: i32 = 0\n" + KArgs + "contract CK<A>: K<A>\n    A is E\n    Self.(K<A>).X is Copy\nfunc probe<T>(t: ref/T)\n    T is CK<S>\n    ()\n", "")]
+    [InlineData("guard", "cc-n1", "contract E\n" + KArgs + "contract CK<A>: K<A>\n    A is E\n    Self.(K<A>).X is Copy\nfunc probe<T>(t: ref/T)\n    T is CK<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) <- T is CK<i32> | InvalidConstraint_Kd: T is CK<i32>")]
+    [InlineData("guard", "cc-n2", "contract E\ncontract D<U>\n    U is E\nfunc probe<T>(t: ref/T)\n    T is D<i32>\n    ()\n", "*: T is D<i32> | ...")]
+    // SPEC 6.1.4, 8.2.3 (PLAN G1260's e1t and e1): A's clauses all name its Self, so forming `A<U, i32>` judges none of them; the identity
+    // they derive between P and Q is a supplied ground, here U is Option<i32>. In e1 that supply makes U identical with Option<U>: one
+    // premise error at its clause and no second record at `A<U, U>`.
+    [InlineData("guard", "e1t", "contract A<P, Q>\n    associate X\n    associate Y\n    Self.X is P\n    Self.Y is Option<Q>\n    Self.X is Self.Y\nfunc f<T, U>(value: T) -> i32\n    T is A<U, i32>\n    return 0\n", "")]
+    [InlineData("guard", "e1", "contract A<P, Q>\n    associate X\n    associate Y\n    Self.X is P\n    Self.Y is Option<Q>\n    Self.X is Self.Y\nfunc f<T, U>(value: T) -> i32\n    T is A<U, U>\n    return 0\n", "InvalidConstraint_Kd: T is A<U, U>")]
+    [InlineData("guard", "p05", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "")]
+    [InlineData("guard", "p05-n1", "contract CT<A>: GTree<A>\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "p05-n2", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is CT<A>\n" + GTwice + "        T is GTree<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "p05-n3", "contract CT<A>: GTree<A>, Copy\n    Self.(GTree<A>).Child is GTree<A>\n" + GTwice + "        T is CT<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "x-carried-v", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<A>(a)\n", "")]
+    [InlineData("guard", "x-carried-n1", NeedE + "contract D<U>\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<A>(a)\n", "UnprovenConstraint_Kd: needE<A>(a)")]
+    [InlineData("guard", "x-carried-n2", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A>(t: ref/T, a: ref/A)\n    T is D<A>\n    needE<T>(t)\n", "UnprovenConstraint_Kd: needE<T>(t)")]
+    [InlineData("guard", "x-carried-n3", NeedE + "contract D<U>\n    U is E\nfunc probe<T, A, B>(t: ref/T, a: ref/A, b: ref/B)\n    T is D<B>\n    needE<A>(a)\n", "UnprovenConstraint_Kd: needE<A>(a)")]
+    // c2-5a's design review twins (artifacts\units\r7-c25\rv\twins.txt, labelled from SPEC; F's rulings CC-6, CC-10). The own reference
+    // is instantiated wherever C's clauses are read through `C<X>`: a generic struct's conformance (gs), a requirement's premise (rq)
+    // and call (rc), two parameters (m2), the formation's query (rf-n1: 8.3.2's Error for the supplied, refuted `i32 is R<i32>`).
+    // Formation judges each condition by its role (6.1.4; 8.3.1's requirement precedence splits `and`, while `or` and `not` are one
+    // condition): Self in a Contract argument (sa), a projection's (pa), a Tuple or Function Type (tf), a disjunction (or), a conjunction's
+    // Self part only (an; an-n1 keeps its input condition's record). A premise's own supply proves its formation's input condition (rf-v1,
+    // rf-n2, rf-n3, tf-n1: F's F-1 (a), x-carried-v's reading); a premise whose supply is refuted on a concrete Type is contradictory
+    // evidence at the function (sa-v1, or-v1, an-v1: F-2 (a)); er-n1 loses only the record resting on its unresolved clause.
+    [InlineData("guard", "gs-n1", MarkTree + "struct S<T>\n    T is MT<i64>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "gs-n2", MarkTree + "struct S<T>\n    T is Tree\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "gs-n3", MarkTree + "contract MT3<B>: MT<B>\nstruct S<T>\n    T is MT<i64>\n    Self is MT3<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT3<i32> | ...")]
+    [InlineData("guard", "rq-v1", MarkTree + Put + PutS + "        U is MT<i32>\n        return 0\n", "")]
+    [InlineData("guard", "rq-n1", MarkTree + Put + PutS + "        U is MT<i64>\n        return 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "rq-n2", MarkTree + Put + PutS + "        U is Mark<i64>\n        return 0\n", "*: Self is MT<i32> | ...")]
+    [InlineData("guard", "rc-n1", MarkTree + Put + "func probe<T, U>(t: ref/T, u: ref/U) -> i32\n    T is MT<i32>\n    U is MT<i64>\n    return t.put(u)\n", "UnprovenConstraint_Kd: return t.put(u)")]
+    [InlineData("guard", "m2-v1", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child, i64>(c)\n", "")]
+    [InlineData("guard", "m2-v2", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i64>(c)\n", "")]
+    [InlineData("guard", "m2-n1", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child, i32>(c)")]
+    [InlineData("guard", "m2-n2", MarkArgs + Second + "func probe<T>(c: ref/T.(Tree).Child.(Tree).Child)\n    T is MT2<i32, i64>\n    needMark<T.(Tree).Child.(Tree).Child, i32>(c)\n", "UnprovenConstraint_Kd: needMark<T.(Tree).Child.(Tree).Child, i32>(c)")]
+    [InlineData("guard", "rf-n1", "contract R<A>\n    A is R<A>\nfunc probe<T>(t: ref/T)\n    T is R<i32>\n    ()\n", "InvalidConstraint_Kd: T is R<i32> | ...")]
+    [InlineData("guard", "rf-v1", "contract R<A>\n    A is R<A>\nfunc probe<T, U>(t: ref/T)\n    U is R<U>\n    T is R<U>\n    ()\n", "")]
+    [InlineData("guard", "rf-n2", "contract R<A>\n    A is R<A>\nfunc probe<T, U>(t: ref/T)\n    T is R<U>\n    ()\n", "")]
+    [InlineData("guard", "rf-n3", "contract R2<A, B>\n    B is R2<A, B>\nfunc probe<T, Y>(t: ref/T)\n    Y is R2<i64, Y>\n    T is R2<i32, Y>\n    ()\n", "")]
+    [InlineData("guard", "sa-v1", SelfArg + "struct S\n    public var tag: i32 = 0\nfunc probe<T>(t: ref/T)\n    T is C<S>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T)")]
+    [InlineData("guard", "sa-v2", SelfArg + "struct S\n    Self is D<W>\n    public var tag: i32 = 0\nstruct W\n    Self is C<S>\n    public var tag: i32 = 0\n", "")]
+    [InlineData("guard", "sa-n1", SelfArg + "struct S\n    public var tag: i32 = 0\nstruct W\n    Self is C<S>\n    public var tag: i32 = 0\n", "UnsatisfiedConstraint_Kd: Self is C<S>")]
+    [InlineData("guard", "pa-v1", KArgs + "contract C<A>\n    A is K<Self>\n    A.(K<Self>).X is Copy\ngroup H\n    public func twice<T, S>(x: S.(K<T>).X) -> (S.(K<T>).X, S.(K<T>).X)\n        T is C<S>\n        S is K<T>\n        return (x, x)\n", "")]
+    [InlineData("guard", "pa-n1", KArgs + "contract C<A>\n    A is K<Self>\ngroup H\n    public func twice<T, S>(x: S.(K<T>).X) -> (S.(K<T>).X, S.(K<T>).X)\n        T is C<S>\n        S is K<T>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "pa-n2", KArgs + "contract C<A>\n    A is K<Self>\n    A.(K<Self>).X is Copy\ngroup H\n    public func twice<T, S>(x: S.(K<i32>).X) -> (S.(K<i32>).X, S.(K<i32>).X)\n        T is C<S>\n        S is K<i32>\n        return (x, x)\n", "TransferRequired_Kd: return (x, x)")]
+    [InlineData("guard", "tf-v1", "contract Holder<P>\ncontract C<A>\n    A is Holder<(Self, i32)>\nfunc probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "tf-v2", "contract Holder<P>\ncontract C<A>\n    A is Holder<(Self) -> i32>\nfunc probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "tf-n1", "contract Holder<P>\ncontract C<A>\n    A is Holder<(A, i32)>\nfunc probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "or-v1", Either + "func probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T)")]
+    [InlineData("guard", "or-v2", Either + "func probe<T, S>(t: ref/T)\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "an-v1", Both + "struct S\n    Self is E\n    public var tag: i32 = 0\nfunc probe<T>(t: ref/T)\n    T is C<S>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T)")]
+    [InlineData("guard", "an-v2", Both + "func probe<T, S>(t: ref/T)\n    S is E\n    T is C<S>\n    ()\n", "")]
+    [InlineData("guard", "an-n1", Both + "func probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) <- T is C<i32> | InvalidConstraint_Kd: T is C<i32>")]
+    [InlineData("guard", "sc-n1", "contract D<U>\ncontract C\n    i32 is D<i64>\nfunc probe<T>(t: ref/T)\n    T is C\n    ()\n", "*: i32 is D<i64> | ...")]
+    [InlineData("guard", "er-n1", KArgs + "contract C<A>: K<A>\n    Self.(K<A>).X is Missing\nfunc probe<T>(t: ref/T)\n    T is C<i32>\n    ()\n", "InvalidConstraint_Kd: contract C<A>: K<A> | UnresolvedBinding_Kd: Self.(K<A>).X is Missing")]
+    // B3: a Contract argument written as a completed projection is interpreted at the proof's intake, so the premise and its supply
+    // meet the instantiated own reference; dev's collapsed reference read any `R<X>` and hid the gap.
+    [InlineData("guard", "sr-alias-v", "contract R<A>\n    A is R<A>\ncontract HasItem\n    associate Item\nstruct Src<V>\n    Self is HasItem\n    associate HasItem.Item is V\n    public var tag: i32 = 0\nfunc probe<T, U>(t: ref/T)\n    T is R<Src<U>.(HasItem).Item>\n    ()\n", "")]
+    [InlineData("guard", "rc2-alias-v", MarkTree + Put + SrcItem + "func probe<T, U>(t: ref/T, u: ref/U) -> i32\n    T is MT<i32>\n    U is MT<Src.(HasItem).Item>\n    return t.put(u)\n", "")]
+    [InlineData("guard", "sr-alias-n", "contract R<A>\n    A is R<A>\n" + SrcItem + "func probe<T>(t: ref/T)\n    T is R<Src.(HasItem).Item>\n    ()\n", "InvalidConstraint_Kd: T is R<Src.(HasItem).Item> | ...")]
+    [InlineData("guard", "gs2-alias-v", MarkTree + SrcItem + "struct S<T>\n    T is MT<Src.(HasItem).Item>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "")]
+    [InlineData("guard", "gs2-alias-n", MarkTree + "contract HasItem\n    associate Item\nstruct Src\n    Self is HasItem\n    associate HasItem.Item is i64\n    public var tag: i32 = 0\nstruct S<T>\n    T is MT<Src.(HasItem).Item>\n    Self is MT<i32>\n    associate Tree.Child is T\n    public var tag: i32 = 0\n", "*: Self is MT<i32> | ...")]
+    // Closedness does not read a clause's Contract arguments (pre-existing; c2-5a's PLAN row for unit C2, review N3): `Q is F<U>` is a
+    // reference input condition judged at the declaration, and `i32 is D<Self>` (an implementation requirement) a closed obligation.
+    [InlineData("C2", "cl-v1", "contract F<W>\nstruct S\n    public var tag: i32 = 0\nstruct Q\n    Self is F<S>\n    public var tag: i32 = 0\ncontract D<U>\n    Q is F<U>\nfunc probe<T>(t: ref/T)\n    T is D<S>\n    ()\n", "", Explicit = true)]
+    [InlineData("C2", "cl-n1", "contract F<W>\nstruct S\n    public var tag: i32 = 0\nstruct Q\n    Self is F<S>\n    public var tag: i32 = 0\ncontract D<U>\n    Q is F<U>\nfunc probe<T>(t: ref/T)\n    T is D<i32>\n    ()\n", "*: T is D<i32> | ...", Explicit = true)]
+    [InlineData("C2", "sc-v2", "contract D<U>\ncontract C\n    i32 is D<Self>\n", "", Explicit = true)]
     public void APremiseSuppliesItsRefinementsByDemand(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
@@ -505,6 +727,18 @@ public sealed partial class RecursiveContractTest
         var c = Bind(Copies + "func needs<V>(v: ref/V)\n    V is CopyTree\n    ()\n" +
             "func probe<T>(value: ref/T.(Tree).Child.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    needs<T.(Tree).Child.(Tree).Child.(Tree).Child>(value)\n" +
             "func both<T, U>(value: ref/U.(Tree).Child.(Tree).Child)\n    T is CopyTree\n    T is U\n    needs<U.(Tree).Child.(Tree).Child>(value)\n");
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
+
+    // PLAN G1407 (F's G1406-3 N3): the walk splits a conjunction clause at depth into its conjuncts over the pooled `conjuncts` run, so
+    // a warm rebind whose calls prove a conjunct two and three links up the premise's chain allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindThatSplitsAConjunctionAtDepthAllocatesNothing()
+    {
+        var c = Bind(PositiveConjuncts + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.deep()\n    return needMark(v)\n" +
+            "func probe3<T>(t: ref/T) -> i32\n    T is PA2\n    let v = t.deep3()\n    return needMark(v)\n");
         Assert.Empty(CompilationTestHelper.BindingErrors(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }

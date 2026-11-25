@@ -78,9 +78,12 @@ public class NormalizedConstraintProofBindingTest
     // e2-3a's W6 kept the entry).
     // R7-C2c2 c2-5b2 (F's CC-27 (1), CC-15 Q5 (a)): Supply's rows reader (ExactAssumption) makes one FirstRows request for every atom
     // proposition, and each request outside a Kept region forms its view's entry again: 172 -> 286, the reader's own requests.
+    // R7-C2c2 c2-5c (F's CC-35): IndexNormalized files the reading of a Contract fact over a projection in a view with no identity
+    // premise too (the per-fact domain), and such an entry outside a Kept region indexes those readings at each formation (plan
+    // section 2's cost): 286 -> 306.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(286, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(306, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
     // R7-C2e2 e2-3a's coverage rows (`coverage-e23.md`): a published read's Completion (W8), W6 the meet of every source read, the
     // walk's Completion admitting its rows, every kept table for one publication. Each program's records, exact (equal under dev's

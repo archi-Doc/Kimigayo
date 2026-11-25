@@ -422,6 +422,9 @@ public class ConstraintBindingTest
 
     // PLAN G615 (the owner's O-141 (a)): invalid by SPEC 8.2.3 "Premise errors" (a Refuted identity between two premises). R7-C3a's identity
     // classes make the class a Conflict: one premise error at f in either order, and a body using both adds no record resting on it.
+    // PLAN G1356 (B's ruling 7; SPEC 8.2.3, 23.1.2 rule W): so does every single-requirement operator decision over T, whose Error proof
+    // read the conflict: the integer row (`%`), Negatable's `-`, a shift count and a non-composite comparison (fail-before: their own
+    // InvalidConstraint_Kd at the operation).
     [Theory]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is i32\n    ()")]
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is string\n    ()")]
@@ -429,6 +432,10 @@ public class ConstraintBindingTest
     [InlineData("func f<T>(a: T) -> ()\n    T is Never\n    T is ()\n    ()")]
     [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a + 1")] // A body using both (review 1's g4r, c5; O-147 (c)).
     [InlineData("func f<T>(a: T) -> i32\n    T is i32\n    T is Never\n    return a + 1")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return a % 1")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return -a")]
+    [InlineData("func f<T>(a: T) -> i32\n    T is Never\n    T is i32\n    return 1 << a")]
+    [InlineData("func f<T>(a: T) -> bool\n    T is Never\n    T is i32\n    return a < a")]
     public void NeverWithAConflictingIdentityPremiseIsAPremiseError(string source)
         => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
 

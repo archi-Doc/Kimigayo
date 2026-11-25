@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the move paths of one MIR body (SPEC 15.1.3; DECISIONS R4-M21).
-// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor); the
+// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (_0's Receiver role); the
 // programs' TyCtxt (MirAnalysis's), whose instances' stored Types the paths read. Output:
 // the paths numbered in pre-order, so a subtree is the range [path, End), each with its step from its parent, and the path of each Place.
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and
@@ -136,11 +136,12 @@ internal sealed class MirMoveData(TyCtxt types)
             (this.once[root], this.named[root]) = (body.Locals[i] is { Kind: MirLocalKind.Var, Mutable: false }, true);
         }
 
-        this.Constructing = body.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(body.Key.Decl);
+        // A constructor's or a layer body's _0, its validated receiver role (MirValidator.Tables, DECISIONS R7-M115).
+        this.Constructing = body.Locals[0].Role == MirLocalRole.Receiver;
         if (this.Constructing)
         {
             var site = types.OpenSite(body.Locals[0].Source.Syntax); // PLAN G651 U2b R5 (D-C4): the local's node site.
-            var self = body.Locals[0].Type!; // A constructor's object, its struct's Type (MirBuilder.Body), never of no Type.
+            var self = body.Locals[0].Type!; // A constructor's or layer body's object, its struct's Type (MirBuilder.Body), never of no Type.
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
                 if (MirBody.SelectsPart(types, self, MirProjectionKind.Field, i, out _))

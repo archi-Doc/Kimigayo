@@ -85,7 +85,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(await solution.Build(TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<CommandInputException>(() => solution.Run(TestContext.Current.CancellationToken));
+        Assert.Throws<CommandInputException>(() => solution.PrepareRun());
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
     }
 
@@ -137,7 +137,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal("O2", project.ProjectFile.Optimization);
         Assert.Equal(TargetProfile.Windows.Target, Assert.Single(project.ProjectFile.Targets));
         Assert.True(await solution.Generate(TestContext.Current.CancellationToken));
-        var paths = ArtifactPaths.Create(project);
+        var paths = ArtifactPaths.Create(project, TargetProfile.Windows);
         Assert.True(File.Exists(paths.Ir));
         Assert.True(File.Exists(paths.Manifest));
         Assert.False(File.Exists(paths.Record));
@@ -168,22 +168,26 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal("O0", project.ProjectFile.Optimization);
     }
 
+    // A run's later steps, on a host that runs its Windows target; on any other the host rule refuses it first, as
+    // CommandExecutionTest.RunRefusesATargetThisHostDoesNotRunBeforeAnyBuild reads on every host (the Tatara plan's B7b8, C-575 B1).
     [Fact]
     public async Task RunPreparesImplicitSettingsWithoutDecodingOrCompilingSource()
     {
+        Assert.SkipUnless(TargetProfile.Host == TargetProfile.Windows, "The run needs a host that runs the Windows target.");
         var source = Path.Combine(this.directory, "Single.kimi");
         File.WriteAllBytes(source, [0xff]);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         var solution = new Solution(new Kimigayo(console));
         solution.LoadForBuild(null, new() { Target = TargetProfile.Windows.Target }, [source]);
         solution.PrepareProject(null);
+        Assert.True(solution.PrepareRun());
         Assert.Equal(1, await solution.Run(TestContext.Current.CancellationToken)); // The toolchain's failure before launch (IMPL 20.3).
         Assert.Contains("Run 'kimi build' first", console.Text, StringComparison.Ordinal);
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
     }
 
     [Fact]
-    public async Task MultipleSourcesRemainIndependentAndCannotBeRunAsOneApplication()
+    public void MultipleSourcesRemainIndependentAndCannotBeRunAsOneApplication()
     {
         var first = this.Write("First.kimi", "()");
         var second = this.Write("Second.kimi", "()");
@@ -193,7 +197,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.NotSame(projects[0].ProjectFile, projects[1].ProjectFile);
         projects[0].ProjectFile.Optimization = "O0";
         Assert.Equal("O2", projects[1].ProjectFile.Optimization);
-        await Assert.ThrowsAsync<CommandInputException>(() => solution.Run(TestContext.Current.CancellationToken));
+        Assert.Throws<CommandInputException>(() => solution.PrepareRun());
         Assert.Throws<CommandInputException>(() => this.Load(first, Path.Combine(this.directory, "missing")));
     }
 

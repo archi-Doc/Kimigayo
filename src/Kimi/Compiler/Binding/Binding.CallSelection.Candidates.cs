@@ -817,7 +817,7 @@ public sealed partial class Binding
             // the fills, and its fit holds at every atom, so where the fills agree in no structure (FillOpenSlots) the match decides (tw3).
             if (expected is not null && result is not null && ((result.ContainsOpenSlot && !expectedStructure) ||
                 (!this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&
-                this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)))
+                ReferenceEquals(this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false), result))))
             {
                 return CandidateApplicability.Inapplicable;
             }

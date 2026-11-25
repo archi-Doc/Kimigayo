@@ -31,14 +31,15 @@ internal sealed partial class InstanceCollector
     /// BU-48 amended by G283); both are checked only. An output root is a declaration's
     /// own body: a Closure's body, made at an Aggregate(Closure) site, and a function declared in a function's or Closure's body (its
     /// declaring scope's Function) are none; the bodies that make or call them reach them; a default template takes the verdict of its
-    /// declaration's own body, so a public function's is a root and a checked-only constructor's is none (DECISIONS R5-M153).</summary>
+    /// declaration's own body, so a public function's is a root and a checked-only constructor's is none (DECISIONS R5-M153). A layer body
+    /// (MirBodyKind.Layer) is checked only: no call names it (SPEC 8.15.3; DECISIONS R7-M115, the owner's (a2)).</summary>
     /// <param name="program">The program.</param>
     /// <param name="root">The root.</param>
     /// <returns>Whether it is an output root, or null where its slot's applicability is undecided, a broken contract.</returns>
     internal bool? Generates(MirProgram program, int root)
     {
         var function = this.Set.Items[root].Key.Body.Def.Decl;
-        if (this.Set.Items[root].Key.Body.Def.Kind == MirBodyKind.Closure || function?.Scope.Function is not null)
+        if (this.Set.Items[root].Key.Body.Def.Kind is MirBodyKind.Layer or MirBodyKind.Closure || function?.Scope.Function is not null)
         {
             return false;
         }
