@@ -29398,7 +29398,7 @@ Closure row of `MirCases.Branch`).
   - Not in the rule: a positive identity clause at depth, read in neither polarity (nts2c-rev invalid and accepted; PLAN G1406); a
     Contract's own `Self` clause one link down and a
     conjunction clause at depth, valid and rejected in both polarities on dev too (PLAN G1407). A Semantics atom needs no row (8.3.4:
-    the admitted set decides; a Contract supplies none, 8.2.1, 8.4.1).
+    the admitted set decides; a Contract supplies none, 8.2.1, 8.4.1). Superseded in part by R7-M114 (U1, G1407): a Contract's own `Self` clause and a conjunction clause at depth are now rows of the walk.
   - Rejected: TypeIdentity as a leaf row kind (two meanings for one bucket, Q1 (b)); Contract negations alone now (Q1 (c): nts2 and
     c2-3d's `not string` wait for no reason); comparison by reference with a named limit (Q2 (b): a Language error on a valid form);
     a reader per kind; restricting the reader's domain to restore the counts or the FAULT (CC-25: SPEC 8.3.2 refutes any `P` by
@@ -29642,6 +29642,43 @@ Closure row of `MirCases.Branch`).
     fitting the element's own Type before its adaptation (fails value reads, erasures and completed Cases); restating g5's records to
     the meet's two (a record at `a@move` SPEC does not require; the array and Dictionary forms would differ); fresh local-region
     variables at the place (new state for the same verdicts).
+- **R7-M114 A Contract row supplies at its link what a premise supplies at its subject** (Front, 2026-11-26; PLAN G1407, U1 of
+  G1406 + G1407; Q-797, D-1300; Major, an acceptance mover; an independent review ACCEPT WITH CONDITIONS (F's G1406-3), RP17: the
+  Middle's C-577 CONSENT) SPEC 8.2.3, 8.3.1, 8.3.2.
+  - **The rule.** The walk's rows (2) and (4) are one row: an item of the supply (`ContractSupply`) of a Contract row of every prefix
+    of the subject's chain, the subject itself included, read as the premise intake reads it. An ancestor is a row; a clause instance
+    and, for a conjunction, each conjunct (`AddConjuncts`, Binding.Constraints, read by `AddConstraintFact` and by the walk) go to
+    their reader: an atom whose stated subject is the link or of its class is a row (`RowAtom`; a Contract atom through
+    `RowContract`), and a TypeIdentity atom of an available source is recorded as an identity row (R7-M27's record, now per
+    conjunct and for the root's own items). One member, `AddSupplyRows(rows, source, root, subject, view)`, is called for each row
+    of each active prefix and for each row of the link's own list as it grows; availability and `Stated` are the source row's.
+    `ContractSupply` stays `normalize: false` and instantiates nothing a second time. No row kind, flag or depth case; TypeIdentity
+    stays no row kind.
+  - **Reason.** What a premise `T is C` supplies is enumerated once; the eager intake files every item and each conjunct one level
+    deep, and the walk read the same enumeration at depth through two filters (row (2): proper prefixes only and a clause whole;
+    row (4): only the ancestors of the link's own rows), so a Contract's own `Self` clause at its link (nop1, cp1), a conjunction
+    clause at depth (nand2, pand2) and an identity item of the link's own row were never rows. SPEC 8.3.2 (Contract refinement
+    applies to every projection a query needs) and 8.2.3 ("however deep", conjunction elimination) ask for one supply at every depth.
+  - **Finite.** A link's rows are drawn from the finitely many Contract references that the declarations' supply forms there
+    (`AddRow` deduplicates by reference); a growing reference sequence is SPEC 8.3.3's expanding recursion (G563-C), and the
+    formation height limit is a Resource record. No new round bound.
+  - **Cost** (measured at landing, not a decision): one `ContractSupply` per (link, own row); a root whose row carries identity
+    clauses (KP, the Iterator family) extends in `PremiseRefines` when unproven (F's Q1 (a)). RP8 is the window's T-W<n>; a BEYOND
+    reconsiders only Q1 (b).
+  - **Moves (Q13), rows of `RecursiveContractTest.APremiseSuppliesItsRefinementsByDemand` unless named a twin**
+    (`artifacts/units/g1406/review-twins.py`): class 3 nop1, cp1, nop2, nand2, pand2, nand2t, pand3n, f-idl1, f-idand2, h-nop1i and
+    the twins f-idl2, d-nop3, d-nand3, e-pconj1; class 1 (`InvalidConstraint_Kd` at `func probe`) nop1c, cp1c, nop2c, nand2c,
+    pand2c, f-idl1c and the twins d-pand3c, d-cp3c, e-pconjc, and it7.h-second (RP17's twin: invalid, accepted before);
+    `UnprovenConstraint_Kd` -> `NoApplicableOverload_Kd` nop1-pos, pand2-neg; a dependent record removed (rule W) on the twin
+    h-unres2 (`UnprovenConstraint_Kd` -1: its Contract is invalid by an unresolved conjunct, and the walk rows the resolved
+    conjuncts of such a clause unavailable, where `AddConstraintFact` drops the fact whole; one split, two contracts). No count moved.
+  - **Rejected:** a clause or depth case per form (nop1, cp1, nand2 each); a flag or mode on row (2); a second copy of the conjunct
+    split in the walk (the "second copy of a rule"); a shared `HasUnresolved` guard in `AddConjuncts` (the source's unavailability
+    already carries it); recording identity only where the view's table does not already relate the sides (it would make whether a
+    request extends depend on the view's table, against R7-M44's grounds); TypeIdentity as a row kind (R7-M110's Q1 (b)).
+  - **Left to U2 (G1406):** the identity judge reads the view's table alone, so nts2c-rev, nts3c-rev, nts2ci-rev (class 1), rv-g-tpos2,
+    rv-g-ntr2p, tpos3, tpos2i (class 3) and nts2n-pos, ti32-2 (class 4) stay as before; tconf2 (class 1) is PLAN G1423's. Supersedes
+    R7-M110's "Not in the rule" clause on G1407; U2 supersedes this entry in part (the identity judge's read).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi

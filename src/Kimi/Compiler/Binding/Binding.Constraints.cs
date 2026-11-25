@@ -16,6 +16,9 @@ public sealed partial class Binding
     // distinct part is normalized once per query, a projection leaf's ContractType answer included; a call begun inside it (a proof that
     // a leaf's answer runs) is a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<BoundType, (BoundType Image, Completion Completion)> proofParts = new();
+
+    // The runs of AddConjuncts' readers (AddConstraintFact, AddSupplyRows), each removed by its reader.
+    private readonly List<BoundConstraint> conjuncts = new();
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
 
     // The scaling rows' measure: the parts NormalizeProofType normalized in this compilation (its walk's visits that missed the memo).
@@ -80,6 +83,20 @@ public sealed partial class Binding
         var decisive = conjunction ? ConstraintProof.Refuted : ConstraintProof.Proven;
         var both = conjunction ? ConstraintProof.Proven : ConstraintProof.Refuted;
         return left == decisive || right == decisive ? decisive : left == both && right == both ? both : ConstraintProof.Unknown;
+    }
+
+    // SPEC 8.3.1, 8.3.2 Conjunction (8.2.3 grounds: conjunction elimination): a supplied constraint is itself and, a conjunction, each
+    // conjunct's supply, appended to `into` in that order. The one split of a premise's supply; its readers are the environment's intake
+    // (AddConstraintFact) and the walk's item intake (ContractSolver's AddSupplyRows), each over its own run of `conjuncts`, so a
+    // reader nested in another appends above it and removes its run before returning.
+    private static void AddConjuncts(List<BoundConstraint> into, BoundConstraint constraint)
+    {
+        into.Add(constraint);
+        if (constraint.Kind == ConstraintKind.And)
+        {
+            AddConjuncts(into, constraint.Left!);
+            AddConjuncts(into, constraint.Right!);
+        }
     }
 
     private static bool IsSelfConstraint(IsKoto clause)
@@ -687,13 +704,17 @@ public sealed partial class Binding
             return false;
         }
 
-        environment.Add(fact, source, origin);
-        if (fact.Kind == ConstraintKind.And)
+        var start = this.conjuncts.Count;
+        AddConjuncts(this.conjuncts, fact);
+        var error = false;
+        for (var i = start; i < this.conjuncts.Count; i++)
         {
-            return this.AddConstraintFact(environment, fact.Left!, source, origin) | this.AddConstraintFact(environment, fact.Right!, source, origin);
+            environment.Add(this.conjuncts[i], source, origin);
+            error |= this.conjuncts[i].Kind == ConstraintKind.Error;
         }
 
-        return fact.Kind == ConstraintKind.Error;
+        this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
+        return error;
     }
 
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
