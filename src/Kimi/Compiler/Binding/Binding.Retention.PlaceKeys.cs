@@ -5,8 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // A Place's key by its path, and the layers at a Place (SPEC 5.7 Origins, Reading a Field, Writing a Field; C-189; contract in
-// TyCtxt.Raw.cs). Responsibility: the one step of a Place's path (Select, Base), from a root's key (PlaceKey.Root, or a called
-// function's parameter key, TyCtxt.ParameterKey), and the parts the value at a key holds at its own address with each raw layer's step at
+// TyCtxt.Raw.cs). Responsibility: the one step of a Place's path (Select, Base), from a root's key (PlaceKey.Root, a called function's
+// parameter key, TyCtxt.ParameterKey, or a Closure call's receiver key, TyCtxt.ReceiverKey), and the parts the value at a key holds at its own address with each raw layer's step at
 // the Place (OwnLayers, over OwnParts: the storage walk's by-value criterion, ByValue); on a parameter path, each key's declared
 // counterpart (Signature) and the kept Type whose binding the declaration does not show a part lies in (OwnLayer.Kept, SPEC 15.6.4; PLAN G823).
 // Inputs: Holdings' entries and the stored parts Binding's instances keep (Instance, WrittenAt); a path's dereference is PathOrigin's one

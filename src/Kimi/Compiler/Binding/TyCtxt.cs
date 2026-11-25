@@ -169,11 +169,12 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // SPEC 15.8.2, 7.7.3 (DECISIONS R4-M148; PLAN G941): a Closure call's receiver key: the root key of its contract's call receiver input
     // (input 0, HasReceiverInput) as Retains forms it, `R/Env during ρ` (Binding.ClosureReceiver over ClosureReceiverIn; Env by value under
-    // `owner/Self`), so that OwnLayers at the key past its borrow lists the environment bindings with their `let` mark (OwnLayer.Let); the
-    // root key of `callee` for a callee without that input.
+    // `owner/Self`), so that OwnLayers at the key past its borrow lists the environment bindings with their `let` mark (OwnLayer.Let).
+    // `callee` has that input (MirBorrows' Receiver); a callee without it is a broken contract (InternalInvariant_Kd).
     internal PlaceKey ReceiverKey(BoundType callee)
         => Closure(callee) is { } closure
-            ? PlaceKey.Root(binding.ClosureReceiver((FunctionKoto)closure.Symbol!.Declaration!, this.ClosureReceiverIn(closure), closure)) : PlaceKey.Root(callee);
+            ? PlaceKey.Root(binding.ClosureReceiver((FunctionKoto)closure.Symbol!.Declaration!, this.ClosureReceiverIn(closure), closure))
+            : throw new InvalidOperationException($"{Binding.DiagnosticTypeName(callee)} has no call receiver input (InternalInvariant).");
 
     // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.

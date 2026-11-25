@@ -500,28 +500,22 @@ public sealed partial class TyCtxtTest
         Assert.Equal(0, AllocationMeasurement.Measure(Read));
     }
 
-    // The keys' layers with their Hidden bit, and each Past key's nested (four keys deep).
-    private static string Hiding(TyCtxt types, PlaceKey key, int depth)
-    {
-        var into = new List<OwnLayer>();
-        Assert.True(types.OwnLayers(key, into));
-        return string.Join(", ", into.Select(x =>
-        {
-            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {(x.Hidden ? "H" : "S")}";
-            var below = depth < 3 && x.Past.Type is not null ? Hiding(types, x.Past, depth + 1) : string.Empty;
-            return below.Length == 0 ? row : $"{row} {{{below}}}";
-        }));
-    }
+    // The keys' layers with their Hidden bit.
+    private static string Hiding(TyCtxt types, PlaceKey key, int depth) => Layers(types, key, depth, ", ", static x => x.Hidden ? "H" : "S");
 
-    // The keys' layers with their Let mark, and each Past key's nested (four keys deep).
+    // The keys' layers with their step and Let mark.
     private static string Marks(TyCtxt types, PlaceKey key, int depth)
+        => Layers(types, key, depth, "; ", static x => $"{x.Step}{(x.Let ? " Let" : string.Empty)}");
+
+    // The keys' layers, each with its `column` text, and each Past key's nested (four keys deep).
+    private static string Layers(TyCtxt types, PlaceKey key, int depth, string separator, Func<OwnLayer, string> column)
     {
         var into = new List<OwnLayer>();
         Assert.True(types.OwnLayers(key, into));
-        return string.Join("; ", into.Select(x =>
+        return string.Join(separator, into.Select(x =>
         {
-            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step}{(x.Let ? " Let" : string.Empty)}";
-            var below = depth < 3 && x.Past.Type is not null ? Marks(types, x.Past, depth + 1) : string.Empty;
+            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {column(x)}";
+            var below = depth < 3 && x.Past.Type is not null ? Layers(types, x.Past, depth + 1, separator, column) : string.Empty;
             return below.Length == 0 ? row : $"{row} {{{below}}}";
         }));
     }

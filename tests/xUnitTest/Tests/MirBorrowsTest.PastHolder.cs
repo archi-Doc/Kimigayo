@@ -1201,8 +1201,8 @@ public sealed partial class MirBorrowsTest
     };
 
     // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4; its implementation review's rows). Not rows
-    // here, since no row asserts an invalid program's acceptance: the three environment rows the Front's A5-F builds (an environment's
-    // raw layers stated, a `let` binding's own layer marked) and a holder whose address a hidden binding carries, written with the
+    // here, since no row asserts an invalid program's acceptance: the two environment rows the Front's A5-F builds (an environment's
+    // raw layers stated) and a holder whose address a hidden binding carries, written with the
     // record of its own storage Type (the owner's O-312 (a); a Binding fact), each a PLAN row of its unit. PLAN G785's rows
     // (a5v-r3ref-state.md): past a holder through a borrow layer, a punned read over a reference's or an `owner` Scalar's bytes reaches
     // storage the body does not own. PLAN G941's rows (artifacts/units/g941 labels.md, from SPEC 5.7 Calls, 15.6.4, 15.8.2 and the
