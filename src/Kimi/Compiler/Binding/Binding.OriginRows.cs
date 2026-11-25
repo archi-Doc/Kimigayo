@@ -4,8 +4,8 @@
 // obligations on a pass's first read, each Origin row in the unit of the body Binding formed it in (BindingObligation.Body); a body's slice
 // on its first read, a constructor's own rows then its layer's (E4), each row's Site converted once to the SourceRef MIR names syntax by
 // (DECISIONS R4-M113). The slice's atom table is Binding.OriginRows.Atoms.cs's, the body's fixed-fixed oracle Binding.OriginRows.Oracle.cs's.
-// Input: the pass's obligations of the body-origin deadline. Output: OriginRows (a body's OriginRowSet) and OriginLayers (the layer units
-// with rows, in formation order).
+// Input: the pass's obligations of the body-origin deadline. Output: OriginRows (a body's OriginRowSet; the layer key's is its layer
+// body's, the one source of that slice, DECISIONS R7-M111).
 // Invariants: a slice is read-only for consumers and filled only through IOriginRowSetBuilder; a row formed with no body is in no slice
 // (DECISIONS BU-26); storage is kept across passes. The view is its own validator (DECISIONS BU-102). Its contract: no row with no body
 // is left (the declaration judge consumes every one whose ends are declaration atoms, and a header or a nested signature's per-call row
@@ -33,7 +33,6 @@ public sealed partial class Binding
     private readonly List<List<OriginRowDraft>> originUnits = [];
     private readonly Dictionary<ExecutableBody, int> originSliceIndex = [];
     private readonly List<OriginRowSet> originSlices = [];
-    private readonly List<ExecutableBody> originLayers = [];
     private readonly List<PairBinder> originUseBinders = [];
     private readonly List<PairBinder> originBodyBinders = [];
     private int originUnitCount;
@@ -56,15 +55,6 @@ public sealed partial class Binding
 
         // Ends the body's own rows: the layer's rows, if any, follow.
         void EndOwnRows();
-    }
-
-    internal IReadOnlyList<ExecutableBody> OriginLayers
-    {
-        get
-        {
-            this.PrepareOriginRows();
-            return this.originLayers;
-        }
     }
 
     // A body's slice, materialized on its first read this pass: its unit's rows, then for a constructor's own body its layer's (R4-M101 E4).
@@ -131,7 +121,6 @@ public sealed partial class Binding
         (this.originUnitCount, this.originSliceCount) = (0, 0);
         this.originUnitIndex.Clear();
         this.originSliceIndex.Clear();
-        this.originLayers.Clear();
         foreach (var obligation in this.obligationsView)
         {
             if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Deadline: BindingDeadline.BodyOrigins } ||
@@ -200,11 +189,6 @@ public sealed partial class Binding
         var unit = this.originUnits[this.originUnitCount];
         unit.Clear();
         this.originUnitIndex.Add(body, this.originUnitCount++);
-        if (body.Definition is { Kind: BindingSymbolKind.Type })
-        {
-            this.originLayers.Add(body); // A layer unit (InitializerBody): its struct's Field initializers.
-        }
-
         return unit;
     }
 

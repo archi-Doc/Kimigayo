@@ -5,14 +5,15 @@
 // Input: a body as an ExecutableBody (MIR's key form, MirDefKey.Body; a Getter's or Setter's execution function names its accessor), after
 // Bind, and for an atom MIR reads the MIR site it is read at.
 // Output: OriginRows, OriginAtom (an atom's index in the body's table), MeetAtom (a canonical meet's), MeetOperand (an operand of a table
-// meet, as the meet holds it), UniversalRelations and OriginLayers (the layer units with rows).
+// meet, as the meet holds it) and UniversalRelations.
 // Every site the view publishes or takes is a SourceRef, the one way MIR names syntax (ARCH rows 29 and 90; DECISIONS R4-M113): the view
 // converts its rows' sites once and reads a MIR site's syntax itself.
 // Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved once, at its
 // use: a row's end as its row reads it (a Compared row's as the slot), a MIR Origin at its site as the value, a meet's operands as the meet
 // holds them; meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is Binding's
 // to judge (DECISIONS BU-26) and in no slice; a constructor's own body's slice is its rows, then its layer's (the struct's Field
-// initializers), each atom in its forming unit's part, Fixed atoms shared; a broken contract throws in a complete compilation
+// initializers), each atom in its forming unit's part, Fixed atoms shared, and a struct with no Published constructor reads its layer's
+// rows through its layer body alone, the one source of that slice: the layer key's own rows (DECISIONS R7-M111); a broken contract throws in a complete compilation
 // (CheckFaulted_Kd, DECISIONS BU-102), so MIR trusts every row and atom it reads.
 // Must not: decode a Projection slot for MIR (only ProjectionRole leaves the view, D7), read MirBodyKind, or judge a relation.
 
@@ -112,8 +113,4 @@ internal sealed partial class TyCtxt
 
     // SPEC 15.3.6, 15.6.5: the body's fixed-fixed oracle, extracted at its root (a layer's at its struct); disposed after use.
     internal Binding.UniversalRelations UniversalRelations(ExecutableBody body) => binding.UniversalRelationsOf(body);
-
-    // The layer units (a struct's Field initializers) that have rows, in formation order; MirOrigins.Findings locates G215's limit at
-    // those no constructor's slice includes (DECISIONS R4-M168).
-    internal IReadOnlyList<ExecutableBody> OriginLayers => binding.OriginLayers;
 }
