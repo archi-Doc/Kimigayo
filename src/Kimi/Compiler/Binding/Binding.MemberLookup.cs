@@ -266,7 +266,7 @@ public sealed partial class Binding
 
             if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
             {
-                this.Fail(member.Left, BindingFailure.InvalidOrigin);
+                this.Record(member.Left, BindingFailure.InvalidOrigin, []);
                 return null;
             }
 

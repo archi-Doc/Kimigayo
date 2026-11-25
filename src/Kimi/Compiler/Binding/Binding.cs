@@ -92,11 +92,8 @@ public sealed partial class Binding
         this.aliasTargets = new(this);
         this.importedContainers = new(this);
         this.qualificationFailures = new(this);
-        this.perCallOrigins = new(this);
         this.pairFollows = new(this);
         this.implicitPairFollows = new(this);
-        this.phantomRawOrigins = new(this);
-        this.invalidStaticOriginSlots = new(this);
         this.effectBoundRejections = new(this);
         this.receiverOperations = new(this);
         this.reachedThroughBorrow = new(this);

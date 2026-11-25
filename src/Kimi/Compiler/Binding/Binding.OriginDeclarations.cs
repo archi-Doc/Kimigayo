@@ -245,8 +245,6 @@ public sealed partial class Binding
             ((OriginNameList)names).Spans.Clear();
         }
 
-        this.absentSlotProjections?.Clear();
-
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
@@ -747,7 +745,7 @@ public sealed partial class Binding
                 node.BoundOrigin = binding.ResolveOrigin(origin, declaration);
                 if (!OriginVisible(node.BoundOrigin, node))
                 {
-                    binding.Fail(node, BindingFailure.InvalidOrigin);
+                    binding.Record(node, BindingFailure.InvalidOrigin, []);
                 }
             }
 

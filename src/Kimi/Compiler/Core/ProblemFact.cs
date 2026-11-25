@@ -21,12 +21,14 @@
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
 // start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept sides,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
-// the subject and as its Value an index in the kept Origin records, a Related fact a location the record shows (its own or a related one) and as its Value the
-// role's ordinal in its code's adapter row, a Count fact the subject and as its Value a count the requirement states, in the row's order,
+// the subject and as its Value an index in the kept Origin records, a Related fact a location the record shows (its own or a related one), or one its adapter
+// reads and does not show (a per-call Origin's selected declaration, R7-E4 E4c), and as its Value the role's ordinal in its code's adapter row, a Count fact the subject and as its Value a count the requirement states, in the row's order,
 // a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names, or its code's packed rows
 // (ParameterShapeMismatch_Kd's packs its mode, the other mode and the matching key, a byte each; a selection's candidate its CandidateFlags
-// and two receivers), and above them an ordinal into its party's own parameters or Type parameters (a candidate's receiver parameter, a
-// correlation's slot, E3c-2's Case index, a Callable call's position in its candidates' common signature), and a Key fact the conflicting
+// and two receivers), and above them an ordinal into its party's own parameters, Type parameters or Origin slots (a candidate's receiver
+// parameter, a correlation's slot, E3c-2's Case index, a Callable call's position in its candidates' common signature, a slot case's slot),
+// or a set of parameter ordinals (a per-call slot's parameters, a mask whose 64 bits are -1L, so no reader tests a Reason's Value for -1;
+// R7-E4 E4c), and a Key fact the conflicting
 // parameter and as its Value an index in BindingReport's kept sides, the Type at which two parameter shapes' matching keys overlap (SPEC
 // 7.4), neither side of a mismatch (R7-E2), and an Instance fact (R7-E2 E2-5b) as its Value an index in BindingReport's kept sides, a
 // Type its location does not determine, read by its site: at the preceding Related fact's own site, the instance that party is (a related
@@ -37,7 +39,9 @@
 // at most one per party, after its Reason; a kind that names no value has -1; a problem has at most one fact of each kind but
 // its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order its site
 // records them, its Count and Instance facts, in their row's order, and an acquisition record's second Reason, a transfer's moving
-// cases after its packed Reason (R7-E4 E4a-2, read by position); a selection's record is the subject's facts, then per party its
+// cases after its packed Reason (R7-E4 E4a-2, read by position), a slot case's one SemanticsMask Reason per binder of the slot's
+// requirement after its packed Reason, always present, and a per-call slot's parameter mask after its ordinal (R7-E4 E4c, read by
+// position); a selection's record is the subject's facts, then per party its
 // Related (role 3 or 5) and that party's entries up to the next party Related, in the order its adapter renders them, read by position,
 // never by a kind's first fact.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
@@ -77,7 +81,7 @@ internal enum ProblemFactKind : byte
     Terminal, // Binding: the same syntax, the Type the operator judged (Value, the same).
     Constraint, // Binding: the proposition its check needs and could not prove: an operator's requirement, a clause's proposition at a selected call or a range iteration's entry (Value, an index in the kept propositions).
     OriginRecord, // Binding: the subject, one of its Origin records beyond the first (Value, an index in the kept Origin records; SPEC 15.6.1).
-    Related, // Binding: a location the record shows, its own or a related one, by role (Value, the role's ordinal in its code's row; SPEC 23.3).
+    Related, // Binding: a location the record shows, its own or a related one, or reads (Value, the role's ordinal in its code's row; SPEC 23.3).
     Count, // Binding: the subject, a count its requirement states, such as an arity (Value, the count; in its code's row order).
     Reason, // Binding: the subject, a row of the closed enumeration its requirement names, or its code's packed rows (Value; text the adapter's).
     Key, // Binding: the conflicting parameter, the Type at which its matching key overlaps an earlier one's (Value, a kept side's index; SPEC 7.4).

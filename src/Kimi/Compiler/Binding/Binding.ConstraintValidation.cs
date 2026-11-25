@@ -191,6 +191,30 @@ public sealed partial class Binding
     // Type's declaration; one bound to a function is a reference or a callee).
     private static bool IsWrittenType(Koto node) => node is TypeKoto or OriginApplicationKoto or GenericsKoto { BoundSymbol.Kind: BindingSymbolKind.Type };
 
+    // SPEC 8.1.2: the evidence of a pair occurrence failed with a Language cause, decoded from FailTypeRole's Reason (the causes, the
+    // admitted set above bit 8); no scope is read. FailTypeRole records only where TypeRoleCauses read the occurrence's pair, so a node
+    // without one is a broken contract.
+    private static void ReportFormationCause(Koto node, DiagnosticCollection? store, in BindingProblem problem, long reason)
+    {
+        if (node is not TypeSemanticsKoto { SemanticsParameter: { } name })
+        {
+            node.ReportIn(store, DiagnosticRequirement.Binding(BindingFailure.Internal), DiagnosticCode.InternalInvariant_Kd, condition: problem.Condition);
+            return;
+        }
+
+        var (causes, admitted) = ((TypeRoleCause)(byte)reason, (SemanticsMask)(reason >> 8));
+        var text = new StringBuilder();
+        AppendSemantics(text, admitted & ((causes & TypeRoleCause.MissingSlot) != 0 ? SemanticsMask.Borrow : SemanticsMask.Uniq | SemanticsMask.ObjUniq), " or ");
+        if ((causes & TypeRoleCause.MissingSlot) != 0)
+        {
+            node.ReportIn(store, problem.Requirement, problem.Code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)", condition: problem.Condition);
+        }
+        else
+        {
+            node.ReportIn(store, problem.Requirement, problem.Code, evidence: [$"{name} admits {text}, which a static Origin never admits"], note: "A static outer-Origin slot admits no exclusive borrow (SPEC 8.1.2)", condition: problem.Condition);
+        }
+    }
+
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
     private Koto? CallableArgument(Koto use, IsKoto clause)
     {
@@ -591,7 +615,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.obligations.Count; i++)
         {
             var obligation = this.obligations[i];
-            if (obligation.Deadline == BindingDeadline.Definition && this.TypeRoleCauses(obligation) == TypeRoleCause.None)
+            if (obligation.Deadline == BindingDeadline.Definition && this.TypeRoleCauses(obligation, out _) == TypeRoleCause.None)
             {
                 this.obligationSet.Remove(new(obligation));
                 continue;
@@ -771,13 +795,14 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
+    // SPEC 23.1.2: an unproven Definition obligation records its Language cause, a missing slot before a static exclusive one, with
+    // the causes and the binder's admitted set as its Reason (TypeRoleCause bits, the SemanticsMask above bit 8), judged here, and
     // keeps an unproven target role of the same occurrence as a separate record; every final check recomputes the causes. The role is
     // a proof in the use's declaration context, so in a failed one (ReadFailedDeclaration) it rests on that declaration's record and
     // keeps none of its own; a Language cause stays the occurrence's own.
     private void FailTypeRole(BindingObligation obligation)
     {
-        var causes = this.TypeRoleCauses(obligation);
+        var causes = this.TypeRoleCauses(obligation, out var admitted);
         if ((causes & TypeRoleCause.Role) != 0 && this.InvalidDeclarationContextCause(obligation.Use) is { } failed)
         {
             causes &= ~TypeRoleCause.Role;
@@ -791,14 +816,28 @@ public sealed partial class Binding
         var failure = (causes & TypeRoleCause.MissingSlot) != 0 ? BindingFailure.MissingOrigin
             : (causes & TypeRoleCause.StaticExclusive) != 0 ? BindingFailure.InvalidOrigin
             : BindingFailure.UnprovenConstraint;
-        this.Fail(obligation.Use, failure);
-        if (failure != BindingFailure.UnprovenConstraint)
+        if (failure == BindingFailure.UnprovenConstraint)
         {
-            this.formationCauses[obligation.Use] = causes;
-            if ((causes & TypeRoleCause.Role) != 0)
-            {
-                this.Record(obligation.Use, BindingFailure.UnprovenConstraint, []);
-            }
+            this.Fail(obligation.Use, failure);
+            return;
+        }
+
+        this.formationCauses[obligation.Use] = causes;
+        if (this.RecordedFailure(obligation.Use) == BindingFailure.None)
+        {
+            this.Record(obligation.Use, failure, [new(ProblemFactKind.Reason, SourceRef.Of(obligation.Use), (long)causes | ((long)admitted << 8))]);
+        }
+        else
+        {
+            // Transitional, R7-E5 (E4c, N1; PLAN's second independent failure at an occupied Origin key): at L11's meet the
+            // occurrence's own Origin row recorded first, and the formation cause, independent of it, is not recorded (a Record would
+            // add a record under the other code and be a Defect under the same one), until RecordNumbered per failure.
+            this.Fail(obligation.Use, failure);
+        }
+
+        if ((causes & TypeRoleCause.Role) != 0)
+        {
+            this.Record(obligation.Use, BindingFailure.UnprovenConstraint, []);
         }
     }
 
@@ -849,31 +888,6 @@ public sealed partial class Binding
 
             return null;
         }
-    }
-
-    // SPEC 8.1.2: the evidence of a pair occurrence failed with a Language cause.
-    private bool ReportFormationCause(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        if (!this.formationCauses.TryGetValue(node, out var causes) || node is not TypeSemanticsKoto { BoundSymbol.Pair: { } pair } application ||
-            pair.WholeType is not { } whole)
-        {
-            return false;
-        }
-
-        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
-        var text = new StringBuilder();
-        AppendSemantics(text, admitted & ((causes & TypeRoleCause.MissingSlot) != 0 ? SemanticsMask.Borrow : SemanticsMask.Uniq | SemanticsMask.ObjUniq), " or ");
-        var name = application.SemanticsParameter!;
-        if ((causes & TypeRoleCause.MissingSlot) != 0)
-        {
-            node.ReportIn(store, requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)");
-        }
-        else
-        {
-            node.ReportIn(store, requirement, code, evidence: [$"{name} admits {text}, which a static Origin never admits"], note: "A static outer-Origin slot admits no exclusive borrow (SPEC 8.1.2)");
-        }
-
-        return true;
     }
 
     // The constraint family's one recorder (SPEC 8.3, 23.1.2; R7-E3 E3b delta 2.3): a proof's outcome at a use, through the one mapping
@@ -997,8 +1011,9 @@ public sealed partial class Binding
     // SPEC 8.1.1, 8.1.2, 8.7.3: the independent causes for which a Type occurrence's role or pair formation is not proven, None when
     // it is. A missing outer-Origin slot under an admitted borrow and a static slot under an admitted exclusive borrow are Language
     // causes; a target that is not proven a value Type or an Object Target is a Proof cause, judged separately.
-    private TypeRoleCause TypeRoleCauses(BindingObligation obligation)
+    private TypeRoleCause TypeRoleCauses(BindingObligation obligation, out SemanticsMask admitted)
     {
+        admitted = SemanticsMask.None;
         if (obligation.Type is not { } type)
         {
             return TypeRoleCause.Role;
@@ -1021,7 +1036,7 @@ public sealed partial class Binding
         // to be an Object Target.
         // An empty set is the 8.3.4 Error of the environment that emptied it, its one record (ValidateConstraintEnvironments): no case
         // forms here, so the occurrence has no cause of its own.
-        var admitted = this.AdmittedSemantics(whole, scope);
+        admitted = this.AdmittedSemantics(whole, scope);
         const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
         if (admitted == SemanticsMask.None)
         {

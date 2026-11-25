@@ -224,11 +224,11 @@ public sealed partial class Binding
                 return this.ReceiverOrigin(receiver); // SPEC 5.7, 15.2.1: in a constructor or drop, `self` is the receiver's Origin.
             }
 
-            this.Fail(use, BindingFailure.InvalidOrigin);
+            this.Record(use, BindingFailure.InvalidOrigin, []);
             return null;
         }
 
-        this.Fail(use, BindingFailure.MissingOrigin, true);
+        this.Record(use, BindingFailure.MissingOrigin, [], unresolved: true);
         return null;
     }
 
@@ -239,7 +239,7 @@ public sealed partial class Binding
     {
         if (IsRecovery(syntax, out _))
         {
-            this.Fail(syntax, BindingFailure.InvalidOrigin);
+            this.Record(syntax, BindingFailure.InvalidOrigin, []);
             return null;
         }
 
@@ -282,9 +282,10 @@ public sealed partial class Binding
                     input.BindingState = target.BindingState = BindingState.Resolved;
                     target.BoundOrigin = result;
                 }
-                else if (type?.Symbol?.Schema is not null)
+                else if (type?.Symbol is { Schema: not null } symbol)
                 {
-                    this.RecordAbsentSlot(syntax, type);
+                    // SPEC 15.3.2: a slot the Type does not declare, with the Type's declaration related (role 1, "header" or "type").
+                    this.Record(syntax, BindingFailure.InvalidOrigin, [new(ProblemFactKind.Related, this.FactSite(symbol.Declaration!), 1)]);
                 }
             }
         }
@@ -298,6 +299,9 @@ public sealed partial class Binding
 
         if (result is null || !OriginVisible(result, syntax))
         {
+            // Transitional, R7-E5 (E4c, B1): a null result reads BindOriginName's or the absent slot's record at this node, or the
+            // operand's (OriginCandidate's InvalidOrigin, its MissingOrigin, an absent slot's), so it keeps `Fail`, which adds no record
+            // there, until R7-E5's per-problem inputs; only an invisible Origin is its own failure.
             _ = failedOperand is null ? this.Fail(syntax, BindingFailure.InvalidOrigin) : this.CompleteDependent(syntax, failedOperand);
         }
 
@@ -544,7 +548,7 @@ public sealed partial class Binding
             {
                 if (!guaranteedBorrow && requirement == LoanRequirement.Uniq)
                 {
-                    this.Fail(use, BindingFailure.MissingOrigin);
+                    this.Record(use, BindingFailure.MissingOrigin, []);
                     return null;
                 }
 
@@ -593,7 +597,12 @@ public sealed partial class Binding
             return this.OriginAtom(use, OriginKind.ConstraintSet, aggregateSlot, set);
         }
 
-        this.Fail(use, BindingFailure.MissingOrigin);
+        if (use is TypeSemanticsKoto repeated && RepeatedSet(repeated))
+        {
+            return null; // SPEC 15.3.1, 23.1.2: a set that failed as a repeat declares nothing; its slot's omission rests on that DuplicateBinding_Kd (RestOnRepeatedSet's rule).
+        }
+
+        this.Record(use, BindingFailure.MissingOrigin, []);
         return null;
 
         ConstraintProof OwnedWithoutConditionalBorrows(BoundOrigin completion)
@@ -737,7 +746,7 @@ public sealed partial class Binding
         }
         else
         {
-            this.Fail(use, BindingFailure.MissingOrigin);
+            this.Record(use, BindingFailure.MissingOrigin, []);
         }
 
         return null;

@@ -112,7 +112,7 @@ public sealed partial class Binding
         (declaration.Forming.FailedClauses ??= new(1)).Add((left, right));
         if (IsRecovery(clause, out _))
         {
-            this.Fail(clause, BindingFailure.InvalidOrigin);
+            this.Record(clause, BindingFailure.InvalidOrigin, []);
         }
         else
         {

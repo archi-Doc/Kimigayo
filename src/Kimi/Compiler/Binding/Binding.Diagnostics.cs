@@ -31,11 +31,9 @@ public sealed partial class Binding
     private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
 
     // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
-    private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
 
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
     // slot would hold (as bits) and that signature.
-    private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature);
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
@@ -700,12 +698,10 @@ public sealed partial class Binding
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
-        this.perCallSlots?.Clear();
         this.erasureOutcomes?.Clear();
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();
-        this.pairCaseRows.Clear();
         this.ResetParameterShapes();
         this.duplicateOrder.Clear();
         this.specificationLinks?.Clear();
