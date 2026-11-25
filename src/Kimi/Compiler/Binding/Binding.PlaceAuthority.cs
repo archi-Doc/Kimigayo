@@ -27,15 +27,17 @@ namespace Kimi.Compiler;
 //   The in-place reads it decides the paths of are Binding.InPlaceReads'.
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
 //   PairCapability), a named root's reassignability (Reassignable) and a special receiver's authority (Receiver).
-// - Outputs: the predicates above.
+// - Outputs: the predicates above, and the failures AccessFailure, BorrowFailure, OwnedLending (null: nothing lent) and
+//   ExclusiveAcquisitionDenial (null: acquirable) name.
 // - Invariants: one path computation decides writes, Moves and borrows: a query folds the Place's path once from its root (PathFold;
 //   LendFold for a borrow in a mode from a scope), each prefix's grant, writability and lending decided from its owner prefix's, never by
 //   a new query on the path (D-941); the one reading of a receiver outside the path is a node the path stops at (a getter result, a view
 //   range), whose receiver is folded as its own query (Owner, LentOwner); an exclusive reading of a receiver's access Type
 //   (ExclusiveAccessType) takes the receiver's ReferentAuthority from the fold, so no rule queries a path again. A shared layer anywhere
 //   on a path bounds it to Read; a path's layer below a Place is its own Type's (LayerAuthority).
-// - Prohibitions: nothing here reports a diagnostic (callers record the failure AccessFailure or BorrowFailure names, and a selected
-//   input's static-root limit is JudgeSelectedInput's), selects a candidate or changes a Type.
+// - Prohibitions: nothing here reports a diagnostic (callers record the failure AccessFailure, BorrowFailure, OwnedLending or
+//   ExclusiveAcquisitionDenial names, and a selected input's static-root limit is JudgeSelectedInput's), selects a candidate or
+//   changes a Type.
 public sealed partial class Binding
 {
     private long pathFoldSteps;

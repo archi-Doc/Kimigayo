@@ -143,8 +143,9 @@ public sealed partial class Binding
     // (SPEC 23.1.3), or the access the lending rule denies an implicit exclusive acquisition of it (OwnedLending,
     // ExclusiveAcquisitionDenial; SPEC 7.3.3, 15.6.2), or a limit located at it. Only a deferring caller writes it (RequireAcquisition):
     // a trial's receiver and arguments, ValueCalls and Enums, which read it, and ResultPremises, whose writes the enclosing trial takes as
-    // its candidate's acquisition; Structs and ShapeEvidence save and restore it. A caller that does not defer refuses the input and
-    // records its own failure, so it never leaves the channel set for an enclosing trial (a closure body bound per candidate).
+    // its candidate's acquisition. Structs, ShapeEvidence and BindCall save and restore it, a selection query restores it at its end
+    // (EndSelectionQuery), and each trial (TryCandidate) and SelectAt start from none. A caller that does not defer refuses the input
+    // and records its own failure, so it never leaves the channel set for an enclosing trial (a closure body bound per candidate).
     private AcquisitionFailure? acquisitionFailure;
 
     private bool RequireAcquisition(Koto source, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
