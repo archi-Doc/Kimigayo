@@ -16,7 +16,8 @@ namespace Kimi.Compiler.Mir;
 // ReadPart; SPEC 15.6 Holders: every element with every layer of the key the holder was reached at): there each element is typed, punned or
 // read nothing at each layer, and a holder it writes takes the record of that layer's storage and is read on at the key past it, at that
 // Type's guard; a call input's key is the called function's parameter key (InputKey), so a layer its own Type parameters' bindings hide
-// adds no reach; a holder that may afterwards hold the call's own pointer at a raw layer without an Origin, at a reading key, at one
+// adds no reach; a holder that may afterwards hold the call's own pointer at a raw layer without an Origin the call may write (never one
+// Binding marks OwnLayer.Let), at a reading key, at one
 // that keeps the declared step and at the call's result key alike (MirBorrows.Calls' KeepResult), reaches storage the body does not own,
 // with that layer's record (OwnPointer; SPEC 15.6.4's composition), and a key with a part that is no layer the walked Type expression
 // writes keeps the declared step for the holder beside the reading of its other layers (PunKey.Declared; SPEC 5.7 Calls). At the first
@@ -990,15 +991,18 @@ internal sealed partial class MirBorrows
     // Its or Any; never a layer stating an Origin, `static` included, nor a hidden one, which has no past entry), the call may write its own
     // pointer at that layer, also as a Tuple element or a declaration's or an environment's layer, which may address that storage, and
     // store through it at the next one; at the first step and past a holder alike, at a key read layer by layer and at one that keeps the
-    // declared step (ReadAt), and at the result's key (MirBorrows.Calls' KeepResult: ResultWrites' entries). A5 judges no Type there:
-    // what the call stores takes the layer's record (the A5 value redesign's rule 5), Binding's entry being the bound: at an Its layer the Reached entry of its pointee (Written's place, Received; a kept pointee's kept
-    // entry), at an Any layer the output's All (Written with no place).
+    // declared step (ReadAt), and at the result's key (MirBorrows.Calls' KeepResult: ResultWrites' entries). Rule L (PLAN G941; the
+    // owner's O-254 Q1 D, DECISIONS R4-M219): never at a layer the call does not write, one Binding marks OwnLayer.Let (a `let` environment
+    // binding of the call receiver's referent, SPEC 15.8.2); the mark is no class, so the layer is still read past by its class. A5 judges
+    // no Type there: what the call stores takes the layer's record (the A5 value redesign's rule 5), Binding's entry being the bound: at an
+    // Its layer the Reached entry of its pointee (Written's place, Received; a kept pointee's kept entry), at an Any layer the output's All
+    // (Written with no place).
     private void OwnPointer(int key, OutputRetention output)
     {
         var facts = this.punKeys[key];
         for (var j = 0; j < facts.PastCount; j++)
         {
-            if (this.punPastLayers[facts.PastStart + j].Class is var at and (PastLayer.Its or PastLayer.Any))
+            if (this.punPastLayers[facts.PastStart + j] is (var at and (PastLayer.Its or PastLayer.Any), false))
             {
                 this.Written(Escaped, -1, ViaPast, at == PastLayer.Its ? this.EntryName(this.punPastKeys[facts.PastStart + j], output) : null);
             }

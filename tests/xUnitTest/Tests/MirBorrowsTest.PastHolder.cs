@@ -953,6 +953,280 @@ public sealed partial class MirBorrowsTest
                 viaSlotR(s@ref, spare)
                 kk = 2
             """,
+        ["letRefLeafVarOtherOk"] = """
+            func letRefLeafVarOtherOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let n: u64 = 3
+                let q: raw/(ref/u8) = w@raw
+                var c = func [var n, q] (v: raw/u8)
+                    n = 4
+                    unsafe => *q = *q
+                c(spare)
+                kk = 2
+            """,
+        ["letRefLeafXUseOk"] = """
+            func useu8(x: u8) => ()
+            func letRefLeafXUseOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let n: u64 = 3
+                let q: raw/(ref/u8) = w@raw
+                var c = func [n, q] (v: raw/u8)
+                    unsafe => *q = *q
+                c(spare)
+                kk = 2
+                useu8(x)
+            """,
+        ["cloLetU64NoUseOk"] = """
+            func cloLetU64NoUseOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let q: raw/u64 = z@raw
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = 0@u64
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetPtrU8ThroughU"] = """
+            func cloLetPtrU8ThroughU()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: u8 = 0
+                let m: raw/u8 = cell@raw
+                var c = func [m] (v: raw/u8)
+                    unsafe => *m = 0
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetRefMkSharedOk"] = """
+            func inspect<T>(value: ref/T) => ()
+            func mkq() -> raw/(ref/u8) => null
+            func cloLetRefMkSharedOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let q: raw/(ref/u8) = mkq()
+                let c = func [q] (v: raw/u8)
+                    unsafe => inspect(*q)
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetTupPtrBad"] = """
+            func cloLetTupPtrBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var pr: (ref/u8, raw/u8) = (x@ref, null)
+                let q: raw/((ref/u8, raw/u8)) = pr@raw
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = *q
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetTupU64Ok"] = """
+            func cloLetTupU64Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var pr: (ref/u8, u64) = (x@ref, 0)
+                let q: raw/((ref/u8, u64)) = pr@raw
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = *q
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetUniqPtrBad"] = """
+            func cloLetUniqPtrBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var hop: raw/u8 = null
+                var w2: uniq/(raw/u8) = hop@uniq
+                let q: raw/(uniq/(raw/u8)) = w2@raw
+                var c = func [q] (v: raw/u8)
+                    unsafe => (*q)@follow = null
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetRefPtrOk"] = """
+            func cloLetRefPtrOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var hop: raw/u8 = null
+                var w2: ref/(raw/u8) = hop@ref
+                let q: raw/(ref/(raw/u8)) = w2@raw
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = *q
+                c(spare)
+                kk = 2
+            """,
+        ["cloVarRefBad"] = """
+            func cloVarRefBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let n: u64 = 3
+                let q: raw/(ref/u8) = w@raw
+                var c = func [n, var q] (v: raw/u8)
+                    unsafe => *q = *q
+                c(spare)
+                kk = 2
+            """,
+        ["cloLetVarSameTypeBad"] = """
+            func cloLetVarSameTypeBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let q: raw/(ref/u8) = w@raw
+                let q2: raw/(ref/u8) = w@raw
+                var c = func [q, var q2] (v: raw/u8)
+                    unsafe => *q2 = *q2
+                c(spare)
+                kk = 2
+            """,
+        ["nestUniqLetBad"] = """
+            func nestUniqLetBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let q: raw/(ref/u8) = w@raw
+                var c = func [q] (v: raw/u8)
+                    unsafe => *q = *q
+                let cu = c@uniq
+                var d = func [cu@move] (v: raw/u8)
+                    cu(v)
+                d(spare)
+                kk = 2
+            """,
+        ["cloLetPtrPtrU8ThroughBad"] = """
+            func cloLetPtrPtrU8ThroughBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var hop: raw/u8 = null
+                let m: raw/(raw/u8) = hop@raw
+                var c = func [m] (v: raw/u8)
+                    unsafe => *m = null
+                c(spare)
+                kk = 2
+            """,
+        ["d4NestLetInnerVarOk"] = """
+            func d4NestLetInnerVarOk()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let n: u64 = 3
+                let k: u64 = 5
+                let q: raw/(ref/u8) = w@raw
+                var inner = func [n, var q] (v: raw/u8)
+                    unsafe => *q = *q
+                var outer = func [inner@move, var k] (v: raw/u8)
+                    k = 4
+                outer(spare)
+                kk = 2
+            """,
+        ["letU64ParamSharedOk"] = """
+            func useu(z: u64) => ()
+            func letU64ParamSharedOk(pz: raw/u64)
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let q: raw/u64 = pz
+                let c = func [q] (v: raw/u8)
+                    unsafe => useu(*q)
+                c(spare)
+                kk = 2
+            """,
+        ["letStructU64Ok"] = """
+            struct ZHold
+                public var p: raw/u64
+                public init(p: raw/u64) => self.p = p
+            func letStructU64Ok()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let h = ZHold.init(p: z@raw)
+                var c = func [h@move] (v: raw/u8)
+                    unsafe => *(h.p) = 0@u64
+                c(spare)
+                kk = 2
+            """,
+        ["letTupEnvOk"] = """
+            func letTupEnvOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var w: ref/u8 = x@ref
+                let t: (raw/(ref/u8), u64) = (w@raw, 0)
+                var c = func [t] (v: raw/u8)
+                    unsafe => *(t.0) = *(t.0)
+                c(spare)
+                kk = 2
+            """,
+        ["byValDeclOk"] = """
+            struct ZHold
+                public var p: raw/u64
+                public init(p: raw/u64) => self.p = p
+            func put(h: ZHold, v: raw/u8) => ()
+            func byValDeclOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var z: u64 = 0
+                let h = ZHold.init(p: z@raw)
+                put(h@move, spare)
+                kk = 2
+            """,
+        ["cloResultLetBad"] = """
+            func cloResultLetBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let mk = func [] ()
+                    let q: raw/u64 = Raw.allocate<u64>(1)
+                    return func [q] (v: raw/u8)
+                        unsafe => *q = 0@u64
+                var c = mk()
+                c(spare)
+                kk = 2
+            """,
+        ["cloResultLetSharedBad"] = """
+            func useu(z: u64) => ()
+            func cloResultLetSharedBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let mk = func [] ()
+                    let q: raw/u64 = Raw.allocate<u64>(1)
+                    return func [q] (v: raw/u8)
+                        unsafe => useu(*q)
+                let c = mk()
+                c(spare)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4; its implementation review's rows). Not rows
@@ -960,7 +1234,11 @@ public sealed partial class MirBorrowsTest
     // raw layers stated, a `let` binding's own layer marked) and a holder whose address a hidden binding carries, written with the
     // record of its own storage Type (the owner's O-312 (a); a Binding fact), each a PLAN row of its unit. PLAN G785's rows
     // (a5v-r3ref-state.md): past a holder through a borrow layer, a punned read over a reference's or an `owner` Scalar's bytes reaches
-    // storage the body does not own.
+    // storage the body does not own. PLAN G941's rows (artifacts/units/g941 labels.md, from SPEC 5.7 Calls, 15.6.4, 15.8.2 and the
+    // owner's O-254 Q1 D): a `let` environment binding of the call receiver's referent, at any depth by value, is never written by the
+    // call, so no own pointer of the call is stored there (rule L; cloLetRefPtrOk, rejected before); a `var` binding, a binding past
+    // another exclusive layer and a Closure's result keep rule 4. Its rows of the storage such a layer addresses wait for PLAN G941's
+    // Binding half.
     [Theory]
     [InlineData("zPairLayerBad", "zPairLayer: y = 5")] // I
     [InlineData("zPairLayerOk", "")] // V
@@ -1031,6 +1309,26 @@ public sealed partial class MirBorrowsTest
     [InlineData("xMixRawOk", "")] // V, the key of one kind: both layers the parameter's own, pointees u8 (oneLayer)
     [InlineData("xRawDeclBad", "xRawDeclBad: kk = 2")] // I, rule 4 (4) at a layer Slot states past a raw parameter layer (5.7 Calls; O-373 (a))
     [InlineData("xSharedDeclOk", "")] // V, the same past a shared borrow: no write authority past ref (5.2.1 condition 3)
+    [InlineData("letRefLeafVarOtherOk", "")] // V, G941: another `var` binding beside the `let` q changes nothing
+    [InlineData("letRefLeafXUseOk", "")] // V, x is only read through w
+    [InlineData("cloLetU64NoUseOk", "")] // V, z past q's `let` layer is not used after
+    [InlineData("cloLetPtrU8ThroughU", "")] // V, the same through a raw/u8 binding m
+    [InlineData("cloLetRefMkSharedOk", "")] // V, a Shared call writes nothing (7.7.3)
+    [InlineData("cloLetTupPtrBad", "cloLetTupPtrBad: kk = 2; cloLetTupPtrBad: var x: u8 = 0")] // I, past q the call may write its own pointer at pr.1 (rule 4 at an unmarked key)
+    [InlineData("cloLetTupU64Ok", "")] // V, past q only a u64 beside the reference
+    [InlineData("cloLetUniqPtrBad", "cloLetUniqPtrBad: kk = 2; cloLetUniqPtrBad: var hop: raw/u8 = null")] // I, the same at hop past q and w2's exclusive layer
+    [InlineData("cloLetRefPtrOk", "")] // V, rule L: q is no layer the call writes, and past w2's shared layer it writes nothing (rejected before: var hop, kk = 2)
+    [InlineData("cloVarRefBad", "cloVarRefBad: kk = 2; cloVarRefBad: var x: u8 = 0")] // I, a `var` binding keeps rule 4 (15.8.2)
+    [InlineData("cloLetVarSameTypeBad", "cloLetVarSameTypeBad: kk = 2; cloLetVarSameTypeBad: var x: u8 = 0")] // I, a `let` binding of the same Type beside `var q2` leaves q2 unmarked
+    [InlineData("nestUniqLetBad", "nestUniqLetBad: kk = 2; nestUniqLetBad: var c = func [q](v: raw/u8); nestUniqLetBad: var x: u8 = 0")] // I, d's call may write c whole through cu (7.7.3, S7): c's `let q` past cu is unmarked
+    [InlineData("cloLetPtrPtrU8ThroughBad", "cloLetPtrPtrU8ThroughBad: kk = 2")] // I, past m the call may write its own pointer at hop
+    [InlineData("d4NestLetInnerVarOk", "")] // V, outer cannot call its `let inner` Exclusively, so inner's `var q` is not written
+    [InlineData("letU64ParamSharedOk", "")] // V, a Shared call
+    [InlineData("letStructU64Ok", "")] // V, h.p a layer ZHold states, in a `let` binding; z not used after
+    [InlineData("letTupEnvOk", "")] // V, t.0 in a `let` Tuple binding; w not used after
+    [InlineData("byValDeclOk", "")] // V, past a by-value input's declared layer; z not used after
+    [InlineData("cloResultLetBad", "cloResultLetBad: let mk = func []()")] // I, mk's storage end: rule 4 at mk()'s result key (R4-M245); c's `kk = 2` waits for PLAN G941's Binding half
+    [InlineData("cloResultLetSharedBad", "cloResultLetSharedBad: let mk = func []()")] // I, mk's storage end only (S11 at mk()'s result key)
     public void TheReadingKeyPastAHolderReadsEveryLayer(string form, string expected)
     {
         var c = MirBuildTest.Compile(PastHolderForms[form] + "\npublic func main() => ()\n");
