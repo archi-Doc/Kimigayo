@@ -70,7 +70,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "s3n", HasItem + Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is HasItem\n    T is Seq<U.(HasItem).Item>\n    return use(x)\n", "UnprovenConstraint_Kd: return use(x)")]
     [InlineData("guard", "s4", Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is i32\n    T is Iter<U>\n    return use(x)\n", "")]
     [InlineData("guard", "s4n", Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is u8\n    T is Iter<U>\n    return use(x)\n", "UnprovenConstraint_Kd: return use(x)")]
-    [InlineData("C3", "s5", HasItem + Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is SrcI\n    T is Iter<U.(HasItem).Item>\n    return use(x)\n", "", Explicit = true)]
+    [InlineData("C3", "s5", HasItem + Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is SrcI\n    T is Iter<U.(HasItem).Item>\n    return use(x)\n", "")]
     [InlineData("guard", "s5n", HasItem + Iter + "func g<T, U>(x: ref/T, u: ref/U) -> i32\n    U is SrcU\n    T is Iter<U.(HasItem).Item>\n    return use(x)\n", "UnprovenConstraint_Kd: return use(x)")]
 
     // SPEC 8.5.2, 8.9, 8.9.2: an associated Type is identified by its declaration and normalized bindings, so equal paths count once and the short name
@@ -97,7 +97,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "ad1", HasItem + "contract Bump<T>\n    func bump(self: ref/Self, v: T) -> i32\nstruct Bumper\n    Self is Bump<i32>\n    public init() => ()\n    public func bump(self: ref/Self, v: i32) -> i32 => v\nfunc f<T, U>(x: ref/T, v: U.(HasItem).Item) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Bump<i32>\n    T is Bump<U.(HasItem).Item>\n    return x.bump(v)\nlet n = Bumper.init()\nrequire f<Bumper, SrcI>(n, 4) == 4 else => $abort(\"bump\")\n", "")]
 
     // SPEC 8.2.3: an available completed binding is a ground of identity.
-    [InlineData("C3", "pr1", HasItem + Iter + "func g<T>(x: ref/T) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    return use(x)\n", "", Explicit = true)]
+    [InlineData("C3", "pr1", HasItem + Iter + "func g<T>(x: ref/T) -> i32\n    T is Iter<SrcI.(HasItem).Item>\n    return use(x)\n", "")]
     [InlineData("guard", "pr1u", HasItem + Iter + "func g<T>(x: ref/T) -> i32\n    T is Iter<SrcU.(HasItem).Item>\n    return use(x)\n", "UnprovenConstraint_Kd: return use(x)")]
 
     // SPEC 8.2.3: premises are judged together, never in written order.
@@ -124,7 +124,7 @@ public partial class TypeIdentityTest
     // evidence (k1n; its `return x` fails on its own, SPEC 23.1.2: the premise alone would not make the Tag u8).
     [InlineData("guard", "k1", HasItem + Tagged + "func f<T, U>(x: T.(Iter<i32>).Tag) -> u8\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is u8\n    return x\n", "")]
     [InlineData("guard", "k1n", HasItem + Tagged + "func f<T, U>(x: T.(Iter<i32>).Tag) -> u8\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is u8\n    return x\n", "UnprovenConstraint_Kd: func f<T, U>(x: T.(Iter<i32>).Tag) -> u8 | TypeMismatch_Kd: return x")]
-    [InlineData("C3", "k1c", HasItem + Tagged + "func f<T>(x: T.(Iter<SrcI.(HasItem).Item>).Tag) -> u8\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is u8\n    return x\n", "", Explicit = true)]
+    [InlineData("C3", "k1c", HasItem + Tagged + "func f<T>(x: T.(Iter<SrcI.(HasItem).Item>).Tag) -> u8\n    T is Iter<SrcI.(HasItem).Item>\n    T.(Iter<SrcI.(HasItem).Item>).Tag is u8\n    return x\n", "")]
     [InlineData("guard", "k2", HasItem + Tagged + "func f<T, U>(x: T.(Iter<U.(HasItem).Item>).Tag) -> u8\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is u8\n    return x\n", "")]
     [InlineData("guard", "k2d", HasItem + Tagged + "func f<T, U>(x: T.(Iter<U.(HasItem).Item>).Tag) -> u8\n    U is HasItem\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is u8\n    return x\n", "")]
     [InlineData("guard", "k3", HasItem + Tagged + Base + "func f<T, U>(x: ref/T.(Iter<U.(HasItem).Item>).Tag) -> i32\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<U.(HasItem).Item>\n    T.(Iter<U.(HasItem).Item>).Tag is Sub\n    return use(x)\n", "")]
@@ -144,7 +144,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "ef1", HasItem + Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T, U>\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Q<U.(HasItem).Item>\n" + Run, "")]
     [InlineData("guard", "ef1c", Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T>\n    T is Q<i32>\n" + Run, "")]
     [InlineData("guard", "ef1n", HasItem + Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T, U>\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is P<U.(HasItem).Item>\n" + Run, "IncompatibleContractImplementation_Kd: Self is Safe")]
-    [InlineData("C3", "ef2", HasItem + Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T>\n    T is Q<SrcI.(HasItem).Item>\n" + Run, "", Explicit = true)]
+    [InlineData("C3", "ef2", HasItem + Effect + "contract Q<T>: P<T>\n    effect (P<T>).value confined\nstruct Wrapper<T>\n    T is Q<SrcI.(HasItem).Item>\n" + Run, "")]
     [InlineData("guard", "ef3", HasItem + Effect + "contract Q<A>: P<A.(HasItem).Item>\n    A is HasItem\n    effect (P<A.(HasItem).Item>).value confined\nstruct Wrapper<T>\n    T is Q<SrcI>\n" + Run, "")]
     [InlineData("guard", "ef3n", HasItem + Effect + "contract Q<A>: P<A.(HasItem).Item>\n    A is HasItem\nstruct Wrapper<T>\n    T is Q<SrcI>\n" + Run, "IncompatibleContractImplementation_Kd: Self is Safe")]
 
