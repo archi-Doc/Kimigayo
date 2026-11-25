@@ -28778,6 +28778,10 @@ Closure row of `MirCases.Branch`).
     verification and lose its own Error).
   - **Open (PLAN G1392):** Reach is dense (O(m^2) memory per component); the 10,000-definition ring is an Explicit row.
     **Amends** R7-M87 (the problem arm and the per-code own test of `HoldsLimit` now have observing rows; no layout frame, R7-M106).
+  - Measured cost, accepted by the owner under RQ8 (a) (W-362, dev 8262860a0; O-W362 「(a) 現状で着地」; T-W362c,
+    artifacts\benchmarks\rp8w-W-362c-*): this entry's per-binding inference makes cold Bind on Hello 1.028 times A's alone (A'/A
+    1.001) with cold bytes +1,104 (warm +0); with Q-773 and Q-774 the window read 1.047-1.051 (about +3 us of 60 us). Every other
+    Bind row is within; O2 PASS, code differs in 0.
 - **R7-M106 The recorder's range rule: a failure a node held when a frame's check began never takes that check's reads (PLAN G172,
   R7-C4 hunk (d))** (Middle, 2026-11-25; R7-C4 12c-13e; Major; C-545 (d), F's consent 11-25 02:18 with conditions 1-5, the Middle's
   criterion alpha, F's independent review ACCEPT WITH CONDITIONS (`artifacts\units\r7-c4\review-hunk-f.md`), F's rulings of
@@ -33872,7 +33876,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     SPEC 22.5.2's `KIMI_E_FREE` is a detected release failure; a small block's double release was never detected.
   - **Measured:** W3's gap was the large path's page faults (97.5% of its excess); the strings part runs 2.9x faster than the process
     heap. T-349 row 1 (dev 4ed6419bc against W' c0020fa1e): within, Buffers faster (aligned 0.985). T-352 row 2 (G' against W'): 13 kernels inside A=A (O2 PASS);
-    row 3 (`Allocs.kimi`): aligned 0.215.
+    row 3 (`Allocs.kimi`): aligned 0.215. T-356: the memory gate (decision 28, five pairs at O2) passed: peak working set within
+    0.999-1.000 of the base on every corpus kernel; `Allocs` +0.07 MiB.
   - **Rejected:** blocks above 256 KiB from regions (decision 23); a list of runs (a G1306 candidate); an unbounded or larger spare
     (memory); decommit or reset (the faults remain). For the layout: one commit for both effects (not attributable), `cold` routines
     (the inline blocks stay in the hot code), routines after the user functions (the intra-function shifts remain), an RP8
@@ -33985,3 +33990,6 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   (`artifacts\tatara\b7b7\probes\B7b7WslProbeTest.cs.txt`, ruling 55). Rejected: refusing a Linux manifest at the CLI until B7b8 (a
   clause keyed on the row); a Format switch in the dependency check; a member-order reader for ELF picks; places as strings, which
   the ELF writer dropped when unknown; `--require-defined=<entry>` on the ELF line (a second, ELF-only judge of the entry).
+  Measured cost, accepted by the owner under RQ8 (a) (W-362, dev 8262860a0; O-W362 「(a) 現状で着地」; T-W362c): alone against
+  dev 62e531705 cold Hello Bind 1.024 times A', compiler bytes unchanged; Milestone26, Interpolation and every warm row within;
+  with Q-772 (R7-M105) and Q-774 the window read 1.047-1.051 (about +3 us of 60 us); O2 PASS, code differs in 0.
