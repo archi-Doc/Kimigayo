@@ -931,7 +931,8 @@ public class ArchitectureRulesTest
     // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines, FirstRows, PremiseRows,
     // ExactAssumption and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
     // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row atom (RowAtom, c2-5b) and row merge (AddRow) are members.
-    // G1407: row (2)'s intake of one source row's supply (AddSupplyRows) is a member. R7-C2c2: the walk's class
+    // G1407: row (2)'s intake of one source row's supply (AddSupplyRows) is a member; the conjunct split it calls (AddConjuncts, in
+    // Binding.Constraints.cs) only appends a constraint and its conjuncts. R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
     // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
     [Fact]
@@ -944,10 +945,10 @@ public class ArchitectureRulesTest
         ];
         string[] allowed =
         [
-            "Add", "AddRow", "AddSupplyRows", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
+            "Add", "AddConjuncts", "AddRow", "AddSupplyRows", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
             "AvailableContractPremise", "CauseOf", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
             "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
-            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
+            "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
             "RowAtom", "RowContract", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",
