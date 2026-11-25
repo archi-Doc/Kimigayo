@@ -32550,6 +32550,11 @@ Closure row of `MirCases.Branch`).
     known limit narrows: no manifest read raises a listed contract type).
   - Amended by T-M33 (B7b2b, 2026-11-23): on a row with a `CRuntime`, a module that requires any library also requires that supply,
     once, with the row supply's Kind (`ModuleCodegen.Require`, before `Assemble`); the C path is published through `Libraries`.
+  - Amended by T-M48 (NamedProvider, 2026-11-25): Build reads `ExternalFunction`'s `Symbol` and `Library` and `RuntimeImports`'
+    `Symbol` and `Library`; `DllImport` is the IR writer's alone (`LlvmModuleText.WriteExternals`). The output section's declarations
+    are `{symbol, library}` (schema 6), each form following the named entry's `kind`, computed once by the native build
+    (`ReadExternalDeclarations`); `ValidateManifest`'s rule: each a nonempty symbol, declared once, naming a `libraries` entry. `Flag`
+    leaves the readers (its only field was `dllimport`).
 - **R9-M12 The command's own result: an exception no result owns is the command's fault (PLAN G984)** (Middle, 2026-11-18; Major;
   under SPEC 23.2.3, DIAGNOSTICS rule 9, R5-M169 and R9-M10; design review REVISE then ACCEPT WITH NOTES)
   - Rule: `CommandExecution.Execute` (every command but `test` and `lsp`) decides no fault by exception type: it catches
@@ -34214,6 +34219,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     library (C-514 B1), every COMDAT copy a candidate (C-514 B2 (ii)), the compiled object's references (C-514 B3), keeping
     `Undefined`/`DefinedExternal` beside `Members` (two representations of one fact), a `testBuild` flag with a `TargetProfile`
     column (ruling 21's fallback), the runtime's entries inside `Externals` (its `FunctionAbi`; ruling 32).
+  - Amended by T-M48 (NamedProvider, 2026-11-25): the start's referenced form is the named entry's `kind`'s (`__imp_X` for `import`),
+    read once per build; the manifest is schema 6, and each declaration names its library (a runtime import's: the row's provider) in
+    place of its dllimport form. The step also checks that each declaration's named library defines its form (rule P).
 - **T-M46 A library inconsistent with its declared Kind is an error at the link** (Tatara, 2026-11-25; PLAN G1330, D-1192, Q-762;
   Major; design `artifacts\handoff\tatara\units\LinkAmbiguity\kind-design.md` Revision 0 with its corrections 1-3 from LinkAmbiguity
   Revisions 1-3a (`kind-brief-impl.md`); the Middle's C-514; T's ruling 24). IMPL 20.4 makes a native dependency inconsistent with its
@@ -34236,6 +34244,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   (kind-design.md §7). Rejected: the whole library's composition (rejects an MSVC import library with static members and a static
   archive's unused bundled import member), a sibling step (the closure twice), staging (bytes, not loads), LLD's `/WX`, the manifest
   naming each import's library (PLAN G1333), a Tatara verdict.
+  - Amended by T-M48 (NamedProvider, 2026-11-25): K2 is deleted: rule P (an import's named library defines its referenced form)
+    states every case it stated, and P's lines take K2's place among the symbol lines. The manifest now names each import's library,
+    for P (not for K).
 - **T-M47. The native build per target row (Tatara B7b7, D-1274, Q-773).** Decision: the link manifest's fixed head is per row (the common
   rows from the row's columns, the backend-support rows only where the row reserves `kimi_backend`); `LinkManifest.CheckFixed` reads
   `target` first and returns the row, which every later check and the build read. `TargetProfile` gains `Format` (COFF, ELF: the
@@ -34267,3 +34278,43 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   Measured cost, accepted by the owner under RQ8 (a) (W-362, dev 8262860a0; O-W362 「(a) 現状で着地」; T-W362c): alone against
   dev 62e531705 cold Hello Bind 1.024 times A', compiler bytes unchanged; Milestone26, Interpolation and every warm row within;
   with Q-772 (R7-M105) and Q-774 the window read 1.047-1.051 (about +3 us of 60 us); O2 PASS, code differs in 0.
+- **T-M48 An import's symbol is resolved in the library it names** (Tatara, 2026-11-25; PLAN G1333, D-1199, Q-781; Major; design
+  `artifacts\handoff\tatara\units\LinkAmbiguity\provider-design.md` Revision 2 with its facts refresh
+  `artifacts\handoff\tatara\units\ProvidingLibrary\facts-refresh-20261125.md`; C-517 (the Middle's ACCEPT of Revision 1, the Back's of
+  Revision 2); T's rulings 34-35, 48, 49, 54, 60-63 and 65; amends R9-M11, T-M45 and T-M46). SPEC 22.6 resolves an import in its
+  defining Kotonoha's logical library, and IMPL 21.2 allows one providing library per external symbol, but the link manifest's
+  external declarations named no library, so the link took a symbol from whichever input defined it (a `static` `codec` lacking
+  `codec_add` linked through another library's import thunk; a linux-x64 `codec` import of `strlen` took `libc.a`'s).
+  - **The manifest (schema 6).** Each `externalDeclarations` entry is `{symbol, library}`, replacing `dllimport`; a schema-5 manifest
+    fails the fixed-field check and is emitted again. `ValidateManifest`'s rule: each a nonempty symbol, declared once, naming a
+    `libraries` entry. The referenced form follows the named entry's `kind` (IMPL 21.2): `__imp_X` for `import`, `X` for `static`,
+    computed only by `NativeBuild.ReadExternalDeclarations` (symbol to library and form), which `Run` reads once per build and passes
+    to `Inspect` and the dependency step. `LinkManifest.Flag` and `Field`'s boolean arm are removed (`dllimport` was their only reader).
+  - **Who states the library.** A program import's is `ExternalFunction.Library`, Binding's `LibraryImport.Library` (one per symbol
+    by T-M38's rule); a runtime import's is the row's provider, the supply `TargetProfile.TryGetRuntimeDeclaration` names (exactly one
+    supply lists each runtime symbol; a missing one is a broken contract, never a default), paired once per row by
+    `LlvmModuleText.ModuleFrame` (`RuntimeImports`, `TestRuntimeImports`) and published as `GeneratedModule.RuntimeImports`'
+    `(Symbol, Library)` pairs. `DllImport` is the IR writer's alone (`WriteExternals`), so the IR and `irSha256` are unchanged.
+  - **Rule P.** T-M45's step (`NativeBuild.CheckDependencies`) judges each declared entry (symbol `s`, library `L`, form `f`), the
+    program's and the runtime's, over the same per-hash facts: `L` defines `f` where the link can take it, when an input staged under
+    `L`'s name that the link loads whole defines `f` or an archive staged under that name picks `f` (its index's first entry, T's
+    ruling 48), over the union of every input staged under the name (`c` on linux-x64: four files; T's ruling 62). Otherwise one line,
+    keyed by `s`, among the symbol lines in Ordinal symbol order (for one symbol LinkAmbiguity's line first): "Native function
+    'codec_add' is imported from codec, which does not define '__imp_codec_add'; codec defines 'codec_add'." Its first clause names the
+    libraries that define `f`, its second, for an import form, those that define `s` ("; zlib defines '__imp_codec_add', and zlib
+    defines 'codec_add'."), each library once in Ordinal order; there is no clause when none does. P reads the declarations, never the
+    compiled object or the closure, so its verdict is the same at O0 and O2 and in any order: an import whose only call O2 removes
+    fails at both levels.
+  - **Failed inputs (T's ruling 61).** A library with an input reported as no library (T-M46) or as an archive without a symbol index
+    (T-M47) is not judged: P would read that failed input, so its line would be a dependent record (SPEC 23.1.2). A loaded unit's
+    Kind line does not stop P, since the input was read: both lines are reported (P judges which library, K the form).
+  - **K2 is deleted** (T-M46's temporary structure): P states every case it stated.
+  - Known limit (T's ruling 65): on linux-x64 P takes a library's definitions from its archive index, as the pick does, while ld.lld
+    loads by member order, so an import that its named library defines only in a member its non-empty index omits fails before the
+    link although ld.lld would link it (PLAN G1394).
+  - Readings PR1-PR4 (design §7). Rejected: per-library symbol lists (a second list of one relation); `library` beside `dllimport`
+    (two copies of IMPL 21.2's rule); the object's references (the verdict would change with the level); every validated import,
+    called or not (an uncalled import is no dependency: LinkAmbiguity's R1, T-M45); inferring the provider from the inputs (the
+    link's own resolution); (package, name) keys before BU-92 lifts (PLAN G1332 widens them with each declaration's `library`); a
+    literal `kernel32` or a per-write lookup for a runtime import's provider; runtime imports as `ExternalFunction`s (a placeholder
+    ABI; T's ruling 32).
