@@ -176,10 +176,11 @@ public class InlineLayoutTest
     [InlineData("contract C\n    associate Item\nopen struct B<X>\n    Self is C\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: [1 of T.(C).Item]\nstruct D : B<Box<D>>\n", "InvalidInlineLayout_Kd B<Box<D>>")]
     [InlineData("contract C\n    associate Item\ncontract C3: C\nopen struct B<X>\n    Self is C3\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct D : B<Box<D>>\n", "InvalidInlineLayout_Kd B<Box<D>>")]
 
-    // R7-C2e2 e2-5b (design-e25b-p0.md R1.5, labelled from SPEC 6.2 and 8.6.2 before any run, dev's records owed): the heir's conformance
-    // holds, since forming B<W> reads no storage of W, and its binding's cycle closes only under X = W, so W and the heir's base clause
-    // report (hw); stored in an Array, the binding closes no cycle (hw-v).
-    [InlineData(Heir + "struct W\n    public var s: D.(C).Item\nstruct D : B<W>\n", "InvalidInlineLayout_Kd struct | InvalidInlineLayout_Kd B<W>")]
+    // R7-C2e2 e2-5b (design-e25b-p0.md R1.5, F's CC-44): hw is invalid by SPEC 6.2 and 8.6.2, since W stores D.(C).Item, which D inherits
+    // from B<W> as W, so W stores itself; D is C holds through B<W> (forming it reads no storage of W), so the required record is the
+    // cycle's at W. The row pins dev's five records as a guard: those at D (11:1, 11:12) rest on no SPEC failure, and their removal is
+    // e2-5b commit 5's named record-selection move. Stored in an Array, the binding closes no cycle (hw-v).
+    [InlineData(Heir + "struct W\n    public var s: D.(C).Item\nstruct D : B<W>\n", "InvalidInlineLayout_Kd struct | PrerequisiteUnavailable_Kd var s: D.(C).Item | InvalidConstraint_Kd D.(C).Item | InvalidTypeFormation_Kd struct | InvalidConstraint_Kd B<W>")]
     [InlineData(Heir + "struct W\n    public var s: Array<D.(C).Item>\nstruct D : B<W>\n", "")]
     [InlineData("contract C\n    associate Item\ncontract K2\nopen struct B<X>\n    X is K2\n    Self is C\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: T.(C).Item\nstruct D : B<Box<D>>\n", M2Records)]
     [InlineData("contract C\n    associate Item\ncontract K2\nopen struct B<X>\n    X is K2\n    Self is C\n    associate C.Item is X\nstruct Box<T>\n    T is C\n    public var next: Array<T.(C).Item>\nstruct D : B<Box<D>>\n", M2Records)]
