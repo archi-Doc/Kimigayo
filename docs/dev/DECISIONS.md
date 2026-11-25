@@ -10547,7 +10547,8 @@ resumed by R4-M86 (2026-10-20).
     shared and `let y = x`'s uniq case would be denied; the weakest-case walk (above); Binding reporting every bare acquisition
     without a plan, R6's move of TransferRequired (it moves the old path's records at every bare position). Not temporary.
   - Superseded in part by BU-96 (2026-11-05, G421): a value call's failed acquisition stops none of its other judgments, so that
-    UnprovenOriginRelation_Kd is published beside Binding's TransferRequired_Kd.
+    UnprovenOriginRelation_Kd is published beside Binding's TransferRequired_Kd. It no longer holds for the refused input (R7-M95's E4a-4 line): `g(x@follow)` records TransferRequired_Kd alone; another
+    input's relation is still published beside it.
 - **BU-46 A kept part states Unstated on each raw layer its declaration writes without `during`: `Binding.WithUnstatedOrigins`,
   `TyCtxt.RawStated`** (amended by BU-58: the Local row's walk enters each part once) (2026-10-27; design 1 revision 1 with design 2's
   findings; PLAN G148 (1), U0's revision, unit bu50; class Full; the owner at the choice, 「許可して設計 1 (推奨)」, 2026-10-27) SPEC 5.7 Calls
@@ -12617,7 +12618,7 @@ resumed by R4-M86 (2026-10-20).
     then child rows).
   - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
     holds references; rented ones keep warm allocation at 0 B).
-- **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; PLAN G421; BU's design, accepted by the
+- **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; superseded in part by R7-M95 (E4a-4); PLAN G421; BU's design, accepted by the
   planning session without a separate design review; Major) SPEC 3.8, 10 and 10.1 step 5, 23.1.2.
   - Rule: a value call selects no callee, so an argument's failed acquisition (TransferRequired, ExclusiveBorrowRequired) leaves its
     Type known. `AcquireValueCallArguments` adapts with `deferAcquisition`, as `FitTyped` and `CompletePayloads` do, and records the
@@ -12627,7 +12628,8 @@ resumed by R4-M86 (2026-10-20).
     (`IsDerived`; implementation review 1, B-1). Removed: the acquisition fork in `AcquireValueCallArguments`.
   - Boundary: a named function, method or constructor call keeps its one record. There the Copy proof is the candidate's
     applicability (SPEC 10.1 step 5), so the relations judged after selection rest on the failed selection.
-  - Records (Q13): A5's Origin relations at value calls return beside the acquisition record, and a later argument's own located
+  - Records (Q13): the other inputs' Origin relations at value calls (A5's) return beside the acquisition record (the refused input's own goes: R7-M95's E4a-4
+    line), and a later argument's own located
     limit (a static root's Borrow, `Unsupported_Kd`) beside it; no verdict moves
     (`BorrowAcquisitionTest.AValueCallsAcquisitionAndRelationsAreEachRecorded`). Open in PLAN: a call keeps one acquisition record (a
     second failing argument) and a failed callee stops its arguments' judgments; a failed part binding no longer stops the other
@@ -28640,6 +28642,50 @@ Closure row of `MirCases.Branch`).
     - **Rejected.** Recording inside AdaptInput (trials and probes would publish); a new `LendingDenied` failure (a second form for
       one requirement); `NoApplicableOverload_Kd` with the Place as a party (7.3.3's sameness).
     - **Not taken** (PLAN G453's remainder, G486 as E4a-4): see PLAN.
+  - **E4a-4 (Q-795, D-1298; F's R7-E4 rulings 22-26). Every fixed destination is a deferring caller, and a refused implicit
+    acquisition has one representation** (PLAN G486).
+    - **The writer.** ExpectedAdaptation is the one writer of the selected destination's record (its adaptation row, its limits
+      and now its acquisition) and returns the Type the node delivers there (`BoundType?`: its operation's, or `actual` where none
+      forms; null on a refusal); it adapts with deferral, the channel saved and restored. BindNode, StoredReborrow and
+      AdaptAtPosition stop writing. The three probes (TryCandidateCore, ItemPartFails, ProbeValueCall) and LateAdaptation read "no
+      operation" as `!FitsStructuralPartAt(actual, expected) && ReferenceEquals(delivered, actual)`, one form at all four;
+      ArchitectureRulesTest's TypeComparisonSites lists the four under `unchanged`, its reason for a Type derived from another
+      against its input. LateAdaptation's guard has no pinning row: no program was found to reach a formed operation delivering
+      its input at a late part, and it stays as the rule's one structure-first condition at every fixed destination.
+    - **The representation.** A refused implicit acquisition (a spelling, a lending denial, a transfer or a limit) fails its
+      subject, which delivers no Type, as its written twin does (SPEC 7.3.3): at a fixed destination the Place, at a receiver or
+      argument the call (the trial, ValueCalls), at an unsettled payload the construction. Its lent Type is read for structure only
+      (SPEC 15.6.1): no record and no delivered Type outside the failing subject reads it, so the RawOrigins.Borrows invariant holds
+      without an exception. Readers rest on the failed node by the existing prerequisite rule; nothing is suppressed afterwards. An
+      Origin relation or limit that would read the lent Type is dependent (AGENTS rule W).
+    - **Rule** (E4a-5 adds PLAN G453 (d) under it): an implicit exclusive acquisition is refused only by the lending verdict
+      (OwnedLending, ExclusiveAcquisitionDenial), and only RequireAcquisition writes it.
+    - **Supersedes in part** BU-96, for the refused input's own Origin relation and its own located limit: its reason, "an
+      argument's failed acquisition leaves its Type known", served judgments over that Type, and the lent Type is now read for
+      structure only. `g(x@follow)` with `g: (uniq/i32 during c) -> ()` records TransferRequired_Kd alone, and `f(Totals.count)`
+      with `f: (uniq/i32) -> ()` ExclusiveBorrowRequired_Kd alone; every other input's relation and limit stands (`g(x@follow, p)`
+      keeps `UnprovenOriginRelation_Kd p`). With it, BU-45's line "Superseded in part by BU-96 ... that UnprovenOriginRelation_Kd is
+      published beside Binding's TransferRequired_Kd" no longer holds for the refused input. And PLAN G262's F4 reading, for both
+      halves: `.Some(State.counter)` into `Option<uniq/i32>` and `g(State.counter)` each record ExclusiveBorrowRequired_Kd alone,
+      as the named call does.
+    - **Behaviour-preserving commit.** Commit 1 (60ed14cf4: `fixedExpectation` removed, the writer and the delivered Type) has 0
+      diagnostic-snapshot and 0 semantic HIR+MIR differences against shared-base/191e831c2; commit 2 (f5e7c5e6e) is the rule.
+    - **Removed:** RequireAcquisition's `fixedExpectation`, the pair-layer arm's fixed clause, three callers' row writes, Enums' fit
+      and limit beside a deferred acquisition, ValueCalls' operation for a refused part.
+    - **Moves (Q13), on invalid programs and four valid ones; no acceptance move (the A5 corpus moves no record):**
+      - A fixed destination's TypeMismatch_Kd becomes the written twin's record at the Place: ExclusiveBorrowRequired_Kd (`let y:
+        uniq/i32 = q` with `var q`; `return h.n` into `uniq/i32 during h` with `h: uniq/H`; a join source at a `uniq/i32` part,
+        `let j = if c => (y, u@uniq) else => (2, v)` with `var v: i32`, at `v`), InvalidAssignment_Kd (a `let` root),
+        SharedPathAccess_Kd (a shared path).
+      - Valid programs rejected with a Language error get PLAN G762's located `Unsupported_Kd` at the object pair layer (`let v:
+        objref/Node = y` with `y: s/Node`, `s is objref or objuniq`; rows fp1, rv-p3, r2-p2, r2-p2c).
+      - Dependent records go (rule W): the Origin record of a refused input (rv-e3p's UnsatisfiedOriginRelation_Kd; a value call's
+        refused part's UnprovenOriginRelation_Kd) and its own limit (`.Some(Totals.count)`, `f(Totals.count)`: P42's
+        `Unsupported_Kd`).
+      - An unsettled payload's record moves from the construction to the Place; StoredReborrow's records (bs1, rv-b1-3) keep their
+        text, recorded at binding time.
+    - **Rejected:** the lent Type delivered with no operation (Revision 1's (i): it carries a dependent Origin record to every fixed
+      destination, rv-e3p); a named adaptation (a vocabulary entry and an AdaptationBorrow exception, removing nothing).
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
