@@ -112,6 +112,61 @@ public sealed class CommandExecutionTest : IDisposable
         Assert.Equal(1, calls);
     }
 
+    // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1, ruling 85; design row 19's run half): run of a target whose executables this host
+    // does not run is refused before any build or record write, with or without --no-build: the location-only Unsupported_Kd at the
+    // project, exit 1, no bin\ directory. Several selected targets are run's input error. Every host: no host runs linux-x64's
+    // executables until B8. Fail-before: the build's "Artifact production currently requires exactly one configured Windows x64
+    // target." (a record under bin\x86_64-pc-windows-msvc\), or with --no-build "Run requires the Windows x64 target.".
+    [Theory]
+    [InlineData("\"x86_64-unknown-linux-musl\"", false, null)]
+    [InlineData("\"x86_64-unknown-linux-musl\"", true, null)]
+    [InlineData("\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-musl\"", true, "Run requires one selected target; select one with --Target.")]
+    public async Task RunRefusesATargetThisHostDoesNotRunBeforeAnyBuild(string targets, bool noBuild, string? message)
+    {
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        var kimigayo = new Kimigayo(console);
+        var project = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(project, $"Targets={{{targets}}}");
+        File.WriteAllText(Path.Combine(this.directory, "Hello.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
+        Environment.ExitCode = 0;
+        await new RunCommand(null!, kimigayo, new Solution(kimigayo)).Execute(noBuild ? ["--no-build", project] : [project], TestContext.Current.CancellationToken);
+        var exit = Environment.ExitCode;
+        Environment.ExitCode = 0;
+        Assert.Equal(1, exit);
+        Assert.Contains(message ?? nameof(DiagnosticCode.Unsupported_Kd), console.Text, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
+    }
+
+    // The Tatara plan's B7b8 (IMPL 20.3.1, 20.3.2; design row 22): an implicit project builds for the host's target, and with --Target
+    // for linux-x64 a static ELF under bin\x86_64-unknown-linux-musl\ (libc-free, entry __kimi_start). Fail-before: the linux-x64 half
+    // is "Artifact production currently requires exactly one configured Windows x64 target.", exit 1.
+    [Theory]
+    [InlineData(null, "x86_64-pc-windows-msvc", "A.O2.exe")]
+    [InlineData("x86_64-unknown-linux-musl", "x86_64-unknown-linux-musl", "A.O2")]
+    public async Task AnImplicitProjectBuildsForItsSelectedTarget(string? target, string folder, string executable)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native build runs on Windows.");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        var kimigayo = new Kimigayo(console);
+        var source = Path.Combine(this.directory, "A.kimi");
+        File.WriteAllText(source, "::Kimi.Console.writeLine(\"Hello\")");
+        Environment.ExitCode = 0;
+        await new BuildCommand(null!, kimigayo, new Solution(kimigayo)).Execute(target is null ? [source] : ["--Target", target, source], TestContext.Current.CancellationToken);
+        var exit = Environment.ExitCode;
+        Environment.ExitCode = 0;
+        Assert.True(exit == 0, console.Text);
+        var built = Path.Combine(this.directory, "bin", folder, executable);
+        Assert.Equal(folder, Path.GetFileName(Assert.Single(Directory.GetDirectories(Path.Combine(this.directory, "bin")))));
+        if (target is not null)
+        {
+            ElfFile.Read(built).AssertStatic("__kimi_start");
+        }
+        else
+        {
+            Assert.True(File.Exists(built));
+        }
+    }
+
     private async Task<int> Execute(string origin, Kimigayo kimigayo, string project)
     {
         var token = TestContext.Current.CancellationToken;
@@ -527,6 +582,41 @@ public sealed class CommandExecutionTest : IDisposable
             Assert.True(message?.StartsWith("Invalid path", StringComparison.Ordinal) != true || console.Text.Length == 0, console.Text);
             Assert.Equal(origin == "unreadable", console.Text.Contains("' could not be loaded: ", StringComparison.Ordinal));
             Assert.Equal(origin == "identity", stdout.ToString().Contains(" C.kimiproj::passes", StringComparison.Ordinal));
+        }
+
+        // The Tatara plan's B7b8 (IMPL 20.6.1, 20.6.4: 2; design row 19's test half, notes D1): a test project for a target this host does
+        // not run is listed (nothing runs), and its run is refused after preparation, before the run directory and any generation or
+        // native build: the location-only Unsupported_Kd at the project, exit 2, no bin\ directory. Fail-before: both rows are
+        // preparation's "Testing requires a configured Windows x64 target.", exit 2.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task TestRefusesATargetThisHostDoesNotRunAfterListing(bool list)
+        {
+            var input = WriteTests(Path.Combine(this.directory, "A", "A.kimiproj"), string.Empty);
+            File.WriteAllText(input, File.ReadAllText(input).Replace(TargetProfile.Windows.Target, TargetProfile.Linux.Target, StringComparison.Ordinal));
+            var console = new DiagnosticContractTest.DiagnosticConsole();
+            var kimigayo = new Kimigayo(console);
+            var output = Console.Out;
+            using var stdout = new StringWriter();
+            Console.SetOut(stdout);
+            try
+            {
+                Environment.ExitCode = 0;
+                await new TestCommand(kimigayo, new Solution(kimigayo)).Execute(list ? ["--list", input] : [input], TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetOut(output);
+            }
+
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            Assert.Equal(list ? 0 : 2, exit);
+            Assert.Contains("::passes", stdout.ToString(), StringComparison.Ordinal); // Listed, or reported NOT STARTED by the run.
+            Assert.Equal(!list, stdout.ToString().Contains("NOT STARTED ", StringComparison.Ordinal));
+            Assert.Equal(!list, console.Text.Contains(nameof(DiagnosticCode.Unsupported_Kd), StringComparison.Ordinal));
+            Assert.False(Directory.Exists(Path.Combine(this.directory, "A", "bin")));
         }
 
         // kimi test takes its arguments from the command line as every command does (PLAN G1214): the parser splits the line and unwraps

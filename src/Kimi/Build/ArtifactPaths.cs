@@ -7,8 +7,9 @@ namespace Kimi.Build;
 /// <summary>One resolved artifact set shared by emission, build records and native execution. It alone names an output's files (IMPL
 /// 20.3.2): for the IR <c>Name.ll</c>, the manifest <c>Name.link.json</c>, the record <c>Name.link.build.json</c> (Begin keeps its lock
 /// beside it) and the stem <c>Name.O0</c> or <c>Name.O2</c> of the native build's own files, among them the folder
-/// <c>Name.O0.native</c> of its staged inputs and the executable, the stem with its row's format's extension (COFF <c>.exe</c>, ELF
-/// none; the Tatara plan's B7b7).</summary>
+/// <c>Name.O0.native</c> of its staged inputs, the object <c>Name.O0.obj</c>, the executable, the stem with its row's format's extension
+/// (COFF <c>.exe</c>, ELF none; the Tatara plan's B7b7), and a build's private executable, linked beside it under a fresh name until the
+/// build's commit moves it into place.</summary>
 internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, string Stem, string ExecutableExtension)
 {
     private const string ManifestSuffix = ".link.json";
@@ -17,8 +18,10 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
 
     internal string Native => this.Stem + ".native";
 
-    // A project's output: its OutputPath, bin/<target>/<Name>.ll by default; windows-x64's until B7b8 opens the commands for every row.
-    internal static ArtifactPaths Create(Project project)
+    internal string Object => this.Stem + ".obj";
+
+    // A project's output for its artifact target's row (Project.ArtifactTarget): its OutputPath, bin/<target>/<Name>.ll by default.
+    internal static ArtifactPaths Create(Project project, TargetProfile row)
     {
         if (project.ProjectFile.Optimization is not ("O0" or "O2"))
         {
@@ -26,13 +29,13 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
         }
 
         var directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
-        var ir = ArtifactFiles.ResolvePath(project.ProjectFile.OutputPath ?? Path.Combine("bin", TargetProfile.Windows.Target, project.Name + ".ll"), directory);
+        var ir = ArtifactFiles.ResolvePath(project.ProjectFile.OutputPath ?? Path.Combine("bin", row.Target, project.Name + ".ll"), directory);
         if (!Path.GetExtension(ir).Equals(".ll", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("OutputPath must have a .ll extension.");
         }
 
-        return Create(ir, project.ProjectFile.Optimization, TargetProfile.Windows);
+        return Create(ir, project.ProjectFile.Optimization, row);
     }
 
     // The output of the IR ir, a full path with a .ll extension, for a row: its executable's extension is the row's format's, mapped
@@ -56,4 +59,8 @@ internal sealed record ArtifactPaths(string Ir, string Manifest, string Record, 
 
     // The record of the IR ir's output, which build --Manifest takes (Begin) before it reads the manifest.
     internal static string RecordOf(string ir) => Path.ChangeExtension(ir, ".link.build.json");
+
+    // A build's private executable: the stem, a fresh name and the executable's extension, beside the executable, so the commit's move
+    // stays on one volume.
+    internal string PrivateExecutable() => this.Stem + "." + Guid.NewGuid().ToString("N") + this.ExecutableExtension;
 }

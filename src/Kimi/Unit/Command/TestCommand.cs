@@ -117,6 +117,21 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 return;
             }
 
+            // The host rule (IMPL 20.6.1, 20.6.4: 2): each project with a selected case runs on this host (Project.RunsOnHost records a
+            // target it does not run), before the run directory and any generation or native build.
+            foreach (var (project, compilation, _) in prepared)
+            {
+                if (outcomes.Any(x => ReferenceEquals(x.Catalog, compilation.Tests) && x.Selected) && !project.RunsOnHost())
+                {
+                    exit = 2;
+                }
+            }
+
+            if (exit != 0)
+            {
+                return;
+            }
+
             var input = Solution.ResolveInputPath(options.Input ?? Directory.GetCurrentDirectory());
             var resultRoot = options.ResultsDirectory ?? Path.GetFullPath(Path.Combine(Directory.Exists(input) ? input : Path.GetDirectoryName(input)!, "bin", "test-results"));
             runDirectory = Path.Combine(resultRoot, "run-" + Guid.NewGuid().ToString("N"));
@@ -155,7 +170,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 }
 
                 var stem = Path.Combine(directory, "tests");
-                var paths = ArtifactPaths.Create(stem + ".ll", project.ProjectFile.Optimization, TargetProfile.Windows);
+                var paths = ArtifactPaths.Create(stem + ".ll", project.ProjectFile.Optimization, TargetProfile.Host!); // The host rule's row.
                 if (!project.PublishArtifacts(compilation, paths, null))
                 {
                     errors.Add("Test generation failed: " + project.Name); // Its records are rendered, as kimi build's (R5 C0a).

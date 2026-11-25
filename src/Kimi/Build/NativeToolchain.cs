@@ -24,7 +24,8 @@
 // kind, the required libraries, the external declarations, each an ExternalFunction read for its Symbol and Library, the runtime's
 // imports, each its Symbol and Library, and the module's entry; R9-B1, LinkAmbiguity, the Tatara plan's B7b7, NamedProvider); the enum OutputKind, which project
 // configuration states too (ProjectFile.OutputKind); the target table's rows (TargetProfile: a pair's row is its compilation's at
-// publication and its manifest's target's at the native build; a project's paths are windows-x64's until B7b8); CompilerRelease; CompilationBuildMetadata, which
+// publication and its manifest's target's at the native build; a project's paths are its artifact target's, run's the host's);
+// CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and of Misc JobProcess,
 // Kimi's launcher for the programs it runs, in which the run's program runs (PLAN G1188).
@@ -167,7 +168,8 @@ internal static partial class NativeToolchain
     // ruling Q3). A record that names no input (an earlier compiler's) is refused for every project that names one.
     internal static async Task<int> RunProject(Project project, CancellationToken cancellationToken)
     {
-        var paths = ArtifactPaths.Create(project);
+        // The host's row: run reaches here only for the host's target (Project.RunsOnHost, before any build).
+        var paths = ArtifactPaths.Create(project, TargetProfile.Host ?? throw new InvalidOperationException("Run reached a host without a row."));
         if (project.ProjectFile.OutputKind != OutputKind.Application || !File.Exists(paths.Record) || !File.Exists(paths.Executable))
         {
             throw new InvalidDataException("No built Application is available. Run 'kimi build' first.");

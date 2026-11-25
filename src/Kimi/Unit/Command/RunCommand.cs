@@ -33,7 +33,7 @@ public class RunCommand : ISimpleCommand
 
                 this.solution.LoadForBuild(this.logger, options, args);
                 this.solution.PrepareProject(this.logger);
-                if (!options.NoBuild && !await this.solution.Build(cancellationToken))
+                if (!this.solution.PrepareRun() || (!options.NoBuild && !await this.solution.Build(cancellationToken)))
                 {
                     return 1;
                 }

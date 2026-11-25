@@ -714,7 +714,7 @@ internal sealed class WorkspaceCheck
                     plans.Add(new(key, item, path, CheckMode.Product, members));
                 }
 
-                var testKey = new UnitKey(path, UnitKind.Test, productTargets.Contains(TargetProfile.Windows.Target, StringComparer.Ordinal) ? TargetProfile.Windows.Target : string.Empty);
+                var testKey = new UnitKey(path, UnitKind.Test, Array.Find(productTargets, static x => TargetProfile.Find(x) is not null) ?? string.Empty);
                 plans.Add(new(testKey, item, path, CheckMode.Test, members));
                 if (item.HasTestSources)
                 {
@@ -742,7 +742,7 @@ internal sealed class WorkspaceCheck
             var product = new UnitKey(document, UnitKind.Product, target);
             required.Add(product);
             plans.Add(new(product, null, document, CheckMode.Product, [document]));
-            plans.Add(new(new(document, UnitKind.Test, target == TargetProfile.Windows.Target ? target : string.Empty), null, document, CheckMode.Test, [document]));
+            plans.Add(new(new(document, UnitKind.Test, TargetProfile.Find(target) is not null ? target : string.Empty), null, document, CheckMode.Test, [document]));
         }
 
         this.start.Post(new DerivationDone

@@ -24,7 +24,9 @@ public partial class Project
 
     // The product build's preparation sequence (BuildTargets) with the test settings: each failure is its own record (SPEC 23.1.2),
     // blocking the check before the front end (SPEC 23.2.2); a command renders them. The test target is the project's own selection
-    // (SelectTargets) and then one Windows x64 target (IMPL 20.6.1); a failure there leaves no target to prepare and ends the sequence.
+    // (SelectTargets) and then one target with a row in the target table (IMPL 20.6.1; one without is Unsupported, SPEC 22 ¶1); a
+    // failure there leaves no target to prepare and ends the sequence. Preparation runs the front end only: whether this host runs the
+    // tests is the runner's rule (RunsOnHost, before any generation), so every Test-mode check reads the same unit on every host.
     private Compilation? PrepareTests(CancellationToken cancellationToken, CheckContext? context, DiagnosticOwner diagnostics)
     {
         if (!this.ValidateConfiguration(diagnostics, out var sources))
@@ -50,9 +52,9 @@ public partial class Project
             return null;
         }
 
-        if (targets[0] != TargetProfile.Windows.Target)
+        if (TargetProfile.Find(targets[0]) is null)
         {
-            this.Fail(diagnostics, "Testing requires a configured Windows x64 target.");
+            this.Unsupported(diagnostics);
             return null;
         }
 

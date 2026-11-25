@@ -118,10 +118,10 @@ public class Solution
         return success;
     }
 
-    /// <summary>Runs exactly one selected Application without building it.</summary>
-    /// <param name="cancellationToken">Cancels the child process.</param>
-    /// <returns>The application's exit code.</returns>
-    public Task<int> Run(CancellationToken cancellationToken = default)
+    /// <summary>Checks run's selection before any build or record write (IMPL 20.3), with or without --no-build: exactly one loaded
+    /// project and one selected target, each else a command input error, and that target the host's (the project's host rule).</summary>
+    /// <returns>Whether the project may be built and run; false after the project's record.</returns>
+    public bool PrepareRun()
     {
         if (!this.AllProjectsLoaded() || this.Projects.Count != 1)
         {
@@ -129,14 +129,21 @@ public class Solution
         }
 
         var project = this.Projects.Values.Single();
-        if ((this.KimiOptions.Target.Length != 0 && this.KimiOptions.Target != Compiler.TargetProfile.Windows.Target) ||
-            !project.ProjectFile.Targets.Contains(Compiler.TargetProfile.Windows.Target, StringComparer.Ordinal))
+        project.KimiOptions = this.KimiOptions;
+        project.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
+        if (project.SelectedTargets().Targets.Length > 1)
         {
-            throw new CommandInputException("Run requires the Windows x64 target.");
+            throw new CommandInputException("Run requires one selected target; select one with --Target.");
         }
 
-        return project.Run(cancellationToken);
+        return project.RunsOnHost();
     }
+
+    /// <summary>Runs the one project <see cref="PrepareRun"/> accepted without building it.</summary>
+    /// <param name="cancellationToken">Cancels the child process.</param>
+    /// <returns>The application's exit code.</returns>
+    public Task<int> Run(CancellationToken cancellationToken = default)
+        => this.Projects.Values.Single().Run(cancellationToken);
 
     /// <summary>Generates checked LLVM/manifest pairs for the loaded projects.</summary>
     /// <param name="cancellationToken">Cancels between compilation targets.</param>

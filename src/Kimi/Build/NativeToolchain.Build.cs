@@ -349,7 +349,7 @@ internal static partial class NativeToolchain
             // private file on every outcome (StagedHold). The object is held from its creation (Compile) to the build's end, so the
             // inspection and LLD read the object emit produced (Intermediates).
             var libraries = new List<StagedLibrary>();
-            var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + this.paths.ExecutableExtension; // Private until the commit.
+            var executable = this.paths.PrivateExecutable(); // Private until the commit.
             try
             {
                 this.ResolveLibraries(libraries);
@@ -510,9 +510,11 @@ internal static partial class NativeToolchain
                 }
             }
 
-            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => x.Row != this.row || x.Supply.Name == this.row.CRuntime || seen.Contains(x.Supply.Name)))
+            // The row's compiler supplies but its C runtime (which a module lists only when it requires a library), each named by its
+            // own text.
+            if (Array.Find(ToolchainIdentity.Supplies, x => x.Row == this.row && x.Supply.Name != this.row.CRuntime && !seen.Contains(x.Supply.Name)) is { } missing)
             {
-                throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
+                throw new InvalidDataException($"The manifest does not list the compiler supply '{missing.Supply.Name}'.");
             }
 
             this.record["libraries"] = libraryIdentities;
@@ -523,7 +525,7 @@ internal static partial class NativeToolchain
         // object is returned held, for Run to release at the build's end.
         private FileStream Compile(Tatara tatara)
         {
-            var obj = this.paths.Stem + ".obj";
+            var obj = this.paths.Object;
             var level = this.optimization[1] - '0';
             if (this.optimization != "O2")
             {
@@ -566,10 +568,16 @@ internal static partial class NativeToolchain
                 }
             }
 
-            var marker = this.row.FloatMarker;
-            if (module.DefinedExternal.Count(s => s.Name == marker && s.Kind is 'B' or 'D') != (marker is null ? 0 : 1) || facts.HasDefaultLibrary)
+            // Each refusal in the row's own terms: the float marker only on a row that has one; a default library on every row (COFF's
+            // /DEFAULTLIB directive, ELF's .deplibs section).
+            if (this.row.FloatMarker is { } marker && module.DefinedExternal.Count(s => s.Name == marker && s.Kind is 'B' or 'D') != 1)
             {
-                throw new InvalidDataException("Invalid _fltused definition or hidden default library.");
+                throw new InvalidDataException($"Invalid {marker} definition.");
+            }
+
+            if (facts.HasDefaultLibrary)
+            {
+                throw new InvalidDataException("The object names a default library, which the link would load hidden from the manifest.");
             }
 
             var entry = LinkManifest.Text(this.manifest, "entry");

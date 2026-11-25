@@ -302,9 +302,12 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
-    // Two emits and links of the probe in two folders give equal objects and executables (§6.1).
-    [Fact]
-    public void ElfBuildsInTwoFoldersAreEqual()
+    // Two emits and links of the probe in two folders give equal objects and executables (§6.1), at O0 and O2 (the Tatara plan's B7b8,
+    // C-560 N8).
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void ElfBuildsInTwoFoldersAreEqual(int level)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var probe = this.LinuxProbe("probe", string.Empty);
@@ -313,7 +316,7 @@ public sealed class TataraExecutorTest : IDisposable
         {
             var folder = Directory.CreateDirectory(Path.Combine(this.directory, "elf" + i)).FullName;
             var (obj, exe) = (Path.Combine(folder, "probe.o"), Path.Combine(folder, "probe"));
-            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, probe, obj, 2));
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(LinuxContext, probe, obj, level));
             Tatara.Instance.Link(LinuxContext, ["ld.lld", .. ElfLinkArguments(obj, exe, [])]);
             products[i] = Hash(obj) + Hash(exe);
         }

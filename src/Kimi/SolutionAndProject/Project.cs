@@ -249,19 +249,26 @@ public partial class Project
     /// them, outside both catches, each result with its own fault path; any other exception under the build (the compiler's read of the
     /// checked metadata, the rendering of a toolchain failure, or one the toolchain leaves) ends the build's own result as Faulted
     /// (DIAGNOSTICS rule 9). The output's lock is held from the beginning until the native build or the Library record returns, on every
-    /// outcome.</summary>
+    /// outcome. The artifact target is selected first: without one the check sequence reports why (its gate), with no lock taken and no
+    /// record written.</summary>
     /// <param name="cancellationToken">Cancels the wait for the output's lock, checking, generation and native tool processes.</param>
     /// <returns>Whether this OutputKind's checks and artifacts succeeded.</returns>
     public async Task<bool> Build(CancellationToken cancellationToken = default)
     {
         try
         {
+            if (this.ArtifactTarget(out _) is not { } row)
+            {
+                await this.BuildCore(true, cancellationToken).ConfigureAwait(false);
+                return false;
+            }
+
             Action<DiagnosticSeverity, string> report = (severity, message) => this.kimigayo.WriteLine(severity, message);
             ArtifactPaths paths;
             FileStream output;
             try
             {
-                paths = ArtifactPaths.Create(this);
+                paths = ArtifactPaths.Create(this, row);
                 output = await NativeToolchain.Begin(paths.Record, report, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
@@ -336,6 +343,43 @@ public partial class Project
     /// <returns>Whether every selected target passes front-end checks.</returns>
     internal bool Check(CheckContext context, CancellationToken cancellationToken)
         => this.OwnResult((cancellationToken, context), context, static (project, s, diagnostics) => project.BuildTargets(false, s.cancellationToken, null, s.context, diagnostics));
+
+    /// <summary>Gets the targets the project's unit selects (IMPL 20.3), the configured ones or the one --Target names; none, with the
+    /// failure, when none is configured or the selected one is not. The one selection rule: SelectTargets records it, and the artifact
+    /// target, the host rule and run's selection (Solution.PrepareRun) read it.</summary>
+    /// <returns>The selected targets, and the failure when there are none.</returns>
+    internal (string[] Targets, string? Failure) SelectedTargets()
+    {
+        var targets = this.ProjectFile.Targets;
+        var selected = this.KimiOptions.Target;
+        return targets.Length == 0 ? ([], "At least one compilation target must be configured.") :
+            string.IsNullOrEmpty(selected) ? (targets, null) :
+            targets.Contains(selected, StringComparer.Ordinal) ? ([selected], null) :
+            ([], "The selected target is not configured in this project.");
+    }
+
+    /// <summary>The host rule of run and test (IMPL 20.3, 20.6.1; SPEC 22 ¶1: running or testing a program for a target whose executables
+    /// this host does not run is Unsupported), before any build, generation or record write: the selected targets are the host's row's
+    /// (TargetProfile.Host). Otherwise the project's own result (Input partition) records the selection's failure or the location-only
+    /// Unsupported_Kd at the project. Run's several selected targets are its command's input error first (Solution.PrepareRun); a test
+    /// project's selection is one target (PrepareTests).</summary>
+    /// <returns>Whether the project's program may run on this host.</returns>
+    internal bool RunsOnHost()
+        => this.OwnResult(0, null, static (project, _, diagnostics) =>
+        {
+            if (project.SelectTargets(diagnostics) is not { } targets)
+            {
+                return false;
+            }
+
+            if (Array.TrueForAll(targets, static x => x == TargetProfile.Host?.Target))
+            {
+                return true;
+            }
+
+            project.Unsupported(diagnostics);
+            return false;
+        });
 
     /// <summary>Publishes the IR and manifest of an accepted compilation through the generation entry, or renders the Emission result:
     /// the generation records, the publication failure, or, for an exception publication does not classify (a broken contract code
@@ -445,9 +489,18 @@ public partial class Project
             return false;
         }
 
-        if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != TargetProfile.Windows.Target))
+        // Artifact production's gate: the artifact target (several selected: their record; one without a row: Unsupported).
+        if ((emit || paths is not null) && this.ArtifactTarget(out var failure) is null)
         {
-            this.Fail(diagnostics, "Artifact production currently requires exactly one configured Windows x64 target.");
+            if (failure is null)
+            {
+                this.Unsupported(diagnostics);
+            }
+            else
+            {
+                this.Fail(diagnostics, failure);
+            }
+
             valid = false;
         }
 
@@ -667,7 +720,8 @@ public partial class Project
             return false;
         }
 
-        paths ??= ArtifactPaths.Create(this);
+        // The compilation's row, which publication has just found (EmissionArtifacts.Publish).
+        paths ??= ArtifactPaths.Create(this, TargetProfile.Find(compilation.TargetTriple.Value)!);
         this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {paths.Ir} and {paths.Manifest}; native build has not yet been performed.");
         return true;
     }
@@ -696,34 +750,36 @@ public partial class Project
         return reads;
     }
 
-    // IMPL 20.3: the targets the project's unit selects, the configured ones or the one --Target names; null after its record when none is
-    // configured or the selected one is not, which leaves no target to prepare.
+    // The selection's record: null after it when the selection fails, which leaves no target to prepare.
     private string[]? SelectTargets(DiagnosticOwner diagnostics)
     {
-        var targets = this.ProjectFile.Targets;
-        if (targets.Length == 0)
+        var (targets, failure) = this.SelectedTargets();
+        if (failure is not null)
         {
-            this.Fail(diagnostics, "At least one compilation target must be configured.");
+            this.Fail(diagnostics, failure);
             return null;
         }
 
-        var selected = this.KimiOptions.Target;
-        if (string.IsNullOrEmpty(selected))
-        {
-            return targets;
-        }
+        return targets;
+    }
 
-        if (!targets.Contains(selected, StringComparer.Ordinal))
-        {
-            this.Fail(diagnostics, "The selected target is not configured in this project.");
-            return null;
-        }
-
-        return [selected];
+    // IMPL 20.3, SPEC 22 ¶1: the artifact target, the row of the one selected target; null with why there is none: the selection's
+    // failure, several selected targets, or (failure null) a target without a row, whose build is Unsupported. Read by the gate's records
+    // (BuildTargets) and by Build, which selects it before the output's paths.
+    private TargetProfile? ArtifactTarget(out string? failure)
+    {
+        var (targets, selection) = this.SelectedTargets();
+        failure = selection ?? (targets.Length != 1 ? "Artifact production requires one selected target; select one with --Target." : null);
+        return failure is null ? TargetProfile.Find(targets[0]) : null;
     }
 
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
+
+    // SPEC 22 ¶1, DIAGNOSTICS rule 3: a valid project whose target this implementation does not build, run or test: the location-only
+    // Unsupported_Kd at the project.
+    private void Unsupported(DiagnosticOwner diagnostics)
+        => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.Unsupported_Kd, this.FilePath);
 
     // SPEC 23.1.2: each failure is its own record; true when there is one.
     private bool Reported(DiagnosticOwner diagnostics, IReadOnlyList<string> failures)
