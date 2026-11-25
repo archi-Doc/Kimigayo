@@ -55,6 +55,7 @@ public sealed partial class RecursiveContractTest
     private const string G563Mg = G563Tree + "contract Mark<A>\ncontract MG<A>: Tree, Mark<A>\n    Self.(Tree).Child is MG<Option<A>>\n";
     private const string G563Mf = G563Tree + "contract MF<A>: Tree\n    Self.(Tree).Child is MF<A>\n";
     private const string G563MgRecord = "InvalidConstraint_Kd: contract MG<A>: Tree, Mark<A> <- Self.(Tree).Child is MG<Option<A>>";
+    private const string G563Src = "contract HasItem\n    associate Item\nstruct Src<V>\n    Self is HasItem\n    associate HasItem.Item is V\n    public var tag: i32 = 0\n";
 
     [Theory]
     [InlineData("r3-nconvq", G866Judges + "func g<W>(x: ref/LeafC)\n    needNotConv<LeafC, W>(x)\n", "UnprovenConstraint_Kd: needNotConv<LeafC, W>(x)")]
@@ -488,7 +489,9 @@ public sealed partial class RecursiveContractTest
     // Contract rests on its record (m.r-expand-q, n.refiner: dependent records allowed, SPEC 23.1.2). x.mg-decl and m.r-expand-q are the
     // Middle's RP17 B1 forms (c2-5a, C-562); g563-assoc is PLAN G563's form; SPEC's Stream waits (ARowAwaitsItsUnit, Q4 (a)). F's
     // G563C-2 twins (p1/twins.txt): a base on no cycle whose clause K inherits stays clean, and so does a use of it (r2-base); a refiner
-    // with a clause of its own rests on the erroneous Contract's record, with no record of its own (r2-refiner-rest).
+    // with a clause of its own rests on the erroneous Contract's record, with no record of its own (r2-refiner-rest). F's G563C-3 (the
+    // Middle's C-562 re-read B4; labels p2/labels-p2.md): an argument is read as a proposition's is (NormalizedForm), so a completed
+    // projection is its binding (8.2.3): `Src<A>.(HasItem).Item` is A, a flat pass (vt.alias-flat, -assoc, -second: valid).
     [Theory]
     [InlineData("x.mg-decl", G563Mg, G563MgRecord)]
     [InlineData("m.r-expand-q", G563Mg + "func needMark<V, W>(v: ref/V)\n    V is Mark<W>\n    ()\nfunc probe<T>(c: ref/T.(Tree).Child)\n    T is MG<i32>\n    needMark<T.(Tree).Child, Option<i32>>(c)\n", G563MgRecord + " | ...")]
@@ -506,6 +509,9 @@ public sealed partial class RecursiveContractTest
     [InlineData("v.use-only", G563Mf + "func probe<T>(t: ref/T) -> i32\n    T is MF<Option<i32>>\n    return 0\n", "")]
     [InlineData("v.use-mutual", G563Mf + "func probe<T, U>(t: ref/T, u: ref/U) -> i32\n    T is MF<Option<U>>\n    U is MF<Option<T>>\n    return 0\n", "")]
     [InlineData("v.assoc-flat", "contract D<U>\n    associate N is D<U>\n", "")]
+    [InlineData("vt.alias-flat", G563Tree + G563Src + "contract MA<A>: Tree\n    Self.(Tree).Child is MA<Src<A>.(HasItem).Item>\n", "")]
+    [InlineData("vt.alias-flat-assoc", G563Src + "contract NS<A>\n    associate Inner is NS<Src<A>.(HasItem).Item>\n", "")]
+    [InlineData("vt.alias-flat-second", G563Tree + G563Src + "contract MA<A>: Tree\n    Self.(Tree).Child is MB<Src<A>.(HasItem).Item>\ncontract MB<B>: Tree\n    Self.(Tree).Child is MA<B>\n", "")]
     [InlineData("n.two", G563Tree + "contract P<A>: Tree\n    Self.(Tree).Child is Q<Option<A>>\ncontract Q<B>: Tree\n    Self.(Tree).Child is P<B>\n", "InvalidConstraint_Kd: contract P<A>: Tree <- Self.(Tree).Child is Q<Option<A>> | InvalidConstraint_Kd: contract Q<B>: Tree <- Self.(Tree).Child is P<B>")]
     [InlineData("n.parent", G563Tree + "contract Q2<B>: Tree\n    Self.(Tree).Child is P2<B>\ncontract P2<A>: Q2<Option<A>>\n", "InvalidConstraint_Kd: contract P2<A>: Q2<Option<A>> | InvalidConstraint_Kd: contract Q2<B>: Tree <- Self.(Tree).Child is P2<B>")]
     [InlineData("n.swap-grow", G563Tree + "contract SX<A, B>: Tree\n    Self.(Tree).Child is SX<B, Option<A>>\n", "InvalidConstraint_Kd: contract SX<A, B>: Tree <- Self.(Tree).Child is SX<B, Option<A>>")]

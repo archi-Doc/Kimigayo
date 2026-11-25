@@ -12,8 +12,8 @@ namespace Kimi.Compiler;
 // - Inputs: the pass's Contract shapes (contractShapes: a library or earlier-layer Contract never refers to a later one, so every cycle
 //   lies inside one pass); each Contract's supply (ContractSupply, the one enumeration of what `Self is K` supplies, SPEC 8.3.2: its
 //   ancestors and its own and inherited clauses; an `and` split, 8.3.1; an `or`, a `not` or an identity premise supplies no conformance);
-//   the Contract's parameters and each reference's arguments in the Contract's view (ClassForm: SPEC's "normalized under K's premises",
-//   this judgment's intake, F's Q1 (a)).
+//   the Contract's parameters and each reference's arguments in the Contract's view, read as a proposition's are (NormalizedForm: SPEC's
+//   "normalized under K's premises", a completed projection interpreted, 8.2.3; F's Q1 (a) and G563C-3: one interpretation).
 // - Outputs: one InvalidConstraint_Kd at each erroneous Contract (DECISIONS R4-M115: the 8.3.3 errors use existing codes), before the
 //   source states' publication, so every use and refiner reads the failed Contract and rests (R7-M46); each premise that forms a pass of
 //   such a set failed in the view of the Contract whose supply holds it (FailPremise), so the adapter's InvalidConstraint row relates
@@ -108,7 +108,7 @@ public sealed partial class Binding
         var from = this.expansionNodes[shape.Symbol];
         for (var i = 0; i < parameters.Count; i++)
         {
-            this.expansionForms.Add(this.ClassForm(parameters[i], scope, out _));
+            this.expansionForms.Add(this.NormalizedForm(parameters[i], scope, out _));
         }
 
         foreach (var (ancestor, declaration, premise, _) in new ContractSupply(this, shape, self, scope))
@@ -152,7 +152,7 @@ public sealed partial class Binding
             return;
         }
 
-        var formed = this.ClassForm(this.ContractReferenceType(reference), scope, out _);
+        var formed = this.NormalizedForm(this.ContractReferenceType(reference), scope, out _);
         if (formed.Symbol is not { } declaration || !this.expansionNodes.TryGetValue(declaration, out var to))
         {
             return;

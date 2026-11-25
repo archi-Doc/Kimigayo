@@ -767,6 +767,7 @@ public sealed partial class Binding
 
     // J1's one reading of a proposition's Type (SPEC 8.3.1's normalized complete Types): normalized in the scope, a completed projection
     // interpreted (8.2.3, NormalizeProofType), then its class's form in the scope's view (ClassForm); the meet of both Completions (W1).
+    // Read by NormalizeProofConstraint and by SPEC 8.3.3's pass walk (Binding.Contracts.Expansion: "normalized under K's premises").
     private BoundType NormalizedForm(BoundType type, BindingScope scope, out Completion completion)
     {
         var form = this.ClassForm(this.NormalizeProofType(type, scope, out completion), scope, out var formed);

@@ -133,7 +133,8 @@ public sealed partial class Binding
     //   judgment of that scope's storage (F's C2 ruling 304). (iii), a member step's receiver (SPEC 9.6; R7-N1 c-b): QualifierSelection's
     //   receiver Type, in the use's view, and EvaluateProjection's normal form, in the left evaluation's view (its kept layer); each form
     //   is read by its step alone. (iv), SPEC 8.3.3's expanding recursion (Binding.Contracts.Expansion; F's G563C-1 Q1 (a)): a
-    //   Contract's parameters and each reference its supply makes, in the Contract's view ("normalized under K's premises"). J2, the
+    //   Contract's parameters and each reference its supply makes, in the Contract's view, through J1's NormalizedForm ("normalized
+    //   under K's premises", G563C-3). J2, the
     //   identity proposition, reads the classes (IdentityProven, among
     //   others ResolveAssociated's candidate agreement), no form. Every comparison of identical Types whose inputs are formed is one of
     //   J1-J4; one input is not formed: an anonymous function's written header Types, which the unifier's decomposition, Infer's
