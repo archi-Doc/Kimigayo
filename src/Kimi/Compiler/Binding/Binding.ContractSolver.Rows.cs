@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 // Callable and effect-bound readers read; PremiseRows, the candidate readers' rows over them; ExactAssumption, SPEC 8.3.2's Exact
 // assumption over the leaf rows;
 // PremiseUse, the premise-row locator a record reads),
-// their shared frame (RowsRequest, PrepareRows, LeaveRows), the view's index, Closure(view) (IndexOf, IndexWritten,
+// their shared frame (RowsRequest, EnterRows and its PrepareRows, LeaveRows), the extension's round (ExtendRound), the view's index,
+// Closure(view) (IndexOf, IndexWritten,
 // IndexNormalized, ViewIndex; a closure validator's read, BeginClosureRead to EndClosureRead; DropOwnedEntries, ClearClosure;
 // R7-C2e2-1, R7-C2e2-2) and the tables a request owns or keeps (the request tables; the kept rows, ViewIndex.Rows: KeepRows,
 // ForgetKeptTables, R7-C2e2 e2-3a). The walk the requests start (Enumerate and what it calls) is the entry file's.
@@ -29,6 +30,7 @@ public sealed partial class Binding
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<(BoundType A, BoundType B)> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows
     private readonly List<BoundType> enumerateDeferred = new(); // PLAN G881b: the round's mates row (5) did not walk (a cycle)
+    private readonly List<BoundType> extendRoots = new(); // c2-4b: the extending request's roots (ExtendRound), a request table (LeaveRows)
     private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
     private Stack<ViewIndex> enumerateIndexPool; // The running pass's free entries.
 
@@ -59,7 +61,7 @@ public sealed partial class Binding
     // R7-C2c2 c2-2: the extension rounds of this compilation (the scaling rows' measure of the loop's bound).
     internal int IdentityRounds { get; private set; }
 
-    // R7-C2c2 c2-4b: the re-rootings of this compilation's extending requests (ExtendClosed; TypeIdentityTest's re-root rows).
+    // R7-C2c2 c2-4b: the re-rootings of this compilation's extending requests (ExtendRound; TypeIdentityTest's re-root rows).
     internal int IdentityRestarts { get; private set; }
 
     // PLAN G881b: the rounds EnumerateClosed walked again (a request through a cycle; the scaling rows' measure of its bound).
@@ -133,40 +135,33 @@ public sealed partial class Binding
             }
         }
 
-        var enclosing = this.enumerateClasses;
-        this.enumerateClasses = classes;
-        this.enumerateDepth++;
+        var (index, prepared, enclosing) = this.EnterRows(subject, view, serial, classes, final);
         try
         {
-            var (index, prepared) = this.PrepareRows(subject, view, serial, final);
-            keep &= prepared;
-            this.enumerateWalking++;
-            try
+            var (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
+            var refines = RowsRefine(rows, contract) || RowsRefine(keyRows, contract);
+
+            // R7-C2c2 c2-2: a walk that recorded identity rows and is not positive extends (the class header's Extension), as its
+            // class's closure (c2-4b): from the subject, each round's table walking the root and its key until one refines.
+            if (!refines && this.enumerateDepth == 1 && this.enumerateIdentities.Count != 0)
             {
-                this.enumerateIdentities.Clear();
-                this.enumerateCompletion = Completion.Complete;
-                var (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
-                var refines = RowsRefine(rows, contract) || RowsRefine(keyRows, contract);
-
-                // R7-C2c2 c2-2: a walk that recorded identity rows and is not positive extends (the class header's Extension), as
-                // its class's closure (c2-4b, ExtendClosed).
-                if (!refines && this.enumerateDepth == 1 && this.enumerateIdentities.Count != 0)
+                keep = false; // A request-local extension is not the view's (SPEC 8.3.3: no answer depends on who asked first).
+                this.extendRoots.Add(subject);
+                var closure = (Applied: -1, Rounds: 0, Restarts: 0);
+                while (!refines && this.ExtendRound(ref closure, scope, view, index) is { } table)
                 {
-                    keep = false; // A request-local extension is not the view's (SPEC 8.3.3: no answer depends on who asked first).
-                    refines = this.ExtendClosed(subject, contract, scope, view, index);
+                    var root = this.extendRoots[0];
+                    (rows, keyRows) = this.EnumerateClosed(root, this.ClassKey(root, table), view, index);
+                    refines = RowsRefine(rows, contract) || RowsRefine(keyRows, contract);
                 }
-
-                if (keep && this.enumerateCompletion == Completion.Complete)
-                {
-                    this.KeepRows(index, view, serial);
-                }
-
-                return refines;
             }
-            finally
+
+            if (keep && prepared && this.enumerateCompletion == Completion.Complete)
             {
-                this.enumerateWalking--;
+                this.KeepRows(index, view, serial);
             }
+
+            return refines;
         }
         finally
         {
@@ -175,47 +170,64 @@ public sealed partial class Binding
     }
 
     // R7-C2c2 c2-4b (DECISIONS R4.13; the owner's O-345 (b); SPEC 8.3.3 Limits): an extending request computes its class's closure,
-    // not its own iteration: from its root (first the subject) over the declaration's grounds and the identity rows its own walks
-    // from that root record (ExtendedClassesOf), never the view's table or what a use's supply or an earlier request left, so the
-    // first walk's rows (read under the view's table) are dropped. Each round builds the table from the rows so far; when it keys
-    // the root lower by Order, the root is that key and the closure starts again from it with no rows. Otherwise the round reopens
-    // the view's entry as the request's (a Kept one too, N3 of e2-1's merge review: the keys are the request's whatever the table's
-    // finality, and a round with no rows builds the declaration's table, which can be Final and is not the view's), drops the
-    // class-key pairs an earlier table filed there (the view's, a previous round's or a previous root's), files the view's facts
-    // under its own keys and walks the root and its key: a round reads its own table alone. Rows only grow from one root, so a round
-    // that adds none ends the closure (Unknown). The rounds are counted from the root's first walk and the re-rootings from the
-    // subject; past PremiseClosureLimit of either, a request still unproven is refused (RefuseProof: PremiseClosureLimit, the
-    // Resource record of the scope's declaration, once: at its first refused use, else at the declaration; O-321 (b), SPEC 8.3.3).
-    // Each re-rooting lowers the root in Order, so the re-rootings' refusal needs 33 roots each joined to a lower one only by its own
-    // closure: none is known (the measured requests re-root at most twice). An extending request's rounds, rows and verdict are a
-    // function of (its final root, Contract, the declaration's grounds); whether a request extends is its first walk's (the class
-    // header's Extension).
-    private bool ExtendClosed(BoundType root, BindingSymbol contract, BindingScope scope, EvidenceView view, ViewIndex index)
+    // not its own iteration, one round per call: from its roots (extendRoots; first the subject) over the declaration's grounds and
+    // the identity rows its own walks from those roots record (ExtendedClassesOf), never the view's table or what a use's supply or
+    // an earlier request left, so the first walk's rows (read under the view's table) are dropped when the closure starts. Each round
+    // builds the table from the rows so far; when it keys a root lower by Order, the root is that key and the closure starts again
+    // with no rows. Otherwise the round reopens the view's entry as the request's (a Kept one too, N3 of e2-1's merge review: the keys
+    // are the request's whatever the table's finality, and a round with no rows builds the declaration's table, which can be Final
+    // and is not the view's), drops the class-key pairs an earlier table filed there (the view's, a previous round's or a previous
+    // root's) and files the view's facts under its own keys, and the request walks each root and its key: a round reads its own
+    // table alone. Rows only grow from the same roots, so a round that adds none ends the closure (null: Unknown). The rounds are
+    // counted from the roots' first walk and the re-rootings from the subject; past PremiseClosureLimit of either, a request still
+    // unproven is refused (RefuseProof: PremiseClosureLimit, the Resource record of the scope's declaration, once: at its first refused
+    // use, else at the declaration; O-321 (b), SPEC 8.3.3). Each re-rooting lowers a root in Order, so the re-rootings' refusal needs
+    // 33 roots each joined to a lower one only by its own closure: none is known (the measured requests re-root at most twice). An
+    // extending request's rounds, rows and verdict are a function of (its final roots, its test, the declaration's grounds); whether a
+    // request extends is its first walk's (the class header's Extension). Returns the round's table, or null when the closure ended,
+    // the table's build answered none or the bound refused the request; the request tests each table itself.
+    private IdentityClasses? ExtendRound(ref (int Applied, int Rounds, int Restarts) closure, BindingScope scope, EvidenceView view, ViewIndex index)
     {
-        this.enumerateIdentities.Clear();
-        var (applied, rounds, restarts) = (-1, 0, 0);
-        while (this.enumerateIdentities.Count != applied)
+        while (true)
         {
-            if (rounds > PremiseClosureLimit || restarts > PremiseClosureLimit)
+            if (closure.Applied < 0)
             {
-                this.RefuseProof(scope, BindingFailure.AnalysisLimit);
-                return false;
+                this.enumerateIdentities.Clear(); // the closure starts (again) from its roots with no rows
             }
 
-            applied = this.enumerateIdentities.Count;
+            if (this.enumerateIdentities.Count == closure.Applied)
+            {
+                return null;
+            }
+
+            if (closure.Rounds > PremiseClosureLimit || closure.Restarts > PremiseClosureLimit)
+            {
+                this.RefuseProof(scope, BindingFailure.AnalysisLimit);
+                return null;
+            }
+
+            closure.Applied = this.enumerateIdentities.Count;
             if (this.ExtendedClassesOf(scope, this.enumerateIdentities) is not { } extended)
             {
-                return false;
+                return null;
             }
 
             this.enumerateClasses = extended;
-            var key = this.ClassKey(root, extended);
-            if (Order(key, root) < 0)
+            var restarted = false;
+            for (var r = 0; r < this.extendRoots.Count; r++)
             {
-                (root, applied, rounds) = (key, -1, 0);
-                restarts++;
-                this.IdentityRestarts++;
-                this.enumerateIdentities.Clear();
+                var key = this.ClassKey(this.extendRoots[r], extended);
+                if (Order(key, this.extendRoots[r]) < 0)
+                {
+                    this.extendRoots[r] = key;
+                    this.IdentityRestarts++;
+                    restarted = true;
+                }
+            }
+
+            if (restarted)
+            {
+                closure = (-1, 0, closure.Restarts + 1);
                 continue;
             }
 
@@ -224,17 +236,10 @@ public sealed partial class Binding
             this.enumerateOwned.Add((view, this.activeRequirementContract));
             index.DropClassKeys();
             this.IndexWritten(index, view);
-            var (rows, keyRows) = this.EnumerateClosed(root, key, view, index);
-            this.IdentityRounds += rounds == 0 ? 0 : 1; // the root's first walk is no extension round
-            if (RowsRefine(rows, contract) || RowsRefine(keyRows, contract))
-            {
-                return true;
-            }
-
-            rounds++;
+            this.IdentityRounds += closure.Rounds == 0 ? 0 : 1; // the roots' first walk is no extension round
+            closure.Rounds++;
+            return extended;
         }
-
-        return false;
     }
 
     // PLAN G881b (SPEC 8.2.3 Cycles, 8.3.3): the rows of a request's subject and of its class key as the walk's least fixpoint, the
@@ -328,31 +333,17 @@ public sealed partial class Binding
             return classes;
         }
 
-        var enclosing = this.enumerateClasses;
-        this.enumerateClasses = classes;
-        this.enumerateDepth++;
+        var (index, prepared, enclosing) = this.EnterRows(subject, view, serial, classes, final);
         try
         {
-            var (index, prepared) = this.PrepareRows(subject, view, serial, final);
-            keep &= prepared;
-            this.enumerateWalking++;
-            try
+            var (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
+            if (keep && prepared && this.enumerateCompletion == Completion.Complete)
             {
-                this.enumerateIdentities.Clear();
-                this.enumerateCompletion = Completion.Complete;
-                var (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
-                if (keep && this.enumerateCompletion == Completion.Complete)
-                {
-                    this.KeepRows(index, view, serial);
-                }
+                this.KeepRows(index, view, serial);
+            }
 
-                Append(into, start, rows);
-                Append(into, start, keyRows);
-            }
-            finally
-            {
-                this.enumerateWalking--;
-            }
+            Append(into, start, rows);
+            Append(into, start, keyRows);
         }
         finally
         {
@@ -438,6 +429,22 @@ public sealed partial class Binding
 
     private BoundType RequestKey(BoundType subject, IdentityClasses? classes) => classes is null ? subject : this.ClassKey(subject, classes);
 
+    // A request enters its walk (PremiseRefines' and FirstRows' frame, which LeaveRows closes): its view's classes are the walk's,
+    // it is one request deeper, its preparation (PrepareRows) runs, and its walk starts with no identity row recorded and Complete
+    // until a read meets less (the class header's Kept rows). Returns the entry, whether the preparation formed no reading and the
+    // enclosing request's classes.
+    private (ViewIndex Index, bool Prepared, IdentityClasses? Enclosing) EnterRows(BoundType subject, EvidenceView view, int serial, IdentityClasses? classes, bool final)
+    {
+        var enclosing = this.enumerateClasses;
+        this.enumerateClasses = classes;
+        this.enumerateDepth++;
+        var (index, prepared) = this.PrepareRows(subject, view, serial, final);
+        this.enumerateWalking++;
+        this.enumerateIdentities.Clear();
+        this.enumerateCompletion = Completion.Complete;
+        return (index, prepared, enclosing);
+    }
+
     // An entered request's preparation: the view's entry in Closure(view) and, for an outermost request whose entry is not Kept, the
     // view's readings in it, after which the entry is Kept when every reading the preparation formed was kept and the request's class
     // keys are `final` (R7-C2e2-1's N1). Returns the entry and whether the preparation formed no reading (the rows may then be kept:
@@ -473,15 +480,18 @@ public sealed partial class Binding
         return (index, keep);
     }
 
-    // A request returns: its enclosing request's classes are back, and the outermost one empties the request tables, the pooled link
-    // lists it lent among them (capacity kept: no row outlives its request), and drops the entries it formed unless Kept.
+    // A request returns: its walk has ended, its enclosing request's classes are back, and the outermost one empties the request
+    // tables, the pooled link lists it lent and the extension's roots among them (capacity kept: no row outlives its request), and
+    // drops the entries it formed unless Kept.
     private void LeaveRows(IdentityClasses? enclosing)
     {
+        this.enumerateWalking--;
         this.enumerateClasses = enclosing;
         if (--this.enumerateDepth == 0)
         {
             this.enumerateMemo.Clear();
             this.enumerateSeed.Clear();
+            this.extendRoots.Clear();
             this.DropOwnedEntries();
             for (var i = 0; i < this.enumeratePoolNext; i++)
             {
@@ -725,7 +735,7 @@ public sealed partial class Binding
             this.Rows.Add(link, (copy, extends));
         }
 
-        // An extension's walking round (Binding.ExtendClosed) reads its own table's keys alone: the pairs filed under another subject
+        // An extension's walking round (Binding.ExtendRound) reads its own table's keys alone: the pairs filed under another subject
         // key than their filing atom's (FilingAtom; an earlier table's class-key pairs) go; the facts as written and their readings
         // stay, each under its filing atom's subject, in their order.
         internal void DropClassKeys()

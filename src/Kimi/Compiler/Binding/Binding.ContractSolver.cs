@@ -91,7 +91,7 @@
 //   Limits; the owner's O-321 (b)): a mate's chain may be deeper than the link it is identical with (row (5)), so under a path
 //   equation to a deeper projection (`Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`, allowed) each round supplies a deeper
 //   identity and the rounds have no end of their own. R7-C2c2 c2-4b (DECISIONS R4.13; the owner's O-345 (b)): the extension is the
-//   class's closure (ExtendClosed): from its root over the declaration's grounds (ConstraintEnvironment.Declares) and its own rows,
+//   class's closure (ExtendRound): from its root over the declaration's grounds (ConstraintEnvironment.Declares) and its own rows,
 //   re-rooted to a lower key, its rounds counted from the root's first walk, so an extending request's rounds and verdict are a
 //   function of (its root, Contract, the declaration's grounds), never of a use's supply or an earlier request; whether a request
 //   extends is not: its first walk reads the view's table, which holds the supply of every use bound before it (a Type spelled
