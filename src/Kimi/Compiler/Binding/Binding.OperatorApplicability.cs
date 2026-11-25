@@ -241,27 +241,12 @@ public sealed partial class Binding
             : new(null, null, BindingFailure.InvalidShiftCount, null, null, type, type);
     }
 
+    // SPEC 13.3.3, 13.3.4: any other Type is built-in numeric only as a parameter with proven PrimitiveInteger; else no row applies (a
+    // non-numeric primitive or a string NonNumericOperand, an unproven query UnprovenConstraint, a raw pointer, Tuple or fixed array no
+    // provider). A user provider's routes are TryArithmetic's, first.
     private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope, QuerySite site)
-    {
-        if (type.IsNumeric || ReferenceEquals(type, BoundType.Never))
-        {
-            return default;
-        }
-
-        if (NonNumericOperand(type))
-        {
-            return new(null, null, BindingFailure.NonNumericOperand, null, null, type, type);
-        }
-
-        if (type.IsPointer)
-        {
-            return new(null, null, BindingFailure.OperatorNotDefined, null, null, type, type);
-        }
-
-        // SPEC 13.3.3, 13.3.4: any other Type is built-in numeric only as a parameter with proven PrimitiveInteger; else no row applies
-        // (an unproven query UnprovenConstraint, a Tuple or fixed array no provider). A user provider's routes are TryArithmetic's, first.
-        return this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
-    }
+        => type.IsNumeric || ReferenceEquals(type, BoundType.Never)
+            ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
 
     private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope, QuerySite site)
     {
