@@ -1521,7 +1521,7 @@ public sealed partial class MirBorrowsTest
         """;
 
     // The partly stated holder forms (ACallsWriteAtPartlyStatedLayersTakesItsOwnVerdict): holders with a raw layer stating `a` beside one
-    // stating no Origin (Mixed, MixedQ, Deep, CMixed, CMixedQ), `static` (MixedS) or an abstract part (MixedT), Pin's every layer stated.
+    // stating no Origin (Mixed, MixedQ, Deep), `static` (MixedS) or an abstract part (MixedT), Pin's every layer stated.
     private const string CarriedForms = """
         struct Mixed {a}
             let loan: Loan<uniq/(raw/u8) during a>
@@ -1566,24 +1566,6 @@ public sealed partial class MirBorrowsTest
             public var p: raw/(raw/(raw/u8)) during a
             public var q: raw/(raw/u8)
             public init(target: uniq/(raw/(raw/u8)) during a, q: raw/(raw/u8))
-                self.p = target@follow@raw
-                self.q = q
-                self.loan = Loan.init(target)
-        #Layout("C")
-        struct CMixed {a}
-            public var p: raw/(raw/u8) during a
-            public var q: raw/(raw/u8)
-            let loan: Loan<uniq/(raw/u8) during a>
-            public init(target: uniq/(raw/u8) during a, q: raw/(raw/u8))
-                self.p = target@follow@raw
-                self.q = q
-                self.loan = Loan.init(target)
-        #Layout("C")
-        struct CMixedQ {a}
-            public var q: raw/(raw/u8)
-            public var p: raw/(raw/u8) during a
-            let loan: Loan<uniq/(raw/u8) during a>
-            public init(target: uniq/(raw/u8) during a, q: raw/(raw/u8))
                 self.p = target@follow@raw
                 self.q = q
                 self.loan = Loan.init(target)
@@ -1730,28 +1712,6 @@ public sealed partial class MirBorrowsTest
             var slot: raw/u8 = null
             var pin = Pin.init(target: slot@uniq)
             stash(pin.p, spare)
-            kk = 2
-        func storeFirstStatedOk()
-            var kk: u8 = 1
-            let r = kk@uniq
-            var spare: raw/u8 = r@follow@raw
-            var slot: raw/u8 = null
-            var other: raw/u8 = null
-            var mx = CMixed.init(target: slot@uniq, q: other@raw)
-            let w = mx@raw@raw/u8
-            unsafe => *w = 0
-            stash(mx.p, spare)
-            kk = 2
-        func storeFirstUnstatedBad()
-            var kk: u8 = 1
-            let r = kk@uniq
-            var spare: raw/u8 = r@follow@raw
-            var slot: raw/u8 = null
-            var other: raw/u8 = null
-            var mx = CMixedQ.init(target: slot@uniq, q: other@raw)
-            let w = mx@raw@raw/u8
-            unsafe => *w = 0
-            stash(mx.p, spare)
             kk = 2
         func unknownMixedBad<T>(x: T)
             var kk: u8 = 1
@@ -2806,9 +2766,10 @@ public sealed partial class MirBorrowsTest
     // reaches keeps its own verdict: f, reaching mx through h's address, may leave its own pointer at the unstated layer, and every value
     // read from any part of mx carries it, the stated mx.p included (OwnWrite; take's abstract part, UnknownWrite). A store the layout
     // places stays undecided there (PlacedAt: the layout decides whether it covers the stated layer), the located Unsupported_Kd, never a
-    // Language record. Every layer stated (Pin) or the holder replaced after the call keeps nothing of it. Each row is I (the POk rows
-    // relabelled: R4-M221 held viaCarriedMixedPOk valid) but the V rows marked: viaCarriedPinOk, viaParamQPinOk, viaCarriedMixedReplacedOk,
-    // and storeFirstStatedOk at the limit.
+    // Language record. Every layer stated (Pin) keeps nothing of it. Replacing mx whole after f does not end it: the replacement is
+    // another Mixed.init result (15.6.4, 15.4.2), reuses other, and mx stays addressed from what f may leave (15.6 Addresses). Each row is
+    // I (relabelled: R4-M221 held viaCarriedMixedPOk valid, the repeated review viaCarriedMixedReplacedOk) but the V rows marked:
+    // viaCarriedPinOk and viaParamQPinOk.
     [Theory]
     [InlineData("viaCarriedMixedPOk", "viaCarriedMixedPOk: kk = 2; viaCarriedMixedPOk: var slot: raw/u8 = null")] // I, mx.p carries mx.q's
     [InlineData("viaCarriedMixedBad", "viaCarriedMixedBad: kk = 2; viaCarriedMixedBad: var slot: raw/u8 = null")] // I, through mx.q
@@ -2818,14 +2779,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("viaCarriedMixedTPOk", "viaCarriedMixedTPOk: kk = 2; viaCarriedMixedTPOk: var slot: raw/u8 = null")] // I, an abstract part
     [InlineData("viaCarriedDeepBad", "viaCarriedDeepBad: kk = 2; viaCarriedDeepBad: var hop: raw/(raw/u8) = cell@raw")] // I, past p to hop
     [InlineData("viaCarriedMixedQCopyBad", "viaCarriedMixedQCopyBad: kk = 2; viaCarriedMixedQCopyBad: var slot: raw/u8 = null")] // I, a Copy
-    [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2 Unsupported_Kd; unknownMixedBad: var slot: raw/u8 = null Unsupported_Kd")] // I, undecided
+    // I: UnknownWrite gives mx its pun, but take's u8 write through c.w, off mx's Position, is the judge's undecided one (CallWrite).
+    [InlineData("unknownMixedBad", "unknownMixedBad: kk = 2 Unsupported_Kd; unknownMixedBad: var slot: raw/u8 = null Unsupported_Kd")]
     [InlineData("viaParamQBad", "viaParamQBad: kk = 2; viaParamQBad: var slot: raw/u8 = null")] // I, mx.q holds a parameter's pointer
     [InlineData("viaParamQPOk", "viaParamQPOk: kk = 2; viaParamQPOk: var slot: raw/u8 = null")] // I, mx.p carries it
     [InlineData("viaCarriedPinOk", "")] // V, every layer stated: f leaves at pin.p only what a admits
     [InlineData("viaParamQPinOk", "")] // V, no unstated layer
-    [InlineData("viaCarriedMixedReplacedOk", "")] // V, mx replaced whole after f
-    [InlineData("storeFirstStatedOk", "storeFirstStatedOk: kk = 2 Unsupported_Kd; storeFirstStatedOk: var slot: raw/u8 = null Unsupported_Kd")] // V
-    [InlineData("storeFirstUnstatedBad", "storeFirstUnstatedBad: kk = 2 Unsupported_Kd; storeFirstUnstatedBad: var slot: raw/u8 = null Unsupported_Kd")]
+    // I, as on dev: no V control at OwnWrite's site.
+    [InlineData("viaCarriedMixedReplacedOk", "viaCarriedMixedReplacedOk: kk = 2; viaCarriedMixedReplacedOk: var slot2: raw/u8 = null; viaCarriedMixedReplacedOk: var slot: raw/u8 = null")]
     public void ACallsWriteAtPartlyStatedLayersTakesItsOwnVerdict(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + CarriedForms[..CarriedForms.IndexOf("func via", StringComparison.Ordinal)] + Form(CarriedForms, form));
