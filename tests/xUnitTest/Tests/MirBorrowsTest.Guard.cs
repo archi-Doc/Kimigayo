@@ -187,8 +187,9 @@ public sealed partial class MirBorrowsTest
     // (laterWriterBad: x addresses slot; chainBad: x → pp → slot), never a holder only a shared Loan names (count, TheGuardReadsEachPart),
     // and E only where E was reached through no shared layer (Φ_W): an untied result (laterWriterOk and clearRcOk err, the owner's 「Yes,
     // writable」), a raw pointer it derives from (allocBad, alloc2Bad, allocOptBad, allocTupBad, allocViaUBad), a parameter or a capture
-    // (ownParamBad, ownParamGen, directParamGen, exchGen, capGen, nestGen); sharedRawGen's false error stays (no strip at a shared Deref of a
-    // `ref/` parameter, an open issue). A generic Writer (writerBad) errs by its call's own raw-argument retention, an exclusive reference
+    // (ownParamBad, ownParamGen, directParamGen, exchGen, capGen, nestGen), and an untied result's (sharedRawGen: `T.make`'s result is
+    // tied to no argument, so x reaches E writable, item 5; a tied result read through a shared Deref of a `ref/` parameter is PLAN G419's
+    // false error). A generic Writer (writerBad) errs by its call's own raw-argument retention, an exclusive reference
     // (paramBad) past it by the write fact, and a live exclusive Loan (uniqBad) by the store. Every row errs on dev too, there through the
     // owner's Q1 (a), which the owner's G264 (S) instruction of 2026-11-04 overrides; writerOk is valid on both. gSetQBad (PLAN G935):
     // a generic callee whose contract hands `setQ`, a requirement with a Self receiver, may call `dst.setQ(p)`, a call through a value
