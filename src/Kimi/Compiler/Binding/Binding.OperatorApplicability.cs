@@ -109,9 +109,10 @@ public sealed partial class Binding
             return decision;
         }
 
-        // SPEC 13.3.4: the counterpart of a left the table admitted (numeric, a proven integer parameter or Never) is judged at its
-        // terminal Type, as the left operand is, and keeps its own Type; a raw pointer's counterpart is its own row's (isize).
-        if (!left.IsPointer && rightCore is not null)
+        // SPEC 13.3.4: the counterpart of a left the table admitted (numeric or a proven integer parameter) is judged at its terminal
+        // Type, as the left operand is, and keeps its own Type; a Never counterpart fits the admitted left (3.1.3), and a raw pointer's
+        // counterpart is its own row's (isize).
+        if (!left.IsPointer && rightCore is not null && !ReferenceEquals(rightCore, BoundType.Never))
         {
             var counterpart = this.NumericApplicability(rightCore, scope, operation);
             if (counterpart.Failure != BindingFailure.None)
@@ -202,9 +203,9 @@ public sealed partial class Binding
                 KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement
                     => this.IntegerApplicability(type, scope, site, BindingFailure.NonIntegerOperand),
                 KotoKind.PrefixMinus => this.NegationApplicability(type, scope, site),
-                KotoKind.PrefixPlus => type.IsNumeric ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined),
                 KotoKind.Plus or KotoKind.Minus when type.IsPointer => default,
-                KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash => this.NumericApplicability(type, scope, site),
+                KotoKind.PrefixPlus or KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash
+                    => this.NumericApplicability(type, scope, site),
                 _ => default,
             };
         }
@@ -242,11 +243,10 @@ public sealed partial class Binding
     }
 
     // SPEC 13.3.3, 13.3.4: any other Type is built-in numeric only as a parameter with proven PrimitiveInteger; else no row applies (a
-    // non-numeric primitive or a string NonNumericOperand, an unproven query UnprovenConstraint, a raw pointer, Tuple or fixed array no
-    // provider). A user provider's routes are TryArithmetic's, first.
+    // non-numeric primitive or a string NonNumericOperand, an unproven query UnprovenConstraint, a raw pointer, Tuple, fixed array or
+    // Never no provider: a Never operand proves no direction, 3.1.3). A user provider's routes are TryArithmetic's, first.
     private OperatorApplicability NumericApplicability(BoundType type, BindingScope scope, QuerySite site)
-        => type.IsNumeric || ReferenceEquals(type, BoundType.Never)
-            ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
+        => type.IsNumeric ? default : this.IntegerApplicability(type, scope, site, BindingFailure.OperatorNotDefined);
 
     private OperatorApplicability NegationApplicability(BoundType type, BindingScope scope, QuerySite site)
     {

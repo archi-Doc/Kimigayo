@@ -396,7 +396,7 @@ public sealed partial class Binding
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 
-        // SPEC 13.3.4: only two Never operands reach here; a Never operand proves no direction, so no row applies (no provider).
-        return this.FailOperator(binary, binary, new(null, null, BindingFailure.OperatorNotDefined, null, null, left, left));
+        // The operator table admits no other left here (OperatorApplicabilityOf): a Never left has no provider at the decision.
+        return this.Fail(binary, BindingFailure.Internal);
     }
 }
