@@ -1393,6 +1393,8 @@ public sealed class NativeToolchainTest : IDisposable
     // k11 built (k9 with LLD's LNK4217 warning), k14 failed in LLD (an unknown file type), and 22 and k2p lacked their Kind lines.
     // LinkRoots' k3x and k11lc (LinkRoots design §1, K's note): an import member loaded only through a loaded member's /export: (k3x)
     // and code loaded only through the link's root _load_config_used (k11lc) are judged as every pick is; on the base both built.
+    // k11lcb (C-572 N2) is k11lc with its stub's member LLVM bitcode, unsupported (B) and invalid (Kind): a bitcode unit keeps class
+    // Code, so K judges it apart from B and its library gets both lines.
     [Theory]
     [InlineData("k2", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add'.")]
     [InlineData("k2p", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'codec_add' and 'codec_sub'.\nNative library 'zlib' is declared static, but the link would load import members from it for 'codec_add' and 'codec_sub'.\nAmbiguous native symbol 'codec_add': defined by the libraries codec and zlib.\nAmbiguous native symbol 'codec_sub': defined by the libraries codec and zlib.")]
@@ -1405,6 +1407,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("22", "alpha", "Native library 'zlib' is declared static, but its input is a linked image (a DLL or shared object), not a library.\nAmbiguous native symbol 'codec_add': defined by the libraries alpha and codec.")]
     [InlineData("k3x", "codec", "Native library 'codec' is declared static, but the link would load import members from it for 'GetTickCount'.")]
     [InlineData("k11lc", "lcfg", "Native library 'lcfg' is declared import, but the link would load code from it for '_load_config_used'.")]
+    [InlineData("k11lcb", "lcfg", "Native library 'lcfg' holds LLVM bitcode that the link would load, which is not supported.\nNative library 'lcfg' is declared import, but the link would load code from it for '_load_config_used'.")]
     public async Task AnInputInconsistentWithItsKindFailsBeforeTheLink(string row, string name, string lines)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
@@ -1995,9 +1998,9 @@ public sealed class NativeToolchainTest : IDisposable
     // "codec:import" is import, "codec=mixed" reads native/mixed.lib; Long is a long-format import member from a clang object
     // (__imp_codec_add in .idata$5 and its thunk; P-K3). Rows p<n> are NamedProvider's (provider-design.md §1 row n, as its theories
     // state; p14 is k8's program at the level, its codec lacking codec_add), each codec of them but p24a's lacking codec_add (Other).
-    // Rows 31-35 with their letters, k3x and k11lc are LinkRoots' (LinkRoots design §1, Revision 1a, as their theories state): a member
-    // named *.bc is LLVM bitcode (Archive compiles it with -flto), and Lone makes one member's object a library's whole input (k6's form);
-    // LC is the probes' 0x140-byte load configuration, EntryLine a member's /entry:ent2 directive.
+    // Rows 31-35 with their letters, k3x, k11lc and k11lcb are LinkRoots' (LinkRoots design §1, Revision 1a, as their theories state):
+    // a member named *.bc is LLVM bitcode (Archive compiles it with -flto), and Lone makes one member's object a library's whole input
+    // (k6's form); LC is the probes' 0x140-byte load configuration, EntryLine a member's /entry:ent2 directive.
     private async Task<Project> Dependency(string row, string name, string level)
     {
         const string Add = "int codec_add(void) { return 3; }\n";
@@ -2142,9 +2145,9 @@ public sealed class NativeToolchainTest : IDisposable
                 imports = row == "k11" ? [("codec", "codec_add"), ("zlib", "zlib_f")] : imports;
                 libraries = row == "k11" ? ["codec=mixed:import", "zlib"] : ["codec=mixed:import"];
                 break;
-            case "k11lc":
+            case "k11lc" or "k11lcb":
                 await this.ImportLibrary("lcfg", "lcfg_x");
-                await Archive("stub", ("m1", LC));
+                await Archive("stub", (row == "k11lcb" ? "m1.bc" : "m1", LC));
                 Assert.Equal(string.Empty, await TataraExecutorTest.Tool("llvm-lib", Path.Combine(this.directory, "native"), "/out:mixed.lib", "lcfg.lib", "stub.lib"));
                 (imports, libraries) = ([("lcfg", "lcfg_x")], ["lcfg=mixed:import"]);
                 break;

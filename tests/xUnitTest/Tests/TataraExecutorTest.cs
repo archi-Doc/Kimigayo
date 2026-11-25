@@ -176,17 +176,17 @@ public sealed class TataraExecutorTest : IDisposable
     }
 
     // Tatara's inspect reads archives (LinkAmbiguity phase A, design §2 "Tatara's read"): per member in archive order its symbols, its
-    // form (o, i, s, or b: LLVM bitcode), its definitions in sections that admit copies and its .drectve's references (the names lld-link
-    // roots, /include:'s and /export:'s, the /entry: names and the /alternatename: pairs), and the archive's index naming each entry's
-    // member (Describe); an object or a DLL is one member of no archive; a bitcode member, of form b, is read as lld-link links it (P4), its
-    // copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32: a nodeduplicate comdat's names are
-    // ordinary definitions, and a DEFAULTLIB among its linker options is the default-library flag; C-533 N-2); a directive's option takes each of
-    // LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32), but /export: only "/" and "-" (LLD's fast path), whose name is the text
-    // before the first ',' and of "<x>=<y>" y, none for a forwarder; a directive naming no symbol, and every other option, LLD's other
-    // options spelling a symbol included, lists nothing (exports; LinkRoots design §2.1a). llvm-lib writes its members in reverse
-    // command-line order (as lib.exe does; its /list reverses them back), so its index, naming
-    // the command line's last definer (P5), names the first in member order; an ELF archive from the llvm-ar copy keeps command-line order and
-    // its index names definers in member order (B7b7, rulings 6 and 7a). A malformed archive fails with LLVM's text and Tatara runs
+    // form (o, i, s, or b: LLVM bitcode), its definitions in sections that admit copies and its .drectve's references (the names
+    // lld-link roots, /include:'s and /export:'s, the /entry: names and the /alternatename: pairs), and the archive's index naming each
+    // entry's member (Describe); an object or a DLL is one member of no archive; a bitcode member, of form b, is read as lld-link links
+    // it (P4), its copies and linker options as LLD's LTO input reads them (its IR symbol table; T's ruling 32: a nodeduplicate
+    // comdat's names are ordinary definitions, and a DEFAULTLIB among its linker options is the default-library flag; C-533 N-2); a
+    // directive's option takes each of LLD's four prefixes, "/", "-", "/?" and "-?" (ruling 32), but /export: only "/" and "-" (LLD's
+    // fast path), whose name is the text before the first ',' and of "<x>=<y>" y, none for a forwarder; a directive naming no symbol,
+    // and every other option, LLD's other options spelling a symbol included, lists nothing (exports; LinkRoots design §2.1a). llvm-lib
+    // writes its members in reverse command-line order (as lib.exe does; its /list reverses them back), so its index, naming the
+    // command line's last definer (P5), names the first in member order; an ELF archive from the llvm-ar copy keeps command-line order
+    // and its index names definers in member order (B7b7, rulings 6 and 7a). A malformed archive fails with LLVM's text and Tatara runs
     // again; a thin archive fails. Libraries: the compiler's committed ones, or the pinned clang's objects archived by llvm-lib.
     [Theory]
     [InlineData("kernel32")]

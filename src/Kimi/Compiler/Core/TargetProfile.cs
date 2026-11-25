@@ -11,8 +11,8 @@
 // links (Kinds, IMPL 20.4; the Tatara plan's B7b5), the supply a program's C library starts through (CRuntime, null for none; the
 // Tatara plan's B7b2b), the convention by which the row's imports extend their arguments (ArgumentExtension, IMPL 21.2's name, null
 // for none), the extension of a program library's input (InputExtension, IMPL 20.4) and the executable format, whose link writer the
-// native build selects (Format,
-// IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's B7b7), the runtime's import declarations, and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines
+// native build selects (Format, IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's B7b7), the runtime's import declarations,
+// and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines
 // (MemorySymbols), the C entry's symbol (MainSymbol), the reserved external names of every target (ReservedSymbols, IMPL 21.2) and
 // the reads over every row (B7b5): a reserved supply of a name (ReservedSupply; its name is reserved under every target key, IMPL 20.4),
 // whether a supply of that name provides a symbol (Provides), and a symbol's runtime declaration with its providing supply
