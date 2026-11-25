@@ -11993,19 +11993,59 @@ resumed by R4-M86 (2026-10-20).
     Origins are excluded"; 15.3.4 "Inner per-call Origins cannot escape their binder"). Only a held Function Type is closed: a layer
     written inside a nested signature's result still relates that signature's per-call Origins inside its binder (G216 (b)'s row;
     R4-M162, R7-M96). Census (O3-9, the implementation review's C1): `RetainInnerOutlives` is the reader that now reads
-    `ClosedSignature`; two other readers that decide which Origins of a held Function Type a borrow layer's well-formedness covers do
-    not read it yet: `StoredPremisePart` (`Binding.OriginPremises.cs:645`: a result premise enters no Function Type, an input enters
-    one whole) and `WellFormedPremises.EnterStored` (`Binding.WellFormedPremises.cs:199`: enters none). They are PLAN G1337 (O3-B2),
-    not readers already agreeing. Moves: valid forms accepted where a local's, a Field's or a result's Type holds a Function Type with
-    per-call inputs under a borrow layer (A5's located `Unsupported_Kd` or the declaration judge's `UnprovenOriginRelation_Kd` before:
-    rp1w, rp2v, rp1w_ref, f_loc_ref_ok, f_loc_res_ok, f_nest_ok, f_fld_ok, f_sig_res_ok, f_rq2r_ok, ResultPremiseTest's `pick`,
-    `forward` and `annotated`, so PLAN G56's annotated-call limit goes); the extra record of invalid programs goes (a4i, a5i, rn3m,
-    rp1i, rq2, rq2n, rq2v, rq2r, n1fm keep their Contract records); a fixed Origin's row stays (f_wf_bad's `b outlives q`). Corrects
-    c1d7b0eea's `pick`/`forward` pins (unlabelled, "as in dev"). Rejected: a per-call test in `RetainInnerOutlives` (a second copy of
-    BU-73's rule, and wrong for a layer inside a nested result); entering no Function Type (drops the fixed Origins' rows: f_wf_bad
-    accepted, SPEC 15.2.3 counts them); narrowing R7-M96's `ForeignEnd` and whitelisting the family (O3-6 (A): keeps the spurious
-    row, a family clause); an `AddObligation` guard (a catch-all after the fact); a fit or Callable comparison site (neither forms the
-    row).
+    `ClosedSignature`; the two other readers that decide which Origins of a held Function Type a borrow layer's well-formedness covers,
+    `StoredPremisePart` and `WellFormedPremises.EnterStored`, are R7-O3 O3-B2's, in the amendment below (PLAN G1337). Moves: valid
+    forms accepted where a local's, a Field's or a result's Type holds a Function Type with per-call inputs under a borrow layer (A5's
+    located `Unsupported_Kd` or the declaration judge's `UnprovenOriginRelation_Kd` before: rp1w, rp2v, rp1w_ref, f_loc_ref_ok,
+    f_loc_res_ok, f_nest_ok, f_fld_ok, f_sig_res_ok, f_rq2r_ok, ResultPremiseTest's `pick`, `forward` and `annotated`, so PLAN G56's
+    annotated-call limit goes); the extra record of invalid programs goes (a4i, a5i, rn3m, rp1i, rq2, rq2n, rq2v, rq2r, n1fm keep their
+    Contract records); a fixed Origin's row stays (f_wf_bad's `b outlives q`). Corrects c1d7b0eea's `pick`/`forward` pins (unlabelled,
+    "as in dev"). Rejected: a per-call test in `RetainInnerOutlives` (a second copy of BU-73's rule, and wrong for a layer inside a
+    nested result); entering no Function Type (drops the fixed Origins' rows: f_wf_bad accepted, SPEC 15.2.3 counts them); narrowing
+    R7-M96's `ForeignEnd` and whitelisting the family (O3-6 (A): keeps the spurious row, a family clause); an `AddObligation` guard (a
+    catch-all after the fact); a fit or Callable comparison site (neither forms the row).
+  - Amended by R7-O3 O3-B2 (Q-787, D-1290, 2026-11-25; Front, Binding; F's rulings O3-23, O3-24, O3-27, O3-28 and O3-29) SPEC 15.2.3,
+    15.3.4, 15.6.1, 15.6.4: **every premise's stored walk reads a held Function Type through `StoredSignature`, and a definition
+    result's row that such a Type's fixed Origin forms is judged without the one part of the result premise no call carries.** A held
+    Function Type's part of a borrow layer's well-formedness is read through `StoredSignature` (`Binding.Capabilities.cs`, beside
+    `ClosedSignature`: a Function Type with a per-call binder is its closed call signature, any other Type itself) by the judged
+    relations (`RetainInnerOutlives`) and by every premise's stored walk (`StoredPremisePart`: a result's, an input's, a capture's and
+    a local Place's): its fixed Origins are stored, its per-call Origins never are (SPEC 15.2.3, 15.3.4). A use's walk
+    (`WellFormedPremises.EnterStored`) enters no held Function Type yet (its contract says why: the whole-contract comparison would not
+    discharge the obligation, rejecting the valid l1v, e1v, b1v, SPEC 10.7, 15.3.7). So no call carries the part of a definition's
+    result premise that a held Function Type's fixed Origins form (SPEC 15.6.4 step 3), and (O3-24, O3-27) each row such an Origin
+    forms at the definition's own result Type is judged from the definition's premises without that part, every other part of its
+    result premise (another component's stored Origins, the result Type's clauses), which the calls carry, included; unproven, the
+    definition is the located `Unsupported_Kd` at the row's use, the written borrow layer (a Function Type with only fixed inputs has
+    no Binder to point at). `WellFormedPremises.DefinitionProves` keeps its whole exclusion (`resultPremiseExcluded`: another rule, the
+    definition's own premise never proven from itself). **Vocabulary, decided by F's ruling O3-28 (not a COMPILER_ARCHITECTURE closed
+    vocabulary): `OriginPremiseRule.HeldResult`**, R3's part inside a held Function Type, a value the proof reads, not a mode or a
+    bool. Writer: `StoredPremisePart`, which switches a result walk's rule from `Result` to `HeldResult` where it meets a Function
+    Type; its visits keep the two rules apart, so a part met inside and outside one forms both edges. Reader: the excluded rule of a
+    HeldResult row's proof (`PublishedPremise` passes it, in the same premise environment as every row; `OriginPremiseClosure.Close`
+    and `Entails` do not follow that rule's edges; `Target`, which no edge carries, excludes none). Removal: with
+    `OriginDischarge.HeldResult` and `OriginDischarge.AssumedResult`, at the closing form below. `OriginDischarge` gains
+    `AssumedResult` (the walk's state at a borrow layer of a definition's assumed result Type, `AssumesResult`'s set; never stored on
+    an obligation: `RetainInnerOutlives`, the one writer of the rows it reaches, stores `Judgment` or `HeldResult` in its place) and
+    `HeldResult` (the rows of a held Function Type below such a layer; `OriginClauses.CollectDeclarationRows` and `PublishedPremise`).
+    Closing form: `EnterStored` carries a held Function Type's fixed Origins to each call and the whole-contract comparison discharges
+    them over the implementation's solvable call Origins (SPEC 15.3.7; PLAN G1337); then the three entries go. Moves: t_sres_fix,
+    sres_fix, sres_use, leak_mk, ret_mk and call_ok (valid) at the located limit where dev recorded `UnprovenOriginRelation_Kd` at the
+    result layer (sres_use, leak_mk, ret_mk also lose their body records: the premise decides them); a nested named function's result
+    (its declaring body is recorded since O3-A's G230 (A) closure, BU-258) gets the same limit: edge_nest_enc and edge_nest_mix (valid,
+    SPEC 9.3), and tw_nest_use (valid; dev's two records, the result layer's and the body's, become the limit alone); call_bad,
+    leak_use, ret_use (invalid) rejected by mk's limit (leak_use, ret_use beside A5's Loan record); e3fr, rq1r (invalid) the limit
+    beside their Contract record; sres_bad keeps its own record beside the limit, and so do h_nres_fixed_bad (invalid: the nested
+    result inside the held Function Type is judged where it occurs, SPEC 15.3.4) and s_local_hide (invalid: a local's held Function
+    Type is not assumed, SPEC 15.3.3), which stay Judgment rows; edge_nest_use (invalid: mk's body reads outer's
+    runtime `b`, SPEC 7.3.1) keeps `InvalidCaptureBinding_Kd` beside the limit; the review's t_call_fix_bad (valid by 15.6.4) gets mk's
+    limit; tw_pair (valid: its second component stores b below q) and tw_a1 (valid: the same part met inside and outside the held
+    Function Type in one walk) stay accepted. Rejected: (L) the definition keeping no such premise (valid bodies keep dev's Language
+    record, or each failed body relation is proven again); option A alone (call_bad, invalid, accepted: a premise no call proves,
+    R4-M137's note); O3-24's whole exclusion of the result premise for a HeldResult row (tw_pair, valid, rejected: the delta review's
+    B1); excluding only the row's own Function Type's part (a second held Function Type with the same Origin would be accepted on a
+    premise no call carries); a bool walk parameter, a mode on the exclusion or a second premise environment; `EnterStored` reading
+    `StoredSignature` now (rejects l1v, e1v, b1v).
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a
