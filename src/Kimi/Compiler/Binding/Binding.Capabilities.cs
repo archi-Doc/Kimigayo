@@ -896,9 +896,16 @@ public sealed partial class Binding
         return result;
     }
 
+    // SPEC 15.2.3, 15.6.1 (DECISIONS BU-73): a Type as a borrow layer stores it: a held Function Type is its closed call signature (its
+    // fixed Origins are stored, its per-call Origins never are: SPEC 15.3.4), every other Type is itself. The one reading of a held Function
+    // Type for the well-formedness walks of stored Origins: the judged relations (RetainInnerOutlives) and the premises
+    // (StoredPremisePart); a use's walk (WellFormedPremises.EnterStored) does not enter a held Function Type yet (its contract says why).
+    private BoundType StoredSignature(BoundType type)
+        => type.Kind == BoundTypeKind.Function && type.Binder is { } binder ? this.ClosedSignature(type, binder) : type;
+
     // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
     // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed. The closed signature is the
-    // part Owned judges, and a held Function Type's part of a borrow layer's well-formedness (RetainInnerOutlives, SPEC 15.6.1).
+    // part Owned judges, and a held Function Type's part of a borrow layer's well-formedness (StoredSignature, SPEC 15.6.1).
     private BoundType ClosedSignature(BoundType signature, Koto binder)
     {
         var count = InputOriginCount(binder);
