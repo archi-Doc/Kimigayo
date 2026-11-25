@@ -5,8 +5,9 @@
 // their own contracts.
 // Owns: a child created inside a job of its own before its first instruction (PROC_THREAD_ATTRIBUTE_JOB_LIST), so every descendant is
 // in the job and none can leave it (no breakaway); the job ends them all at Kill and when its last handle closes
-// (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE): at Dispose, and when this process ends, by TerminateProcess too (a second Ctrl+C). The host
-// rule of the programs Kimi runs: a Windows x64 host, as TargetProfile.Windows's target (IMPL 20.3, 20.6.1).
+// (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE): at Dispose, and when this process ends, by TerminateProcess too (a second Ctrl+C). Its host
+// check is the launcher's own Win32 precondition (CreateJobObjectW and the process attribute list), not a target rule: run and test
+// refuse a target whose executables this host does not run before they reach it (TargetProfile.Host; IMPL 20.3, 20.6.1).
 // Readers: Testing's TestProcess (a test case, IMPL 20.6.3) and Build's NativeToolchain.RunExecutable (run's program, IMPL 20.3).
 // Input: the executable, its working directory, its environment block (null: this process's), whether it shares this process's
 // standard input (the reader's decision: run's, Tatara decision 15; a test case's is closed, IMPL 20.6.3) and the handles it inherits
