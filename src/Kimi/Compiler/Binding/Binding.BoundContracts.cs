@@ -168,7 +168,9 @@ public sealed partial class Binding
     // SPEC 8.4.1, 8.6.1: BoundContractReference's inverse, the reference Type a Contract symbol stands for: a bound reference's Type, or a
     // declaration symbol's SelfType, the declaration applied to its own parameters (`R<A>` written in R, which BoundContractReference
     // collapses to the symbol). Every reader that instantiates or substitutes a symbol's reference reads it, so the own reference is bound
-    // like any other (InstantiatedContract, SubstituteConstraint, ProjectionContract).
+    // like any other (InstantiatedContract, SubstituteConstraint, ProjectionContract). Precondition: `contract` is a bound reference (its
+    // Type set) or a declaration symbol with a schema, which SelfType reads; a caller that may hold another symbol tests it first
+    // (SubstituteConstraint and InstantiatedContract test its Type, the expansion walk its nodes).
     private BoundType ContractReferenceType(BindingSymbol contract)
         => IsBoundContractReference(contract) ? contract.Type! : this.SelfType(contract);
 

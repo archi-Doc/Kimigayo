@@ -37,7 +37,8 @@ public partial class TypeDagScalingTest
 
     // G563-C (SPEC 8.3.3 Expanding recursion; F's G563C-1): a ring of n Contracts `Ci<A>: Tree` with `Self.(Tree).Child is Ci+1<A>` is
     // flat and valid; closed by `C0<Option<A>>` instead, its one expanding pass puts every Contract on a growing set, each with its
-    // record. The pass graph has n nodes and n passes, walked with no depth bound (n past every closure limit); timed at n and 2n.
+    // record. The pass graph has n nodes and n passes, walked with no depth bound (n past every closure limit); the rows assert the
+    // record profile at n and 2n, as the identity cycle's row above does, and time nothing.
     [Theory]
     [InlineData("flat", 70)]
     [InlineData("flat", 140)]

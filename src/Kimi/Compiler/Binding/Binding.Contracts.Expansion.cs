@@ -16,7 +16,9 @@ namespace Kimi.Compiler;
 //   supplied Constraint's operands passes, whatever the connective (`and`, `or`, `not`; F's G563C-6). A Contract reference inside a
 //   Type of an identity premise (a projection's qualifier) is not walked (G563C-6 leaves it out; its twin is labelled). The Contract's
 //   parameters and each reference's arguments are read in the Contract's view as a proposition's are (NormalizedForm: SPEC's
-//   "normalized under K's premises", a completed projection interpreted, 8.2.3; F's Q1 (a) and G563C-3: one interpretation).
+//   "normalized under K's premises", a completed projection interpreted, 8.2.3; F's Q1 (a) and G563C-3: one interpretation). These
+//   forms are Complete here: the check runs after Advance(AssociatedBindings), where every binding they read is admitted (G563C-5),
+//   so their Completion is not read.
 // - Outputs: one InvalidConstraint_Kd at each erroneous Contract (DECISIONS R4-M115: the 8.3.3 errors use existing codes), after
 //   admission point 3, where the arguments' normalization exists (a binding is admitted only from there; F's G563C-5). Every use and
 //   refiner reads the failed Contract through the failed-context read (AvailableContractPremise's InvalidDeclarationContext) and rests,
@@ -160,19 +162,15 @@ public sealed partial class Binding
     // parameters its argument contains. A Contract of no node here (another pass's) lies on no cycle of this pass.
     private void AddReferencePasses(BindingSymbol reference, BindingScope scope, int from, BoundConstraint? premise)
     {
-        // Only a Contract of the pass with parameters has nodes; any other (a library's, one without parameters and maybe without a
-        // schema for SelfType) receives no pass.
-        if (!this.expansionNodes.ContainsKey(IsBoundContractReference(reference) ? reference.Type!.Symbol! : reference))
+        // The reference's declaration symbol (a bound reference's Type's head, or the declaration's own symbol) keys its nodes. Only a
+        // Contract of the pass with parameters has nodes; any other (a library's, one without parameters and maybe without the schema
+        // ContractReferenceType's SelfType needs) receives no pass, so the test comes before the reference's Type is formed.
+        if (!this.expansionNodes.TryGetValue(IsBoundContractReference(reference) ? reference.Type!.Symbol! : reference, out var to))
         {
             return;
         }
 
         var formed = this.NormalizedForm(this.ContractReferenceType(reference), scope, out _);
-        if (formed.Symbol is not { } declaration || !this.expansionNodes.TryGetValue(declaration, out var to))
-        {
-            return;
-        }
-
         for (var j = 0; j < formed.Components.Count; j++)
         {
             this.AddArgumentPasses(formed.Components[j], formed.Components[j], from, to + j, premise);
@@ -263,6 +261,9 @@ public sealed partial class Binding
             }
 
             this.expansionStack.RemoveAt(this.expansionStack.Count - 1);
+
+            // A root closes its set: each member is popped off the open stack (the iterator clause pops the member just named) until the
+            // root itself, which the open stack holds lowest of the set, is popped last.
             for (var member = -1; this.expansionLow[node] == this.expansionOrder[node] && member != node; this.expansionOpen.RemoveAt(this.expansionOpen.Count - 1))
             {
                 member = this.expansionOpen[^1];
