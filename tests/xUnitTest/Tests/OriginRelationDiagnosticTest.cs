@@ -254,10 +254,12 @@ public partial class OriginRelationDiagnosticTest
     // invariant position, and each part's fit to it forms its rows: a bound a part's fit gives is no proven equality, so an invariant
     // variable takes the meet and each part's bound fails on its own, one record per part (g1, g2, g10-g13u; dev: InternalInvariant_Kd,
     // g11 a dependent PrerequisiteUnavailable_Kd beside its two). A stated Origin of the expected element Type stays fixed (B's ruling 1):
-    // g5's one record is b's, as its assignment twin g5t's. Valid twins: equal inner Origins (g3, g3u), a covariant inner `ref` (g4), a
+    // g5's one record is b's, as its assignment twin g5t's, and a stated Dictionary value Type's alike (l_dict_stated: b's one record, the
+    // literal's dependent one gone; B's ruling 10). Valid twins: equal inner Origins (g3, g3u), a covariant inner `ref` (g4), a
     // premise (g7) or a cycle (k1, k1u; dev: InternalInvariant_Kd) proving `p == q`, and equal Types (c1s, p1s); the cycle at a join is
-    // PLAN G394's (its root IsSubtype reads no premise). A contravariant position whose Origins differ (c1, c1c, and the valid c1v) is the
-    // located Unsupported_Kd, its candidate (a lower bound proven to outlive the others) not formed; SPEC gives c1 and c1c Origin records.
+    // PLAN G394's (its root IsSubtype reads no premise). A contravariant position whose Origins differ (c1, c1c, and c1v) is the located
+    // Unsupported_Kd, its candidate (a lower bound proven to outlive the others) not formed: the interim on valid programs (SPEC 15.3.6: with
+    // no candidate the variable is a local region; 15.6.5: its chains are not Refuted).
     // An unformed pair layer (p1) is its formation record alone, as the fit's FitOuterOrigins decides (dev: InternalInvariant_Kd beside).
     // Each element's adapted Type (a value read, an erasure, a completed Case) fits the place once, after the whole meet, at every site,
     // its record at the element: at a return (a2r) and an assignment (a2a) as at a declaration, in either source order (g1r, g13r), with
@@ -278,6 +280,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("g7", G1379Pq + "    origin p == q\n    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "")]
     [InlineData("g10", G1379Pq + "    let arr: [_ of _] = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:26 UnprovenOriginRelation@2:34")]
     [InlineData("g11", G1379Pq + "    let d: Dictionary<i32, uniq/ref/i32> = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:48 UnprovenOriginRelation@2:59")]
+    [InlineData("l_dict_stated", G1379Pq + "    let d: Dictionary<i32, uniq/(ref/i32 during p) during r> = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:79")]
     [InlineData("g12", G1379Pq + "    let d = [1: a@move, 2: b@move]\n    return 0\n", "UnprovenOriginRelation@2:17 UnprovenOriginRelation@2:28")]
     [InlineData("g13", G1379Ps + "    let arr: Array<uniq/ref/i32> = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:37 UnprovenOriginRelation@2:45")]
     [InlineData("g13u", G1379Ps + "    let arr = [a@move, b@move]\n    return 0\n", "UnprovenOriginRelation@2:16 UnprovenOriginRelation@2:24")]

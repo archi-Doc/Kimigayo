@@ -10,15 +10,15 @@ public sealed partial class Binding
 
     private BoundType? BindDictionaryLiteral(DictionaryLiteralKoto literal, BindingScope scope, BoundType? expected)
     {
-        if (expected is not { Kind: BoundTypeKind.Dictionary, Components.Count: 2 })
+        // SPEC 4.3.1, 15.3.6 (PLAN G1379, B's ruling 1): an expected Dictionary Type states the key and value places' fixed Origins
+        // (StatedPlaceType), as an array literal's expected element Type does; an independent literal's Types state none.
+        var stated = expected is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? expected : null;
+        if ((stated ?? this.IndependentDictionaryType(literal, scope)) is not { } place)
         {
-            if (this.IndependentDictionaryType(literal, scope) is not { } independent)
-            {
-                return null;
-            }
-
-            expected = independent;
+            return null;
         }
+
+        expected = place;
 
         BoundType? key = null;
         BoundType? value = null;
@@ -64,6 +64,12 @@ public sealed partial class Binding
 
         this.dictionaryLiteralKeys.Clear();
         FormedTypeRows.Add(literal); // SPEC 12.4: the literal forms its Dictionary Type from its entries (PLAN G1278's open line: at an expected Type too).
+        if (stated is not null)
+        {
+            key = key is null ? null : this.StatedPlaceType(key, stated.Components[0]);
+            value = value is null ? null : this.StatedPlaceType(value, stated.Components[1]);
+        }
+
         return Complete(literal, complete ? this.types.Intern(BoundTypeKind.Dictionary, expected.Symbol, SemanticsKind.Owner, [key ?? expected.Components[0], value ?? expected.Components[1]]) : null);
     }
 
