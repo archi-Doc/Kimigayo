@@ -392,7 +392,7 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> SynthesizedCalls; // Work: a call Binding synthesized in the pass, its consumer, the running pass's working state, released at the freeze (Binding.Check.cs).
     internal PagedColumn<List<BindingSymbol>?> GatheredGroups; // Kept: a use's function group gathered at the alias stage, emptied in place at each publication of its head (Binding.Imports.cs).
     internal PagedColumn<(bool Pattern, bool Guard)> IndexedPatterns; // Kept: whether the latest run of a node's pass indexed it as a pattern node or a guard scope, copied to the pass's previous-run lists and emptied at its reset (Binding.Patterns.cs).
-    internal PagedColumn<bool> FormedTypes; // Kept: whether a node forms its Type, written by BindType (a written occurrence, a rooted name's operand), EnumQualifierType, ConstructionTargetType, BindContractReference and the Dictionary literal's binder (Binding.Types.cs, FormedTypeRows).
+    internal PagedColumn<bool> FormedTypes; // Kept: whether a node forms its Type, written by BindType (a written occurrence, a rooted name's operand), EnumQualifierType, ConstructionTargetType, BindContractReference and the Dictionary literal's binder, emptied at its pass's reset (Binding.Types.cs, FormedTypeRows).
 
     internal void Resize(int length)
     {
