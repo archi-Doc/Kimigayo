@@ -151,7 +151,7 @@ public class ContractSelfTest
     // cycle, so D is a Language error whatever the limits, recorded at the Contract ("at each Contract on it"; F's G563C-6 C7); records of the
     // uses resting on it stay open. The same argument passed to a Contract that refers to none has no cycle (h6f), and a flat pass is a valid
     // recursive Contract (h6u).
-    [InlineData("C2", "h6", "contract E\ncontract D<U>\n    U is E\n    associate N is D<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "InvalidConstraint_Kd: contract D<U> | ...", Explicit = true)]
+    [InlineData("guard", "h6", "contract E\ncontract D<U>\n    U is E\n    associate N is D<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "InvalidConstraint_Kd: contract D<U> | ...")]
     [InlineData("guard", "h6f", "contract E\ncontract F<W>\ncontract D<U>\n    U is E\n    associate N is F<Self.(D<U>).M>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
     [InlineData("guard", "h6u", "contract E\ncontract D<U>\n    U is E\n    associate N is D<U>\n    associate M is E\ncontract C\n    associate X is D<Self.(C).Y>\n    associate Y is E\nfunc probe<T>(value: T.(C).X)\n    T is C\n    ()\n", "")]
 
