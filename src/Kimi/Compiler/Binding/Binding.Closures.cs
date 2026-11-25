@@ -505,7 +505,7 @@ public sealed partial class Binding
         for (var i = 0; i < captures.Length; i++)
         {
             var capture = captures[i];
-            if (RepeatedEntry(captures, i) >= 0)
+            if (repeats && RepeatedEntry(captures, i) >= 0)
             {
                 continue; // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
             }
