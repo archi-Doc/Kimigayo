@@ -83,7 +83,7 @@ internal sealed partial class MirValidator
         private readonly bool Clears(in MirCallee callee, int position)
             => callee is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } function } && MirCallee.Slot(function, position) is var slot &&
                 types.Signature(function, callee.Subst, slot, out _) is { Origin.Kind: not OriginKind.Static } &&
-                !types.Retains(function, callee.Subst, body.Key.Decl).Keeps(slot);
+                !types.Retains(function, callee.Subst, body.Key.Decl, []).Keeps(slot);
 
         // False when the arguments are out of range.
         private bool Call(in MirTerminator call)

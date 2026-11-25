@@ -155,7 +155,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 }
 
                 var stem = Path.Combine(directory, "tests");
-                var paths = ArtifactPaths.Create(stem + ".ll", project.ProjectFile.Optimization);
+                var paths = ArtifactPaths.Create(stem + ".ll", project.ProjectFile.Optimization, TargetProfile.Windows);
                 if (!project.PublishArtifacts(compilation, paths, null))
                 {
                     errors.Add("Test generation failed: " + project.Name); // Its records are rendered, as kimi build's (R5 C0a).
