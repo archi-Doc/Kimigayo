@@ -11,6 +11,17 @@ namespace XunitTest;
 
 public class CoreModelTest
 {
+    // The none row's kimi_backend symbols: compiler-rt 22.1.8's soft-float routines in src/backend/none-x64/profile.json's order (the
+    // Tatara plan's B9e; the catalog's providedSymbols, the archive's defined set).
+    private static readonly string[] NoneBackendSymbols =
+    [
+        "__adddf3", "__addsf3", "__cmpdf2", "__cmpsf2", "__divdf3", "__divsf3", "__eqdf2", "__eqsf2", "__extendsfdf2", "__fe_getround",
+        "__fe_raise_inexact", "__fixdfdi", "__fixdfsi", "__fixsfdi", "__fixsfsi", "__fixunsdfdi", "__fixunsdfsi", "__fixunssfdi",
+        "__fixunssfsi", "__floatdidf", "__floatdisf", "__floatsidf", "__floatsisf", "__floatundidf", "__floatundisf", "__floatunsidf",
+        "__floatunsisf", "__gedf2", "__gesf2", "__gtdf2", "__gtsf2", "__ledf2", "__lesf2", "__ltdf2", "__ltsf2", "__muldf3", "__mulsf3",
+        "__nedf2", "__nesf2", "__subdf3", "__subsf3", "__truncdfsf2", "__unorddf2", "__unordsf2",
+    ];
+
     [Fact]
     public void CompilationRegistersItsPrimaryKotonoha()
     {
@@ -92,7 +103,8 @@ public class CoreModelTest
     // declaration (IMPL 21.4.7), both kinds, no C runtime and no argument extension; the Linux row (B7b2b): c, a static library providing
     // the C functions the layer stands for, its C runtime, the static kind (Q3a (a)), and System V's argument extension (IMPL 21.2). The
     // table's reserved external names (IMPL 21.2, every target; B7b5) are built once from pairwise disjoint parts: each row's float marker
-    // and kimi_backend symbols (Windows': __chkstk alone, B7r5), MemorySymbols and MainSymbol.
+    // and kimi_backend symbols (Windows': __chkstk alone, B7r5; none-x64's: compiler-rt's soft-float routines, the Tatara plan's B9e,
+    // change N1), MemorySymbols and MainSymbol. Fail-before (B9e): the none row had no supply, and the literal no compiler-rt name.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
@@ -143,7 +155,7 @@ public class CoreModelTest
         Assert.Equal(["__chkstk"], windows.Supply("kimi_backend")!.Symbols);
         reserved.AddRange([.. TargetProfile.MemorySymbols, TargetProfile.MainSymbol]);
         Assert.Equal(reserved.Distinct(StringComparer.Ordinal), reserved);
-        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset", "main"], TargetProfile.ReservedSymbols);
+        Assert.Equal(["_fltused", "__chkstk", .. NoneBackendSymbols, "memcmp", "memcpy", "memmove", "memset", "main"], TargetProfile.ReservedSymbols);
         Assert.Same(TargetProfile.ReservedSymbols, TargetProfile.ReservedSymbols);
         Assert.Null(windows.CRuntime);
         Assert.Null(windows.ArgumentExtension);
@@ -156,7 +168,8 @@ public class CoreModelTest
         Assert.Equal("SystemV", linux.ArgumentExtension);
 
         // IMPL 21.6.1: none-x64's kernel code generation, no SSE or x87 state (soft float, whose System V ABI passes floating values in
-        // integer registers), no red zone and no stack probe (SPEC 17.4.3's freestanding exception); no supply, runtime declaration or
+        // integer registers), no red zone and no stack probe (SPEC 17.4.3's freestanding exception); one supply, kimi_backend, static,
+        // compiler-rt 22.1.8's soft-float routines in its catalog's order (IMPL 21.6.7; the Tatara plan's B9e); no runtime declaration or
         // C runtime; the static kind.
         var none = TargetProfile.None;
         Assert.Equal("-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,+soft-float", none.Features);
@@ -164,7 +177,9 @@ public class CoreModelTest
         Assert.Equal("static", none.RelocationModel);
         Assert.Equal(["noredzone"], none.FunctionAttributes);
         Assert.Equal(("NonePlatform.ll.in", "SystemV"), (none.Layer, none.ArgumentExtension));
-        Assert.Empty(none.Supplies);
+        var backend = Assert.Single(none.Supplies);
+        Assert.Equal(("kimi_backend", "static"), (backend.Name, backend.Kind));
+        Assert.Equal(NoneBackendSymbols, backend.Symbols);
         Assert.Empty(none.RuntimeDeclarations);
         Assert.Null(none.CRuntime);
         Assert.Equal(["static"], none.Kinds);

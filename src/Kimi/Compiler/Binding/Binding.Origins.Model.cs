@@ -253,6 +253,18 @@ public enum OriginDischarge : byte
     HeldResult,
 }
 
+/// <summary>The requirement fixed point's walk state at a part of a declaration's stored Type (RequirementPart; PLAN G1456): it changes
+/// at a Function Type's components, as polarity does.</summary>
+public enum StoragePosition : byte
+{
+    /// <summary>Stored content: a borrow, pair or nested layer there is a use of its slot (SPEC 15.3.5).</summary>
+    Stored,
+
+    /// <summary>A stored Function Type's signature, its parameters and result: a variance position and no use, since a callable signature
+    /// alone stores nothing (SPEC 15.2.4), so a slot reached there is marked (OriginParameter.InStoredSignature).</summary>
+    Signature,
+}
+
 /// <summary>A declared slot; a pair consumes one argument and retains its whole type.</summary>
 public sealed class GenericSlot(GenericSlotKind kind, BindingSymbol symbol, BindingSymbol? semantics)
 {
@@ -279,6 +291,11 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
     public OriginVariance Variance { get; internal set; }
 
     public SlotRequirement Requirement { get; internal set; }
+
+    // SPEC 15.3.5: a chain reaches the slot in a stored Function Type's signature, directly or through a nested Type's slot bound to it,
+    // so a slot Phantom in every admitted case keeps its variance from storage (StoragePosition.Signature); the fixed point's, reset with
+    // Variance.
+    public bool InStoredSignature { get; internal set; }
 
     // Joins a use into Requirement (SPEC 15.3.5: the stronger unconditional part, every binder), the requirement fixed point being its one
     // writer; whether it changed.

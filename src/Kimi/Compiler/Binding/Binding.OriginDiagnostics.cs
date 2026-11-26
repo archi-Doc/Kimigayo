@@ -465,8 +465,6 @@ public sealed partial class Binding
         {
             builder.Dispose();
         }
-
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
     // SPEC 15.3.6, 10.8: a selected call whose slot only the argument's own per-call Origin would satisfy, at the call (FailPerCallOrigin's

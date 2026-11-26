@@ -331,14 +331,14 @@ public sealed partial class Binding
         }
     }
 
-    // One query of the requirement fixed point's visit of a declared Type: each distinct part once per polarity (visitedParts' state, one
-    // bit per polarity). A part met again at a polarity repeats its joins and keepers, duplicates only; a join a revisit would have made
-    // after this visit changed a slot the part reads is made when the declaration is visited again (its self-edge, CollectRequirementEdges,
-    // queues it as its own dependent), so the least fixed point is the same (DECISIONS BU-19, PLAN G309).
+    // One query of the requirement fixed point's visit of a declared Type: each distinct part once per polarity and position (visitedParts'
+    // state, one bit per polarity and StoragePosition). A part met again in a state repeats its joins and keepers, duplicates only; a join
+    // a revisit would have made after this visit changed a slot the part reads is made when the declaration is visited again (its
+    // self-edge, CollectRequirementEdges, queues it as its own dependent), so the least fixed point is the same (DECISIONS BU-19, PLAN G309).
     private void AccumulateRequirements(BoundType type, DeclarationSchema schema, int polarity, ref bool changed)
-        => this.RequirementPart(type, schema, polarity, ref changed, this.visitedParts.Begin(this.storageVersion));
+        => this.RequirementPart(type, schema, polarity, StoragePosition.Stored, ref changed, this.visitedParts.Begin(this.storageVersion));
 
-    private void RequirementPart(BoundType type, DeclarationSchema schema, int polarity, ref bool changed, uint query)
+    private void RequirementPart(BoundType type, DeclarationSchema schema, int polarity, StoragePosition position, ref bool changed, uint query)
     {
         // Only Origins and Type Parameter slots contribute; other subtrees cannot change a summary.
         if (!type.CarriesOriginOrSlot)
@@ -372,8 +372,8 @@ public sealed partial class Binding
             // a use of none still counts toward variance.
             var conditional = TryPairLayer(type, out var whole, out var target);
             var loan = IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref;
-            var use = conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, default);
-            this.AccumulateOrigin(origin, schema, polarity, use, ref changed);
+            var use = position == StoragePosition.Signature ? default : conditional ? this.ConditionalUse(schema, whole) : new SlotRequirement(loan, default);
+            this.AccumulateOrigin(origin, schema, polarity, use, position, ref changed);
             if (use != default)
             {
                 this.Keep(schema, origin, conditional ? target : this.BorrowReferent(type, out _, out _), null, use.Binders);
@@ -382,8 +382,9 @@ public sealed partial class Binding
 
         if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
         {
-            // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
-            this.AccumulateOrigin(raw, schema, polarity, default, ref changed);
+            // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status. So is
+            // every layer of a stored Function Type's signature, which stores nothing (SPEC 15.2.4, 15.3.5; StoragePosition.Signature).
+            this.AccumulateOrigin(raw, schema, polarity, default, position, ref changed);
         }
 
         // A Type may carry fewer or more arguments than its declaration while a pass is
@@ -397,15 +398,18 @@ public sealed partial class Binding
                 continue;
             }
 
+            // SPEC 15.3.5: the chain through a nested Type's slot bound to the argument reaches a stored signature where the slot's does.
             var sign = source.Variance == OriginVariance.Invariant ? 0 : source.Variance == OriginVariance.Contravariant ? -polarity : polarity;
-            var use = this.NestedUse(source.Requirement, type, schema);
-            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, use, ref changed);
+            var use = position == StoragePosition.Signature ? default : this.NestedUse(source.Requirement, type, schema);
+            this.AccumulateOrigin(type.OriginArguments[i], schema, sign, use, source.InStoredSignature ? StoragePosition.Signature : position, ref changed);
             if (use != default)
             {
                 this.Keep(schema, type.OriginArguments[i], type, source, default);
             }
         }
 
+        // A Function Type's parameters and result are its signature (StoragePosition.Signature).
+        var below = type.Kind == BoundTypeKind.Function ? StoragePosition.Signature : position;
         for (var i = 0; i < type.Components.Count; i++)
         {
             var sign = IsInvariantLayer(type, this, null, default) ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
@@ -420,20 +424,20 @@ public sealed partial class Binding
                 sign = variance == OriginVariance.Invariant ? 0 : variance == OriginVariance.Contravariant ? -polarity : polarity;
             }
 
-            if (this.FirstVisit(type.Components[i], query, (byte)(2 << (sign + 1))))
+            if (this.FirstVisit(type.Components[i], query, (byte)(2 << (sign + 1 + (below == StoragePosition.Signature ? 3 : 0)))))
             {
-                this.RequirementPart(type.Components[i], schema, sign, ref changed, query);
+                this.RequirementPart(type.Components[i], schema, sign, below, ref changed, query);
             }
         }
     }
 
-    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, SlotRequirement use, ref bool changed)
+    private void AccumulateOrigin(BoundOrigin origin, DeclarationSchema schema, int polarity, SlotRequirement use, StoragePosition position, ref bool changed)
     {
         if (origin.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                this.AccumulateOrigin(origin.Operands[i], schema, polarity, use, ref changed);
+                this.AccumulateOrigin(origin.Operands[i], schema, polarity, use, position, ref changed);
             }
 
             return;
@@ -452,6 +456,12 @@ public sealed partial class Binding
             if (combined != parameter.Variance)
             {
                 parameter.Variance = combined;
+                changed = true;
+            }
+
+            if (position == StoragePosition.Signature && !parameter.InStoredSignature)
+            {
+                parameter.InStoredSignature = true;
                 changed = true;
             }
 
