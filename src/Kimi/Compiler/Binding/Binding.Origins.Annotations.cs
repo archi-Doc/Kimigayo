@@ -226,35 +226,42 @@ public sealed partial class Binding
     // Interim, the owner's O-534 (a) (PLAN G922 U1; DECISIONS R8-M56 as amended): a written name whose selection (SelectedOrigin's
     // result, a plain name's and a projection's alike) is or meets a region that a `let` local's opening merged (LocalRegion.Merged),
     // outside that local's body, through a binding the name's Closure does not carry (CarriesBinding), is the located Unsupported_Kd at
-    // the name, with no Origin; any other selection is `origin`. Removed once PLAN G922 U2/U3 give each merged part its own regions.
+    // the name, with no Origin; any other selection is `origin`. Removed once PLAN G922 U2/U3 give each merged part its own regions. The
+    // name's body (BodyOwner) is found only at a merged region.
     private BoundOrigin? UnmergedSelection(BoundOrigin origin, Koto use, BindingSymbol? symbol)
     {
-        var body = BodyOwner(use);
+        Koto? body = null;
         var merged = MergedElsewhere(origin);
         for (var i = 0; !merged && i < origin.Operands.Count; i++)
         {
             merged = MergedElsewhere(origin.Operands[i]);
         }
 
-        if (!merged || CarriesBinding(use, symbol))
+        if (!merged || CarriesBinding(body, symbol))
         {
             return origin;
         }
 
-        // A header bound ahead of its locals failed this name with no selection (BindOriginName's InvalidOrigin) and binds it again at
-        // the function's statement (BindFunction's Q-B row): the limit is this attempt's verdict, so that failure leaves first.
-        this.ClearFailure(use);
         this.RecordLocated(use, use.Span);
         return null;
 
-        bool MergedElsewhere(BoundOrigin region) => SlotRegion(region) && this.Region(region) is { Merged: true } row && !ReferenceEquals(row.Body, body);
+        bool MergedElsewhere(BoundOrigin region)
+            => SlotRegion(region) && this.Region(region) is { Merged: true } row && !ReferenceEquals(row.Body, body ??= BodyOwner(use));
     }
 
     // SPEC 15.3.1, 23.1.2: a written Origin expression. A parenthesis or meet whose operand did not resolve has no Origin for that
     // reason alone and rests on the operand (CompleteDependent), which reports the cause; only a failure of its own is its record. It binds
     // as the slot it names (SlotAtUse): a `let` region's value is read at each use (PLAN G492-a (ii); Binding.LocalRegions.cs's contract).
+    // A node bound again is decided again, as a header bound ahead of its locals is at its function's statement (BindFunction's Q-B row):
+    // the earlier attempt's failure leaves first, so the node keeps this attempt's outcome alone and a Resolved node no failure
+    // (Binding.Problems' invariant). Only this binder's own checks record at a written Origin node while it can be bound again.
     private BoundOrigin? BindOrigin(Koto syntax, BindingScope scope)
     {
+        if (this.RecordedFailure(syntax) != BindingFailure.None)
+        {
+            this.ClearFailure(syntax);
+        }
+
         if (IsRecovery(syntax, out _))
         {
             this.Record(syntax, BindingFailure.InvalidOrigin, []);
@@ -297,9 +304,13 @@ public sealed partial class Binding
                 }
                 else if (result is not null)
                 {
-                    input.BindingState = target.BindingState = BindingState.Resolved;
-                    target.BoundOrigin = result;
+                    // The limit decides before the writes, so a rejected projection leaves no Origin on its target.
                     result = this.UnmergedSelection(result, syntax, input.BoundSymbol);
+                    if (result is not null)
+                    {
+                        input.BindingState = target.BindingState = BindingState.Resolved;
+                        target.BoundOrigin = result;
+                    }
                 }
                 else if (type?.Symbol is { Schema: not null } symbol)
                 {
