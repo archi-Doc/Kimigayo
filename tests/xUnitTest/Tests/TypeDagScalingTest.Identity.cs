@@ -184,14 +184,15 @@ public partial class TypeDagScalingTest
 
     // R7-C2c2 c2-2 (design review N1): an extension round per identity row a walk records, the key changing between rounds. M3's clause
     // `Self.(Tree).Child.(Tree).Alias is Self.(Tree).Child`, supplied at every `T.(Tree).Child...` link, joins each `.(Tree).Alias` of the
-    // demand `T` + n times `.(Tree).Child.(Tree).Alias` to a shorter chain, so each round keys the demand to a new Type and walks its
-    // links: at most one round per `.(Tree).Child.(Tree).Alias` of the demand (measured n / 2: 2, 4, 8). Valid (SPEC 8.2.3 grounds, 8.3.2): the
-    // demand is `T` + n times `.(Tree).Child`, which is M3, so Copy.
+    // demand `T` + n times `.(Tree).Child.(Tree).Alias` to a shorter chain. e2-7 (G1406-9 to G1406-11, SPEC 8.2.3; the owner's decision
+    // of 11-27, (a); G1406-38): a closure is a function of (root, G), and CloseAsked closes each prefix of the demand, whose first walk
+    // joins two prefix Types: at most two rounds more per `.(Tree).Child.(Tree).Alias` of the demand (measured 2n + 2: 10, 18, 34).
+    // Valid (SPEC 8.2.3 grounds, 8.3.2): the demand is `T` + n times `.(Tree).Child`, which is M3, so Copy.
     [Fact]
     public void ExtensionRoundsAreLinearInTheKeyChanges()
     {
         var (w4, w8, w16) = (Rounds(4), Rounds(8), Rounds(16));
-        Assert.True(w4 <= 4 && w8 <= 8 && w16 <= 16 && w16 <= 4 * w4, $"{w4} at 4, {w8} at 8, {w16} at 16");
+        Assert.True(w8 - w4 <= 8 && w16 - w8 <= 16, $"{w4} at 4, {w8} at 8, {w16} at 16");
 
         static long Rounds(int n)
         {
@@ -204,31 +205,36 @@ public partial class TypeDagScalingTest
         }
     }
 
-    // PLAN G881 with G881b (the owner's O-321 (b); SPEC 8.3.3 Limits, 23.1.1): the extension rounds of one request end at
+    // PLAN G881 with G881b (the owner's O-321 (b); SPEC 8.3.3 Limits, 23.1.1): the extension rounds end at
     // Binding.PremiseClosureLimit. Pq's path equation `Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up` (allowed) supplies one deeper
     // identity a round through row (5)'s mate, so with Inner supplied at `T` + 2k times `.(Pq).Next` + `.(Pq).Up` the request for
-    // `T.(Pq).Up is Inner` is proven after k - 1 rounds (valid: SPEC 8.3.2, 8.2.3; the call is judged twice, so 6, 14, 30 rounds at
-    // k = 4, 8, 16) and its mate walks grow with the cube of k (rounds x mates x a round's walks; asserted within x16 per x2). A
-    // request is proven through k = limit + 1. One step deeper (valid), or with nothing supplying Inner (invalid), it is refused
-    // after limit rounds: the limit's one Resource record at the use, naming the limit, and no Proof or Language record.
+    // `T.(Pq).Up is Inner` is proven (valid: SPEC 8.3.2, 8.2.3) and its mate walks grow with the cube of k (asserted within x16 per x2).
+    // e2-7 (G1406-9 to G1406-11, SPEC 8.2.3; the owner's decision of 11-27, (a); G1406-38): a closure is a function of (root, G), so
+    // three closures (f's `T.(Pq).Up`, Pq's `Self.(Pq).Up` and `Self.(Pq).Next.(Pq).Up`) spend the budget at every k, whoever asks,
+    // and each prefix of the premise past `T.(Pq).Next.(Pq).Next` takes one round: 2 rounds more per k. A found row stands (8.3.3), so
+    // the request is proven through k = limit + 2 (spm-a's program; G1406-19, G1406-20). With Inner at the odd depth
+    // 2 (limit + 2) - 1 (invalid: the equation's stride is 2, 8.2.3) or nowhere (invalid) it is refused at the limit: the limit's one
+    // Resource record at the use, naming the limit, and no Proof or Language record. Its rounds are the closures that spend the budget
+    // (four at the odd depth: also `T.(Pq).Next.(Pq).Up`, Inner's class) times the limit, four one-round closures and the prefixes'.
     [Fact]
     public void ExtensionRoundsEndAtTheRoundLimit()
     {
         const int Limit = Kimi.Compiler.Binding.PremiseClosureLimit;
-        var (p4, p8, p16, edge) = (Proven(4), Proven(8), Proven(16), Proven(Limit + 1));
-        Assert.True(p4.Rounds == 6 && p8.Rounds == 14 && p16.Rounds == 30 && edge.Rounds == 2 * Limit, $"rounds {p4.Rounds}, {p8.Rounds}, {p16.Rounds}; {edge.Rounds} at the edge");
+        var (p4, p8, p16, edge, past) = (Proven(4), Proven(8), Proven(16), Proven(Limit + 1), Proven(Limit + 2));
+        Assert.True(p8.Rounds - p4.Rounds == 8 && p16.Rounds - p8.Rounds == 16, $"rounds {p4.Rounds}, {p8.Rounds}, {p16.Rounds}; {edge.Rounds}, {past.Rounds} past the limit");
         Assert.True(p8.Work <= 16 * p4.Work && p16.Work <= 16 * p8.Work, $"mate work {p4.Work}, {p8.Work}, {p16.Work} at 4, 8, 16; {edge.Work} at the edge");
-        Refused(Source(Limit + 2));
-        Refused(Source(0));
+        const int Odd = (2 * (Limit + 2)) - 1;
+        Refused(Source(Odd), (4 * Limit) + 4 + (Odd - 2));
+        Refused(Source(0), (3 * Limit) + 4);
 
         static (long Rounds, long Work) Proven(int k)
         {
-            var c = MinimalEmissionTest.Analyze(Source(k));
+            var c = MinimalEmissionTest.Analyze(Source(2 * k));
             Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
             return (c.Binding.IdentityRounds, c.Binding.IdentityMateWork);
         }
 
-        static void Refused(string source)
+        static void Refused(string source, long rounds)
         {
             var c = MinimalEmissionTest.Analyze(source);
             var record = Assert.Single(CompilationTestHelper.PublishedErrors(c));
@@ -236,14 +242,14 @@ public partial class TypeDagScalingTest
             Assert.Contains(Limit.ToString(System.Globalization.CultureInfo.InvariantCulture), record.Message, StringComparison.Ordinal);
             Assert.Equal(source.IndexOf("need(x)", StringComparison.Ordinal), record.Span.Start);
             Assert.True(Kimi.DiagnosticEntries.TryGet(Kimi.DiagnosticCode.AnalysisLimit_Kd, out var entry) && entry.Category == Kimi.Diagnostics.DiagnosticCategory.Resource);
-            Assert.Equal(Limit, c.Binding.IdentityRounds);
+            Assert.Equal(rounds, c.Binding.IdentityRounds);
         }
 
-        // Inner supplied at depth 2k of Pq's chain; k = 0: nowhere.
-        static string Source(int k)
+        // Inner supplied at `depth` of Pq's chain; 0: nowhere.
+        static string Source(int depth)
             => "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\n" +
                 "func need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n" +
-                (k == 0 ? string.Empty : $"    T{string.Concat(Enumerable.Repeat(".(Pq).Next", 2 * k))}.(Pq).Up is Inner\n") +
+                (depth == 0 ? string.Empty : $"    T{string.Concat(Enumerable.Repeat(".(Pq).Next", depth))}.(Pq).Up is Inner\n") +
                 "    need(x)\npublic func main() -> ()\n    return\n";
     }
 

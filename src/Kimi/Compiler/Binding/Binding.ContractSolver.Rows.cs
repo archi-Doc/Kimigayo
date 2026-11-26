@@ -168,12 +168,14 @@ public sealed partial class Binding
     // e2-7 (G1406-11 C2, C-e; SPEC 8.3.3 Limits; the owner's O-345 (b)): a closure's round (CloseRoot's), one per call: from its roots
     // (extendRoots; first the part asked) over the declaration's grounds and the identity rows its own walks from those roots record
     // (ExtendedClassesOf under `serial`, identity facts alone: C-e), never the view's table or what a use's supply or an earlier
-    // request left. The first round reads T(G), kept per serial; each later round builds the table from the rows so far, and a round
-    // that adds no row builds nothing (R3.4). When a round keys a root lower by Order, the root is that key and the closure starts
+    // request left. The first round reads T(G), kept per serial; each later round builds the table from the rows so far, and a walk
+    // whose rows join no two classes builds nothing (R3.4). When a round keys a root lower by Order, the root is that key and the closure starts
     // again with no rows, and a restart onto a root filed in the publication ends it (CloseRoot files the entry with what the filed
     // key spent, G1406-16 C2). Otherwise
     // the round reopens the view's entry as the closure's (OwnEntry) and returns its table, and CloseRoot walks each root and its key.
-    // Rows only grow from the same roots, so a round that adds none ends the closure (null). G1406-19: the closure has one budget,
+    // e2-7 rows (b): a walk whose new rows join no two classes of its table (enumerateJoined unmoved; `closure.Joined`, its count at the
+    // round's start, -1 before a root's first walk) leaves the next table's classes and keys as they are, so the next walk would
+    // repeat it: the closure ends (null) with its rows, spending nothing. G1406-19: the closure has one budget,
     // PremiseClosureLimit, that its rounds past a root's first walk and its re-rootings spend together (`closure.Spent`, counted from
     // the part asked and never reset; `closure.Rooted`, what was spent when the last re-rooting started the current root's own
     // rounds). O-532 (b), O-533 (a): the same budget bounds the closure's rows that join two classes as they are added (enumerateJoined,
@@ -186,20 +188,20 @@ public sealed partial class Binding
     // premise closure's bound). So a closure builds at most PremiseClosureLimit round tables beside T(G), however often it re-roots,
     // each from at most `closure.Rows` rows, and keeps at most those and its last round's walk's.
     // Returns the round's table, or null when the closure ended or the table's build answered none.
-    private IdentityClasses? ExtendRound(ref (int Applied, int Spent, int Rooted, int Rows) closure, BindingScope scope, int serial, EvidenceView view, ViewIndex index)
+    private IdentityClasses? ExtendRound(ref (int Joined, int Spent, int Rooted, int Rows) closure, BindingScope scope, int serial, EvidenceView view, ViewIndex index)
     {
         while (true)
         {
-            var first = closure.Applied < 0; // a root's first walk, which spends nothing
+            var first = closure.Joined < 0; // a root's first walk, which spends nothing
             if (first)
             {
                 this.enumerateIdentities.Clear(); // the closure starts (again) from its roots with no rows
                 this.enumerateIdentityKeys.Clear();
                 this.enumerateJoined = 0;
             }
-            else if (this.enumerateIdentities.Count == closure.Applied)
+            else if (this.enumerateJoined == closure.Joined)
             {
-                return null;
+                return null; // e2-7 rows (b): the walk joined no two classes
             }
             else if (++closure.Spent > PremiseClosureLimit || this.enumerateJoined > closure.Rows)
             {
@@ -207,7 +209,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            closure.Applied = this.enumerateIdentities.Count;
+            closure.Joined = this.enumerateJoined;
             if (this.ExtendedClassesOf(scope, serial, this.enumerateIdentities) is not { } extended)
             {
                 return null;
@@ -250,7 +252,7 @@ public sealed partial class Binding
     // view under the reading's `serial`, CloseAsked's one closer (at the request boundary: no request is open). Its rounds
     // (ExtendRound) walk the root and its key over the table of the declaration's grounds and the rows so far, first T(G), whose key
     // enters it (a re-rooting); each walk records its supplies as rows (C-f). A lower key re-roots and restarts with no rows; a restart
-    // onto a root filed in the publication ends it. A round that adds no row ends it with its rows; past its one budget
+    // onto a root filed in the publication ends it. A walk whose rows join no two classes ends it with its rows; past its one budget
     // (PremiseClosureLimit: rounds and re-rootings together, G1406-19, and rows per Type of the root and G, O-532 (b)) it is Limited
     // with the last round's rows, and its reader refuses (ReadIdentityLimit). Filed by FileClosure, which keeps E (the rows that join
     // the key's class), the entry's pair row and what the entry and its key spent (G1406-16 B1, C2). It records nothing: the scope's
@@ -261,14 +263,14 @@ public sealed partial class Binding
     {
         var view = this.ViewOf(scope);
         var (index, _, enclosing) = this.EnterRows(root, view, serial, null, false);
-        (int Applied, int Spent, int Rooted, int Rows) closure;
+        (int Joined, int Spent, int Rooted, int Rows) closure;
         BoundType key;
         Completion completion;
         int kept; // the serial the closure is kept for, -1: not kept (FileClosure)
         try
         {
             this.extendRoots.Add(root);
-            closure = (Applied: -1, Spent: 0, Rooted: 0, Rows: 0);
+            closure = (Joined: -1, Spent: 0, Rooted: 0, Rows: 0);
             while (this.ExtendRound(ref closure, scope, serial, view, index) is { } table)
             {
                 var at = this.extendRoots[0];
