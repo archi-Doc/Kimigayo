@@ -62,6 +62,19 @@ public partial class TypeDagScalingTest
     public void APremiseChainFailsWithinTheFixpoint(int n)
         => Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(PremiseChainSource(n)));
 
+    // e2-7 (G1406-43; SPEC 8.3.3, 23.1.2; ContractSolver W6): the chain above with a second use after its closures, `h(u)` needing
+    // `T1 is K` where T1 is T0.(K).X: it reads T1's closure filing, whose frame read the failed `T0 is K` (T(G)'s build applies each
+    // `Tk is T{k-1}.(K).X`), and rests on that failure as the first reader did, so the records are the first-use-only program's.
+    [Theory]
+    [InlineData(4)]
+    [InlineData(30)]
+    public void APremiseChainsClosureReadAgainRestsOnItsFailure(int n)
+    {
+        var source = PremiseChainSource(n).Replace("    associate X\n", "    associate X\nfunc h<A>(a: ref/A) -> i32\n    A is K\n    return 0\n")
+            .Replace("(t: ref/T0)", "(t: ref/T0, u: ref/T1)").Replace("    return 0\npublic", "    let r = h(u)\n    return 0\npublic");
+        Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
+    }
+
     // R7-C2c2 c2-5b2's perf fix (F's CC-66 B2; ContractSolver W6, W7): the chain above reads its failed premises, each read final, so
     // the view's identity table is Final and memoized, a read joining the limit its build wrote. Its work is the fixpoint's rounds
     // times the chain (each of the n rounds fails a premise, so the view's serial moves and the table is built once more over the

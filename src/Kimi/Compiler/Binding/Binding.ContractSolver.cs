@@ -220,7 +220,8 @@
 //   or a Refuted source read, each published and final), is replayed (DECISIONS R7-M122): each link's kept rows hold the first
 //   limit their walk wrote (SetAsideLimit), and a read of them joins it as the walk did (ScopeReads.Limit ??= it), as a read of a
 //   memoized identity table joins its build's (ClassesOf, W7; R7-C2c2 c2-5b2's b1-r2-failed: a capability work that read rows
-//   another reader kept lost the limit its cause rests on). The limit is the walk's, so a walk that wrote one keeps its request's
+//   another reader kept lost the limit its cause rests on), and as a read of a closure's filing joins the first limit its closure's
+//   frame wrote (CloseRoot, CloseAsked; e2-7). The limit is the walk's, so a walk that wrote one keeps its request's
 //   subject and key links alone (KeepRows): the subject's own request reads that walk, and the key's walks the key's class, which
 //   covers it, so at most its first cause differs (record selection, Q13). A prefix or mate link is formed again by its own
 //   request: kept with the walk's limit, it would rest an independent record on another link's failure (F's CC-66 B1; P-res1).

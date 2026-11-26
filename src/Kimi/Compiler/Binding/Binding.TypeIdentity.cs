@@ -105,8 +105,10 @@ public sealed partial class Binding
     // identityClosed) when the part is not the key, else -1; its rows E (a range of identityClosed, the key's); what its closure spent of
     // its one budget from the part (G1406-19: its rounds and re-rootings, a filed key's included); whether it is Limited; and the serial
     // it is kept for, -1 if not kept (E27-BOUND (P), G1406-30: its walk read only what is final in the publication, CloseRoot's
-    // WalkComplete, and so did its key's; read by Keeps alone, ForgetUnkeptClosures).
-    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Spent, bool Limited, int Serial);
+    // WalkComplete, and so did its key's; read by Keeps alone, ForgetUnkeptClosures); and the first proof limit its CloseRoot frame
+    // wrote (W6: its tables' builds and walks, its key's closure joined), its key's when it wrote none, which each read joins
+    // (CloseAsked), as the asker that closed it did.
+    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Spent, bool Limited, int Serial, ICheckCause? Limit);
 
     // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
     private static bool HasTypeIdentity(BindingScope scope)
@@ -231,6 +233,7 @@ public sealed partial class Binding
             }
 
             var filed = this.identityClosures[closure];
+            this.ScopeReads.Limit ??= filed.Limit; // W6: the limit its closure wrote (a fresh closure's frame joined it already)
             limited |= filed.Limited;
             if ((filed.Pair >= 0 || filed.Count != 0) && this.identityAsked.IndexOf(closure, start, this.identityAsked.Count - start) < 0)
             {
@@ -262,8 +265,10 @@ public sealed partial class Binding
     // Files a closed root for the publication (CloseRoot's one writer of the filing; G1406-11 C2, G1406-16 B1, C2) and returns the
     // closure of `entry`, closed to `key` by the open request (its last round: enumerateIdentities' rows, enumerateClasses' table,
     // enumerateCompletion) after spending `spent` of its one budget (G1406-19), kept for `serial` (-1: not kept; CloseRoot gives the
-    // reading's serial where its walk read only what is final in the publication, IdentityClosure). A restart onto a
-    // filed key reads that filing, so the entry spends what the key spent as well. An entry other than its key past
+    // reading's serial where its walk read only what is final in the publication, IdentityClosure), with the first proof limit its
+    // CloseRoot frame wrote (ScopeReads.Limit there: CloseRoot sets the enclosing proof's aside until both its filings are made, W6;
+    // FileClosure has no caller outside a CloseRoot frame). A restart onto a filed key reads that filing, so the entry spends what the
+    // key spent as well and holds the key's limit where its own frame wrote none. An entry other than its key past
     // PremiseClosureLimit is filed alone, Limited, with no rows, and its key is not filed: the key's own closure has its own budget, so
     // what is filed is a function of (entry, G) whichever reader closes first (SPEC 8.3.3). Otherwise the key, unless filed, is filed
     // with E, its last round's rows that join its class in that round's table (R3.1: a prefix closure's E is empty), and its spending
@@ -275,9 +280,10 @@ public sealed partial class Binding
     {
         var known = this.identityRoots.TryGetValue((scope, key), out var closure);
         spent += known ? this.identityClosures[closure].Spent : 0;
+        var limit = this.ScopeReads.Limit ?? (known ? this.identityClosures[closure].Limit : null);
         if (spent > PremiseClosureLimit && !ReferenceEquals(entry, key))
         {
-            return File(entry, new(entry, -1, 0, 0, spent, true, serial));
+            return File(entry, new(entry, -1, 0, 0, spent, true, serial, limit));
         }
 
         if (!known)
@@ -291,7 +297,7 @@ public sealed partial class Binding
                 }
             }
 
-            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, spent, spent > PremiseClosureLimit, serial));
+            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, spent, spent > PremiseClosureLimit, serial, limit));
         }
 
         if (ReferenceEquals(entry, key))
@@ -301,7 +307,7 @@ public sealed partial class Binding
 
         var filed = this.identityClosures[closure];
         this.identityClosed.Add(new(this.InternConstraint(new(ConstraintKind.TypeIdentity, entry, filed.Key)), null, null, null, completion));
-        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Spent = spent, Serial = Math.Min(filed.Serial, serial) }); // kept when both are
+        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Spent = spent, Serial = Math.Min(filed.Serial, serial), Limit = limit }); // kept when both are
 
         int File(BoundType part, IdentityClosure filing)
         {
