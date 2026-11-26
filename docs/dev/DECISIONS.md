@@ -14831,6 +14831,11 @@ resumed by R4-M86 (2026-10-20).
   - Kept: `CaptureFailure.Captured`, appended across separate checks, keeps its array (PLAN G765's rest).
   - G763 (G499 X1) is not this cause: its cause is check-formed text; any variable-length part its fact keeps (G499 X1's slot names)
     takes this form.
+  - Superseded in part by R7-M118 (E4b, 2026-11-26): the capture part. "a capture list's repeats" is no failure fact of this form
+    (the Cause is the candidates and the failing Semantics cases only); "`captureRepeatRows`" and "six dictionary-and-rows pairs
+    now ... the three new ones" hold as `rejectedRows`, `pairCaseRows`, five pairs and the two new ones; "Kept: `CaptureFailure.Captured`
+    ... keeps its array (PLAN G765's rest)" no longer holds: the capture list's repeats and `CaptureFailure.Captured` are no rows or
+    array, each repeat and each reached capture being its own numbered problem (the earlier text: dev c56616439).
 - **BU-164 A Tuple or array literal argument is ranked position by position: `BoundArgumentOperation.Positions` (PLAN G743)**
   (2026-11-11; Front, Binding; Major, an acceptance mover: eight valid programs newly accepted (Q17 class 3); design review 2
   ACCEPT, implementation review ACCEPT; the owner's O-162 (A), SPEC 10.4 by D-354) SPEC 10.4 step 1, 10.5.1, 10.2.2.
@@ -29903,6 +29908,61 @@ Closure row of `MirCases.Branch`).
     paths hold a rejected implementation (a second criterion, a copy of the read's test); taking only the R fact at the pop (the other
     reads of a nested scope stay in its popped slot the same way).
   - **Open.** A later refuted operand's explanation (PLAN G1427); c3a, c3o, c3w (PLAN G1428, G1429, G1430).
+- **R7-M118 E4b (captures): a capture check records through `RecordCapture`, one numbered problem per capture it reaches** (Front,
+  2026-11-26; R7-E4 E4b, Q-805, D-1309; PLAN G765's rest, G1129; Major unit of a Major design, R7 plan §5.1 E4; design
+  `artifacts\units\r7e4b\design.md` with F's R7-E4 rulings 28 to 42; the independent design review ACCEPT WITH CONDITIONS, the
+  implementation review CONSENT WITH CONDITIONS) SPEC 7.7.2, 16.3.1, 15.6.5, 23.1.1, 23.1.2, 23.3. Applies R7-M95's rule to captures
+  and supersedes BU-174's capture part.
+  - **Rule.** `RecordCapture`, the one recorder of the capture requirements, records a problem numbered (`RecordNumbered`) with its
+    facts built once in a scratch list: `Span` (the entry, the repeating name, the use, the late value or the Closure), `Reason`
+    (`CaptureProblem`, a closed enum: Entry, Receiver, Helper, LateHelper, Contextual, Omitted, Repeat, ParameterRepeat; the
+    `prepared` bit, `InLaterDefault`; `named`, the written entry the Note names or the omitted list's storage row, which keeps two
+    omitted captures of one Type apart), `Related` roles 0 "declaration", 1 "borrow", 2 "capture" (a late source's reached capture,
+    narrowed by `CaptureEntryOf`; a nested explicit list's is the nested Closure), and, for a bare entry's TransferRequired, `Actual`
+    with a second Reason (the Semantics mask, R7-M95 E4a-2's two-Reason order). One ReportProblem row, `ReportCapture`, keyed on
+    `Span` with `Reason` for the four requirements Capture, TransferRequired, InvalidAssignment and Duplicate, stands ahead of the
+    Duplicate rows; the capture recorder is the only recorder of these four that records a Span (the other Span recorders record
+    Unsupported or another requirement), and the row's comment says so. A fact-less refusal (an unresolved or refused entry or use)
+    is `Record(node, Capture, [])`.
+  - **Each independent failure is its own problem (SPEC 23.1.2).**
+    - A repeated name records where the list is read (`RecordRepeatedCaptures`, after the not-ready gate of G230-H), beside a written
+      entry's located `Unsupported_Kd` (PLAN G1129).
+    - A late helper source records one `InvalidCaptureBinding_Kd` per capture it reaches (PLAN G765, O-D1 (a)): key (the code, Capture,
+      late, the capture's index), so no array is formed.
+    - Each Non-Copy omitted capture is its own TransferRequired_Kd on every non-Proven Copy proof, an Unknown proof included (an
+      unconstrained `T` is not Copy, SPEC 7.7.2). Transfers' slot guard, which recorded the first only, is deleted.
+  - **Walk.** `CaptureUse` is a reused visitor field that saves and restores its environment and found node around the nested `Of`
+    call, so the omitted path's Allocation row reaches 0 B warm; the later-entry skip scans the written list only where it repeats a
+    name (`RepeatedEntry`), so a valid list does no new work.
+  - **Deleted.** `captureFailures`, `captureRepeats`, `captureRepeatRows`, `CaptureFailure`, `CaptureListFailure`, `CaptureRepeat`,
+    `FailCaptureEntry`, `RepeatsEarlierEntry`, `ReportCaptureRepeats`' store reading, the three ReportIssue arms, their Reset lines,
+    the late append and Transfers' guard. Ratchet "Node-keyed table members in Binding" 7 -> 5 (`ArchitectureRulesTest`).
+  - **Kept.** `CaptureEntriesFail` returns at a list's first failing entry (PLAN G262's F2 names `ab`, `func [a, b]` over two
+    Non-Copy Places: one family, an early return at a list's first failing independent part, class 4); the Dictionary form of
+    FailExplained stays for E4c to E4e.
+  - **Moves (Q13); all on programs dev already rejects, no acceptance move; the diagnostic snapshot 0 differences against
+    shared-base/c56616439.**
+    - M1, added independent records: c2, c2p, c2r (`DuplicateBinding_Kd` beside the located `Unsupported_Kd`, PLAN G1129);
+      om2, om3, om-l (a second and third TransferRequired_Kd, class 4); T-gu, T-gr (head 2 records, dev 1: an Unknown or Refuted Copy
+      proof of the second omitted capture); BorrowAcquisitionTest.ACaptureEntryExplainsOnlyItsOwnFailure
+      (`func [n@uniq] (a: i32, a: i32)` over `let n`: `InvalidAssignment_Kd` at `n@uniq` beside DuplicateBinding_Kd, SPEC 15.1.5).
+    - L2, L3 (one record "capture, capture, declaration" becomes two "capture, declaration", and three), T-L2r, T-L2n, T-L2d:
+      one record per reached capture (O-D1 (a)); also M4 for L2 and L3 (the Related and the Note), and E-self (the late source's Note
+      and Related, SPEC 16.3.1).
+    - class 4 (a dependent record added on a rejected program): T-om-e (TransferRequired_Kd for `m`, whose Copy proof read a failed
+      premise) and IntrinsicCapabilityTest's g200-cap and g200-cap2 (TransferRequired_Kd beside TypeHeightLimit_Kd); their cause is
+      PLAN G1438.
+  - **Rejected.**
+    - An entry `Related` (an entry is `CaptureKoto`, a record struct, not a node; the record's location is a Span).
+    - A node-kind row condition (a consumer deciding by syntax).
+    - A new fact kind (vocabulary).
+    - One problem with appended facts (it loses the per-capture records of SPEC 23.1.2).
+    - Recording TransferRequired only on a Refuted Copy proof (it drops the Unknown proof's Language error).
+    - Unifying with `RecordWrite` and `FailAcquisition` (the entry is no Place node; the Notes and repairs differ).
+    - Keeping Transfers' slot-first guard (SPEC 7.7.2 says each omitted capture must be Copy).
+    - C4b, `RestOnCause` at an Error Copy proof: a TransferRequired row on the node's prerequisite would derive a sibling capture's
+      independent record, and an InvalidConstraint problem gives the failure a wrong kind. The common fix, `IsDerived` reading a
+      numbered problem's own cause, exceeds the unit (PLAN G1438).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
