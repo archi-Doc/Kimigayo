@@ -12,7 +12,7 @@ namespace Kimi.Compiler.Mir;
 // in the view's case) and the intrinsic table's retained operand beyond a declaration (MirDescriptors); a default template's call
 // (MirCalleeKind.Fn, Arg > 0) needs neither.
 // Output: Planned, in reused scratch (MirBorrows.Holders reads the result's kinds before the forward solve): the result's kinds by
-// operand position (resultKinds) and whether it is untied, the contract's retention whose Writes the Call stores through (planned), its
+// operand position (resultKinds) and its untie (StorageRetention.Untie), the contract's retention whose Writes the Call stores through (planned), its
 // slots' operand positions (slotPositions) and the outputs the call writes only where their receiver refers to (its referent stores,
 // CallRetention.ReferentStores, by position); Retaining, the CallRetention of a callee's contract; Broken, a Value call whose declared
 // signature does not number its operands; Cover, a written input's covering inputs by position (covering).
@@ -56,8 +56,8 @@ internal sealed partial class MirBorrows
     // A Call's records into the scratch (A3 E14): its callee's contract (Retaining), slots to positions, the result's kinds with an
     // intrinsic's Value for the operand the builder adds beyond its declaration (MirDescriptors), which ties the result unless it is a
     // constant (SPEC 4.8.4, 5.6; R4-M40); a default template's call P9's (SPEC 7.2.3, R4-M93): its inputs are the prologue's shared borrows
-    // of the slots, and each input's Content, its slot's value, reaches the untied result; no store. Whether the result is untied.
-    private bool Planned(in MirTerminator call)
+    // of the slots, and each input's Content, its slot's value, reaches the untied result (Writable); no store. The result's untie.
+    private RetentionUntie Planned(in MirTerminator call)
     {
         var callee = call.Callee;
         (this.referentCount, this.planned) = (0, null);
@@ -66,12 +66,12 @@ internal sealed partial class MirBorrows
         if (callee is { Kind: MirCalleeKind.Fn, Arg: > 0 })
         {
             this.resultKinds.AsSpan(0, call.Count).Fill(RetentionKind.Content);
-            return true;
+            return RetentionUntie.Writable;
         }
 
         var receiver = this.Receiver(call);
         var retention = !this.Broken(call) && this.Retaining(call) is { IsLimit: false } contract ? contract : null;
-        var untied = false;
+        var untie = RetentionUntie.None;
         if (retention is not null)
         {
             var result = retention.Result;
@@ -88,16 +88,16 @@ internal sealed partial class MirBorrows
                 this.referentStores[this.referentCount++] = this.slotPositions[slot];
             }
 
-            (this.planned, untied) = (retention, result.Untied);
+            (this.planned, untie) = (retention, result.Untie);
         }
 
         if (callee.Kind == MirCalleeKind.Intrinsic && MirDescriptors.Of((IntrinsicId)callee.Arg).Retained is >= 0 and var added)
         {
             this.resultKinds[added] |= RetentionKind.Value;
-            untied &= this.body.Operands[call.Start + added].Kind == MirOperandKind.Const;
+            untie = this.body.Operands[call.Start + added].Kind == MirOperandKind.Const ? untie : RetentionUntie.None;
         }
 
-        return untied;
+        return untie;
     }
 
     // The position of a Call's call receiver input, call.Count, where its callee is a Value callee whose contract has one
