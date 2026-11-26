@@ -773,7 +773,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var (_, _, item, clause) in new ContractSupply(this, shape, link, view.Premises))
+            var at = this.enumerateClasses is { } round ? this.ClassKey(link, round) : link; // E27-BOUND (K): the instance at the link's class key
+            foreach (var (_, _, item, clause) in new ContractSupply(this, shape, at, view.Premises))
             {
                 if (item is null)
                 {

@@ -101,7 +101,7 @@ public sealed partial class Binding
     // A closed part's closure (FileClosure; G1406-11 C2, G1406-16 B1, C2): its final key; its pair row `part is Key` (an index of
     // identityClosed) when the part is not the key, else -1; its rows E (a range of identityClosed, the key's); what its closure spent of
     // its one budget from the part (G1406-19: its rounds and re-rootings, a filed key's included); and whether it is Limited.
-    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Spent, bool Limited);
+    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Spent, bool Limited, int Serial, Completion Completion);
 
     // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
     private static bool HasTypeIdentity(BindingScope scope)
@@ -143,7 +143,7 @@ public sealed partial class Binding
             CollectionsMarshal.GetValueRefOrNullRef(this.identityGrounds, scope).Serial = -1;
         }
 
-        this.ForgetClosures();
+        this.ForgetUnkeptClosures(); // E27-BOUND (P)
     }
 
     // The publication's closed roots and readings' tables are forgotten (G1406-11 C2: a closure is filed for one publication), capacity
@@ -258,13 +258,14 @@ public sealed partial class Binding
     // spending, Limited past the budget; a Limited closure is filed for the publication as a Complete one is (G1406-19). An entry
     // other than the key is filed with the key's rows and the pair row `entry is key`, read with the request's Completion: the link its
     // re-rootings rest on, which the restart's cleared rows held (SPEC 8.3.3: the identities obtained before it are kept).
-    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, int spent, int own)
+    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, int spent, int own, Completion completion)
     {
+        var serial = SerialOf(scope);
         var known = this.identityRoots.TryGetValue((scope, key), out var closure);
         spent += known ? this.identityClosures[closure].Spent : 0;
         if (spent > PremiseClosureLimit && !ReferenceEquals(entry, key))
         {
-            return File(entry, new(entry, -1, 0, 0, spent, true));
+            return File(entry, new(entry, -1, 0, 0, spent, true, serial, completion));
         }
 
         if (!known)
@@ -278,7 +279,7 @@ public sealed partial class Binding
                 }
             }
 
-            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, own, own > PremiseClosureLimit));
+            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, own, own > PremiseClosureLimit, serial, this.enumerateCompletion));
         }
 
         if (ReferenceEquals(entry, key))
@@ -287,13 +288,36 @@ public sealed partial class Binding
         }
 
         var filed = this.identityClosures[closure];
-        this.identityClosed.Add(new(this.InternConstraint(new(ConstraintKind.TypeIdentity, entry, filed.Key)), null, null, null, this.enumerateCompletion));
-        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Spent = spent });
+        this.identityClosed.Add(new(this.InternConstraint(new(ConstraintKind.TypeIdentity, entry, filed.Key)), null, null, null, completion));
+        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Spent = spent, Serial = serial, Completion = Meet(filed.Completion, completion) });
 
         int File(BoundType part, IdentityClosure filing)
         {
             this.identityClosures.Add(filing);
             return this.identityRoots[(scope, part)] = this.identityClosures.Count - 1;
+        }
+    }
+
+    // E27-BOUND (P): a publication starts: the readings are forgotten, and every filing but a Complete one whose scope still denotes
+    // the view it was filed in (SerialOf unchanged, as Keeps for tables): such a closure is a function of (root, G) for an unchanged G,
+    // so the publication cannot change it. A kept filing's rows stay in identityClosed.
+    private void ForgetUnkeptClosures()
+    {
+        this.identityReadingHeads.Clear();
+        this.identityReadings.Clear();
+        this.identityReadingClosures.Clear();
+        var forget = new List<(BindingScope Scope, BoundType Key)>();
+        foreach (var (key, closure) in this.identityRoots)
+        {
+            if (this.identityClosures[closure] is not { Completion: Completion.Complete } filed || filed.Serial != SerialOf(key.Scope))
+            {
+                forget.Add(key);
+            }
+        }
+
+        foreach (var key in forget)
+        {
+            this.identityRoots.Remove(key);
         }
     }
 

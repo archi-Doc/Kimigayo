@@ -207,13 +207,8 @@ public sealed partial class Binding
 
             if (restarted)
             {
-                closure = (-1, closure.Spent + 1, closure.Spent + 1); // a re-rooting spends one; what was spent stays spent
-                if (closure.Spent > PremiseClosureLimit || this.identityRoots.ContainsKey((scope, this.extendRoots[0])))
-                {
-                    return null; // G1406-11 C2: a restart onto a key filed in the publication reads its filing (FileClosure)
-                }
-
-                continue;
+                closure = (-1, closure.Spent + 1, closure.Spent + 1); // a re-rooting spends one and ends this root's closure
+                return null; // 5e': CloseRoot closes the key in its own frame (its own budget) and files this root over it
             }
 
             this.enumerateMemo.Clear();
@@ -237,22 +232,33 @@ public sealed partial class Binding
     {
         var view = this.ViewOf(scope);
         var (index, _, enclosing) = this.EnterRows(root, view, serial, null, false);
+        (int Applied, int Spent, int Rooted) closure;
+        BoundType key;
+        Completion completion;
         try
         {
             this.extendRoots.Add(root);
-            var closure = (Applied: -1, Spent: 0, Rooted: 0);
+            closure = (Applied: -1, Spent: 0, Rooted: 0);
             while (this.ExtendRound(ref closure, scope, serial, view, index) is { } table)
             {
                 var at = this.extendRoots[0];
                 this.EnumerateClosed(at, this.ClassKey(at, table), view, index);
             }
 
-            return this.FileClosure(scope, root, this.extendRoots[0], closure.Spent, closure.Spent - closure.Rooted);
+            key = this.extendRoots[0];
+            completion = this.enumerateCompletion;
+            if (ReferenceEquals(key, root) || this.identityRoots.ContainsKey((scope, key)))
+            {
+                return this.FileClosure(scope, root, key, closure.Spent, closure.Spent - closure.Rooted, completion);
+            }
         }
         finally
         {
             this.LeaveRows(enclosing);
         }
+
+        this.CloseRoot(scope, serial, key); // 5e': an unfiled key's own closure, with its own budget: a function of (key, G)
+        return this.FileClosure(scope, root, key, closure.Spent, 0, completion);
     }
 
     // A request's own entry (a closure's round, ExtendRound; a request over a Limited reading, EnterRows): the view's entry reopened as the request's
