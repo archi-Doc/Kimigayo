@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
-// Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T with
-// the signature the call selected) — and
+// Environment, Unknown, Limit, Derived, Deep (R4-M153) and Static, and atoms over the definition's abstract Types (Drop(T), a call through
+// a Callable input T with the signature the call selected) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds) and
@@ -69,6 +69,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// instance past Binding's storage bound, which A4 cannot read (TyCtxt.ReadableInstance's null, as A5 reads retention's limit) (the
     /// depth limit, <c>OwnershipDepthLimit_Kd</c>; DECISIONS R4-M153).</summary>
     internal const byte Deep = 16;
+
+    /// <summary>A class of a summary: the body may access static storage, a static Field's read, borrow, write, replacement, destruction or
+    /// first-access initialization (SPEC 15.6.4), set at every <c>staticEnsure</c>, through which each such access is reached
+    /// (MirBuilder.Static).</summary>
+    internal const byte Static = 32;
 
     /// <summary>An atom's kind: the destruction of a value of its Type; any other kind but <see cref="Requires"/> is 1 + the receiver of
     /// a call through it.</summary>
@@ -228,7 +233,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // target or whose Self is not abstract (an inline default copy's instance, SPEC 7.2.3) runs what its Self's witnesses run under the
     // Contract reference the call recorded (Require); one on an abstract Self or a dynamic virtual call has the bounds of the caller's
     // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure is
-    // the static's first-access initialization (Initialize); a Drop destroys what A2's verdicts leave (Dropped).
+    // an access to static storage (Static) and the static's first-access initialization (Initialize); a Drop destroys what A2's verdicts
+    // leave (Dropped).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
     {
         var callee = terminator.Callee;
@@ -282,6 +288,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee.Arg == (int)IntrinsicId.StaticEnsure)
         {
+            this.found |= Static;
             this.Initialize(program.StaticInit(body, body.Operands[terminator.Start])!); // The validator checks it has one (G191).
         }
         else if (callee.Arg == (int)IntrinsicId.DestroyValues)
