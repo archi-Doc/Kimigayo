@@ -162,8 +162,8 @@ public sealed partial class Binding
                 Search(own);
             }
 
-            // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
-            // rows: the use is judged).
+            // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, each non-Alias row of Enumerate's rows (the use is
+            // judged); the reader (IsSelectionCandidate, NamesReference, SameConformanceType) identifies the rest.
             var start = this.premiseRows.Count;
             this.PremiseRows(type, scope, this.premiseRows);
             for (var i = start; i < this.premiseRows.Count; i++)

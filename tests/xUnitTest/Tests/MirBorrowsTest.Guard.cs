@@ -187,7 +187,7 @@ public sealed partial class MirBorrowsTest
     // (laterWriterBad: x addresses slot; chainBad: x → pp → slot), never a holder only a shared Loan names (count, TheGuardReadsEachPart),
     // and E only where E was reached through no shared layer (Φ_W): an untied result (laterWriterOk, clearRcOk and sharedRawGen err, the
     // owner's 「Yes, writable」; sharedRawGen's `T.make` result is tied to no argument, so x reaches E writable, item 5; a tied result read
-    // through a shared Deref of a `ref/` parameter is PLAN G419's false error), a raw pointer it derives from (allocBad, alloc2Bad,
+    // through a `ref/` parameter's Deref reaches E for reads only, tiedShRefOk), a raw pointer it derives from (allocBad, alloc2Bad,
     // allocOptBad, allocTupBad, allocViaUBad), and a parameter or a capture (ownParamBad, ownParamGen, directParamGen, exchGen, capGen,
     // nestGen). A generic Writer (writerBad) errs by its call's own raw-argument retention, an exclusive reference
     // (paramBad) past it by the write fact, and a live exclusive Loan (uniqBad) by the store. Every row errs on dev too, there through the
@@ -963,31 +963,35 @@ public sealed partial class MirBorrowsTest
     // by value through no shared layer, an Option payload and a Tuple element included, so r's setQ may store w's address where m points,
     // storage the body does not own, and `y = 5` and S's end err (as tiedRawBad does with a raw input; tiedOk, whose r holds only the
     // shared Loan on s, is valid). FAIL-FIRST: S1′ alone accepts tiedOptBad and tiedTupBad (Binding's retention keeps a raw-typed input
-    // only, BU-66 rule 3); BU's raw-sources Binding unit closes them, and S1′ lands with or after it.
+    // only, BU-66 rule 3); BU's raw-sources Binding unit closes them, and S1′ lands with or after it. A raw pointer read through a `ref/`
+    // parameter's Deref has no write authority (SPEC 5.2.1 condition 3, 15.6.4 item 1; DECISIONS R4-M249, G415-N3 P1): the parameter's
+    // slot reaches E for reads only, so tiedShRefOk is valid (PLAN G419's false error before P1), and its `uniq/` twin tiedUniqRefBad errs.
     [Theory]
     [InlineData("tiedOptBad", "r.absorb(.Some(m))")]
     [InlineData("tiedTupBad", "r.absorbT((m, 1))")]
     [InlineData("tiedRawBad", "r.absorbR(m)")]
     [InlineData("tiedOk", "")]
-    public void ATiedAbstractValueRetainsARawLayerAnInputHoldsByValue(string name, string absorb)
+    [InlineData("tiedShRefOk", "r.absorbR(rr@follow)", ", rr: ref/(raw/u8)")]
+    [InlineData("tiedUniqRefBad", "r.absorbR(rr@follow)", ", rr: uniq/(raw/u8)")]
+    public void ATiedAbstractValueRetainsARawLayerAnInputHoldsByValue(string name, string absorb, string parameters = "")
     {
-        var c = MirBuildTest.Compile(Prelude + """
-            contract Mk
-                associate R(source) is Abs for ref/Self during source
-                func opn(self: ref/Self during source) -> Self.R(source)
-            contract Abs
-                func absorb(self: uniq/Self, v: Option<raw/u8>)
-                func absorbR(self: uniq/Self, v: raw/u8)
-                func absorbT(self: uniq/Self, v: (raw/u8, i32))
-                func setQ(self: uniq/Self, q: raw/u8)
-            func consume<T>(x: T) => ()
-
-            """ + $"func {name}<S>(s: S)\n    S is Mk\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n" +
-            (absorb.Length > 0 ? $"    var m: raw/u8 = Raw.allocate<u8>(1)\n    var r = s.opn()\n    {absorb}\n" : "    var r = s.opn()\n") +
-            "    r.setQ(w@raw@raw/u8)\n    consume(r@move)\n    y = 5\n");
+        var c = MirBuildTest.Compile(Tied(name, absorb, parameters));
         Assert.Equal(
-            name == "tiedOk" ? [] : [$"{name}: y = 5", $"{name}: S"],
+            name.EndsWith("Ok", StringComparison.Ordinal) ? [] : [$"{name}: y = 5", $"{name}: S"],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // A warm A5 run over a parameter that reaches E for reads only (tiedShRefOk's program; its slot's {Φ_E} is one more interned set per
+    // run) allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmReadOnlyParameterAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(Tied("tiedShRefOk", "r.absorbR(rr@follow)", ", rr: ref/(raw/u8)"));
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
+        Assert.Empty(Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // The same retention per raw source (DECISIONS BU-66, A2; the owner's 「A2 を Chain の案でGO」): a raw layer past an exclusive borrow
@@ -2791,4 +2795,22 @@ public sealed partial class MirBorrowsTest
         }));
         Assert.Contains("limited: o.put(z@ref) Unsupported_Kd", Problems(c, program!, [DiagnosticCode.Unsupported_Kd]));
     }
+
+    // The tied rows' program: `name` over S is Mk (with `parameters` after s), r tied to s absorbing an input, then r's setQ storing w's
+    // address, r consumed and y written.
+    private static string Tied(string name, string absorb, string parameters)
+        => Prelude + """
+            contract Mk
+                associate R(source) is Abs for ref/Self during source
+                func opn(self: ref/Self during source) -> Self.R(source)
+            contract Abs
+                func absorb(self: uniq/Self, v: Option<raw/u8>)
+                func absorbR(self: uniq/Self, v: raw/u8)
+                func absorbT(self: uniq/Self, v: (raw/u8, i32))
+                func setQ(self: uniq/Self, q: raw/u8)
+            func consume<T>(x: T) => ()
+
+            """ + $"func {name}<S>(s: S{parameters})\n    S is Mk\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n" +
+            (absorb.Length > 0 ? $"    var m: raw/u8 = Raw.allocate<u8>(1)\n    var r = s.opn()\n    {absorb}\n" : "    var r = s.opn()\n") +
+            "    r.setQ(w@raw@raw/u8)\n    consume(r@move)\n    y = 5\n";
 }

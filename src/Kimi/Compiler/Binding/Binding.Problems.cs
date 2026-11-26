@@ -303,6 +303,12 @@ public sealed partial class Binding
             case BindingFailure.InvalidTypeFormation when this.FactOf(index, ProblemFactKind.Count) is not null:
                 this.ReportArity(node, store, index, problem);
                 break;
+            case BindingFailure.Capture or BindingFailure.TransferRequired or BindingFailure.InvalidAssignment or BindingFailure.Duplicate
+                when this.FactOf(index, ProblemFactKind.Span) is not null && this.FactOf(index, ProblemFactKind.Reason) is not null:
+                // A capture record (RecordCapture), ahead of these requirements' other rows: no other recorder of the four records a Span,
+                // so they scope the discriminator, which another requirement's record shares (an override's, VirtualOverrides).
+                this.ReportCapture(node, store, index, problem);
+                break;
             case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Related) is { } first:
                 ReportDuplicate(node, store, problem, this.compilation.SyntaxOf(first.Site));
                 break;

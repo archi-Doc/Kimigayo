@@ -17,7 +17,8 @@
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
 // problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
 // the site (A3's guessed sites, R5-M186), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
-// in BindingReport's kept sides, a Type, or a length where its requirement compares lengths (SPEC 4.3.1), an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
+// in BindingReport's kept sides, a Type, or a length where its requirement compares lengths (SPEC 4.3.1), in a capture record its
+// subject and the captured binding's Type (R7-E4 E4b), an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
 // start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept sides,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
@@ -38,10 +39,10 @@
 // two, plus one where the resolution is ambiguous (else none applies), packed and unpacked by BindingReport only (KeepChecked, Checked),
 // at most one per party, after its Reason; a kind that names no value has -1; a problem has at most one fact of each kind but
 // its witness's, its causes, which come last, its Related facts, each read by its role (its Value) and shown in the order its site
-// records them, its Count and Instance facts, in their row's order, and an acquisition record's second Reason, a transfer's moving
-// cases after its packed Reason (R7-E4 E4a-2, read by position), a slot case's one SemanticsMask Reason per binder of the slot's
-// requirement after its packed Reason, always present, and a per-call slot's parameter mask after its ordinal (R7-E4 E4c, read by
-// position); a selection's record is the subject's facts, then per party its
+// records them, its Count and Instance facts, in their row's order, and an acquisition record's or a bare capture entry's second
+// Reason, a transfer's moving cases after its packed Reason (R7-E4 E4a-2, E4b, read by position), a slot case's one SemanticsMask
+// Reason per binder of the slot's requirement after its packed Reason, always present, and a per-call slot's parameter mask after its
+// ordinal (R7-E4 E4c, read by position); a selection's record is the subject's facts, then per party its
 // Related (role 3 or 5) and that party's entries up to the next party Related, in the order its adapter renders them, read by position,
 // never by a kind's first fact.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).

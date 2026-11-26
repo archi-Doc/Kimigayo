@@ -95,7 +95,10 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private long view;
     private ulong views;
     private int loanBase; // The element of Loan 0: after Φ_E, Φ_W and the per-local markers.
-    private int escapedSet; // The set {Φ_E, Φ_W}, which a value that may refer to storage the body does not own carries where it is formed.
+    private int escapedSet; // The set {Φ_E, Φ_W}, which a value that may refer to storage the body does not own carries where it is
+    // formed, with its mode.
+    private int readEscapedSet; // The set {Φ_E}: a value that reaches storage the body does not own for reads only, formed at a parameter
+    // whose Type reaches past it through shared layers only (Initial).
     private int writableSet; // The set {Φ_W}, which a read through a shared Loan drops (MirBorrows.Reach).
     private int unformedSet; // The set {Φ_N}: in an exposed holder's stored states and every call result (MirBorrows.Flow, .Calls).
     private int offgridSet; // The set {Δ} (MirBorrows.Puns).

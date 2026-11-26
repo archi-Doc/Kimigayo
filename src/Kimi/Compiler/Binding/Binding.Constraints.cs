@@ -16,6 +16,9 @@ public sealed partial class Binding
     // distinct part is normalized once per query, a projection leaf's ContractType answer included; a call begun inside it (a proof that
     // a leaf's answer runs) is a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<BoundType, (BoundType Image, Completion Completion)> proofParts = new();
+
+    // The runs of AddConjuncts' readers (AddConstraintFact, AddSupplyRows), each removed by its reader.
+    private readonly List<BoundConstraint> conjuncts = new();
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
 
     // The scaling rows' measure: the parts NormalizeProofType normalized in this compilation (its walk's visits that missed the memo).
@@ -82,6 +85,20 @@ public sealed partial class Binding
         return left == decisive || right == decisive ? decisive : left == both && right == both ? both : ConstraintProof.Unknown;
     }
 
+    // SPEC 8.3.1, 8.3.2 Conjunction (8.2.3 grounds: conjunction elimination): a supplied constraint is itself and, a conjunction, each
+    // conjunct's supply, appended to `into` in that order. The one split of a premise's supply; its readers are the environment's intake
+    // (AddConstraintFact) and the walk's item intake (ContractSolver's AddSupplyRows), each over its own run of `conjuncts`, so a
+    // reader nested in another appends above it and removes its run before returning.
+    private static void AddConjuncts(List<BoundConstraint> into, BoundConstraint constraint)
+    {
+        into.Add(constraint);
+        if (constraint.Kind == ConstraintKind.And)
+        {
+            AddConjuncts(into, constraint.Left!);
+            AddConjuncts(into, constraint.Right!);
+        }
+    }
+
     private static bool IsSelfConstraint(IsKoto clause)
         => clause.Left is IdentifierNameKoto { IdentifierName: "Self" };
 
@@ -128,6 +145,12 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // J1's one test (R7-C2c2 c2-5c, CC-36 C4): a reading can differ from what is written only through an associated projection in it
+    // (`projection`: a constraint's HasAssociatedProjection, or an environment's, any of its facts') or an identity premise in the view
+    // (`typeIdentity`: HasTypeIdentity). Its readers: NormalizeProofConstraint's early return, Supply's consult (per environment) and
+    // IndexNormalized (per environment, then per fact).
+    private static bool ReadingCanDiffer(bool projection, bool typeIdentity) => projection || typeIdentity;
 
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
@@ -687,13 +710,17 @@ public sealed partial class Binding
             return false;
         }
 
-        environment.Add(fact, source, origin);
-        if (fact.Kind == ConstraintKind.And)
+        var start = this.conjuncts.Count;
+        AddConjuncts(this.conjuncts, fact);
+        var error = false;
+        for (var i = start; i < this.conjuncts.Count; i++)
         {
-            return this.AddConstraintFact(environment, fact.Left!, source, origin) | this.AddConstraintFact(environment, fact.Right!, source, origin);
+            environment.Add(this.conjuncts[i], source, origin);
+            error |= this.conjuncts[i].Kind == ConstraintKind.Error;
         }
 
-        return fact.Kind == ConstraintKind.Error;
+        this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
+        return error;
     }
 
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
@@ -738,7 +765,7 @@ public sealed partial class Binding
     private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!constraint.HasAssociatedProjection && !HasTypeIdentity(scope))
+        if (!ReadingCanDiffer(constraint.HasAssociatedProjection, HasTypeIdentity(scope)))
         {
             return constraint;
         }
@@ -776,12 +803,20 @@ public sealed partial class Binding
         var contract = constraint.Contract;
         if (contract is not null && IsBoundContractReference(contract))
         {
-            var reference = this.NormalizedForm(contract.Type!, scope, out var part);
+            contract = this.NormalizedContract(contract, scope, out var part);
             completion = Meet(completion, part);
-            contract = ReferenceEquals(reference, contract.Type) ? contract : this.BoundContractReference(reference);
         }
 
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) && ReferenceEquals(contract, constraint.Contract) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
+    }
+
+    // J1's reading of a bound Contract reference (NormalizeProofConstraint's Contract arm): its arguments read as a proposition's Types
+    // (NormalizedForm), so a completed projection there is its binding (SPEC 8.2.3; R7-C2c2 c2-5a). Both J1 entries read a reference by
+    // it: NormalizeProofConstraint and ProveConformance, whose direct callers bypass that intake (R7-C2c2 c2-5c).
+    private BindingSymbol NormalizedContract(BindingSymbol reference, BindingScope scope, out Completion completion)
+    {
+        var form = this.NormalizedForm(reference.Type!, scope, out completion);
+        return ReferenceEquals(form, reference.Type) ? reference : this.BoundContractReference(form);
     }
 
     // J1's one reading of a proposition's Type (SPEC 8.3.1's normalized complete Types): normalized in the scope, a completed projection

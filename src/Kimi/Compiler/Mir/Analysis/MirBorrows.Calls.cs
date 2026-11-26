@@ -179,7 +179,7 @@ internal sealed partial class MirBorrows
             this.Referents(this.argValues[position], root);
         }
 
-        var (limited, deepHolder) = stored ? default : this.Writes(state, call, position, written, root);
+        var (limited, deepHolder) = stored ? default : this.Writes(state, call, position, written);
         this.limit |= limited && this.replaying;
         this.deep |= deepHolder && this.replaying;
         this.Deliver(state, call, written, referent, this.argValues[position]);

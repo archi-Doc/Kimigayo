@@ -149,7 +149,7 @@ public sealed partial class Binding
         var kind = binary.Akind;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
         SetAdmittedMisfit(binary, misfit: false);
-        if (this.TryArithmetic(binary, scope, out var arithmeticResult))
+        if (this.TryArithmetic(binary, scope, out var arithmeticResult, out var independent))
         {
             return assignment ? this.CompleteRoutedUpdate(binary, arithmeticResult, scope) : arithmeticResult;
         }
@@ -187,9 +187,11 @@ public sealed partial class Binding
         }
 
         // SPEC 13.7.1, 13.7.2, 23.1.2: a write's value takes its expected Type, and its route and fit their Types, from a target that
-        // designates a destination only (DesignatesDestination); a target that designates none gives its value no expectation.
+        // designates a destination only (DesignatesDestination); a target that designates none gives its value no expectation. SPEC 13.3.4:
+        // the route takes both terminal Types, so its one decision reads the right's independent Type where TryArithmetic typed it, and a
+        // right that defeats every row fails the operation, never a fit.
         var located = !assignment || this.DesignatesDestination(binary.Left);
-        var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
+        var decision = this.OperatorApplicabilityOf(binary, left, independent, scope);
         var counterpart = located && ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
         if (referenceBinding is { } assigned)
@@ -214,7 +216,9 @@ public sealed partial class Binding
             this.JudgeHolderPlace(binary.Left, binary.Right, binary);
         }
 
-        if (decision.Failure == BindingFailure.None && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
+        // SPEC 13.3.4: a decision made without the right's Type, over a left that is Never (it fits the right) or missing (the right's own
+        // verdict), is made with it; one that read TryArithmetic's independent Type judged the same terminal Types, so it is made once.
+        if (decision.Failure == BindingFailure.None && independent is null && right is not null && (left is null || ReferenceEquals(left, BoundType.Never)))
         {
             decision = this.OperatorApplicabilityOf(binary, left, right, scope);
         }
@@ -392,7 +396,7 @@ public sealed partial class Binding
                 ? this.Fail(binary, BindingFailure.Unsupported, true) : Complete(binary, result);
         }
 
-        (binary.ArithmeticStorage ??= new()).Active = false;
-        return this.RecordArithmeticSelection(binary, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit, null);
+        // The operator table admits no other left here (OperatorApplicabilityOf): a Never left has no provider at the decision.
+        return this.Fail(binary, BindingFailure.Internal);
     }
 }

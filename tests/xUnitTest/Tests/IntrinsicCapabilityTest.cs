@@ -496,9 +496,11 @@ public class IntrinsicCapabilityTest
     [InlineData("C6", "g200-bad", GrowingCopy + Endless + Reads + "func bad() -> i32 => true\n", "Resource: let a = x | TypeMismatch_Kd: func bad() -> i32 => true")]
     // SPEC 7.7.2, 23.1.2 (F's C8 ruling 3, F3): an omitted capture list captures by Copy, so a closure whose capture's Copy reaches the
     // limit is the limit's record at the closure; a second closure of the same definition reads the refused proof and keeps no record
-    // of its own (one record a declaration, a closure being its definition's); a finite growth captures (the form's valid twin).
-    [InlineData("C6", "g200-cap", GrowingCopy + Endless + Keep + "func hold(x: G<W<i32>>) -> ()\n    let f = func () => keep(x@ref)\n    return\n", "Resource: let f = func () => keep(x@ref)")]
-    [InlineData("C6", "g200-cap2", GrowingCopy + Endless + Keep + "func hold(x: G<W<i32>>) -> ()\n    let f = func () => keep(x@ref)\n    let g = func () => keep(x@ref)\n    return\n", "Resource: let f = func () => keep(x@ref)")]
+    // of its own (one record a declaration, a closure being its definition's); a finite growth captures (the form's valid twin). The
+    // capture's TransferRequired_Kd beside the limit's record rests on it (Q13 class 4, F's R7-E4 rulings 34 and 40): it stays until
+    // ruling 34's open issue, IsDerived reading each numbered problem's own cause instead of the Closure node's one prerequisite.
+    [InlineData("C6", "g200-cap", GrowingCopy + Endless + Keep + "func hold(x: G<W<i32>>) -> ()\n    let f = func () => keep(x@ref)\n    return\n", "Resource: let f = func () => keep(x@ref) | TransferRequired_Kd: let f = func () => keep(x@ref)")]
+    [InlineData("C6", "g200-cap2", GrowingCopy + Endless + Keep + "func hold(x: G<W<i32>>) -> ()\n    let f = func () => keep(x@ref)\n    let g = func () => keep(x@ref)\n    return\n", "Resource: let f = func () => keep(x@ref) | TransferRequired_Kd: let f = func () => keep(x@ref)")]
     // F's ruling 216's reading for a block (SPEC 8.3.3, BindingScope.Declaration): a read in an `if` body is its definition's, so it
     // rests on the definition's one record. A block and a closure are each their own capability scope, which evaluates the chain again:
     // the height limit inside a proof is the declaration's refusal (RefuseProof, F's C8 ruling 5 (b1)), so the later scope rests on it.
