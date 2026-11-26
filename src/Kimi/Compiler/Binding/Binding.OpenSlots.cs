@@ -25,10 +25,14 @@ namespace Kimi.Compiler;
 //   an open Type it meets, an atom included (D-1097's fills; the first binding at Infer's slot arm); Infer's head holds an atom against
 //   any other pattern part. The fills of one slot agree in the structure they share, fill first (K's D-1132, ArgFlow ruling 154): an atom
 //   adds none, two distinct atoms at one place agree in none and fail the match, and later evidence never replaces a fill (FillOpenSlots,
-//   read at the match's agreement only).
+//   read at the match's agreement only). A projection over an atom that the premises do not reduce, one formed with no closed form,
+//   is as open as its subject (SPEC 10.8: a projection is never inverted), so every reader of the rule reads it as an atom (IsOpenAtom;
+//   PLAN G814, o5); a projection that a binding fixes is formed closed and is fitted. One a premise fixes is still formed over the atom
+//   and held (open issue G814-P: o5-fixed, valid, is AmbiguousBinding_Kd).
 // - The place rule (SPEC 10.5.1, 10.8; design v3-A 11.8.3 and its Rev, ArgFlow rulings 159 and 160): a checked part that is not a
-//   nested call (a literal form, a join, a leading-dot Case, an awaited anonymous function or function reference) whose place is a bare
-//   atom holds there and binds nothing; it is completed after selection (PlacedAtOpenSlot, read once, at FitArgumentPart's entry). Its
+//   nested call (a literal form, a Dictionary literal one while its position forms its Type, a join, a leading-dot Case, an awaited
+//   anonymous function or function reference) whose place is a bare atom holds there and binds nothing; it is completed after
+//   selection (PlacedAtOpenSlot, read at FitArgumentPart's entry and by FitsPosition's hold, PLAN G814 R). Its
 //   place is the owner temporary's Type for an owner value by its form, else the position's Type; an atom has no borrow value's outer
 //   Semantics for the place only (HasBorrowSemantics answers no, so the place at `ref/T°` is `T°`), the after-selection check reading
 //   the bound Type. A nested call, a construction included, is checked at the position's Type itself, a bare atom included, by its
@@ -44,12 +48,18 @@ namespace Kimi.Compiler;
 //   ambient mode; no second store of atom bindings beside the owners' frames.
 public sealed partial class Binding
 {
+    // The atoms' one predicate (the contract above): an atom, or a projection whose subject holds one.
+    private static bool IsOpenAtom(BoundType type)
+        => type.Kind == BoundTypeKind.OpenSlot || type is { Kind: BoundTypeKind.AssociatedProjection, Components: [{ ContainsOpenSlot: true }, ..] };
+
     // The place rule (the contract above): whether a checked part that is not a nested call, one that awaits its call or a literal form,
     // has a bare atom as its place: the owner temporary's Type for a literal, an aggregate or a join (Materialization), a leading-dot
-    // Case's expected Type (ExpectedTypeOf, as its enum binder reads it), else the position's Type.
+    // Case's expected Type (ExpectedTypeOf, as its enum binder reads it), else the position's Type. A Dictionary literal is a literal form
+    // while its position forms its Type (IsAggregatePart: one holding a failed or waiting part; PLAN G814-5), as a Tuple or array literal
+    // is; one typed whole (BU-43) is a typed part, evidence.
     private bool PlacedAtOpenSlot(Koto node, PartKind kind, BoundType type, BindingScope scope)
-        => kind != PartKind.Call && (kind is PartKind.Literal or PartKind.Aggregate || this.AwaitsCall(node)) &&
-            (this.Materialization(node, type, scope) ?? (kind == PartKind.Case ? this.ExpectedTypeOf(type) : type)).Kind == BoundTypeKind.OpenSlot;
+        => kind != PartKind.Call && (kind is PartKind.Literal or PartKind.Aggregate || this.IsAggregatePart(node) || this.AwaitsCall(node)) &&
+            IsOpenAtom(this.Materialization(node, type, scope) ?? (kind == PartKind.Case ? this.ExpectedTypeOf(type) : type));
 
     // SPEC 10.8 Solving (the contract above; FillOpenOrigins is its Origin precedent): `type` with each atom replaced by the part `other`
     // has at the same place, unless that part is another atom (two distinct atoms agree in no structure), and a fixed array's length atom
@@ -61,9 +71,9 @@ public sealed partial class Binding
             return type;
         }
 
-        if (type.Kind == BoundTypeKind.OpenSlot)
+        if (IsOpenAtom(type))
         {
-            return other.Kind == BoundTypeKind.OpenSlot ? type : other;
+            return IsOpenAtom(other) ? type : other;
         }
 
         if (type.Kind != other.Kind || !ReferenceEquals(type.Symbol, other.Symbol) || type.Semantics != other.Semantics ||

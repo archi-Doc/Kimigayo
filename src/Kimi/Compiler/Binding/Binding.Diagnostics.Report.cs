@@ -133,8 +133,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
-    // failure only (FailExplained), so at most one table answers for a node.
+    // Publishes one direct failure with the facts its check recorded (ReportProblem).
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
@@ -177,64 +176,15 @@ public sealed partial class Binding
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
         }
-        else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 8.1.2: a pair occurrence's Language cause, at the occurrence.
-        }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
-        {
-            ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins.TryGetValue(issue.Node, out var perCallOrigin))
-        {
-            ReportPerCallOrigin(issue.Node, perCallOrigin, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 15.3.2: an undeclared storage name, at the name.
-        }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
-        }
-        else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
-        {
-            this.ReportContextualCapture(issue.Node, store, contextual, requirement, issue.Code);
-        }
-        else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
-        {
-            // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
-        }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 15.2.3, 5.7: an Origin slot the written binding cannot supply, at the annotation.
-        }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
             this.ReportDuplicateBindingSet(bindingSet, store, reusedSet, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && this.captureRepeats?.TryGetValue(issue.Node, out var repeats) == true)
-        {
-            this.ReportCaptureRepeats(issue.Node, store, repeats, requirement, issue.Code);
-        }
-        else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
-        {
-            this.ReportCaptureEntry(issue.Node, store, entry, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {
             // The subject stays the failed node; the location is the syntax that shows the two Types.
             var mismatch = this.Mismatch(issue.Problem);
             issue.Node.ReportIn(store, requirement, issue.Code, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)], condition: this.ConditionOf(issue.Problem));
-        }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
-        {
-            this.ReportOwnedConversion(issue.Node, store, owned, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints.TryGetValue(issue.Node, out var callable))
-        {
-            // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
-            ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
         }
         else if (issue.Failure == BindingFailure.InvalidConstraint)
         {
@@ -245,7 +195,7 @@ public sealed partial class Binding
         }
         else
         {
-            issue.Node.ReportIn(store, requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
+            issue.Node.ReportIn(store, requirement, issue.Code, evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
         }
     }
 
@@ -266,11 +216,14 @@ public sealed partial class Binding
             this.ReportIssue(issues[i]);
         }
 
-        this.ReportResolvedOriginRecords();
+        this.ReportOutsideIssues();
         for (var i = 0; i < derivedIssues.Count; i++)
         {
-            var issue = derivedIssues[i];
-            issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), this.ConditionOf(issue.Problem));
+            this.ReportDerived(derivedIssues[i]);
         }
     }
+
+    // Publishes one derived failure with its node's prerequisite keys (SPEC 23.1.2) into Core's store decision for the node.
+    private void ReportDerived(BindingIssue issue)
+        => issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), this.ConditionOf(issue.Problem));
 }

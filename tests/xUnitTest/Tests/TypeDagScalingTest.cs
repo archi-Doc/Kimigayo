@@ -107,6 +107,50 @@ public partial class TypeDagScalingTest
         Assert.True(counts[0].Steps == counts[2].Steps, text);
     }
 
+    // SPEC 11.6 (DECISIONS BU-267; G1220-1 C11): the header walk visits each Type once per request, so its visits per
+    // added declaration stay flat: an inferred Property requesting Owned and Copy of a chain of N stored declarations (chain), N
+    // Properties each requesting one 32-deep chain (fan), and N inferred Properties each typed through the next's header (nested, SPEC
+    // 11.6's demand of another header, f2's twin). Each program is valid: no request's Type contains its Property.
+    [Theory]
+    [InlineData("chain")]
+    [InlineData("fan")]
+    [InlineData("nested")]
+    public async Task AnInferredHeaderVisitsEachContainedPartOncePerRequest(string shape)
+    {
+        const string Tags = "group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n";
+        var cancel = TestContext.Current.CancellationToken;
+        var sizes = shape == "nested" ? new[] { 16, 32, 64 } : new[] { 16, 64, 256 };
+        var counts = new List<(int N, int Visits)>();
+        foreach (var n in sizes)
+        {
+            var source = Tags + shape switch
+            {
+                "chain" => Chain(n) + "struct Entry\n    var tag = Tags.tagOf<D0>()\n    var dup = Tags.dupOf<D0>()\n",
+                "fan" => Chain(32) + string.Concat(Enumerable.Range(0, n).Select(static j => $"struct E{j}\n    var tag = Tags.tagOf<D0>()\n")),
+                _ => string.Concat(Enumerable.Range(0, n).Select(i => i + 1 < n ? $"struct A{i}\n    var a = Tags.tagOf<A{i + 1}>()\n" : $"struct A{i}\n    var a = 0\n")),
+            };
+            var run = Task.Run(
+                () =>
+                {
+                    var c = CompilationTestHelper.ParseSuccess(source);
+                    Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+                    return (n, c.Binding.HeaderWalkWork);
+                },
+                cancel);
+            Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+            counts.Add(await run);
+        }
+
+        var text = string.Join(", ", counts.Select(static x => $"N {x.N}: {x.Visits} visits"));
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        var low = (counts[1].Visits - counts[0].Visits) / (double)(counts[1].N - counts[0].N);
+        var high = (counts[2].Visits - counts[1].Visits) / (double)(counts[2].N - counts[1].N);
+        Assert.True(low > 0 && high <= low * 1.5, text);
+
+        static string Chain(int n) => string.Concat(Enumerable.Range(0, n).Select(static i => $"struct D{i}\n    Self is Copy\n    var next: D{i + 1}\n")) +
+            $"struct D{n}\n    Self is Copy\n    var x: i32\n";
+    }
+
     // SPEC 8.15.2, 8.3.4 (the owner's O-417 (a); the Front's C-397 C1): the capability engine judges a pair layer once per case its own
     // binder admits, each case's complete Type a part (SymbolicCapability), so a Copy requirement's capability evaluations grow
     // linearly with the layers that share one binder in a flat Tuple (N = 32, 64, 128) and with distinct binders, nested two to a layer,
@@ -520,13 +564,18 @@ public partial class TypeDagScalingTest
         Assert.Equal(1, Instances(set, "f"));
     }
 
-    // SPEC 8.3: a constraint on a shared Tuple whose part names a failed declaration is an Error of that constraint, as for a tree.
+    // SPEC 8.3: a constraint on a shared Tuple whose part names a failed declaration is an Error of that constraint, as for a tree. Bad
+    // opts in to Copy, so the proof walks the shared Tuple and reads the failed Field: without the opt-in, Bad is Refuted by its
+    // declaration before any part is read (SPEC 3.5.2; G1220-1 O2, G1220-2). The opt-in's own record at 2:5 is a dependent one (PLAN
+    // G1181's remainder).
     [Fact]
     public void AFailedPartOfASharedTupleFailsItsConstraint()
     {
-        const string Source = "struct Bad\n    public var x: Missing\nfunc need<T>(x: ref/T) -> ()\n    T is Copy\n    return\nfunc f(v: ref/((Bad, Bad), (Bad, Bad))) -> ()\n" +
+        const string Source = "struct Bad\n    Self is Copy\n    public var x: Missing\nfunc need<T>(x: ref/T) -> ()\n    T is Copy\n    return\nfunc f(v: ref/((Bad, Bad), (Bad, Bad))) -> ()\n" +
             "    need(v)\n    return\npublic func main() -> ()\n    return\n";
-        Assert.Equal(["UnresolvedBinding_Kd", "UnprovenConstraint_Kd"], DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code));
+        Assert.Equal(
+            ["UnprovenConstraint_Kd 2:5", "UnresolvedBinding_Kd 3:19", "UnprovenConstraint_Kd 8:5"],
+            DiagnosticCorpus.LocatedRecords(Source).Select(static x => string.Join(' ', x.Split(' ', 3)[..2])));
     }
 
     // The MIR's walks: A5's cleanup observation (whether a cleanup observes Loans) over shared struct, enum and Tuple parts, generic ones

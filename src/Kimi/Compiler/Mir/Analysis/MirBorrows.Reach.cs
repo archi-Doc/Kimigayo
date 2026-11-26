@@ -10,8 +10,8 @@ namespace Kimi.Compiler.Mir;
 // content, the holders a call's store through it writes (W, whose first step alone is Referents), and the guard, MirTypes.HoldsLoans'
 // MirWrites of the Type a holder's state is read at; its chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain row's
 // measure), the least fixed point of a read from it, each holder read once per closure. W is one walk over state parts: each part of a
-// reached holder's state is read once per walk at its reading, the guard of the holder's own root Type (Read; Through's reading covers
-// Named's; W's own mark by walk, MirBorrows.States' walkedBy, which no read moves), each holder taking the Reached entry of the Type of the
+// reached holder's state is read once per walk at its reading, the guard of the holder's own root Type (Read; Through and Named take one
+// step from a state; W's own mark by walk, MirBorrows.States' walkedBy, which no read moves), each holder taking the Reached entry of the Type of the
 // Place the reaching Loan names (DECISIONS R4-M154, Revision 8), except where the walk reads a holder at a reading key (Keyed, ReadAt,
 // ReadPart; SPEC 15.6 Holders: every element with every layer of the key the holder was reached at): there each element is typed, punned or
 // read nothing at each layer, and a holder it writes takes the record of that layer's storage and is read on at the key past it, at that
@@ -28,9 +28,12 @@ namespace Kimi.Compiler.Mir;
 // record, where that guard steps over an `owner` Scalar's byte or a byte that a punned write may not change, a reference's or a handle's
 // (Punned; MirBorrows.PunTypes' PlaceBytes).
 // No element carries a Type.
-// A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
-// reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
-// (SPEC 15.6.4 item 1, 5.2.1 condition 3; DECISIONS R4-M177).
+// A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W or neither Φ_E nor a
+// direct Loan (SPEC 15.6.4: what is reached through a shared layer is read-only; DECISIONS R4-M170; O-60's reach is writable, as at W's
+// first step: R4-M183, R4-M249), and W writes no holder that only a shared Loan names, at any step (SPEC 15.6.4 item 1, 5.2.1
+// condition 3; DECISIONS R4-M177), and past a holder, at either guard and in the Deep comparison, E only where the state read carries
+// Φ_W (item 1: "what is reached on from them by reads through no shared layer"; DECISIONS R4-M249), but at the declared step from a
+// holder whose Type holds storage it does not state, where it carries Φ_E (ReadDeclared).
 // On the state a location's plan reads, a set's content and chain are each read once (E13 (5)), however many operands and retention rows
 // read them; whether a Type may hold a Loan, and its MirWrites, are walked once per distinct case Type and program version (the holding
 // memo, DECISIONS R4-M140), which answers a local's holder test and each reading of the walk. Must not form a value or a Loan
@@ -43,11 +46,13 @@ internal sealed partial class MirBorrows
 
     // How a W walk reached a holder (writingVia, DECISIONS R4-M154): at its first step (ViaRoot) (the argument's direct Loans or addresses name it, or
     // E there), past another holder, or both; whether at the first step by an element the reading Type does not designate (ViaPun); and
-    // whether a step of it at a reading key was left out, its guard Deep (ViaDeep; ReadAt).
+    // whether a step of it at a reading key was left out, its guard Deep (ViaDeep; ReadAt); and whether it was read on at a reading key, a
+    // node of the walk (ViaKey; Node), which the declared step's kept clause reads (DeclaredUnowned).
     private const byte ViaRoot = 1;
     private const byte ViaPast = 2;
     private const byte ViaPun = 4;
     private const byte ViaDeep = 8;
+    private const byte ViaKey = 16;
 
     // refs(S) (Refs): each holder with its root local (-1 for E) and the mode of the Loan or address naming it, none for E where S carries
     // Φ_E or no direct Loan.
@@ -61,7 +66,7 @@ internal sealed partial class MirBorrows
     private readonly List<RawMember> members = []; // HoldsLoans' scratch for a stored raw layer's members.
     private readonly List<Hold> holds = []; // HoldsLoans' scratch for the entries it reads.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
-    private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, MirHolding> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
     // W's reading nodes: a holder (with its root local) read on at a reading Type's key.
     private readonly List<(int Slot, int Root, BoundType Type, int Key)> nodes = [];
     private readonly HashSet<(int Slot, int Key)> nodeSeen = []; // The walk's nodes, each once.
@@ -114,8 +119,9 @@ internal sealed partial class MirBorrows
     }
 
     // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan, each read through
-    // rule W's clause (Parts), a shared Loan's holder and E for a set without Φ_W read-only, each distinct Shared set once, joined by one
-    // n-ary union (PartsUnion); memoized at the location.
+    // rule W's clause (Parts), a shared Loan's holder and E for a set carrying Φ_E without Φ_W read-only (E for a set with neither Φ_E nor
+    // a direct Loan is O-60's reach, writable as at W's first step: R4-M183), each distinct Shared set once, joined by one n-ary union
+    // (PartsUnion); memoized at the location.
     private int Content(ulong[] state, int set)
     {
         if (set < this.reads.Length && this.reads[set].Content != 0)
@@ -144,7 +150,7 @@ internal sealed partial class MirBorrows
 
         if (escaped || !direct)
         {
-            this.Parts(state[Escaped], whole: false, writable);
+            this.Parts(state[Escaped], whole: false, writable || !escaped);
         }
 
         var content = this.Rested(this.PartsUnion(), set);
@@ -172,7 +178,8 @@ internal sealed partial class MirBorrows
         this.chained.Clear();
         if (!this.Queue(set, writable: true))
         {
-            this.Queued(Escaped, whole: false, writable: false); // content's rule: E where S carries no direct Loan (Queue read its Φ_W).
+            // content's rule: E where S carries no direct Loan, writable where S carries no Φ_E either (O-60); else Queue read its Φ_W.
+            this.Queued(Escaped, whole: false, writable: !this.sets.Contains(set, Escaped));
         }
 
         this.Step();
@@ -348,21 +355,30 @@ internal sealed partial class MirBorrows
     // of no Type (a slot Binding failed, PLAN G1073) holds nothing and a call writes nothing past it: rule W finds nothing to judge there.
     private bool Holds(BoundType? type, out MirWrites writes)
     {
+        var known = this.HoldingOf(type);
+        writes = known.Writes;
+        return known.Loan;
+    }
+
+    // Whether a value of a case Type reaches storage past its own writable (MirHolding.Writable): Initial's mode at an argument.
+    private bool ReachesWritable(BoundType? type) => this.HoldingOf(type).Writable;
+
+    // The memo's answer for a case Type (MirTypes.HoldsLoans): nothing for no Type.
+    private MirHolding HoldingOf(BoundType? type)
+    {
         if (type is null)
         {
-            writes = MirWrites.None;
-            return false;
+            return default;
         }
 
         this.HoldingVersion();
         ref var known = ref CollectionsMarshal.GetValueRefOrAddDefault(this.holding, type, out var exists);
         if (!exists)
         {
-            known.Holds = MirTypes.HoldsLoans(type, types, this.walked, this.members, this.holds, out known.Writes);
+            known = MirTypes.HoldsLoans(type, types, this.walked, this.members, this.holds);
         }
 
-        writes = known.Writes;
-        return known.Holds;
+        return known;
     }
 
     // Clears the Type memos (Holds, Reading) at a new program version, whose case Types and holdings they answer (DECISIONS R4-M140).
@@ -388,7 +404,7 @@ internal sealed partial class MirBorrows
         this.BeginWalk();
         if (root == MirWrites.Named)
         {
-            this.Write(set, ViaRoot, root);
+            this.Write(set, ViaRoot);
         }
         else
         {
@@ -440,28 +456,28 @@ internal sealed partial class MirBorrows
 
     // W(S) (A3 E16, DECISIONS R4-M73, R4-M116, R4-M147, R4-M170, R4-M177) into the targets, the holders a call's store through S writes,
     // never one that only a shared Loan names (SPEC 15.6.4 item 1): past its first step, which Referents put there first, from each
-    // holder h ≠ E of W whose root Type passes the guard (MirWrites.Through), the holder each direct Loan not shared or address of σ(h)
-    // names, and E where σ(h) carries Φ_E; from one whose guard is Named (an abstract part, SPEC 15.6.4's provenance list), those holders
-    // and E where σ(h) carries Φ_W (the named step). One walk: each holder it reaches is asked its guard once, and each part of its state
-    // is a node read once per walk at that reading (Read); a holder the first step reads punned is read at its rows' guard too
-    // (Punned, Reading), whose Limit and Deep count as its own guard's. The two facts that leave the store undecided, which the call's location
-    // records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves undecided (MirWrites.Limit, R4-M147), and
-    // whether, at W's fixed point, the step from a holder whose guard is Deep would change what W writes (Changes, R4-M153; that step
-    // is left out, and a Deep holder whose step changes nothing decides nothing). Every store path (a Call's rows, its untied stores
-    // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent
-    // store, which takes W's first step alone, its row's destruction composed at the call (Referents; MirBorrows.Destructions;
-    // DECISIONS R4-M150).
+    // holder h ≠ E of W whose root Type passes the guard (MirWrites.Through, or Named: an abstract part, SPEC 15.6.4's provenance list),
+    // the holder each direct Loan not shared or address of σ(h) names, and E where σ(h) carries Φ_W, at either guard (item 1; DECISIONS
+    // R4-M249), but where σ(h) carries Φ_E past a holder whose Type holds storage it does not state (ReadDeclared) and at a declared-step
+    // target the walk cannot place whose own raw layer its Type expression writes (DeclaredUnowned). One walk: each holder it reaches is
+    // asked its guard once, and each part of its state is a node read once per walk at that reading (Read); a holder the first step reads
+    // punned is read at its rows' guard too (Punned, Reading), whose Limit and Deep count as its own guard's. The two facts that leave the
+    // store undecided, which the call's location records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves
+    // undecided (MirWrites.Limit, R4-M147), and whether, at W's fixed point, the step from a holder whose guard is Deep would change what
+    // W writes (Changes, R4-M153; that step is left out, and a Deep holder whose step changes nothing decides nothing). Every store path
+    // (a Call's rows, its untied stores among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a
+    // 4.6 to 4.9 operation's referent store, which takes W's first step alone, its row's destruction composed at the call (Referents;
+    // MirBorrows.Destructions; DECISIONS R4-M150).
     // The walk's state: its arguments, the output whose store it is (`output`: its records name the entries, the Φ_E rule's key condition
-    // reads its Kept) and the first step's guard (`root`: Named where its input key lies wholly in the kept binding, Referents), and
-    // walkComposes, which Keep sets from the plan before the walk begins.
-    private (bool Limit, bool Deep) Writes(ulong[] state, in MirTerminator call, int position, OutputRetention output, MirWrites root)
+    // reads its Kept), and walkComposes, which Keep sets from the plan before the walk begins.
+    private (bool Limit, bool Deep) Writes(ulong[] state, in MirTerminator call, int position, OutputRetention output)
     {
         var set = this.argValues[position];
         var input = cases.TypeOf(this.Input(call, position));
-        this.Write(set, ViaRoot, root); // The first step again, by the walk (Referents put its holders in the targets).
+        this.Write(set, ViaRoot); // The first step again, by the walk (Referents put its holders in the targets).
         foreach (var covered in this.covering)
         {
-            this.Write(this.argValues[covered], ViaRoot, MirWrites.Through);
+            this.Write(this.argValues[covered], ViaRoot);
         }
 
         var facts = this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(output))];
@@ -470,15 +486,14 @@ internal sealed partial class MirBorrows
         var (limited, deeps) = (false, false);
         for (int i = 0, n = 0; i < this.targets.Count; i++)
         {
-            var (guard, pun) = (this.Guard(this.targetRoots[i]), this.PunGuard(this.targets[i], punned));
-            guard = guard == MirWrites.None && this.RecordSteps(this.targetRoots[i], output) ? MirWrites.Through : guard; // (b2) at the declared step
+            var (guard, pun) = (this.DeclaredGuard(i, output), this.PunGuard(this.targets[i], punned));
             var held = state[this.targets[i]];
             limited |= guard == MirWrites.Limit || pun == MirWrites.Limit;
             deeps |= guard == MirWrites.Deep || pun == MirWrites.Deep;
 
             if (this.keyedBy[this.targets[i]] != this.walks)
             {
-                this.ReadHolder(held, guard);
+                this.ReadDeclared(held, this.targetRoots[i], guard);
             }
 
             this.ReadHolder(held, pun);
@@ -490,6 +505,7 @@ internal sealed partial class MirBorrows
             }
         }
 
+        this.DeclaredUnowned(state, output);
         var deep = false;
         for (var i = 0; deeps && i < this.targets.Count && !deep; i++)
         {
@@ -695,6 +711,7 @@ internal sealed partial class MirBorrows
         if (this.nodeSeen.Add((slot, key)))
         {
             this.nodes.Add((slot, root, type, key));
+            this.writingVia[slot] |= ViaKey; // Written reached it first in this walk, so its reset keeps the bit.
             // The Φ_E rule's site 2: a holder read at a key wholly in a kept output's binding is read by ReadAt alone (HiddenCarried), not
             // by the declared step at its root Type's guard.
             var hidden = this.KeptKey(this.punKeys[key], output);
@@ -730,7 +747,7 @@ internal sealed partial class MirBorrows
         guard = guard == MirWrites.None && this.Retains(facts, output) ? MirWrites.Through : guard; // (b2): the record steps
         if (facts.Declared)
         {
-            this.ReadHolder(state[node.Slot], this.Guard(node.Root)); // Its Limit and Deep are the target's (Writes).
+            this.ReadDeclared(state[node.Slot], node.Root, this.Guard(node.Root)); // Its Limit and Deep are the target's (Writes).
             this.ReadLayers(state, node, guard, readOn, output);
             return MirWrites.None;
         }
@@ -772,8 +789,8 @@ internal sealed partial class MirBorrows
         {
             if (this.punPastLayers[facts.PastStart + j].Class is PastLayer.Its or PastLayer.Borrow)
             {
-                this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
-                this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
+                this.ReadPart(Placed(state[node.Slot]), readOn, node.Key, j, output);
+                this.ReadPart(Shared(state[node.Slot]), readOn, node.Key, j, output);
             }
         }
 
@@ -782,6 +799,55 @@ internal sealed partial class MirBorrows
             this.OwnPointer(node.Key, output);
         }
     }
+
+    // The declared step's kept clause, a temporary structure (SPEC 15.6.4's composition and item 1; DECISIONS R4-M249): at a W target that
+    // no layer read makes a node (no ViaKey), whose declared step reads it at Through (DeclaredGuard) and whose root Type holds at its
+    // own address a raw layer without an Origin that its Type expression writes (RawOwn), the call may write its own pointer there, at a
+    // part A5 cannot place: a holder's state carries no positions, so the declared step reads it whole (ReadPart's Position note). There
+    // E stays written where the target's state carries Φ_E, as before R4-M249; a layer a declaration writes is the declared step's own
+    // (ReadDeclared). Removal condition: a holder's state carries positions (U5); the clause then becomes the call's own pointer at the
+    // key of the Place the reaching Loan names (writingPlace).
+    private void DeclaredUnowned(ulong[] state, OutputRetention output)
+    {
+        for (var i = 0; i < this.targets.Count; i++)
+        {
+            var slot = this.targets[i];
+            if (slot != Escaped && (this.writingVia[slot] & ViaKey) == 0 && this.DeclaredGuard(i, output) == MirWrites.Through &&
+                this.RawOwn(this.targetRoots[i]) &&
+                (this.sets.Contains(Placed(state[slot]), Escaped) || this.sets.Contains(Shared(state[slot]), Escaped)))
+            {
+                this.Written(Escaped, -1, ViaPast, null);
+            }
+        }
+    }
+
+    // Whether a holder's root Type holds at its own address a raw layer without an Origin that its Type expression writes (PastLayer.Its)
+    // at its root key (RecordSteps'), where a call may write its own pointer (DeclaredUnowned); a declaration's layer (Any) is
+    // ReadDeclared's (MirHolding.Unstated).
+    private bool RawOwn(int root)
+    {
+        if (root < 0)
+        {
+            return false;
+        }
+
+        var facts = this.punKeys[this.Key(PlaceKey.Root(cases.Type(this.body.Locals[root].Type!)), 0)];
+        for (var j = 0; j < facts.PastCount; j++)
+        {
+            if (this.punPastLayers[facts.PastStart + j].Class == PastLayer.Its)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The guard the declared step reads target i at (Writes): its root Type's, Through where that does not step but the record does
+    // ((b2), RecordSteps).
+    private MirWrites DeclaredGuard(int i, OutputRetention output)
+        => this.Guard(this.targetRoots[i]) is var guard && guard == MirWrites.None && this.RecordSteps(this.targetRoots[i], output)
+            ? MirWrites.Through : guard;
 
     // (b2): whether the declared step from a holder steps by the record: its root Type's guard does not step, but the walk output's entry
     // for the storage past one of its root Type's layers, the entry Binding names it by, retains an input (NamedRetains at the root Type's
@@ -832,7 +898,7 @@ internal sealed partial class MirBorrows
         => output is not null && types.EntryType(output, key) is ({ } type, true) ? types.Erase(cases.Type(type)) : null;
 
     // Route 1 (the Φ_E rule; SPEC 15.6.4, O-312 (a): the carried addresses are reached, hidden or not): a hidden part's value at `key`
-    // adds no reach of its own, but writes past the holder what the named step writes (Write at Named, R4-M147), once per (part, key):
+    // adds no reach of its own, but writes past the holder what the named step writes (Write, R4-M147), once per (part, key):
     // each holder its non-shared direct Loans and addresses name, E included, and E where it carries Φ_W, raw and safe parts alike (the
     // address of storage the body does not own, a parameter's referent's, is E's in A5's value, which does not tell it from a pointer of
     // unknown provenance). Where the call composes, each holder the pun rule's entries of the part name (PunEntry, the store rule's
@@ -844,7 +910,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        this.Write(part, ViaPast, MirWrites.Named);
+        this.Write(part, ViaPast);
         if (!this.walkComposes)
         {
             return;
@@ -922,7 +988,7 @@ internal sealed partial class MirBorrows
         => facts.WhollyHidden && !facts.AnyStated && output?.Kept is not null;
 
     // One state part read at one layer of a reading key, the layer's pointee or referent `type` and the key past it (SPEC 15.6 Holders, 5.2,
-    // 5.7's table, 15.6.4): E where the part carries Φ_E (Φ_W past a Named guard); each holder a non-shared direct Loan or address names,
+    // 5.7's table, 15.6.4): E where the part carries Φ_W (item 1, at either guard; DECISIONS R4-M249); each holder a non-shared direct Loan or address names,
     // typed where `type` designates its Place (Designates) and punned where it may take a raw pointer from the Place's bytes (PunRows),
     // through a borrow layer only where the referent is punnable: written with the record of `type`'s storage (Written's place: the
     // reading layer's, in place of R4-M154 Revision 8's Place Type of the reaching Loan; for a borrow of a Place's own Type the two
@@ -931,7 +997,7 @@ internal sealed partial class MirBorrows
     // layer (none: the layer reads nothing there). Past a holder
     // an element's Position is not known (R4-M198's Position is the argument value's; U5's per-element markers), so every row of its
     // Place's leading chain may be designated.
-    private void ReadPart(int part, MirWrites guard, bool readOn, int at, int layer, OutputRetention output)
+    private void ReadPart(int part, bool readOn, int at, int layer, OutputRetention output)
     {
         var facts = this.punKeys[at];
         var (type, raw, past, fold) = (this.punViewTypes[facts.FirstStart + layer], this.punPastLayers[facts.PastStart + layer].Class != PastLayer.Borrow,
@@ -942,12 +1008,11 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var named = guard == MirWrites.Named;
         this.Work += this.sets.Count(part);
         foreach (var element in this.sets.Elements(part))
         {
             this.walkResting |= element is Maybe or Undecided;
-            if (element == (named ? Writable : Escaped))
+            if (element == Writable)
             {
                 this.Written(Escaped, -1, ViaPast, this.KeptEntry(past, output));
             }
@@ -1014,20 +1079,36 @@ internal sealed partial class MirBorrows
     {
         if (guard is MirWrites.Through or MirWrites.Named)
         {
-            this.Read(Placed(held), guard);
-            this.Read(Shared(held), guard);
+            this.Read(Placed(held));
+            this.Read(Shared(held));
         }
     }
 
-    // A node of the walk: a part of a reached holder's state, read at its reading, the holder's guard, once per walk (W's own mark by set
-    // and walk level, MirBorrows.States' walkedBy, which a read inside the walk does not move): what a Named read writes, a Through read
-    // of the same part writes too (Φ_W is always beside Φ_E), so a part read at Through is not read again at Named, whichever holders'
-    // part it is; Written is idempotent, so a part read again writes nothing more.
-    private void Read(int part, MirWrites guard)
+    // The declared step from a reached holder (Writes' targets, ReadAt's declared keys): its state read at its root Type's guard
+    // (ReadHolder), and, where the call's writes compose (CallRetention.Composes, as rule 4 and H2 read it), E where the root Type's own
+    // storage holds storage its Type does not state (MirHolding.Unstated, whose write fact makes that guard Through) and the state
+    // carries Φ_E (SPEC 15.6.4, 5.7 Calls; the owner's O-13 Q3 (a); DECISIONS BU-46, BU-225, R4-M249). Such a content holds values the
+    // state does not list, any value of the holder's Origins or storage no Type states: its own mode lets the call write through it,
+    // and Φ_E, the holder's provenance, says that what it reaches may be storage the body does not own; Φ_W is the mode of what the
+    // body stored there.
+    private void ReadDeclared(ulong held, int root, MirWrites guard)
     {
-        if (Steps(ref this.walkedBy, part, (2 * this.walks) + (guard == MirWrites.Through ? 1 : 0)))
+        this.ReadHolder(held, guard);
+        if (this.walkComposes && root >= 0 && this.HoldingOf(cases.KnownType(this.body.Locals[root].Type)).Unstated &&
+            (this.sets.Contains(Placed(held), Escaped) || this.sets.Contains(Shared(held), Escaped)))
         {
-            this.Write(part, ViaPast, guard);
+            this.Written(Escaped, -1, ViaPast, null);
+        }
+    }
+
+    // A node of the walk: a part of a reached holder's state, read once per walk (W's own mark by set and walk level, MirBorrows.States'
+    // walkedBy, which a read inside the walk does not move): a part writes the same past a holder at either guard, whichever holders'
+    // part it is; Written is idempotent, so a part read again writes nothing more.
+    private void Read(int part)
+    {
+        if (Steps(ref this.walkedBy, part, (2 * this.walks) + 1))
+        {
+            this.Write(part, ViaPast);
         }
     }
 
@@ -1035,13 +1116,14 @@ internal sealed partial class MirBorrows
     // Written's ways (R4-M153, R4-M154): reach a holder W does not, one W reaches only at its first step, or one past a holder by another
     // record than the Type of the Place the step's Loan names (what the declared step, or a reading layer of the Place's own Type,
     // records; W's record is the reading layer's where it read the holder at a key, ReadPart); E, which takes Reached.All by either way,
-    // only where W does not reach it. A shared Loan names no holder the step writes (R4-M177).
+    // only where the set read carries Φ_W (the step's own rule, R4-M249) and W does not reach it. A shared Loan names no holder the step
+    // writes (R4-M177).
     private bool Changes(int set)
     {
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
-            if (element == Escaped ? this.ChangesUnowned() : element >= this.loanBase &&
+            if (element == Writable ? this.ChangesUnowned() : element >= this.loanBase &&
                 this.loans[element - this.loanBase] is { Direct: true, Named: >= 0, Mode: not MirRefKind.Shared } loan && this.Changes(loan))
             {
                 return true;
@@ -1061,19 +1143,19 @@ internal sealed partial class MirBorrows
     // (a punned reading's layers, Punned and Unowned; the call's own pointer's layer, OwnPointer; Written).
     private bool ChangesUnowned() => this.writing[Escaped] != this.walks || !this.writingPlace[Escaped].Several;
 
-    // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast) by the holder's guard (`past`: at the first
-    // step Through, or Named where its key lies wholly in the kept binding, Referents): the holder each direct Loan not shared or address
-    // names (R4-M177), and E where it carries Φ_E, past Named Φ_W. A value
-    // that may refer to storage the body does not own carries Φ_E and Φ_W where it is formed (an untied result or store, an integer's
-    // pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
-    private void Write(int set, byte via, MirWrites past)
+    // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast) at either guard: the holder each direct Loan
+    // not shared or address names (R4-M177), and E where it carries Φ_W (R4-M249; the first step's Φ_E is Referents', a content's
+    // ReadDeclared's). A value that may refer to storage the body does not own carries Φ_E and Φ_W where it is formed (an untied result
+    // or store, an integer's pointer and E's own content at entry; a parameter carries Φ_W only where the holding walk answers Writable,
+    // Initial) and where content or chain reaches E for a set with neither Φ_E nor a direct Loan (O-60, R4-M183), so a set naming
+    // nothing writes nothing.
+    private void Write(int set, byte via)
     {
-        var named = past == MirWrites.Named;
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
             this.walkResting |= element is Maybe or Undecided;
-            if (element == (named ? Writable : Escaped))
+            if (element == Writable)
             {
                 this.Written(Escaped, -1, via, null);
             }

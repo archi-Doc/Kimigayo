@@ -403,10 +403,12 @@ public sealed class BindingSymbol
 
     internal BindingScope Scope { get; set; }
 
-    /// <summary>Gets or sets the executable body that declares this function and that EvaluatingBody returns (SPEC 15.3.4;
-    /// Binding.ExecutableBodies.cs): a Closure's evaluating body, which binds its header and captures, written by its header scope
-    /// (ClosureHeaderScope) before any header binding; a named nested function's declaring body, written by the index walk that
-    /// declares it (DeclareFunction); no body for any other symbol. MIR never reads it.</summary>
+    /// <summary>Gets or sets the executable body that declares this function or local, which EvaluatingBody returns for a function
+    /// (SPEC 15.3.4; Binding.ExecutableBodies.cs): a Closure's evaluating body, which binds its header and captures, written by its header
+    /// scope (ClosureHeaderScope) before any header binding; a named function's declaring body (DeclareFunction: a root function's is its
+    /// module's top-level statements; none for a Type's member) and a local's, always a body (IndexNode), written by the index walk that
+    /// declares it; no body for any other symbol. A local's declaration is formed in it whoever demands it (FormingBodyOf, the one reader
+    /// for a local; PLAN G1369). MIR never reads it.</summary>
     internal ExecutableBody DeclaringBody { get; set; }
 
     internal SyntaxFormKoto? ConditionalDeclaration { get; set; }
@@ -1091,15 +1093,10 @@ internal enum ReferenceSlotFailure : byte
 // comparison, never a call-time Origin of the implementation.
 internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
 
-// SPEC 23.1.2: a record of a node beyond its first, of either Origin kind: a failed chain of an Origin relation (Relation) or a failed
-// condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind.
+// SPEC 23.1.2: an Origin record of a node, its first included, of either kind: a failed chain of an Origin relation (Relation) or a failed
+// condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind. A
+// Constraint record keeps one as the Origin relation it shows (an Owned record's, a Callable record's contract; R7-E4 E4e).
 internal readonly record struct OriginRecord(OriginRelationFact? Relation, OriginContractFact? Contract);
-
-// SPEC 15.2.3, 23.1: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
-// which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
-// capture entry and closure it belongs to, the Borrow that supplies a captured binding's Origin, and whether the failure is Refuted (a
-// body-local Origin) rather than Unknown.
-internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, string Member, BoundType MemberType, BoundOrigin? Origin, CaptureKoto? Entry, FunctionKoto? Closure, Koto? Borrow, bool Refuted);
 
 internal enum ObjectCountingStep : byte
 {

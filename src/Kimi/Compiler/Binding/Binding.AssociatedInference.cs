@@ -203,12 +203,13 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2: a conformance resting on a specification is derived from what has failed by publication: the clause, or its
-    // specified Type when only that failed, such as a formation proven at the Definition deadline.
+    // specified Type when only that failed or did not resolve, such as a formation proven at the Definition deadline or an unknown name
+    // (PLAN G1405); IsDerived reads whether that part's record, or the record it rests on, is reported.
     private void SettleSpecificationLinks()
     {
         for (var i = 0; this.specificationLinks is { } links && i < links.Count; i++)
         {
-            if (this.partPrerequisites.TryGetValue(links[i], out var part) && part is IsKoto { BindingFailure: BindingFailure.None, BindingState: not BindingState.Invalid, Right: { BindingState: BindingState.Invalid } specified })
+            if (this.partPrerequisites.TryGetValue(links[i], out var part) && part is IsKoto { BindingFailure: BindingFailure.None, BindingState: not BindingState.Invalid, Right: { BindingState: not BindingState.Resolved } specified })
             {
                 this.partPrerequisites[links[i]] = specified;
             }

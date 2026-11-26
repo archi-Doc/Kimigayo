@@ -23,7 +23,7 @@ public sealed partial class Binding
     private bool LacksRequirementSubject(Koto use, BindingSymbol selected)
         => selected.Declaration is FunctionKoto { IsRequirement: true } && use is not RequirementCalleeKoto && this.ReferenceRequirements(use) is null;
 
-    private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
+    private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type)
     {
         // SPEC 9.6, 13.3.3, 13.4.1, 22.10.2: requirements are gathered from Constraints, so only a Type parameter, a projection or a
         // Contract's Self has requirement members; a built-in conformance adds no member (a built-in Type, a Tuple, a reference layer).
@@ -46,8 +46,8 @@ public sealed partial class Binding
             Add(own);
         }
 
-        // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
-        // rows: the use is judged).
+        // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, each non-Alias row of Enumerate's rows (the use is
+        // judged); the reader (Identified) identifies the rest.
         var start = this.premiseRows.Count;
         this.PremiseRows(type, scope, this.premiseRows);
         for (var i = start; i < this.premiseRows.Count; i++)
@@ -120,26 +120,12 @@ public sealed partial class Binding
             return null;
         }
 
+        // A Property-only group gives its Property for either path, which judges it: SPEC 11.9's instance-only use is the Type path's
+        // verdict (TypePathFailure), several identities the value step's limit (ReceiverMember). The gather records no use.
         if (group.Properties.Count != 0 && group.Members.Count == 0)
         {
             group.Active = false;
-            if (group.Properties.Count == 1 && !typeAccess)
-            {
-                return group.Properties[0];
-            }
-
-            // SPEC 11.9: a Property requirement is instance-only, so a Type names none; several identities are not implemented (the
-            // located limit). The check's own decision, each in its family's form; the caller's FailMissing keeps this first failure.
-            if (typeAccess)
-            {
-                this.Record(member, BindingFailure.MissingName, [], unresolved: true);
-            }
-            else
-            {
-                this.RecordLocated(member, member.Span, unresolved: true);
-            }
-
-            return null;
+            return group.Properties[0];
         }
 
         group.Active = group.Members.Count != 0;
@@ -175,14 +161,14 @@ public sealed partial class Binding
             }
         }
 
-        // R7-C3 (C-f3a; SPEC 8.2.3, 8.6.1): a requirement reached through two references the judge identifies in the use's view
-        // (`P<U.(HasItem).Item>` and `P<i32>` under `U.(HasItem).Item is i32`) is one candidate.
+        // R7-C3 (C-f3a; SPEC 8.2.3, 8.6.1): a requirement reached through two references that are one Type in the use's view is one
+        // candidate, by a premise (`P<U.(HasItem).Item>` and `P<i32>` under `U.(HasItem).Item is i32`) or by a completed binding, a
+        // ground with no premise (`P<SrcI.(HasItem).Item>` and `P<i32>`); SameNormalizedRequirement judges it.
         bool Identified(List<BindingSymbol> requirements, List<BindingSymbol> contracts, BoundRequirement identity)
         {
             for (var j = 0; j < requirements.Count; j++)
             {
-                if (ReferenceEquals(requirements[j], identity.Symbol) && contracts[j].Type is { } kept && identity.Contract.Type is { } reached &&
-                    this.IdentityProven(kept, reached, scope, out _))
+                if (this.SameNormalizedRequirement(new(requirements[j], contracts[j]), identity, scope, member))
                 {
                     return true;
                 }

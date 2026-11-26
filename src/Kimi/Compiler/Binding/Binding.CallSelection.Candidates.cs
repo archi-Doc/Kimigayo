@@ -27,6 +27,7 @@ public sealed partial class Binding
         var unformedMark = this.unformedWrites;
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         var wholesMark = this.wholes.Count;
+        var ownTypesMark = this.ownTypes.Count;
         try
         {
             var state = this.TryCandidateCore(ref solution, expected, operations, ref row);
@@ -58,6 +59,7 @@ public sealed partial class Binding
         finally
         {
             this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
+            this.ownTypes.RemoveRange(ownTypesMark, this.ownTypes.Count - ownTypesMark);
             this.CloseTrial(enclosing);
             (this.acquisitionFailure, this.activeRequirementContract) = (savedAcquisition, savedContract);
         }
@@ -607,9 +609,10 @@ public sealed partial class Binding
                             }
 
                             // SPEC 10.5: without a Callable Constraint on F the candidate supplies no expectation; it is compared under
-                            // 10.4 without the body, and only if it is selected is the argument checked without S.
+                            // 10.4 without the body, and only if it is selected is the argument checked without S. At its F it is ranked by
+                            // CallableAtSlotClass.
                             waitingCallables = true;
-                            operations[i] = new(call.ArgumentNodes[i], null, signature, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                            operations[i] = new(call.ArgumentNodes[i], null, signature, ArgumentOperationKind.Value, CallableAtSlotClass, ParameterIndex: mapping[i]);
                             continue;
                         }
 
@@ -618,32 +621,33 @@ public sealed partial class Binding
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
                             BoundType? openType = null;
-                            if (this.KindOf(argument) != PartKind.Literal &&
+                            if (kind != PartKind.Literal &&
                                 MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)) &&
-                                (this.AwaitedKind(argument) is not (PartKind.Call or PartKind.Case) || this.ProbedResultOpen(expected, call, function, unboundSlots) ||
-                                (openType = solution.OpenType(pattern)) is not null))
+                                ((kind is not (PartKind.Aggregate or PartKind.Join) && this.AwaitedKind(argument) is not (PartKind.Call or PartKind.Case)) ||
+                                this.ProbedResultOpen(expected, call, function, unboundSlots) || (openType = solution.OpenType(pattern)) is not null))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
                                 // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
                                 // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
-                                // A whole literal or join ranks as its fit there ranks it (ExpectedTypeClass; PLAN G924, G916).
-                                // SPEC 10.5.1 (PLAN G924 AF-3b v3-A commit 3a; ArgFlow rulings 156, 159, 160; design section 3's reader
-                                // table row 1, 11.8): a nested call, construction or Case that awaits its call is checked at the position's
-                                // open Type (OpenType), its candidate the in-flight owner, by FitArgument (FitChecked, or the place rule for
-                                // a leading-dot Case at a bare atom), as at a closed position: a part that does not check there makes the
-                                // candidate inapplicable, and CheckedClass is its one class source at both positions. Its waiting part is
-                                // completed after selection, never at an atom. Under the argument probe a candidate whose result holds a
-                                // slot no evidence binds queries none (ProbedResultOpen): the part has no class, and the candidate defers
-                                // the call unranked (Deferred; ArgFlow ruling 171 C2), so its operation's adaptation is never compared.
+                                // SPEC 10.5.1, 10.4 step 1 (PLAN G924 AF-3b v3-A commit 3a, PLAN G814; ArgFlow rulings 156, 159, 160): a
+                                // checked part, a nested call, construction or Case that awaits its call or a Tuple or array literal or a join,
+                                // is checked at the position's open Type (OpenType), its candidate the in-flight owner, by FitArgument, as at
+                                // a closed position: a part that does not fit there makes the candidate inapplicable (a Pending or Error fit is
+                                // its state, as the closed row below returns it), and its operation's class and positions are the fit's
+                                // (CheckedClass, the place rule at a bare atom, FitComposite), so its closed positions are ranked while a part
+                                // held at an atom is ranked whole (BetterCandidate's walk). A waiting part is completed after selection, never
+                                // at an atom. Under the argument probe a candidate whose result holds a slot no evidence binds queries none
+                                // (ProbedResultOpen): a call part has no class, and the candidate defers the call unranked (Deferred; ArgFlow
+                                // ruling 171 C2); a literal or join keeps the class of its materialization at the pattern, with no positions.
                                 row.Deferred |= openType is null && this.AwaitedKind(argument) is PartKind.Call or PartKind.Case;
                                 var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure
-                                    : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join
+                                    : kind is PartKind.Aggregate or PartKind.Join
                                     ? ExpectedTypeClass(this.Materialization(argument, pattern, scope)) : ArgumentAdaptation.Exact;
+                                var checkedOperation = default(BoundArgumentOperation);
                                 if (openType is not null)
                                 {
                                     var checkedFit = CandidateApplicability.Inapplicable;
-                                    var checkedOperation = default(BoundArgumentOperation);
                                     this.infer.PushOwner(frame.Id);
                                     try
                                     {
@@ -655,7 +659,7 @@ public sealed partial class Binding
                                     }
 
                                     this.waitingParts.RemoveRange(this.waitingBase, this.waitingParts.Count - this.waitingBase);
-                                    if (checkedFit == CandidateApplicability.Inapplicable)
+                                    if (checkedFit is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                                     {
                                         return checkedFit;
                                     }
@@ -663,7 +667,7 @@ public sealed partial class Binding
                                     adaptation = checkedOperation.Adaptation;
                                 }
 
-                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
+                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i], Positions: checkedOperation.Positions);
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
                                 {
                                     waitingCallables = true;
@@ -817,7 +821,7 @@ public sealed partial class Binding
             // the fills, and its fit holds at every atom, so where the fills agree in no structure (FillOpenSlots) the match decides (tw3).
             if (expected is not null && result is not null && ((result.ContainsOpenSlot && !expectedStructure) ||
                 (!this.FitsStructuralPartAt(result, this.ContractType(expected, scope), call) &&
-                this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)))
+                ReferenceEquals(this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false), result))))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -928,6 +932,7 @@ public sealed partial class Binding
         var call = solution.Call;
         var function = solution.Function;
         var wholes = this.wholes.Count;
+        var ownTypes = this.ownTypes.Count;
         solution.LeaveUnbound(ref left);
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
@@ -942,12 +947,37 @@ public sealed partial class Binding
             }
 
             var mark = this.unformedWrites;
+            var gathered = this.ownTypes.Count;
             if (solution.Pattern(parameter) is { } latePattern && !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true) &&
                 this.UnformedPart(ref solution, parameter, i, this.FormsNone(parameter, mark)) is not true)
             {
                 return false;
             }
+
+            for (var p = gathered; p < this.ownTypes.Count; p++)
+            {
+                this.ownTypes[p] = (this.ownTypes[p].Pattern, this.ownTypes[p].Part, i);
+            }
         }
+
+        // SPEC 10.5.1 bullet 2 (OwnTypeSteps' order): the nested calls' own Types the walk gathered; one that fails through its own
+        // pattern's formation is judged as its argument is (UnformedPart).
+        for (var p = ownTypes; p < this.ownTypes.Count; p++)
+        {
+            var mark = this.unformedWrites;
+            if (solution.InferGathered(p, out var i))
+            {
+                continue;
+            }
+
+            var parameter = function.Parameters[solution.Mapping[i]].Type.BoundType!;
+            if (this.UnformedPart(ref solution, parameter, i, this.FormsNone(parameter, mark)) is not true)
+            {
+                return false;
+            }
+        }
+
+        this.ownTypes.RemoveRange(ownTypes, this.ownTypes.Count - ownTypes);
 
         // SPEC 10.8, 10.2.1: the defaults bind what no evidence bound (the owner's O-343 (a), O-347 (a)); an input formed only now is
         // inferred now, and the wholes the defaults or it give are bound (SettleSources).

@@ -36,6 +36,8 @@ public sealed partial class RecursiveContractTest
 
     private const string IntTwice = "group H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)\n        T is IntTree\n        return (value, value)\n";
 
+    private const string BadChild = "contract Tree\n    associate Child is Tree\ncontract Num\n    func n(self: ref/Self) -> i32\ncontract Show\n    func show(self: ref/Self) -> i32\ncontract Bad: Tree\n    bool is PrimitiveInteger\nfunc needNum<U>(u: ref/U) -> i32\n    U is Num\n    return 0\nfunc needShow<U>(u: ref/U) -> i32\n    U is Show\n    return 0\nfunc probe<T>(t: ref/T, c: ref/T.(Tree).Child) -> i32\n    T is Tree\n    T.(Tree).Child is Bad\n";
+
     private const string Marks = "contract Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\n";
 
     // R7-C2c2 c2-5a (G837, the Middle's C-304 R2, rebuilt from its text): MT's clause names MT's own parameter.
@@ -297,6 +299,9 @@ public sealed partial class RecursiveContractTest
     // proposition, R7-C2c2 c2-5b2, F's CC-25): 44, 94 and 104 (24, 74 and 84 without the forget). N3's observable: an
     // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (104 -> 84; reopening by the
     // table's finality did: a round with no rows builds a Final table).
+    // R7-C2c2 c2-5c (F's CC-35): IndexNormalized files the reading of a Contract fact over a projection in a view with no identity
+    // premise too (the per-fact domain; plan section 2's cost), so the view's entries index those readings beside AT2's facts: 24 more
+    // pairs in each program, (44, 94, 104) -> (68, 118, 128).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
@@ -306,7 +311,7 @@ public sealed partial class RecursiveContractTest
         probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
         var copy = Work(Orders + probe) - orders;
         probe += "    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal((44, 94, 104), (tree, copy, Work(Orders + probe) - orders));
+        Assert.Equal((68, 118, 128), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }
@@ -500,7 +505,9 @@ public sealed partial class RecursiveContractTest
     // nts2c-rev is invalid and accepted, and nts2n-pos's use is refuted but Unproven, until e2-7's closure (R7-C2e2): the identity at
     // depth is in no view's table.
     // ncs2g's noMark is a group's (SPEC 6.1.1: a Container body never finds a root function; ncs2, a guard row, keeps that record).
-    // twcall keeps b1-r2-failed's records with a name discovery before the copy (W6: a walk that consulted a failure keeps no rows).
+    // twcall keeps b1-r2-failed's records with a name discovery before the copy (W6: a kept answer joins the limit its walk wrote).
+    // p-res1 and p-res1r (F's CC-66 B1) keep `T is Show`'s own record in either order: the walk of `T.(Tree).Child` reads Bad's
+    // failure, and the prefix link `T` it formed is not kept with that limit (W6: such a walk keeps its subject and key links alone).
     [InlineData("c2-5b2", "nc2", "contract NC\n    associate Next is NC\n    associate V\n    Self.(NC).V is not Copy\n    func near(self: ref/Self) -> ref/Self.(NC).V\n    func deep(self: ref/Self) -> ref/Self.(NC).Next.(NC).V\nfunc noCopy<V>(v: ref/V) -> i32\n    V is not Copy\n    return 0\nfunc probe<T>(t: ref/T) -> i32\n    T is NC\n    let v = t.deep()\n    return noCopy(v)\n", "")]
     [InlineData("c2-5b2", "nc3", NegatedCopies + NoCopy + "func probe<T>(t: ref/T) -> i32\n    T is NC\n    let v = t.deep3()\n    return noCopy(v)\n", "")]
     [InlineData("c2-5b2", "nm2", NegatedMarks + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NM\n    let v = t.deep()\n    return noMark(v)\n", "")]
@@ -545,6 +552,8 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "b1n4-noparent", "contract Tree\n    associate Child is Tree\ncontract PTree: Tree\n    Self.(Tree).Child is PTree\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)\n        T is PTree\n        return (value, value)\n", "TransferRequired_Kd: return (value, value)")]
     [InlineData("guard", "b1-r2-failed", IntTrees + "    bool is PrimitiveInteger\n" + IntTwice, "UnsatisfiedConstraint_Kd: contract IntTree: Tree | UnprovenConstraint_Kd: Self.(Tree).Child is IntTree | UnprovenConstraint_Kd: Self.(Tree).Value is PrimitiveInteger | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | InvalidConstraint_Kd: public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)")] // R7-C3 C3-1b (F's C2 rulings 288 (2), 290; DECISIONS Q13, code): `twice`'s premise `T is IntTree` names an invalid declaration (IntTree's closed `bool is PrimitiveInteger` is Refuted; SPEC 8.3.1, 8.2.3), as `caller`'s `T is Marker` does: one record, same site
     [InlineData("c2-5b2", "twcall", "contract Tree\n    associate Child is Tree\n    associate Value\ncontract Num\n    func n(self: ref/Self) -> i32\ncontract IntTree: Tree\n    Self.(Tree).Child is IntTree\n    Self.(Tree).Value is PrimitiveInteger\n    Self.(Tree).Value is Num\n    bool is PrimitiveInteger\ngroup H\n    public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)\n        T is IntTree\n        let k = value.n()\n        return (value, value)\n", "UnsatisfiedConstraint_Kd: contract IntTree: Tree | UnprovenConstraint_Kd: Self.(Tree).Child is IntTree | UnprovenConstraint_Kd: Self.(Tree).Value is PrimitiveInteger | UnprovenConstraint_Kd: Self.(Tree).Value is Num | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | InvalidConstraint_Kd: public func twice<T>(value: T.(Tree).Child.(Tree).Value) -> (T.(Tree).Child.(Tree).Value, T.(Tree).Child.(Tree).Value)")]
+    [InlineData("c2-5b2", "p-res1", BadChild + "    let a = needNum(c)\n    return needShow(t)\n", "UnsatisfiedConstraint_Kd: contract Bad: Tree | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | UnprovenConstraint_Kd: return needShow(t)")]
+    [InlineData("c2-5b2", "p-res1r", BadChild + "    let b = needShow(t)\n    return needNum(c)\n", "UnsatisfiedConstraint_Kd: contract Bad: Tree | UnsatisfiedConstraint_Kd: bool is PrimitiveInteger | UnprovenConstraint_Kd: let b = needShow(t)")]
     // Guard rows (F's CC-29 (4), the Middle's C-570; CC-30 N7, N8, the review's Phase B): rd-other and rd-neg, a failed premise the
     // Copy walk does not read (another subject; a negation supplies only its atom's refutation), keep `TransferRequired_Kd` (rule W's
     // limit, SPEC 23.1.2); rv-nc2-need, a positive use the negated clause at depth refutes, is `NoApplicableOverload_Kd` (SPEC 8.3.2,

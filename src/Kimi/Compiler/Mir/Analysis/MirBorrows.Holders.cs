@@ -6,7 +6,8 @@ namespace Kimi.Compiler.Mir;
 // with each Loan's reservation holder and named holder mapped to slots. A local is a holder when its case Type may hold a Loan, it is
 // exposed (Holding), or a store of the body gives it a value read from a holder (Flowing), the least such set; a local that holds only
 // calls' results and Case payloads of them (Returned) gives none from a Case payload that holds no Loan (MirBorrows.Values' Unheld)
-// but what a call's write source stored in it, which its write slot, in the flow region, carries (WriteSlots).
+// but what a call's write source stored in it, which its write slot, in the flow region, carries (WriteSlots), and all it holds once a
+// store of the body through a Deref put a value of its own there (Φ_B, StoredThrough; R4-M250).
 // A holder a kept Drop past the destruction walk's bound drops has a drop slot right after its own, in its region, whose state is
 // always empty: drop-liveness, the liveness that only such a Drop gives (MirBorrows.Liveness; DECISIONS R4-M153).
 // A local of no Type, a slot Binding failed or a value derived from one (PLAN G1073), holds nothing (rule W): neither Holding nor
@@ -14,6 +15,9 @@ namespace Kimi.Compiler.Mir;
 // Must not carry, end or check a Loan (MirBorrows.Solve, MirBorrows.Endings, MirBorrows.Checks).
 internal sealed partial class MirBorrows
 {
+    private const int BodyValue = -1; // Puts: a value of the body's own (Whole's none).
+    private const int ResultValue = -2; // Puts: a call's result that keeps no source slot's input by Value.
+
     private readonly List<(int Slot, int Local)> drops = []; // The view's drop slots, each with its holder's local.
     private readonly List<int> flowQueue = []; // Flowing's worklist: the holders whose edges are still to follow.
     private readonly List<int> pointed = []; // Written's worklist: the locals whose referring stores are still to follow.
@@ -23,7 +27,7 @@ internal sealed partial class MirBorrows
     private int[] mixFirst = []; // By local: its first edge in mixEdges, -1 for none (Mixing).
     private int[] mixEdges = []; // Mixing's edges, two entries each: the local a whole Move or Copy gives the value, and its source's next edge.
     private bool[] mixed = []; // By local: whether it may hold a value that is neither a call's result nor a Case payload of one (Mixing).
-    private bool[] written = []; // By local: whether a call's write source may store in it (Mixing, Writes).
+    private bool[] written = []; // By local: whether a call's write source or a store through a Deref may store in it (Mixing, Writes).
     private int[] writeSlots = []; // By local: its write slot, -1 for none; set where writeCount > 0.
     private int[] slotWrites = []; // By holder slot: its local's write slot, -1 for none; set where writeCount > 0.
     private int writeCount; // The view's write slots, -1 before the slots are numbered.
@@ -238,12 +242,15 @@ internal sealed partial class MirBorrows
     // is Moved or Copied whole from local to local, a Case payload of it is bounded as it is (the owner's O-383 (b); a Field or element of
     // the result that is no reference stays the holder's part, O-364 (a)), and a reference Copied out of a Field, Tuple element or Case
     // payload of it is what the owner's O-437 (b) means by "a reference the call returns as a part of its result" (the referent bound,
-    // MirBorrows.Values' Sources). A pointer the body formed on such a local does not make it one of them otherwise:
-    // a raw write is SPEC 15.6 Addresses', and a store of the body through a reference to it is not read here (a known limit: the row
-    // rvCaseRefWriteBad). A call's write may store a value a Loan-free Case payload may hold and that may carry a Loan in a local
-    // (Writes): the local stays a call's result, written, as is a local such a Move or Copy gives its value, and its write slot carries
-    // what the writes store (WriteSlots; a view with a write source runs Mixing before the slots are numbered, WriteSourced). An edge
-    // per such Move or Copy, then a worklist from the others, each edge once, linear in the body.
+    // MirBorrows.Values' Sources). What a store puts in its holder is Puts' (the one classifier, which StoredThrough reads at a store
+    // through a Deref). A pointer the body formed on such a local does not make it one of them: a call's write may store a value a
+    // Loan-free Case payload may hold and that may carry a Loan in a local (Writes), and a store of the body through a borrow or raw
+    // Deref (Through) may store in every exposed local (SPEC 15.6: a write through a reference adds the written value's Loans to every
+    // holder it may reach; a holder only a shared Loan names is written by no valid program, 15.6.2; R4-M250): the local stays a call's
+    // result, written, as is a local such a Move or Copy gives its value, and its write slot carries what the writes store, Φ_B where
+    // such a store put a value of the body's own (WriteSlots, StoredThrough; a view with a write source or such a store runs Mixing
+    // before the slots are numbered, WriteSourced). An edge per such Move or Copy, then a worklist from the others, each edge once,
+    // linear in the body.
     private void Mixing()
     {
         var locals = this.body.Locals;
@@ -265,17 +272,29 @@ internal sealed partial class MirBorrows
             for (var s = data.Start; s < data.Start + data.Count; s++)
             {
                 ref readonly var statement = ref this.body.Statements[s];
-                if (statement is { Kind: MirStatementKind.Assign, Place.Root: >= 0 and var to } && !this.mixed[to] && !this.Through(statement.Place))
+                if (statement.Kind != MirStatementKind.Assign)
                 {
-                    var from = statement.Place.Projection == 0 ? this.Whole(statement.Rvalue) : -1;
+                    continue;
+                }
+
+                var through = this.Through(statement.Place); // A store through a Deref writes every exposed local (StoredThrough).
+                lost |= through;
+                if (statement.Place.Root is >= 0 and var to && !through && !this.mixed[to])
+                {
+                    var from = this.Puts(s, statement.Place.Projection != 0);
                     edges = from >= 0 ? Linked(ref this.mixEdges, this.mixFirst, (from, to), edges) : edges;
                     this.mixed[to] = from < 0;
                 }
             }
 
-            if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place: { Root: >= 0 and var into } place } call && !this.Through(place))
+            if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place: var place })
             {
-                this.mixed[into] |= place.Projection != 0 || this.KeepsSourced(call);
+                var through = this.Through(place);
+                lost |= through;
+                if (place.Root >= 0 && !through)
+                {
+                    this.mixed[place.Root] |= this.Puts(this.Location(b, data.Count), place.Projection != 0) == BodyValue;
+                }
             }
 
             lost |= data.Terminator.Kind == MirTerminatorKind.Call && this.Writes(data.Terminator);
@@ -326,9 +345,10 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The write slots (A3 3): a local a call's write source may store in (written) that holds only calls' results takes one in the flow
-    // region, which the call's write source joins (MirBorrows.Calls' Keep) and a whole store replaces (Rewrite), so a
-    // Case payload the Case bound empties, or a referent the referent bound empties, carries what the writes stored (MirBorrows.Values' Read); the count.
+    // The write slots (A3 3): a local a call's write source or a store through a Deref may store in (written) that holds only calls'
+    // results takes one in the flow region, which the call's write source (MirBorrows.Calls' Keep) and the store (StoredThrough) join and
+    // a whole store replaces (Rewrite), so a Case payload the Case bound empties, or a referent the referent bound empties, carries what
+    // the writes stored, and all its holder holds where the slot holds Φ_B (MirBorrows.Values' Read); the count.
     private int WriteSlots()
     {
         var (locals, count) = (this.body.Locals.Length, 0);
@@ -398,20 +418,35 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Whether a call of the view has a write source (an output whose record holds a source slot, Sourced), so Mixing decides the written
-    // locals before the slots are numbered (Holders); a view without one keeps Mixing lazy. Each block, each call's retention lookup,
-    // each input SourceSlots tests and each output's source slot count as Work.
+    // Whether a store of the view passes a borrow or raw Deref (StoredThrough) or a call of it has a write source (an output whose record
+    // holds a source slot, Sourced), so Mixing decides the written locals before the slots are numbered (Holders); a view without either
+    // keeps Mixing lazy. Each statement, each block, each call's retention lookup, each input SourceSlots tests and each output's source
+    // slot count as Work.
     private bool WriteSourced()
     {
-        this.Work += this.body.Blocks.Length;
+        this.Work += this.body.Statements.Length + this.body.Blocks.Length;
         for (var b = 0; b < this.body.Blocks.Length; b++)
         {
-            if (this.body.Blocks[b].Terminator is not { Kind: MirTerminatorKind.Call } call)
+            ref readonly var data = ref this.body.Blocks[b];
+            for (var s = data.Start; s < data.Start + data.Count; s++)
+            {
+                if (this.body.Statements[s].Kind == MirStatementKind.Assign && this.Through(this.body.Statements[s].Place))
+                {
+                    return true;
+                }
+            }
+
+            if (data.Terminator is not { Kind: MirTerminatorKind.Call } call)
             {
                 continue;
             }
 
             this.Work++;
+            if (call.Target >= 0 && this.Through(call.Place))
+            {
+                return true;
+            }
+
             if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention || retention.Writes.IsEmpty)
             {
                 continue;
@@ -520,6 +555,20 @@ internal sealed partial class MirBorrows
         return false;
     }
 
+    // What a store of the body through a borrow or raw Deref joins into the write slot of each holder it reaches (MirBorrows.Flow's
+    // Store; SPEC 15.6: a write through a reference "adds the written value's Loans to every holder it may reach and ends none";
+    // R4-M250), by what it puts there (Puts, `part` where steps follow its last Deref): a whole Move or Copy of a local that holds only
+    // calls' results gives that local's write slot (none without one), a call's result nothing; a value of the body's own, a mixed
+    // local's included, gives Φ_B, which makes a read the bounds empty read whole from that point on (MirBorrows.Values' Read) until a
+    // whole store replaces the slot (Rewrite).
+    private int StoredThrough(ulong[] state, bool part)
+    {
+        var from = this.Puts(this.planLocation, part);
+        return from == ResultValue ? 0
+            : from < 0 || this.mixed[from] ? this.builtSet
+            : this.writeSlots[from] >= 0 ? this.Set(state[this.writeSlots[from]]) : 0;
+    }
+
     // A whole store into a local with a write slot, the start or end of its storage included, replaces the slot (SPEC 15.6 Holders: a
     // holder completely replaced no longer carries the Loans of its old value; the review's B2): cleared, then joined with the write slot
     // of the local whose value, Case payload or reference part a Move or Copy stores (Whole), if any, so the value moved carries what the writes
@@ -557,9 +606,24 @@ internal sealed partial class MirBorrows
         return first;
     }
 
+    // What the store at a location (an Assign's or a returning Call's) puts into its destination holder, the one classifier of it, read
+    // by Mixing at a direct destination and by StoredThrough at one through a Deref (SPEC 15.6 Holders; the owner's O-383 (b); R4-M250),
+    // where `part` says that the store writes a part of the holder: the local whose whole value, Case payload or held reference a whole
+    // Move or Copy stores (Whole), a call's result that keeps no source slot's input by Value (ResultValue, KeepsSourced), else a value
+    // of the body's own (BodyValue).
+    private int Puts(int location, bool part)
+    {
+        if (location >= this.body.Statements.Length)
+        {
+            return part || this.KeepsSourced(this.body.Blocks[location - this.body.Statements.Length].Terminator) ? BodyValue : ResultValue;
+        }
+
+        return part ? BodyValue : this.Whole(this.body.Statements[location].Rvalue);
+    }
+
     // The local whose whole value, a Case payload of whose value at any depth (through payload steps alone, MirBorrows.Values' Payload),
     // or a reference it holds as a part (through Field and payload steps alone: a Field, a Tuple element or a Case payload; no Deref or
-    // Index) an rvalue is by a Move or Copy (an Adapt's case-selected one), or -1.
+    // Index) an rvalue is by a Move or Copy (an Adapt's case-selected one), or -1 (BodyValue).
     private int Whole(in MirRvalue assigned)
     {
         var rvalue = assigned.Kind == MirRvalueKind.Adapt ? cases.Adapt(assigned, out _) : assigned;

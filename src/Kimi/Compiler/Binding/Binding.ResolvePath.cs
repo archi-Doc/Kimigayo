@@ -655,9 +655,16 @@ public sealed partial class Binding
     }
 
     // A qualifier declaration's own Type, whose members lookup reads (arguments and Origins never change a selection): a Type's
-    // SelfType, a group's nominal Type; none for another qualifier.
-    private BoundType? OwnType(BindingSymbol qualifier) => qualifier.Type is not null ? this.SelfType(qualifier)
+    // SelfType, a group's nominal Type; none for another qualifier, or one that forms no Type of its own (FormsOwnType).
+    private BoundType? OwnType(BindingSymbol qualifier) => !this.FormsOwnType(qualifier) ? null
+        : qualifier.Type is not null ? this.SelfType(qualifier)
         : qualifier.Declaration is GroupKoto { IsRoot: false } ? this.types.Intern(BoundTypeKind.Nominal, qualifier, SemanticsKind.Owner, []) : null;
+
+    // SPEC 9.6, 8.6.4: whether the Type path over a qualifier looks up the members of a Type the qualifier's declaration forms: a
+    // declaration that is no Contract and has a member scope. Another qualifier (a Type parameter, a Semantics target, a Contract) has
+    // only the requirements of its own Type (QualifierSelection over none). Read by OwnType (the unpublished evaluation) and by
+    // TypeSideMember (the published path), so both take one decision.
+    private bool FormsOwnType(BindingSymbol qualifier) => qualifier.Declaration is not ContractKoto && this.scopes.ContainsKey(qualifier.Declaration);
 
     // A member access's left's value reading (SPEC 9.6), evaluated unpublished: None when it has none (a Type head; a head with no value;
     // a projection step with no static value outward of it); StageFailure when the head's value lookup stopped or conflicted at its
@@ -989,11 +996,18 @@ public sealed partial class Binding
         return current.Parameters?.Values?.GetValueOrDefault(name) is { } slot && this.Accessible(slot, scope) ? new(PathEnd.Selected, slot, use) : new(PathEnd.Unresolved, null, use);
     }
 
-    // SPEC 9.3, 7.2.3: whether a value binding is visible at `use`: a local only after its declaration (its initializer sees the outer
-    // scope), a parameter as ParameterVisible says, any other binding of the scope always. The one visibility rule of a value lookup
-    // (ValueStage) and of a literal's capture test (CanCapture, Binding.Captures).
-    private bool VisibleAt(BindingSymbol candidate, Koto use)
-        => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && ParameterVisible(candidate, use);
+    // SPEC 9.3, 7.2.3, 15.8.2: whether a value binding is visible at `use`, one row per kind: a local only after its declaration (its
+    // initializer sees the outer scope), a parameter as ParameterVisible says, an environment binding only in its literal's body (the
+    // literal's own header names resolve among its parameters and enclosing scopes, never to environment bindings; F's G230H-13), any
+    // other binding of the scope always. The one visibility rule of a value lookup (ValueStage), of a written Origin name
+    // (OriginCandidate) and of a literal's capture test (CanCapture, Binding.Captures). A use reaching a literal's scope lies in the
+    // literal, so one comparison with its body's start places it.
+    private bool VisibleAt(BindingSymbol candidate, Koto use) => candidate switch
+    {
+        { Kind: BindingSymbolKind.Local } => candidate.Declaration.Span.End <= use.Span.Start,
+        { Kind: BindingSymbolKind.Capture, Declaration: FunctionKoto literal } => ((Koto?)literal.Body ?? literal.ExpressionBody)!.Span.Start <= use.Span.Start,
+        _ => ParameterVisible(candidate, use),
+    };
 
     private ResolvedPath SelectedPath(in TypeCandidates candidates, Koto use, int step)
     {

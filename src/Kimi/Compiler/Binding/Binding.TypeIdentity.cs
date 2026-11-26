@@ -41,17 +41,19 @@ namespace Kimi.Compiler;
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
 //   premise environment cannot be rented); a reading reads one table, R(A) over its asked closures (e2-7 R3.1), and only a Final
-//   table is kept, by SerialOf, for one publication (the base table and T(G) per view, a reading's per its key), a table that is not
-//   being rebuilt per read: the provisional path costs reads times the view's premise nodes (the reads include the premise clauses'
-//   own, so it is quadratic in the premises and linear in the uses); warm 0 B (pooled tables).
+//   table is kept, by SerialOf, for one publication (the base table and T(G) per view, a reading's per its key), with the first
+//   proof limit its build wrote, which each read joins (W6), a table that is not being rebuilt per read: the provisional path costs
+//   reads times the view's premise nodes (the reads include the premise clauses' own, so it is quadratic in the premises and linear
+//   in the uses); warm 0 B (pooled tables).
 // - Prohibitions: no premise is withheld, ranked or chosen by order, and no mode parameter; no judgment inside the closure but the
 //   attribute domains', which read no identity; an erroneous class proves nothing and makes its declaration's context no failed one.
 public sealed partial class Binding
 {
     // e2-7 (R3.1, R3.4): per view scope, the base table T(G ∪ U) (a reading with no closure, ReadingOf) and T(G) (a closure's first
-    // round, ExtendedClassesOf), each with the serial it is kept for (-1: kept, not memoized), rebuilt in place at its next read.
-    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityGrounds = new(ReferenceEqualityComparer.Instance);
+    // round, ExtendedClassesOf), each with the serial it is kept for (-1: kept, not memoized) and the first proof limit its build
+    // wrote (W6), rebuilt in place at its next read.
+    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes, ICheckCause? Limit)> identityClasses = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes, ICheckCause? Limit)> identityGrounds = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
     // A scope's recorded premise error, written by the validation step (RecordIdentityPremiseError, the one recorder) before its first
     // record, once per pass: whether it is the owner's failure (the owner had none before it), whether an own class reached the closure
@@ -75,7 +77,7 @@ public sealed partial class Binding
     private readonly List<IdentityClosure> identityClosures = new();
     private readonly List<IdentityRow> identityClosed = new();
     private readonly Dictionary<BindingScope, int> identityReadingHeads = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(int Next, int Serial, int Start, int Count, bool Limited, IdentityClasses Classes)> identityReadings = new();
+    private readonly List<(int Next, int Serial, int Start, int Count, bool Limited, IdentityClasses Classes, ICheckCause? Limit)> identityReadings = new();
     private readonly List<int> identityReadingClosures = new();
     private readonly List<int> identityAsked = new(); // ClassesOf's A(X) closures while it reads, a stack of ranges
     private readonly List<BoundType> identityParts = new(); // CloseAsked's parts of X, a stack of ranges
@@ -340,12 +342,13 @@ public sealed partial class Binding
             this.IdentityReadingWork++;
             if (reading.Count == count && reading.Limited == limited && this.SameClosures(reading.Start, start, count))
             {
-                (at, kept) = (k, (reading.Serial, reading.Classes));
+                (at, kept) = (k, (reading.Serial, reading.Classes, reading.Limit));
             }
         }
 
         if (kept.Classes is { } held && kept.Serial == serial)
         {
+            this.ScopeReads.Limit ??= kept.Limit; // W6: the limit its build wrote
             completion = held.Completion;
             return held;
         }
@@ -360,6 +363,7 @@ public sealed partial class Binding
         try
         {
             var classes = kept.Classes is { } reused && this.identityBuilding.Count == 1 ? reused : this.RentClasses();
+            var outer = this.SetAsideLimit(); // The build's own first limit is the table's (W6).
             this.AddViewRows(scope);
             for (var a = start; a < this.identityAsked.Count; a++)
             {
@@ -378,20 +382,21 @@ public sealed partial class Binding
                 classes.MarkLimited();
             }
 
+            var limit = this.TakeOwnLimit(outer);
             completion = classes.Completion;
             var memo = classes.Final && Keeps(scope, serial) ? serial : -1; // -1: kept, not memoized
             if (based)
             {
-                this.identityClasses[scope] = (memo, classes);
+                this.identityClasses[scope] = (memo, classes, limit);
             }
             else if (at >= 0)
             {
                 var reading = this.identityReadings[at];
-                this.identityReadings[at] = (reading.Next, memo, reading.Start, count, limited, classes);
+                this.identityReadings[at] = (reading.Next, memo, reading.Start, count, limited, classes, limit);
             }
             else
             {
-                this.identityReadings.Add((this.identityReadingHeads.GetValueOrDefault(scope, -1), memo, this.identityReadingClosures.Count, count, limited, classes));
+                this.identityReadings.Add((this.identityReadingHeads.GetValueOrDefault(scope, -1), memo, this.identityReadingClosures.Count, count, limited, classes, limit));
                 this.identityReadingHeads[scope] = this.identityReadings.Count - 1;
                 this.identityReadingClosures.AddRange(CollectionsMarshal.AsSpan(this.identityAsked).Slice(start, count));
             }
@@ -457,6 +462,7 @@ public sealed partial class Binding
         var kept = rows.Count == 0 ? this.identityGrounds.GetValueOrDefault(scope) : default;
         if (kept.Classes is { } held && kept.Serial == serial)
         {
+            this.ScopeReads.Limit ??= kept.Limit;
             return held;
         }
 
@@ -472,8 +478,10 @@ public sealed partial class Binding
                 return this.ClassesOver(this.identityExtended ??= new IdentityClasses(this), scope, rows, 0);
             }
 
+            var outer = this.SetAsideLimit();
             var classes = this.ClassesOver(kept.Classes is { } reused && this.identityBuilding.Count == 1 ? reused : this.RentClasses(), scope, rows, 0);
-            this.identityGrounds[scope] = (classes.Final && Keeps(scope, serial) ? serial : -1, classes);
+            var limit = this.TakeOwnLimit(outer);
+            this.identityGrounds[scope] = (classes.Final && Keeps(scope, serial) ? serial : -1, classes, limit);
             return classes;
         }
         finally
@@ -559,9 +567,10 @@ public sealed partial class Binding
         }
         else
         {
-            // An unavailable premise is read Provisional (W6): a derived one a Pending source may still supply (the classes may grow),
-            // or one whose read consulted a failure (a failed premise, its derived failure, a failed source), which a kept table would
-            // not replay. So the table is not Final (W7): not memoized, and the view's requests keep no entry or rows (RowsRequest).
+            // An unavailable premise is read with its read's Completion (W6): Provisional where a derived one a Pending source may
+            // still supply (the classes may grow), so the table is not Final (W7): not memoized, and the view's requests keep no entry
+            // or rows (RowsRequest). A read that consulted a failure (a failed premise, its derived failure, a failed source) is
+            // final: its limit is the table's (ClassesOf), joined at each read.
             classes.Read(availability);
         }
     }

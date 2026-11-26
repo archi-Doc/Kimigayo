@@ -28,7 +28,9 @@ namespace Kimi.Compiler;
 // - Kinds (one row each): Signature. Re-entry: a Property's whose Type is not yet formed is CyclicBinding_Kd at the declaration and
 //   Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. The header frame binds
 //   only what typing the declaration needs (a literal whose Type the header fixes without its body publishes no body, TypedByHeader,
-//   through HeaderRunningOrFailed), so a re-entry is a SPEC 11.6 cycle for every literal it covers. Error's readers: a use of a Property left without a Type rests on the
+//   through HeaderRunningOrFailed), so a re-entry is a SPEC 11.6 cycle for every literal it covers; a fact request an inferred stored
+//   Property's header makes demands the headers of the stored Properties its Type contains (DemandContainedHeaders, temporary until
+//   R7-D2 d2), so a fact about a Type containing the Property re-enters it too. Error's readers: a use of a Property left without a Type rests on the
 //   declaration's record (BindReference); the declaration's own variable binding records nothing more, even where the interrupted
 //   computation formed the Type, and still binds its parts (BindVariableCore); DeclaredValueType (SPEC 9.6), the conformance proof
 //   (VerifyPropertyRequirement) and a use of a Property whose Type was formed read the Type only, not yet the record (PLAN G1181's
@@ -48,6 +50,14 @@ namespace Kimi.Compiler;
 //   abandoned; on a base cycle every member stays NotStarted for the pass, and the records are the base walk's and formation's, none
 //   here. Not ready: a reading of its clause by DirectBase that moved the not-ready count (BaseLayers' answer: in progress or not
 //   ready), or its base not Done. Frozen: Done (the freeze verifies every library struct's Done).
+//   Environment (Binding.Closures' FormEnvironment; PLAN G230-H (i)): output a Closure literal's written parameter Types on their
+//   symbols and its written entries in its plan and scope, demanded by its binding after its header and by a local of its body bound
+//   before it (BindVariable). Error: an entry's record, or the literal resting on its evaluating body's Error; its readers, the
+//   literal's binding and that local, rest on the literal. Not ready: an omitted parameter Type its binding has not bound (SPEC 7.7.1:
+//   its expected Function Type gives it), its evaluating body's environment not ready, or an entry's source pending, unbound in the
+//   pass or a retry with no recorded failure (G230H-10 C1; the literal rests on it). It is abandoned, with nothing recorded, and the
+//   demanding local rests unbound and binds at its statement (G230H-6). Re-entry: reads the entries formed so far.
+//   Frozen: never asked (no program pass binds a library literal).
 // - Interims (removal stages): BindHeader's guard reads the variable binding's Resolving and BindVariableCore's guard reads
 //   Signature's Running state (its CyclicBinding_Kd, a variable binding re-entered, is the variable binding's) until R7-D2 d4 makes the
 //   variable binding a kind. This is the only read of a state outside this file. SignatureVerdict's not-ready path and its exclusion of a
@@ -70,6 +80,9 @@ internal enum DeclQueryKind : byte
 
     /// <summary>A struct's inherited conformance paths registered in ImplTable (Binding.InheritedConformances).</summary>
     InheritedConformances,
+
+    /// <summary>What a Closure literal's body reads of the literal: its written parameter Types and entries (Binding.FormEnvironment).</summary>
+    Environment,
 
     /// <summary>The number of kinds; BindingSymbol packs two bits per kind, so a ninth kind fails its compile-time check.</summary>
     Count,

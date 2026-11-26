@@ -683,6 +683,17 @@ public class ContractBindingTest
         Assert.Equal(fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())), c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
     }
 
+    // SPEC 9.6, 8.6.1 (DIAGNOSTICS rule 3; PLAN G1156): a Property requirement a value reaches through two identities (Reader's and
+    // Sized's `size` under both Constraints) is not implemented: the value path takes none (ReceiverMember), and the access is the
+    // Unsupported_Kd its requirement group names (MissingFailure), whose gather records nothing.
+    [Fact]
+    public void APropertyRequirementOfTwoIdentitiesIsTheImplementationsLimit()
+    {
+        var c = CompilationTestHelper.Parse("contract Reader\n    property size: i32 has get\ncontract Sized\n    property size: i32 has get\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    T is Sized\n    return x.size\n", "Hello.kimi");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "x.size")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
     [Fact]
     public void RebindingChecksNewMembersInsteadOfReusingAVerifiedMapping()
     {
@@ -975,7 +986,7 @@ public class ContractBindingTest
     [InlineData("contract B: PrimitiveInteger\ncontract C: B\n" + NeedOf + "Owned" + UseOfC, "")]
     [InlineData("contract C\n" + NeedOf + "Copy" + UseOfC, "UnprovenConstraint_Kd")]
     [InlineData("contract C: PrimitiveInteger\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "")]
-    [InlineData("contract C\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "ArithmeticSelection_Kd")]
+    [InlineData("contract C\nfunc add<T>(a: T, b: T) -> T\n    T is C\n    return a + b", "UnprovenConstraint_Kd")] // PLAN G1356, Q13: was ArithmeticSelection_Kd
     [InlineData("contract C: PrimitiveInteger\nfunc same<T>(a: T, b: T) -> bool\n    T is C\n    return a == b", "")]
     [InlineData("contract C: PrimitiveInteger\nfunc zero<T>() -> T\n    T is C\n    return 0", "")]
     public void JudgedIntrinsicParentsRefineOrdinarily(string source, string codes) => AssertBindingCodes(source, codes);
@@ -1244,6 +1255,35 @@ public class ContractBindingTest
 
         (BindingSymbol Type, BindingSymbol Contract) Named(string type, string contract)
             => identities.Where(x => x.Type.Name == type && x.Contract.Name == contract).Select(static x => (x.Type, x.Contract)).Single();
+    }
+
+    // SPEC 8.4-8.6, 22.4.5: Binding verifies the conformance of the Kernel's Board (Hello.kimi's body beside Board.kimi) to the
+    // library's Platform, hosted or freestanding; without `terminate`, Binding's issues are the clause's one missing-requirement record
+    // (SPEC 8.6.3). Bind runs no startup check, so neither fact depends on a target's startup rule.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", KernelSources.BoardTerminate, "")]
+    [InlineData("x86_64-pc-windows-msvc", "", "MissingContractImplementation_Kd")]
+    [InlineData("x86_64-unknown-linux-musl", KernelSources.BoardTerminate, "")]
+    [InlineData("x86_64-unknown-linux-musl", "", "MissingContractImplementation_Kd")]
+    [InlineData("x86_64-unknown-none", KernelSources.BoardTerminate, "")]
+    [InlineData("x86_64-unknown-none", "", "MissingContractImplementation_Kd")]
+    public void AProgramsBoardConformsToTheLibrarysPlatform(string target, string terminate, string code)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", KernelSources.Hello));
+        c.Kotonoha.AddSource(new SourceDocument("Board.kimi", KernelSources.Board + terminate));
+        Assert.Empty(TestDiagnostics.Of(c));
+        Assert.Equal(code.Length == 0, c.Bind().IsComplete);
+        var conformance = c.Binding.GetConformance(Container(c, "Board").TypeOf()!, c.Library.GetSymbol(KimiDeclarationId.Platform)!);
+        if (code.Length == 0)
+        {
+            Assert.True(Assert.IsType<BoundConformance>(conformance).IsVerified, Describe(c));
+            return;
+        }
+
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal((code, "Self is Platform"), (issue.Code.ToString(), issue.Node.ToString()));
     }
 
     // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.

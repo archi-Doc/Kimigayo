@@ -35,13 +35,6 @@ public sealed partial class Binding
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly OpenOriginRows openOrigins;
 
-    // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
-    private readonly PerCallOriginRows perCallOrigins;
-
-    // The argument whose own per-call Origin alone would satisfy a slot of the selected callee, and that callee's first Type parameter
-    // whose solution holds the argument's open region (-1 when none does, displayed as the Type argument).
-    internal readonly record struct PerCallOriginFact(Koto Argument, FunctionKoto Selected, int Slot);
-
     // SPEC 10.8: an Origin that the evidence's own binder quantifies, such as a per-call input, never becomes the solution of an Origin
     // inside a slot. The slot keeps the structure and Semantics, and each such Origin is replaced by an open region of the call (SPEC
     // 15.3.6): a local region that holds no Loans, is never displayed, and that other evidence for the slot fills.
@@ -476,20 +469,23 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 10.8: after selection, a slot that only the argument's own per-call Origin would satisfy is MissingOriginBinding_Kd
-    // at the call, whose Reason names the argument and the slot (ReportPerCallOrigin), with the argument related.
+    // at the call (ReportPerCallOrigin), with the argument related (role 1) and, for the Type parameter that slot is, the selected
+    // declaration (role 2, read for the parameter's name and not shown) and its ordinal; with no such parameter ("the Type argument")
+    // the argument alone, so no Reason is -1.
     private BoundType? FailPerCallOrigin(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundType?> slots, Koto argument)
     {
-        var slot = -1;
         for (var g = 0; g < selected.GenericArguments.Count; g++)
         {
             if (slots[g] is { } solution && HasOpenOriginFrom(solution, argument))
             {
-                slot = g;
-                break;
+                return this.Record(
+                    call,
+                    BindingFailure.MissingOrigin,
+                    [new(ProblemFactKind.Related, this.FactSite(argument), 1), new(ProblemFactKind.Related, this.FactSite(selected), 2), new(ProblemFactKind.Reason, SourceRef.Of(call), g)]);
             }
         }
 
-        return this.FailExplained(PerCallOriginRows.Family, call, BindingFailure.MissingOrigin, new PerCallOriginFact(argument, selected, slot));
+        return this.Record(call, BindingFailure.MissingOrigin, [new(ProblemFactKind.Related, this.FactSite(argument), 1)]);
     }
 
     // SPEC 15.3.6, 10.8: `type` with each open region that the known call signature of `source` put in place of its k-th per-call input
@@ -636,16 +632,5 @@ public sealed partial class Binding
 
             KeyedRow.Put(ref HirTables.Of(key.Source).Families.OpenOrigins.Ref(key.Source.SyntaxId), Interned(origin, key.Source, (OriginKind.Inference, key.Key)), AtomKey, ref binding.originRowProbes);
         }
-    }
-
-    /// <summary>The `perCallOrigins` family's one accessor (DECISIONS BU-220): a pass family, a selected call's slot that only an
-    /// argument's own per-call Origin would satisfy, stored with its failure by the recorder (RecordedFact) and written by FailExplained
-    /// (a present row always has its Argument, so the column's default is none). Its members keep the names its readers use.</summary>
-    private readonly struct PerCallOriginRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<PerCallOriginFact, PassCounter> Family(ref NodeColumns columns) => ref columns.PerCallOrigins;
-
-        internal bool TryGetValue(Koto call, out PerCallOriginFact fact) => (fact = binding.RecordedFact(call, Family)).Argument is not null;
     }
 }

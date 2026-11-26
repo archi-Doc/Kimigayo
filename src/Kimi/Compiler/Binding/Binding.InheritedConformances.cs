@@ -405,34 +405,16 @@ public sealed partial class Binding
         return new(null, null, null, Pending: true);
     }
 
-    // SPEC 8.6.2, 23.3: the retained implementation whose kept implementation-side Self rejected a refuted clause's conformance path, the
-    // location that explains a candidate's refuted clause (CandidateFacts, run once at the failure: the proof read the paths first).
-    private Koto? RetainedImplementation(BoundConstraint constraint)
+    // SPEC 8.6.2, 23.3 (PLAN G1386): the retained implementation whose kept implementation-side Self rejected an inherited path of the
+    // conformance a refuted clause's proof selected (its R fact, ClauseFact.Conformance), the location that explains a candidate's refuted
+    // clause (CandidateFacts): a read of the paths' verification (RejectedSelfSignature, written only on an inherited path), no selection.
+    private Koto? RetainedImplementation(BoundConformance conformance)
     {
-        // SPEC 8.6: a refuted and/or keeps the cause of a refuted operand; a negated operand's failure is no such cause.
-        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
+        foreach (var path in this.impls.PathsOf(conformance))
         {
-            return this.RetainedImplementation(constraint.Left!) ?? this.RetainedImplementation(constraint.Right!);
-        }
-
-        if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || this.ConformancesOf(owner) is not { } identities)
-        {
-            return null;
-        }
-
-        foreach (var identity in identities)
-        {
-            if (!ReferenceEquals(identity.Contract, contract) && !(IsBoundContractReference(contract) && identity.Contract.Type is { } reference && ReferenceEquals(this.StoredType(reference, self), contract.Type)))
+            if (path.RejectedSelfSignature is { } implementation)
             {
-                continue;
-            }
-
-            foreach (var path in this.impls.PathsOf(identity))
-            {
-                if (path.InheritedFrom is not null && path.RejectedSelfSignature is { } implementation)
-                {
-                    return implementation.Declaration;
-                }
+                return implementation.Declaration;
             }
         }
 

@@ -14,15 +14,24 @@ namespace Kimi.Compiler;
 // The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's D-9 line): the find reads the library layer's part first, then the
 // running pass's, and a new row goes into the running pass's. The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 // Output (PLAN G492-a (ii); R7-O2 A1): a `let` local's region has a value, the Origin its declaration fixes for the slot
-// (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region.
-// Its readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type),
-// RegionalAt through it. RegionValue is the one reading of any local region's SPEC 15.3.6 value: a `let` region's as published, a `var`
-// region's its row's candidate over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so
-// (the view's row 6, the body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its
-// completion once Final proved it, and before as a reading with no answer yet (the deferral fact).
-// Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
-// (ResetLocalRegions); a `var` region publishes no value: a use in its own body reads the region, and only RegionValue (where a body
-// carries it, or its own body's oracle) reads its candidate over its recorded bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
+// (PublishRegionValue: the initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region,
+// an inclusion (the value outlives the region); a slot that the local's equality fixes, `let` or `var`, is a region whose value is the
+// equality's other end as the body reads it, an equality, or an inclusion where that end holds a region published as one (FixedRegion,
+// LocalRegion.Equality; SPEC 15.3.6 "Unless fixed by equality", PLAN G1369). Its
+// readers at a use: RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type),
+// RegionalAt and the typed borrow's identity test (SPEC 13.5.6) through it. RegionValue is the
+// one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
+// over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
+// body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
+// proved it, and before as a reading with no answer yet (the deferral fact).
+// Invariants: a value holds no region of its own body that publishes a value (each is read through once, when published), so a read at
+// a use is one step; it may hold a `var` region of its own body that publishes none (a `let` initializer, or an equality, naming a `var`
+// local), which a use in that body reads as the region and RegionValue as its candidate, whose walk reads each bound's region with a
+// value through it and the body's `var` regions that reach back to the region through their bounds, so each further read moves down
+// that body's definitions or one body outward and ends (DECISIONS R8-M56 (ii) fact (a), as amended); values and bounds are reset each pass
+// (ResetLocalRegions); a `var` region publishes no value unless its slot is fixed by equality (SPEC 15.3.6): a use in its own body
+// reads the region, and only RegionValue (where a body carries it, or its own body's oracle) reads its candidate over its recorded
+// bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
 // O-385 (a): a body row's ends as the row reads them, SuppliedAtUse with the row; a `let` value as published; an initializer alias as
 // its producers read it) and read as held: LocalRegionSources, LocalRegionBound and LocalRegionSourceUse apply the receiver resolution
 // alone (ReceiverAtUse; a Closure is classified after its body's bounds are stored), never OriginAtUse (DECISIONS R4-M133 as amended).
@@ -228,7 +237,8 @@ public sealed partial class Binding
     // value, which its declaration fixes (the initializer's Origin at that slot, or the slot's solved annotation candidate): a body nested
     // in that body, or a nested signature, reads the region itself, fixed there (15.3.4; DECISIONS BU-28; equal to its value where the body
     // carries it, which the oracle and ValueIn read, not this). A value holds no region of its
-    // own body (PublishRegionValue reads it once), so a read is one step per region and a meet's operands are read once each. A Callable
+    // own body with a value (PublishRegionValue reads each through once), so a read is one step per region and a meet's operands are read
+    // once each. A Callable
     // comparison's relation does not call it: it reads the region (the owner's O-363 (a); the contract above).
     internal BoundOrigin RegionValueAtUse(BoundOrigin origin, Koto use)
         => this.regionValues == 0 || origin.Kind is not (OriginKind.Inference or OriginKind.Intersection) ? origin : this.RegionValueIn(origin, BodyOwner(use));
@@ -403,7 +413,7 @@ public sealed partial class Binding
 
     // SPEC 15.3.6 (R7-O2 A1): whether a local region's recorded bounds are complete, so that its candidate has an answer: its body is not
     // being bound, that is the forming body is neither its body nor evaluated or declared in it (a Closure's body, bound at its literal, or
-    // a named nested function's: the EvaluatingBody chain, R7-O3 O3-A), or its body is a Closure whose binding has ended
+    // a named function's: the EvaluatingBody chain, R7-O3 O3-A), or its body is a Closure whose binding has ended
     // (BoundClosure.Classified; its publication's fit re-enters it), or it is a call's region that its call completed (R1-a:
     // CallRegionComplete, Binding.OpenOrigins). The one gate of a candidate's Binding-time reading: RegionValue, ValueIn's deferral fact,
     // SolvedStatic and the erasure's Final class (RegionLeaf) read it.
@@ -545,7 +555,7 @@ public sealed partial class Binding
     {
         if (origin.Kind != OriginKind.Intersection)
         {
-            return this.Region(origin) is { Value: { } value } region && ReferenceEquals(region.Body, body) ? value : origin;
+            return this.ValueRow(origin, body)?.Value ?? origin;
         }
 
         var first = 0;
@@ -579,17 +589,23 @@ public sealed partial class Binding
         return resolved;
     }
 
+    // The row of `origin` where it is a region of `body` with a published value, which that body reads as the value; null otherwise.
+    private LocalRegion? ValueRow(BoundOrigin origin, Koto? body)
+        => this.Region(origin) is { Value: not null } region && ReferenceEquals(region.Body, body) ? region : null;
+
     // A `let` region's value (RegionValueAtUse), published by its declaration once per binding of it, read through the earlier regions of
     // the same body; also the region's one bound, so a nested body that reads the region through its sources (DECISIONS BU-127) reads
-    // that value's. A re-binding publishes the same region again (the same slot) with its value read anew.
-    private void PublishRegionValue(BoundOrigin region, BoundOrigin value, Koto evidence)
+    // that value's. A re-binding publishes the same region again (the same slot) with its value read anew. Published as an inclusion;
+    // FixedRegion sets an equality-fixed slot's relation (LocalRegion.Equality).
+    private LocalRegion PublishRegionValue(BoundOrigin region, BoundOrigin value, Koto evidence)
     {
         var record = this.WrittenRegion(region);
         record.Body = BodyOwner(region.Binder!);
-        record.Value = null;
+        (record.Value, record.Equality) = (null, false);
         record.Value = this.RegionValueIn(value, record.Body);
         this.regionValues++;
         this.RecordRegionBound(record.Value, region, evidence);
+        return record;
     }
 
     // O25 (PLAN G949 S1-1, R): every row of the running part has its sources for the run's version, so no later pass forms a source
@@ -628,7 +644,7 @@ public sealed partial class Binding
             region.Sources.Clear();
             region.Row = OriginVariance.Unused;
             region.Version = -1;
-            region.Value = null;
+            (region.Value, region.Equality) = (null, false);
             region.Body = null;
             region.Solved = null;
             (region.Solution, region.SolutionVersion) = (null, -1);
@@ -835,6 +851,13 @@ public sealed partial class Binding
         internal List<Koto> Values { get; } = new();
 
         internal BoundOrigin? Value { get; set; }
+
+        // How the value is published (DECISIONS R8-M56 as amended, PLAN G1369, C-548): an inclusion (false: the value outlives the region,
+        // which may lie inside it), or an equality (true: a slot fixed by equality, FixedRegion, bounded both ways, SPEC 15.3.6 "Unless
+        // fixed by equality", where no inclusion is read through the equality's end; an end that holds an inclusion makes it one).
+        // Written with the value (PublishRegionValue resets it, FixedRegion sets it); read through ReadsLetValue alone (O-400 (b)'s limit,
+        // and FixedRegion's reading of an equality's end).
+        internal bool Equality { get; set; }
 
         internal Koto? Body { get; set; }
 

@@ -79,9 +79,10 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // SPEC 4.3, 10.8 (Binding.OpenSlots' rule; PLAN G814 rule L): a length agrees with a target length that holds a length atom.
     private static bool SameArrayShape(BoundType own, BoundType target)
-        => own.Kind == target.Kind && ReferenceEquals(own.Symbol, target.Symbol) && own.Length == target.Length &&
-            ReferenceEquals(own.LengthExpression, target.LengthExpression);
+        => own.Kind == target.Kind && ReferenceEquals(own.Symbol, target.Symbol) && (target.LengthExpression is { ContainsOpenSlot: true } ||
+            (own.Length == target.Length && ReferenceEquals(own.LengthExpression, target.LengthExpression)));
 
     // SPEC 3.8: a Never element fits its expected element Type, which the literal's Type takes; `elements` holds the elements' Types and
     // receives the fitted ones.
@@ -767,12 +768,7 @@ public sealed partial class Binding
             return this.ErasePart(part, actual, type);
         }
 
-        if (this.ExpectedAdaptation(part, actual, type) is { } adaptation)
-        {
-            this.adaptations[part] = adaptation;
-        }
-
-        return true;
+        return this.ExpectedAdaptation(part, actual, type) is not null; // The selected destination writes its own row.
     }
 
     // A bound part that awaits its position takes `type` when it fits it, before its consumer checks it; its Type, null when unbound.
@@ -805,7 +801,7 @@ public sealed partial class Binding
         if (!IsUnfittedLiteral(part) && this.Deferred(part) && this.SuppliesDefault(part) && this.BindWaiting(part, null) is { } type &&
             !ReferenceEquals(type, BoundType.Never))
         {
-            literalDefault = literalDefault is null ? type : this.CommonOriginType(literalDefault, type, part, out _) ?? literalDefault;
+            literalDefault = literalDefault is null ? type : this.PlaceCommonType(literalDefault, type, part, out _) ?? literalDefault;
         }
     }
 
@@ -856,10 +852,13 @@ public sealed partial class Binding
             return this.SuppliedType(node);
         }
 
-        var adapted = this.ErasureSignatureFits(actual, target, node) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
-        if (adapted is null)
+        // As at the probes, a delivered Type that is `actual` itself means no operation only where the structural part misfits, as a formed
+        // one then delivers another Type; where it fits, a formed Reborrow may deliver its input (its Origin unchanged: Shortened, a
+        // Temporary's), so the part takes the target.
+        var adapted = this.ErasureSignatureFits(actual, target, node) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false);
+        if (!this.FitsStructuralPartAt(actual, target, node) && ReferenceEquals(adapted, actual))
         {
-            return actual;
+            return actual; // No implicit operation.
         }
 
         this.lateAdaptations.Add((node, target));
@@ -932,7 +931,7 @@ public sealed partial class Binding
         => target.Components.Count == 1 &&
             (array.BoundType is { Kind: BoundTypeKind.FixedArray } own ? SameArrayShape(own, target) : this.ConstructsAt(array, target));
 
-    // The shape a waiting array literal constructs at the target (SPEC 4.3.1, 4.3.3).
+    // The shape a waiting array literal constructs at the target (SPEC 4.3.1, 4.3.3); its length agrees with a length atom (G814 rule L).
     private bool ConstructsAt(ArrayLiteralKoto array, BoundType target)
     {
         if (target.Kind != BoundTypeKind.FixedArray)
@@ -940,9 +939,9 @@ public sealed partial class Binding
             return array.FillLength is null && target.Kind == BoundTypeKind.Array && ReferenceEquals(target.Symbol, this.Library.DynamicArray);
         }
 
-        return array.FillCount is not { } count
+        return target.LengthExpression is { ContainsOpenSlot: true } || (array.FillCount is not { } count
             ? array.FillLength is null && target.LengthExpression is null && target.Length == array.Elements.Count
-            : count.IsConstant ? target.LengthExpression is null && target.Length == count.Value : ReferenceEquals(target.LengthExpression, count);
+            : count.IsConstant ? target.LengthExpression is null && target.Length == count.Value : ReferenceEquals(target.LengthExpression, count));
     }
 
     // SPEC 12.4.3: a dictionary literal takes the target's key and value Types when every key and value fits them, also one waiting.

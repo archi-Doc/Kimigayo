@@ -34,7 +34,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Input = "native/codec.lib" }],
         };
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-        var paths = ArtifactPaths.Create(c.Project);
+        var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
         Assert.Equal(Path.Combine(this.directory, "out", "Hello.ll"), paths.Ir);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
@@ -118,9 +118,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     [InlineData(false)]
     public void ALinuxManifestIsTheRows(bool ffi)
     {
-        var source = ffi
-            ? "group Codec\n    #LibraryImport(\"codec\", \"codec_add\")\n    public func add(a: i32, b: i16) -> i32\npublic func main()\n    require Codec.add(40, -2) == 38 else => $abort(\"add\")\n"
-            : "::Kimi.Console.writeLine(\"Hello, world!\")";
+        var source = ffi ? LinuxPair.Program("Ffi", "Ffi.kimi") : LinuxPair.Program("Hello", "Hello.kimi");
         var paths = LinuxPair.Publish(this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
@@ -170,7 +168,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-        var paths = ArtifactPaths.Create(c.Project);
+        var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
         var json = File.ReadAllText(paths.Manifest);
         using var manifest = JsonDocument.Parse(json);
         Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
@@ -280,7 +278,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-        var paths = ArtifactPaths.Create(c.Project);
+        var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
         var previous = File.ReadAllBytes(paths.Ir);
         c.Bind(); // The earlier analysis and startup check cannot authorize another publication.
         Assert.False(EmissionArtifacts.Publish(c, null));
@@ -449,7 +447,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.True(project.PublishArtifacts(c, null, null), console.Text);
         Assert.Equal("He\\u{0}llo.kimi:3:24", c.Locations.Text(SourceRef.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single())));
         Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Text, StringComparison.Ordinal);
-        Assert.True(File.Exists(ArtifactPaths.Create(c.Project).Ir));
+        Assert.True(File.Exists(ArtifactPaths.Create(c.Project, TargetProfile.Windows).Ir));
     }
 
     [Fact]
@@ -504,7 +502,7 @@ public sealed class EmissionArtifactsTest : IDisposable
                 ["unused"] = new() { Kind = "static", Input = "unused.lib" },
             });
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-        var paths = ArtifactPaths.Create(c.Project);
+        var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var libraries = manifest.RootElement.GetProperty("libraries");
         Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], libraries.EnumerateArray().Select(x => x.GetProperty("name").GetString()));
@@ -534,7 +532,7 @@ public sealed class EmissionArtifactsTest : IDisposable
                 ["zlib"] = new() { Kind = "import", Input = "zlib.lib" },
             });
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-        var paths = ArtifactPaths.Create(c.Project);
+        var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
         Assert.Equal(
@@ -563,7 +561,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.True(test
             ? project.PublishArtifacts(Assert.IsType<Compilation>(project.PrepareTests(TestContext.Current.CancellationToken)), paths, null)
             : await project.Generate(TestContext.Current.CancellationToken));
-        using var manifest = JsonDocument.Parse(File.ReadAllBytes(test ? paths.Manifest : ArtifactPaths.Create(project).Manifest));
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(test ? paths.Manifest : ArtifactPaths.Create(project, TargetProfile.Windows).Manifest));
         string[] runtime = test ? [.. ProductRuntime[..4], "GetEnvironmentVariableA", "SetHandleInformation", .. ProductRuntime[4..]] : ProductRuntime;
         Assert.Equal([("GetLastError", "kernel32"), .. runtime.Where(static x => x != "GetLastError").Select(static x => (x, "kernel32"))], Declarations(manifest.RootElement));
         NativeToolchain.ValidateManifest(manifest.RootElement);
@@ -576,7 +574,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()");
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-        var paths = ArtifactPaths.Create(c.Project);
+        var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var declared = Declarations(manifest.RootElement);
         string[] externals = [.. c.Generated.Externals.Select(static x => x.Symbol)];
@@ -596,7 +594,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         Assert.True(EmissionArtifacts.Publish(c, null), MinimalEmissionTest.Describe(c));
-        var paths = ArtifactPaths.Create(c.Project);
+        var paths = ArtifactPaths.Create(c.Project, TargetProfile.Windows);
         var manifest = JsonNode.Parse(File.ReadAllBytes(paths.Manifest))!;
         manifest["externalDeclarations"] = JsonNode.Parse(declarations);
         using var malformed = JsonDocument.Parse(manifest.ToJsonString());

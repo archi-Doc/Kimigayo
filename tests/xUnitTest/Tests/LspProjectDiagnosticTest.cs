@@ -253,6 +253,31 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Test {TargetProfile.Windows.Target}): Completed"));
     }
 
+    // IMPL 20.6.1 (the Tatara plan's B7b8): the test unit's target is the first product target with a row in the target table, so a
+    // linux-x64 project's test unit is checked, and a target without a row leaves none (TestTargetUnavailable_Kd). A staged row
+    // (none-x64) is a row, whose test preparation is the location-only Unsupported_Kd, as the CLI's Test-mode check records.
+    // Fail-before: the linux-x64 row is TestTargetUnavailable_Kd too (the Windows x64 comparison).
+    [Theory]
+    [InlineData("x86_64-unknown-linux-musl", null)]
+    [InlineData("x86_64-unknown-linux-gnu", "TestTargetUnavailable_Kd")]
+    [InlineData("x86_64-unknown-none", "Unsupported_Kd")]
+    public async Task ATestUnitTakesATargetWithARow(string target, string? code)
+    {
+        var source = Valid + "#Test\nfunc check()\n    $expect(true)\n";
+        var project = this.WriteProject("App", ("main.kimi", source), $"Targets={{\"{target}\"}}");
+        await using var client = new LspTestClient();
+        await client.InitializeAsync();
+        await client.OpenAsync(this.PathOf("App", "main.kimi"), source);
+        if (code is null)
+        {
+            await client.ReceiveAsync(x => LspTestClient.IsLog(x, $"{project} (Test {target}): Completed"));
+            return;
+        }
+
+        var diagnostics = await client.PublishAsync(project);
+        Assert.Contains(diagnostics.EnumerateArray(), x => x.GetProperty("code").GetString() == code);
+    }
+
     [Fact]
     public async Task SeveralTargetsWithoutTheHostAskForASelection()
     {

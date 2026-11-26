@@ -32,6 +32,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string NestedTwins = "func fv(p: (ref/(i32, i32) during a, i32)) -> i32 => p.1\nfunc fw(p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => p.1\nfunc fw2(p: (ref/(ref/i32 during a, i32) during a, i32), w: i32) -> i32 => p.1\nstruct S2\n    public var k: i32\n    public init(k: i32) => self.k = k\n    public func m(self: ref/Self, p: ((i32, i32), i32)) -> bool => true\n    public func m(self: ref/Self, p: (ref/(ref/i32 during a, i32) during a, i32)) -> i32 => 0\nstruct P3\n    public var k: i32\n    public init(p: ((i32, i32), i32)) => self.k = 0\n    public init(p: (ref/(ref/i32 during a, i32) during a, i32)) => self.k = 1\nfunc fgy<T>(p: (ref/(T, i32) during a, i32)) -> i32 => 0\nfunc fgy(p: ((i32, i32), i32)) -> bool => true\nfunc fa4(x: Array<ref/[2 of ref/i32 during a] during a>) -> i32 => 0\nfunc fa4(x: Array<[2 of i32]>) -> bool => true\nfunc fgx<T>(p: (ref/T during a, i32)) -> i32 => 0\nfunc fgx(p: ((i32, i32), i32)) -> bool => true\nfunc fa3(x: Array<ref/[2 of i32] during a>) -> i32 => 0\nfunc fa3(x: Array<[2 of i32]>) -> bool => true\nfunc fl3(p: (ref/[2 of ref/i32 during a] during a, i32)) -> i32 => 0\nfunc fl3(p: ([2 of i32], i32)) -> bool => true\nfunc fgu<T>(p: (uniq/T during a, i32)) -> i32 => 0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32) -> i32\n";
 
+    private const string OpenRanks = "func fk<T>(p: (T, i32)) -> bool => true\nfunc fk(p: ((ref/i32 during a, i32), i32)) -> i32 => 0\nfunc ftw(q: ref/i32, t: (i32, i32)) -> i32 => 0\nfunc ftw<T>(q: ref/i32, t: T) -> bool => true\nfunc g<T>(p: (T, ref/i32 during a), x: (i32, i32)) -> bool => true\nfunc g(p: ((i32, i32), i32), x: (ref/i32 during a, i32)) -> i32 => 0\nfunc g4<T>(p: ((T, ref/i32 during a), i32), x: (i32, i32)) -> bool => true\nfunc g4(p: (((i32, i32), i32), i32), x: (ref/i32 during a, i32)) -> i32 => 0\nfunc g2<T>(p: (T, ref/i32 during a)) -> bool => true\nfunc g2(p: ((i32, i32), i32)) -> i32 => 0\nfunc g3<T>(p: (T, i32)) -> bool => true\nfunc g3(p: ((i32, i32), ref/i32 during a)) -> i32 => 0\nfunc h<T>(p: (T, bool)) -> bool => true\nfunc h(p: ((i32, i32), i32)) -> i32 => 0\nfunc h1<T>(p: (T, bool)) -> bool => true\nfunc fj<length N>(p: ([(N * 2) of i32], i32)) -> bool => true\nfunc fj(p: ([2 of i64], i32)) -> i32 => 0\nfunc fnr<T>(p: (T, i32)) -> bool => true\nfunc fnr(p: (ref/(i32, i32) during a, i32)) -> i32 => 0\nfunc fk5<T>(p: ((T, i32), i32)) -> bool => true\nfunc fk5(p: (((ref/i32 during a, i32), i32), i32)) -> i32 => 0\nfunc fj8<length N>(p: [(N * 2) of i32]) -> bool => true\nfunc fj8(p: [2 of i64]) -> i32 => 0\nfunc fs<T>(p: (T, i32)) -> bool => true\nfunc gc2(p: ((i32, i32), i32)) -> i32 => 0\nfunc gc2(p: ((i32, i32), ref/i32 during a)) -> bool => true\nfunc inc2(k: i32) -> i32 => k\nfunc inc2(k: i64) -> i64 => k\nfunc ap4<F>(p: (F, i32)) -> bool\n    F is Callable<(i32) -> i32>\n    return true\nfunc ap4(p: ((i32) -> i32, ref/i32 during a)) -> i32 => 0\nfunc inc(x: i32) -> i32 => x\nfunc fyl(p: ((i32, i32), ref/i32 during a, (i32) -> i32)) -> i32 => 0\nfunc fyl<T, F>(p: (T, i32, F)) -> bool => true\nfunc fyv(p: ((i32, i32), i32, (i32) -> i32)) -> i32 => 0\nfunc fyv<T>(p: (T, ref/i32 during a, (i32) -> i32)) -> bool => true\nfunc ga<T>(p: [2 of (T, ref/i32 during a)], x: (i32, i32)) -> bool => true\nfunc ga(p: [2 of ((i32, i32), i32)], x: (ref/i32 during a, i32)) -> i32 => 0\nfunc g5<T>(p: ((T, ref/i32 during a), i32)) -> bool => true\nfunc g5(p: (((i32, i32), i32), ref/i32 during a)) -> i32 => 0\nfunc fe2<T>(p: (T, i32)) -> Option<T> => .None\nfunc fe2(p: ((i64, i64), i32)) -> Option<(i64, i64)> => .None\nfunc fr<T>(p: ref/T) -> bool => true\nfunc g6<T>(p: (T, ref/i32 during a), x: (i32, i32)) -> Option<T> => .None\nfunc g6(p: ((i32, i32), i32), x: (ref/i32 during a, i32)) -> Option<(i32, i32)> => .None\nfunc take<U>(u: U) -> i32 => 0\ncontract Src\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\nfunc fp<T>(p: (T.Item, i32)) -> bool\n    T is Src\n    return true\nfunc fp(p: (i64, i32)) -> i32 => 0\nfunc gr<T>(p: (ref/(T, i32) during a, i32), x: (i32, i32)) -> bool => true\nfunc gr(p: (((i32, i32), i32), i32), x: (ref/i32 during a, i32)) -> i32 => 0\nfunc ap4t<F>(f: F, x: (i32, i32)) -> bool\n    F is Callable<(i32) -> i32>\n    return true\nfunc ap4t(f: (i32) -> i32, x: (ref/i32 during a, i32)) -> i32 => 0\nfunc fm3<T>(p: (T, i32), q: (T, i32)) -> bool => true\nfunc fm3(p: ((i64, i64), i32), q: (ref/(i64, i64) during a, i32)) -> i32 => 0\nfunc fm2<T>(p: (T, T), x: (i32, i32)) -> bool => true\nfunc fm2(p: ((i64, i32), (i64, i32)), x: (ref/i32 during a, i32)) -> i32 => 0\nfunc fpd<T>(p: ((T.Item, i32), i32)) -> bool\n    T is Src\n    return true\nfunc fpd(p: ((i64, i32), i32)) -> i32 => 0\nstruct Sq\n    Self is Src\n    associate Item is i64\n    public func take(self: uniq/Self) -> Option<i64> => .None\nfunc fq<T>(t: T, p: (T.Item, i32)) -> bool\n    T is Src\n    return true\nfunc fq(t: i32, p: (i64, i32)) -> i32 => 0\nfunc fpm<T, U>(p: (T.Item, U)) -> bool\n    T is Src\n    return true\nfunc fpm(p: (i64, i32)) -> i32 => 0\nfunc mk<U>() -> U => $abort(\"mk\")\nfunc fpk2<T>(p: (T.Item, i32)) -> bool\n    T is Src\n    return true\nfunc fpk2(p: (i64, i32)) -> i32 => 0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32, b: i64) -> i32\n";
+
     private const string FixedSlots = "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\nstruct Tool\n    public var id: i32\n    public init(id: i32) => self.id = id\n    public func pick<U>(self: ref/Self, v: U) -> U => v@move\nfunc identity<U>(value: U) -> U => value@move\nfunc hg<U>(v: U) -> U\n    U is PrimitiveInteger\n    return v\nfunc same<U>(a: U, b: U) -> U => a@move\nfunc two<A, B>(a: A, b: B) -> A => a@move\nfunc look<U>(v: ref/U) -> () => ()\n";
 
     private const string FixedSlotForms = FixedSlots + "struct Pair<A>\n    public var a: A\n    public init(a: A) => self.a = a@move\n    public func with<B>(self: ref/Self, x: A, y: B) -> B => y@move\nfunc keep<s/T>(x: s/T) -> () => ()\nfunc lk<length N>(v: ref/[N of i32]) -> i32 => 0\nfunc ln<length N, T>(v: ref/[N of T], w: T) -> T => w@move\nfunc app<U>(v: U, f: (U) -> U) -> U => v@move\nfunc dflt<U>(v: U, w: i32 = 0) -> U => v@move\n";
@@ -267,14 +269,16 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "e17n", Sources + SourcesBody + "    let a: Array<i64> = if c => [u@ref] else => [y]\n    return r\n", "*: let a: Array<i64> = if c => [u@ref] else => [y] | ...")]
 
     // SPEC 14.9.2 steps 2-3 (PLAN G443): the twins of ALateSourceDifferingInOriginsAloneIsUnsupportedUntilG443's forms. Valid where no such
-    // Origin is needed: one Loan (h7), a value read (h8), part by part (h9), a declared Type (h10). Structural misfits keep their record (h11 to
+    // Origin is needed: one Loan (h7), a value read (h8), part by part (h9), a declared Type (h10). Structural misfits keep their record (h11,
     // h13), as does a Function component's Origin part, a whole-contract comparison (SPEC 10.7, 15.6.1) the element's own fit judges (h14).
+    // h12 is no misfit: the bare owned `var` Place `v` fits the `uniq/i32` part structurally, so R7-M95's E4a-4 rule (PLAN G486) records
+    // the lending rule's ExclusiveBorrowRequired_Kd at `v`, the written twin `(2, v@uniq)` being valid (SPEC 15.1.5).
     [InlineData("guard", "g586h7", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, u@ref)\n    return r\n", "")]
     [InlineData("guard", "g586h8", Sources + SourcesBody + "    let j = if c => (y, u) else => (2, v@ref)\n    return r\n", "")]
     [InlineData("guard", "g586h9", Sources + SourcesBody + "    let j = if c => (u@ref, 1) else => (v@ref, 2)\n    return r\n", "")]
     [InlineData("guard", "g586h10", Sources + SourcesBody + "    let j: (i32, i32) = if c => (y, u@ref) else => (2, v@ref)\n    return r\n", "")]
     [InlineData("guard", "g586h11", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, x)\n    return r\n", "TypeMismatch_Kd: let j = if c => (y, u@ref) else => (2, x)")]
-    [InlineData("guard", "g586h12", Sources + SourcesBody + "    let j = if c => (y, u@uniq) else => (2, v)\n    return r\n", "TypeMismatch_Kd: let j = if c => (y, u@uniq) else => (2, v)")]
+    [InlineData("guard", "g586h12", Sources + SourcesBody + "    let j = if c => (y, u@uniq) else => (2, v)\n    return r\n", "ExclusiveBorrowRequired_Kd: let j = if c => (y, u@uniq) else => (2, v)")]
     [InlineData("guard", "g586h13", Sources + SourcesBody + "    let j = if c => (y, u@ref) else => (2, b)\n    return r\n", "TypeMismatch_Kd: let j = if c => (y, u@ref) else => (2, b)")]
     [InlineData("guard", "g586h14", FunctionContracts + "    let w = if c => (y, fa@move) else => (2, fb@move)\n    return 0\n", "UnprovenOriginContract_Kd: let w = if c => (y, fa@move) else => (2, fb@move)")]
 
@@ -680,8 +684,61 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G746", "m2n", NestedTwins + "    let s = P3.init(((n, 1), 2))\n    return s.k\n", "AmbiguousBinding_Kd: let s = P3.init(((n, 1), 2))")]
     [InlineData("G746", "m3n", NestedTwins + "    let q = fgy(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fgy(((n, 1), 2))")]
     [InlineData("G746", "m4n", NestedTwins + "    let q = fa4([[n, m], [n, m]])\n    return 0\n", "AmbiguousBinding_Kd: let q = fa4([[n, m], [n, m]])")]
-    [InlineData("guard", "m5n", NestedTwins + "    let q = fgu(((1, 2), 3))\n    return q\n", "UnboundTypeArgument_Kd: let q = fgu(((1, 2), 3))")]
+    [InlineData("guard", "m5n", NestedTwins + "    let q = fgu(((1, 2), 3))\n    return q\n", "NoApplicableOverload_Kd: let q = fgu(((1, 2), 3))")]
     public void ANestedLiteralFitsItsPositionAsAnArgument(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.4 step 1 and its exception, 10.5.1, 10.8 (PLAN G814): a Tuple or array literal or a join at a candidate's open position is
+    // fitted and ranked at the position's open Type. Its closed positions must fit (sh1, sh1j) and are ranked (p1, p1v, p1g, k19, e10l-v,
+    // a1, a3f, t-probe); a part held at an atom (an unbound slot that takes it whole, or a projection over one: o5) is ranked whole, and no
+    // position within it is compared (k1, z1, tw, k5, nj1); an array literal's length agrees with a length atom (sh2, fj8); a join keeps no
+    // positions at an open Type (p1j, p1jv: open issue G814-J); a waiting callable at its own F is Exact (ap4, SPEC 10.5.3).
+    [Theory]
+    [InlineData("guard", "k1-d", OpenRanks + "    let q = fk(((n, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk(((n, 1), 2))")]
+    [InlineData("guard", "k1-bool", OpenRanks + "    let q = fk(if c => ((n, 1), 2) else => ((m, 3), 4))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = fk(if c => ((n, 1), 2) else => ((m, 3), 4))")]
+    [InlineData("guard", "k1-int", OpenRanks + "    let q = fk(if c => ((n, 1), 2) else => ((m, 3), 4))\n    let z: i32 = q\n    return z\n", "AmbiguousBinding_Kd: let q = fk(if c => ((n, 1), 2) else => ((m, 3), 4))")]
+    [InlineData("guard", "z1", OpenRanks + "    let q = fk((if c => (n, 1) else => (m, 2), v))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk((if c => (n, 1) else => (m, 2), v))")]
+    [InlineData("guard", "tw-lit-ctl", OpenRanks + "    let q = ftw(n, (v, 1))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = ftw(n, (v, 1))")]
+    [InlineData("G814", "p1-bool", OpenRanks + "    let q = g(((v, 1), v), (v, 2))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = g(((v, 1), v), (v, 2))")]
+    [InlineData("G814", "p1-int", OpenRanks + "    let q = g(((v, 1), v), (v, 2))\n    let z: i32 = q\n    return z\n", "AmbiguousBinding_Kd: let q = g(((v, 1), v), (v, 2))")]
+    [InlineData("G814", "p1-deep-bool", OpenRanks + "    let q = g4((((v, 1), v), 2), (v, 2))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = g4((((v, 1), v), 2), (v, 2))")]
+    [InlineData("G814", "p1v-int", OpenRanks + "    let q = g2(((v, 1), v))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("G814", "p1v-bool", OpenRanks + "    let q = g2(((v, 1), v))\n    let z: bool = q\n    return 0\n", "TypeMismatch_Kd: let z: bool = q")]
+    [InlineData("G814", "p1g-bool", OpenRanks + "    let q = g3(((v, 1), v))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "p1j-bool", OpenRanks + "    let q = g(if c => ((v, 1), v) else => ((v, 2), v), (v, 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "p1jv-int", OpenRanks + "    let q = g2(if c => ((v, 1), v) else => ((v, 2), v))\n    let z: i32 = q\n    return z\n", "AmbiguousBinding_Kd: let q = g2(if c => ((v, 1), v) else => ((v, 2), v))")]
+    [InlineData("G814", "sh1-int", OpenRanks + "    let q = h(((v, 1), 5))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "sh1-one", OpenRanks + "    let q = h1(((v, 1), 5))\n    let z: bool = q\n    return 0\n", "NoApplicableOverload_Kd: let q = h1(((v, 1), 5))")]
+    [InlineData("guard", "sh2-arr-int", OpenRanks + "    let q = fj(([1, 2], 3))\n    let z: i32 = q\n    return z\n", "AmbiguousBinding_Kd: let q = fj(([1, 2], 3))")]
+    [InlineData("guard", "sh2-arr-bool", OpenRanks + "    let q = fj(([1, 2], 3))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = fj(([1, 2], 3))")]
+    [InlineData("G814", "k19-bool", OpenRanks + "    let q = fnr(((v, 1), 3))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "k5-deep", OpenRanks + "    let q = fk5((((n, 1), 2), 3))\n    return 0\n", "AmbiguousBinding_Kd: let q = fk5((((n, 1), 2), 3))")]
+    [InlineData("guard", "nj1-int", OpenRanks + "    let q = fk5((if c => ((n, 1), 2) else => ((m, 3), 4), 5))\n    let z: i32 = q\n    return z\n", "AmbiguousBinding_Kd: let q = fk5((if c => ((n, 1), 2) else => ((m, 3), 4), 5))")]
+    [InlineData("G814", "sh1j-int", OpenRanks + "    let q = h(if c => ((v, 1), 5) else => ((v, 2), 6))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "fj8-int", OpenRanks + "    let q = fj8(if c => [1, 2] else => [3, 4])\n    let z: i32 = q\n    return z\n", "AmbiguousBinding_Kd: let q = fj8(if c => [1, 2] else => [3, 4])")]
+    [InlineData("guard", "k1-typed-int", OpenRanks + "    let q = fk(((n, 1@i32), 2))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "fs-one", OpenRanks + "    let q = fs(((n, 1), 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "gc2-lit", OpenRanks + "    let q = gc2(((v, 1), v))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("guard", "ap4", OpenRanks + "    let q = ap4((inc2, v))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = ap4((inc2, v))")]
+    [InlineData("guard", "e10l-n", OpenRanks + "    let q = fyl(((v, 1), n, inc))\n    return 0\n", "AmbiguousBinding_Kd: let q = fyl(((v, 1), n, inc))")]
+    [InlineData("G814", "e10l-v", OpenRanks + "    let q = fyv(((v, 1), v, inc))\n    let z: i32 = q\n    return z\n", "")]
+    [InlineData("G814", "a1-arr", OpenRanks + "    let q = ga([((v, 1), v), ((v, 2), v)], (v, 2))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = ga([((v, 1), v), ((v, 2), v)], (v, 2))")]
+    [InlineData("guard", "a2-same-arg", OpenRanks + "    let q = g5((((v, 1), v), v))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = g5((((v, 1), v), v))")]
+    [InlineData("guard", "v2p", OpenRanks + "    let q: Option<(i64, i64)> = fe2(((1, 2), 3))\n    return 0\n", "")]
+    [InlineData("guard", "v4-ref-atom", OpenRanks + "    let q = fr((v, 1))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("G814", "t-probe", OpenRanks + "    let q = take(g6(((v, 1), v), (v, 2)))\n    let z: i32 = q\n    return z\n", "NoApplicableOverload_Kd: let q = take(g6(((v, 1), v), (v, 2)))")]
+    [InlineData("guard", "o5", OpenRanks + "    let q = fp((b, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fp((b, 1))")]
+    [InlineData("G814", "a3f", OpenRanks + "    let q = gr((((v, 1), 2), 0), (v, 2))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = gr((((v, 1), 2), 0), (v, 2))")]
+    [InlineData("G814", "a3jf", OpenRanks + "    let q = gr((if c => ((v, 1), 2) else => ((v, 2), 3), 0), (v, 2))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = gr((if c => ((v, 1), 2) else => ((v, 2), 3), 0), (v, 2))")]
+    [InlineData("guard", "ap4tf", OpenRanks + "    let q = ap4t(inc2, (v, 2))\n    let z: bool = q\n    return 0\n", "AmbiguousBinding_Kd: let q = ap4t(inc2, (v, 2))")]
+    [InlineData("guard", "v1f", OpenRanks + "    let q = fm3(((1, 2), 3), ((b, b), 4))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "v3f", OpenRanks + "    let q = fm2(((b, 1), (2, 3)), (v, 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "o5j", OpenRanks + "    let q = fp(if c => (b, 1) else => (b, 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fp(if c => (b, 1) else => (b, 2))")]
+    [InlineData("guard", "o5-deep", OpenRanks + "    let q = fpd(((b, 1), 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = fpd(((b, 1), 2))")]
+    [InlineData("guard", "o5-bound", OpenRanks + "    let q = fq(Sq.init(), (b, 1))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "o5-mixed", OpenRanks + "    let q = fpm((b, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fpm((b, 1))")]
+    [InlineData("guard", "o5-mkf", OpenRanks + "    let q = fpk2((mk(), 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fpk2((mk(), 1))")]
+    public void AnOpenLiteralArgumentIsFittedAndRankedAtItsOpenType(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // These rows pin a temporary record, not a SPEC verdict (DECISIONS BU-156): each program is valid (SPEC 14.9.2 step 2: a source's fit to the

@@ -39,6 +39,7 @@
     <EmbeddedResource Include="Compiler\Backend\Runtime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\WindowsPlatform.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\LinuxPlatform.ll.in" />
+    <EmbeddedResource Include="Compiler\Backend\NonePlatform.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\HeapRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\MemoryRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\ErasedWriterRuntime.ll.in" />

@@ -395,6 +395,7 @@ public sealed partial class Binding
         try
         {
             this.BeginProof(site); // The paths are one disjunction (DECISIONS BU-22).
+            this.ScopeReads.Conformance = identity; // The R fact a Refuted answer hands on (PLAN G1386), before any its paths' proofs read.
             var result = ConstraintProof.Refuted;
             for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
@@ -669,7 +670,7 @@ public sealed partial class Binding
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
-            var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.StoredConstraint(written, type), scope, type) : null;
+            var bound = this.SubstitutedPremise(condition, type, scope);
             var limit = this.ScopeReads.Limit;
             var error = this.ScopeReads.Error;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope, QuerySite.Nested);
@@ -693,4 +694,9 @@ public sealed partial class Binding
         this.LeaveClause(conditions, result); // The conditions are a clause list (G351a).
         return verdict;
     }
+
+    // SPEC 8.8.2 "a proof of P for the substituted arguments": a condition at `type`'s arguments in `scope`, as ProveConditionalPremises
+    // proves it and an inferred header's walk follows it (DemandPremiseHeaders).
+    private BoundConstraint? SubstitutedPremise(IsKoto condition, BoundType type, BindingScope scope)
+        => condition.BoundConstraint is { } written ? this.ContractConstraint(this.StoredConstraint(written, type), scope, type) : null;
 }

@@ -76,7 +76,8 @@ public sealed partial class Binding
     private bool HoldsPendingProjection(BoundType type) => this.associatedInferenceReady && this.PendingAssociatedType(type);
 
     // The Type binding of a written Type occurrence: the one producer of its Type, which it completes on `syntax` and publishes as formed
-    // there (FormedTypeRows; PLAN G1278), whatever names it: a declaration, a `Self`, an alias, a Type parameter.
+    // there in the frame it forms it in (FormedTypeRows; PLAN G1278), whatever names it: a declaration, a `Self`, an alias, a Type
+    // parameter.
     private BoundType? BindType(Koto syntax, BindingScope scope, TypeBindingContext context)
     {
         if (syntax.BoundType is { } known && !(this.closureHeader?.ReturnType is { } result && IsWithin(syntax, result)))
@@ -120,11 +121,14 @@ public sealed partial class Binding
             return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
-        // A Type expression is checked like an expression: the components that failed are its prerequisites.
+        // A Type expression is checked like an expression: the components that failed are its prerequisites. A Type a local owns is
+        // formed in the local's declaring body whoever demands it, a nested header bound with no body included (FormingBodyOf; SPEC
+        // 15.3.4, DECISIONS R8-M56; PLAN G1369): the atoms, rows and regions of its Origin declaration are that body's.
         var frame = this.BeginConsultation(syntax);
+        var owner = OriginOwner(syntax);
+        var saved = this.EnterBody(this.FormingBodyOf(owner));
         try
         {
-            var owner = OriginOwner(syntax);
             var originDeclaration = owner is not null and not (FunctionKoto or PropertyAccessorKoto) ? this.BeginOriginDeclaration(owner, scope) : null;
             var type = this.HeightChecked(syntax, this.BindTypeStructure(syntax, scope, context));
             if (IsRecovery(syntax, out _))
@@ -158,13 +162,14 @@ public sealed partial class Binding
                 return this.HeightChecked(syntax, type);
             }
 
-            FormedTypeRows.Add(syntax);
+            FormedTypeRows.Add(syntax, this.formingBody);
             this.PublishType(syntax, type);
             this.CompleteOriginDeclaration(originDeclaration);
             return syntax.BoundType;
         }
         finally
         {
+            this.formingBody = saved;
             this.resolvingTypes.Remove(syntax);
             this.EndConsultation(syntax, frame);
             this.Consulted(syntax);
@@ -185,7 +190,7 @@ public sealed partial class Binding
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
-                FormedTypeRows.Add(root.Operands[0]);
+                FormedTypeRows.Add(root.Operands[0], this.formingBody);
                 this.PublishType(root.Operands[0], rootType);
                 return rootType;
             case GenericParameterKoto:
@@ -515,23 +520,31 @@ public sealed partial class Binding
         internal bool Contains(Koto syntax) => syntax.SyntaxOwner is { } table && table.Hir.Families.ResolvingTypes.Get(syntax.SyntaxId, binding);
     }
 
-    /// <summary>The `formedTypes` family's one accessor (DECISIONS BU-220; PLAN G1278, SPEC 9.7, 9.7.1, 12.4): a kept family, whether a node
-    /// forms its Type. A `bool` row in the node's module's NodeColumns at its SyntaxId, written true by each producer where it completes
-    /// the node's Type: BindType's completion of a written occurrence (a `Self`, an alias and a Type parameter included) and of a rooted
-    /// name's operand; EnumQualifierType, for a Case or construction qualifier that writes its own list or is its declaration's `Self`;
-    /// ConstructionTargetType, for a qualifier with no own parameters, whose path forms the whole Type; BindContractReference, at each
-    /// node of a written Contract reference it completes; and the Dictionary literal's binder. A pass's reset empties its modules' rows
-    /// (Empty), which its binders write again, so a row is its node's in the latest pass over its module: a writer's decision reads the
-    /// resolved declaration (ConstructionTargetType's own parameters, the binder a qualifier's symbol selects), which an edit can change
-    /// under an unchanged node. A node of another pass's module (the frozen library's) keeps its row, and a renumbering moves it; read
-    /// only with the node's Type. A node that takes its Type from an expected Type, an inference or another node never has one. Read by
-    /// ValidateConstraintUses' site test (ConstrainedType): a constructed Type with clauses is judged at the node that forms it, and
-    /// every other node carries it.</summary>
+    /// <summary>The `formedTypes` family's one accessor (DECISIONS BU-220, R7-M80; PLAN G1278, SPEC 9.7, 9.7.1, 12.4): a kept family, the
+    /// frame a node formed its Type in. A FormationFrame row (None: no row) in the node's module's NodeColumns at its SyntaxId, written by
+    /// each producer where it completes the node's Type, from the frame it forms the node in (formingBody): BindType's completion of a
+    /// written occurrence (a `Self`, an alias and a Type parameter included) and of a rooted name's operand; EnumQualifierType, for a Case
+    /// or construction qualifier that writes its own list or is its declaration's `Self`; ConstructionTargetType, for a qualifier with no
+    /// own parameters, whose path forms the whole Type; BindContractReference, at each node of a written Contract reference it completes;
+    /// and the Dictionary literal's binder. A pass's reset empties its modules' rows (Empty), which its binders write again, so a row is
+    /// its node's in the latest pass over its module: a writer's decision reads the resolved declaration (ConstructionTargetType's own
+    /// parameters, the binder a qualifier's symbol selects), which an edit can change under an unchanged node. A node of another pass's
+    /// module (the frozen library's) keeps its row, and a renumbering moves it; read only with the node's Type. A node that takes its Type
+    /// from an expected Type, an inference or another node never has one. Read by ValidateConstraintUses' site test (ConstrainedType,
+    /// presence only): a constructed Type with clauses is judged at the node that forms it, and every other node carries it. The frame is
+    /// read by ValidateOriginRelations' root walk (a written Type formed in a declaration frame is the declaration judge's) and by
+    /// FormNestedResult (it forms the rows of a written nested result with a Body row; a result with no row is neither's). Invariant (not
+    /// checked): a body's node is first formed by its body's binder, so its row is Body, as its BoundOrigin.Body is that body; a producer
+    /// reached first from a pass-level validator is a broken contract, under which the root walk would take that body's node as a root and
+    /// FormNestedResult would skip it.</summary>
     private static class FormedTypeRows
     {
-        internal static void Add(Koto node) => HirTables.Of(node).Families.FormedTypes.Ref(node.SyntaxId) = true;
+        internal static void Add(Koto node, ExecutableBody frame)
+            => HirTables.Of(node).Families.FormedTypes.Ref(node.SyntaxId) = frame.IsBody ? FormationFrame.Body : FormationFrame.Declaration;
 
-        internal static bool Contains(Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.FormedTypes.Get(node.SyntaxId);
+        internal static FormationFrame Frame(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.FormedTypes.Get(node.SyntaxId) : FormationFrame.None;
+
+        internal static bool Contains(Koto node) => Frame(node) != FormationFrame.None;
 
         // The pass reset's step (ResetPass), over the running pass's modules.
         internal static void Empty(BindingPass pass)

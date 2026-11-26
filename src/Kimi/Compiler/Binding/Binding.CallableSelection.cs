@@ -417,7 +417,7 @@ public sealed partial class Binding
         if (i == call.ArgumentNodes.Count)
         {
             fails = expected is not null && this.ItemPart(item.Symbol.Type, item, function, scope) is { } formed &&
-                !this.FitsStructuralPartAt(formed, expected, call) && this.ExpectedAdaptation(call, formed, expected, recordPair: false) is null;
+                !this.FitsStructuralPartAt(formed, expected, call) && ReferenceEquals(this.ExpectedAdaptation(call, formed, expected, recordPair: false), formed);
         }
         else if (call.GetArgumentLabel(i) is not null)
         {
@@ -518,7 +518,7 @@ public sealed partial class Binding
         }
 
         var result = signature.Components[1];
-        return expected is not null && !this.FitsStructuralPartAt(result, expected, call) && this.ExpectedAdaptation(call, result, expected, recordPair: false) is null
+        return expected is not null && !this.FitsStructuralPartAt(result, expected, call) && ReferenceEquals(this.ExpectedAdaptation(call, result, expected, recordPair: false), result)
             ? CandidateApplicability.Inapplicable : CandidateApplicability.Applicable;
     }
 

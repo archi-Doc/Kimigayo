@@ -2,7 +2,7 @@
 
 [Implementation specification index](../IMPL.md)
 
-This chapter defines the projects, commands, outputs and test execution of the windows-x64 profile.
+This chapter defines the projects, commands, outputs and test execution of the windows-x64 and linux-x64 profiles.
 
 ## 20.1. Projects and sources
 
@@ -41,7 +41,7 @@ The surface syntax of `.kimiproj` and `.kimisln` is implementation-defined. An u
 
 ### 20.2.1. Targets and compile-time settings
 
-The windows-x64 profile has one target, `x86_64-pc-windows-msvc`; other targets follow [§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions). Project `Targets` and a dependency's allowed targets compare as exact, case-sensitive strings.
+Two profiles have a target: windows-x64, `x86_64-pc-windows-msvc`, and linux-x64, `x86_64-unknown-linux-musl`; other targets follow [§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions). Project `Targets` and a dependency's allowed targets compare as exact, case-sensitive strings.
 
 The built-in Conditions `os` and `arch` ([§19.2](../spec/19-compile-time-directives.md#192-conditions)) come from the triple's OS and architecture, with any OS version suffix removed:
 
@@ -50,6 +50,7 @@ The built-in Conditions `os` and `arch` ([§19.2](../spec/19-compile-time-direct
 | OS `windows`, `win32` | `windows` |
 | OS `linux` | `linux` |
 | OS `macos`, `macosx`, `darwin` | `macos` |
+| OS `none` | `none` |
 | any other OS | `unknown` |
 | arch `x86_64`, `amd64` | `x86_64` |
 | arch `i386`, `i486`, `i586`, `i686`, `x86` | `x86` |
@@ -88,7 +89,7 @@ group Log
 - Option names, and the values this chapter lists for `--Format` (`text`, `json`) and for Boolean options (`true`, `false`), are not case-sensitive: `--format json` is `--Format json`, and `--Debug TRUE` is `--Debug true`; this chapter spells them as `--Format`, `json` and `true`. A word that begins with a dash, unless a digit or `.` follows its first dash (`-1`), is never a value: dashes alone (`--`) are an input word, and any other such word names the option its text after the leading dashes spells (`-target` is `--Target`). `--Format` takes `text`, the default, or `json`. The Boolean options `--Debug`, `--locked` and `--no-build` take `true` or `false`, and `--locked` and `--no-build` alone mean true; `test`'s `--list`, `--allow-empty` and `--no-parallel` take no value. An option the command does not take, an option without its value, a value outside its listed set and a repeated option are invalid options: `test` reports the first it reads and returns 2 (§20.6.4); every other command reports each on standard error and returns 1 without doing its work.
 - `--Target` selects a configured target for `check`, `emit`, `build`, `run` and `pack`, for `test` in every selected Project, and for `restore`'s resolution; without it, each Project's sole target is used, and several are an error. Release is the default mode; `--Debug true` selects Debug, independently of `Optimization`.
 - `check` returns 0 when the whole command is accepted ([§23.2.3](../spec/23-compiler-services.md#2323-check-commands)) and 1 otherwise; other commands return 0 on success and 1 on failure. `run` returns the program's exit code, or 1 for a failure before launch, reported on standard error. `test` uses [§20.6.4](#2064-results-and-exit-codes). Cancellation returns 130. A second Ctrl+C while a command is being cancelled ends the process at once with 130, except during a publication [§23.2.3](../spec/23-compiler-services.md#2323-check-commands) protects.
-- `run` forwards standard streams and runs in the project directory (a direct `.exe`: the caller's). Like running tests ([§20.6.1](#2061-selection-and-preparation)), it requires the windows-x64 host. A program `run` starts while Kimi has no standard input reads end of input. The program and its descendants end with `run`: any still running when the program exits, when `run` is cancelled, or when Kimi's process ends.
+- `run` forwards standard streams and runs in the project directory (a direct `.exe`: the caller's). `run` and running tests ([§20.6.1](#2061-selection-and-preparation)) require the host's profile target, the one whose executables Kimi runs on this host: windows-x64 on Windows x64, and none on any other host. Any other target, linux-x64 on Windows among them, is Unsupported ([§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions)) before any build or record write. A program `run` starts while Kimi has no standard input reads end of input. The program and its descendants end with `run`: any still running when the program exits, when `run` is cancelled, or when Kimi's process ends.
 
 ### 20.3.1. Input resolution and implicit projects
 
@@ -101,7 +102,7 @@ Inputs are relative to the invocation directory; no input means the current dire
 
 An unreadable, invalid or unsupported selected file is an error, never a reason to try the next candidate. A directory input looks only in that directory: exactly one `.kimisln` selects that solution, and more than one is an error; with none, every `.kimiproj` is selected, and none is an error. A failure to load any selected Project fails the command. `run` needs exactly one selected Application.
 
-A selected `.kimi` file forms an **implicit project**: named after the file without `.kimi`, in the file's directory, with that file as its only source, the host target (or `--Target`), and otherwise an `O2` Application with default settings. It has no dependencies and no lock, and no project file is written. Each build record names its input, the selected `.kimiproj` or `.kimi` file.
+A selected `.kimi` file forms an **implicit project**: named after the file without `.kimi`, in the file's directory, with that file as its only source, the host's profile target (windows-x64 on Windows x64), or `--Target`, which a host without one requires, and otherwise an `O2` Application with default settings. It has no dependencies and no lock, and no project file is written. Each build record names its input, the selected `.kimiproj` or `.kimi` file.
 
 ```text
 kimi build A.kimi            # implicit project; writes bin/T/A.O2.exe
@@ -164,7 +165,7 @@ The formats of source packages (`.kimipkg`), release tables and lock files are i
 
 ### 20.6.1. Selection and preparation
 
-`test` resolves its input as [§20.3.1](#2031-input-resolution-and-implicit-projects) does; a solution selects each listed Project once. A dependency's tests run only when its Project is selected itself. Running tests requires the windows-x64 host and target ([§20.2.1](#2021-targets-and-compile-time-settings)).
+`test` resolves its input as [§20.3.1](#2031-input-resolution-and-implicit-projects) does; a solution selects each listed Project once. A dependency's tests run only when its Project is selected itself. Running tests requires the host's profile target ([§20.3](#203-commands)); preparing them requires a target with a profile ([§22](../spec/22-core-execution-and-foreign-functions.md#22-kimi-program-execution-and-foreign-functions)).
 
 **Test preparation** checks a Project's product and test sources with its test dependencies for one target, without discovering or running tests; its result is a Test-mode check result. Every selected Project is prepared before listing or filtering, so a filter never hides an error, and any load, check or build failure prevents every case from running. Tests ([§6.7.2](../spec/06-declarations-and-containers.md#672-test-definitions)) are discovered at compile time.
 

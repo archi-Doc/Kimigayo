@@ -390,7 +390,7 @@ func use(source: uniq/i32, bound: ref/i32) -> i32
 
 **Fixed points.** Variance, Loan requirements, OwnedOrigins and `Transferable` are computed once per declaration (Loan requirements and Phantom status once per admitted Semantics case of its pair binders), in terms of its own Type parameters and slots, never by expanding instantiations. Each is the least fixed point from the bottom value (unused, `none`, empty set, no exclusion), so recursive Types, including non-regular ones such as a Field `rc/Nest<(T, T)>?`, terminate.
 
-**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access; its requirement is `none`, and it is invariant. Variance stays one per declaration: a slot is invariant as Phantom only when it is Phantom in every admitted case.
+**Phantom Origins.** A slot is **Phantom** when no chain of stored Fields, including slots of nested Types bound to it, reaches a stored safe reference or a `Loan<T>` Field. It keeps its dependency but grants no validity, Loan, Copy or access, and its requirement is `none`. Variance stays one per declaration: a slot that is Phantom in every admitted case is invariant, unless such a chain reaches it in a stored Function Type's signature; then it takes its variance from the declaration's storage like any other slot (Variance, above).
 
 **`Kimi.Loan<T>`** is a zero-sized compiler-managed struct that expresses a dependency without storage. `T` must be a borrow Type with outer `ref`, `uniq`, `objref` or `objuniq`. A `Loan<T>` Field counts as storing a `T` for all slot properties; it is Copy when `T` is, has no address and grants no access. `Loan<T>.init(value: T)` is safe and keeps the borrow's dependency; destroying it ends only its own responsibility, and the Loan stays live while the values that carry it are used ([§15.6](#156-borrow-checking)). `Slice<T>` ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), `UniqSlice<T>` (invariant, [§4.8.4](04-arrays-indexing-and-slices.md#484-views-and-uniqslice)) and `Array<T>` ([§4.5](04-arrays-indexing-and-slices.md#45-array-ownership)) take slot properties from their own rules; `Weak<S>` counts as storing an `S` ([§3.2.2](03-types-and-values.md#322-weak-references)).
 
@@ -403,6 +403,9 @@ struct Node<T> {a}
     let value: ref/T during a
     let next: Option<rc/Node<T>{n}>
         origin n.a == a                 // Recursion adds nothing; a is covariant.
+
+struct Callback {input}                 // Contravariant in input, a Phantom slot only call's parameter names.
+    let call: (ref/i32 during input) -> i32
 ```
 
 ```kimi
@@ -1083,7 +1086,7 @@ A Closure body is checked against its call receiver ([§7.7.3](07-functions-and-
 
 When the result Type is omitted, each Origin in the inferred result is a per-call Origin of the internal call contract, outlived by every source of the returned values by the receiver rules. Several returned values give the meet of their sources at covariant positions and require equal Origins at invariant positions. The Origin of a whole result inferred from the body is a fixed Origin outside the body; each result source is judged against it, so a source whose Origin is body-local, such as a Borrow of call-local storage or of an environment consumed by the call, is Refuted at the returned value, not a Loan conflict at the storage's destruction ([§15.6.5](#1565-judging-origin-relations)), while a source of Origin `static`, such as a Borrow of an immutable static Field, outlives it.
 
-An annotated result, or a fixed expected call signature ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)), uses ordinary result elision ([§15.4.3](#1543-result-defaults)) without the hidden receiver, which no Origin expression names; annotation names resolve among the parameters and enclosing scopes, never to environment bindings. The receiver stays hidden because common Function Types and Callable Constraints never return results that depend on it ([§3.2.1](03-types-and-values.md#321-callable-value-types), [§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)).
+An annotated result, or a fixed expected call signature ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)), uses ordinary result elision ([§15.4.3](#1543-result-defaults)) without the hidden receiver, which no Origin expression names. The receiver stays hidden because common Function Types and Callable Constraints never return results that depend on it ([§3.2.1](03-types-and-values.md#321-callable-value-types), [§8.10](08-generics-constraints-and-contracts.md#810-callable-constraints)). Origin names in a Closure's parameter and result annotations resolve among its parameters and enclosing scopes, never to its own environment bindings; an enclosing Closure's environment binding is a binding of an enclosing scope, so a nested Closure's annotations may name it ([§7.7.2](07-functions-and-callable-values.md#772-captures)).
 
 ```kimi
 let text = makeText()

@@ -60,11 +60,20 @@ public partial class TypeDagScalingTest
     [InlineData(30)]
     [InlineData(120)]
     public void APremiseChainFailsWithinTheFixpoint(int n)
+        => Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(PremiseChainSource(n)));
+
+    // R7-C2c2 c2-5b2's perf fix (F's CC-66 B2; ContractSolver W6, W7): the chain above reads its failed premises, each read final, so
+    // the view's identity table is Final and memoized, a read joining the limit its build wrote. Its work is the fixpoint's rounds
+    // times the chain (each of the n rounds fails a premise, so the view's serial moves and the table is built once more over the
+    // chain): quadratic, so doubling n at most quadruples it. Read Provisional, the table was rebuilt at every read as well, each
+    // build reading every premise, and doubling n multiplied the work by 14.
+    [Fact]
+    public void AFailedPremiseChainsTableIsBuiltOncePerRound()
     {
-        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
-        var chain = string.Concat(Enumerable.Range(1, n).Reverse().Select(static k => $"    T{k} is T{k - 1}.(K).X\n"));
-        var source = $"contract K\n    associate X\nfunc f<{parameters}>(t: ref/T0) -> i32\n    T0 is i32\n    T0 is K\n" + chain + "    return 0\n";
-        Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source + "public func main() -> ()\n    return\n"));
+        var (small, large) = (Work(30), Work(60));
+        Assert.True(large <= 4 * small, $"{small} at 30, {large} at 60");
+
+        static int Work(int n) => MinimalEmissionTest.Analyze(PremiseChainSource(n)).Binding.IdentityClassWork;
     }
 
     // R7-C3 b (F's V2a2/C3b ruling 3 C3; SPEC 8.6.1, 8.9.1): a Type with n conformances to one Contract declaration, `C<K0>` to `C<Kn-1>`,
@@ -177,6 +186,37 @@ public partial class TypeDagScalingTest
         static int Closure(string source)
         {
             var c = MinimalEmissionTest.Analyze(source + "public func main() -> ()\n    return\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
+    // R7-C2c2 c2-5c (F's CC-36 C1, the review's probe): a view with no identity premise files the reading of each of m Contract facts
+    // over a completed projection (`Ai is P<SrcI.(HasItem).Item>`) for n uses `x.size(1)`, its entry outside a Kept region formed again
+    // at each request: Θ(m·(n+m)), the identity domain's shape (the twin adds `W is i32`) and never above it; PLAN G1408 is its staged
+    // reduction. Measured on 2c at 8, 16, 32: uses 2,538, 3,546, 5,562 (twin 2,926, 4,142, 6,574); facts 2,538, 7,242, 23,562 (twin
+    // 2,926, 7,910, 24,790). The programs are valid (SPEC 8.2.3, 8.6.1: one candidate).
+    [Theory]
+    [InlineData("uses", 2)]
+    [InlineData("facts", 4)]
+    public void AViewWithoutAnIdentityPremiseFilesReadingsAsTheIdentityDomain(string grown, int factor)
+    {
+        var plain = new[] { 8, 16, 32 }.Select(n => Work(grown, n, string.Empty)).ToArray();
+        var twin = new[] { 8, 16, 32 }.Select(n => Work(grown, n, "    W is i32\n")).ToArray();
+        Assert.True(
+            plain[1] <= factor * plain[0] && plain[2] <= factor * plain[1] && plain.Zip(twin).All(static p => p.First <= p.Second),
+            $"{grown}: {string.Join(", ", plain)} (twin {string.Join(", ", twin)}) at 8, 16, 32");
+
+        static int Work(string grown, int n, string identity)
+        {
+            var (uses, facts) = grown == "uses" ? (n, 8) : (8, n);
+            var parameters = string.Concat(Enumerable.Range(0, facts).Select(static i => $", A{i}"));
+            var premises = string.Concat(Enumerable.Range(0, facts).Select(static i => $"    A{i} is P<SrcI.(HasItem).Item>\n"));
+            var body = string.Concat(Enumerable.Range(0, uses).Select(static i => $"    let r{i} = x.size(1)\n"));
+            var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n" +
+                "    public init() => ()\ncontract P<T>\n    func size(self: ref/Self, v: T) -> i32\n" +
+                $"func g<T, W{parameters}>(x: ref/T) -> i32\n{premises}    T is P<SrcI.(HasItem).Item>\n{identity}{body}    return 0\n" +
+                "public func main() -> ()\n    return\n");
             Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
             return c.Binding.ClosureIndexWork;
         }
@@ -403,6 +443,15 @@ public partial class TypeDagScalingTest
         };
 
         return $"func f<{parameters}>(v: T0) -> i32\n" + string.Concat(premises) + "    return 0\npublic func main() -> ()\n    return\n";
+    }
+
+    // A chain of n premises `Tk is T{k-1}.(K).X` over a failed root, `T0 is i32` beside `T0 is K` (APremiseChainFailsWithinTheFixpoint).
+    private static string PremiseChainSource(int n)
+    {
+        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
+        var chain = string.Concat(Enumerable.Range(1, n).Reverse().Select(static k => $"    T{k} is T{k - 1}.(K).X\n"));
+        return $"contract K\n    associate X\nfunc f<{parameters}>(t: ref/T0) -> i32\n    T0 is i32\n    T0 is K\n" + chain + "    return 0\n" +
+            "public func main() -> ()\n    return\n";
     }
 
     private static string GroundChainSource(int n)
