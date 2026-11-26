@@ -396,6 +396,24 @@ public sealed partial class Binding
         return proof;
     }
 
+    // A kept formation's own first proof limit (W6; ContractSolver's Not replayed): the kept rows' walk (EnumerateClosed) and an
+    // identity table's build (ClassesOf). The proof's earlier limit is set aside for the formation (SetAsideLimit, which returns it)
+    // and joined after it (TakeOwnLimit, which returns the formation's own), so the proof ends with the limit the formation's own
+    // writes would leave; the table keeps the formation's, and each read of it joins it (ScopeReads.Limit ??= it).
+    private ICheckCause? SetAsideLimit()
+    {
+        var outer = this.ScopeReads.Limit;
+        this.ScopeReads.Limit = null;
+        return outer;
+    }
+
+    private ICheckCause? TakeOwnLimit(ICheckCause? outer)
+    {
+        var own = this.ScopeReads.Limit;
+        this.ScopeReads.Limit = outer ?? own;
+        return own;
+    }
+
     // The one channel of an Error resting on a failed node's record (a failed premise's, a named input's: R7-C3).
     private ConstraintProof RestOnFailure(ICheckCause cause)
     {
