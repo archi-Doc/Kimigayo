@@ -167,7 +167,8 @@ public sealed partial class Binding
     // PremiseClosureLimit, that its rounds past a root's first walk and its re-rootings spend together (`closure.Spent`, counted from
     // the part asked and never reset; `closure.Rooted`, what was spent when the last re-rooting started the current root's own
     // rounds). O-532 (b): the same budget bounds the closure's rows (enumerateIdentities), at most `closure.Rows`, PremiseClosureLimit
-    // per Type of its root and of the declaration's grounds G (T(G).TypesWith(root), set at the root's first walk): one count, a
+    // per Type of its root and of the premises of the declaration's grounds G it reaches (T(G).TypesWith(root), the root's connected
+    // part of G, G1406-27; set at the root's first walk): one count, a
     // function of (root, G) and linear in both, so a closure whose classes grow without bound (two recursive associates double them a
     // round) ends however its rounds go. Rows past it spend the whole budget. Past the budget the closure ends (null) and CloseRoot
     // files it Limited, so the round refuses nothing: a reader of a Limited root refuses (ReadIdentityLimit: AnalysisLimit_Kd, the

@@ -49,6 +49,7 @@ public sealed partial class Binding
         private readonly List<(int Root, int Member, int Component)> stack = new();
         private readonly HashSet<BoundType> groupSeen = new(ReferenceEqualityComparer.Instance); // InGroup's and TypesWith's walk (R7-C3 C3d)
         private readonly List<BoundType> groupWalk = new();
+        private readonly List<int> reach = new(); // TypesWith's connected parts of the nodes (Reach): a node's parent, a part's root minus its size
         private BindingScope? scope;
         private bool provisional;
         private bool meetProvisional;
@@ -149,6 +150,7 @@ public sealed partial class Binding
             this.projectionMembers.Clear();
             this.forms.Clear();
             this.forming.Clear();
+            this.reach.Clear();
         }
 
         internal void Premise(BoundType a, BoundType b, Completion availability)
@@ -232,12 +234,14 @@ public sealed partial class Binding
             return false;
         }
 
-        // e2-7 (O-532 (b); SPEC 8.3.3 Limits): the Types of this table and of `type`, each once: the table's nodes (its premises' subterms,
-        // as Add adds them) and the parts of `type` (Arity and Component, as Add walks them) that are no node, by InGroup's one walk. Over
-        // T(G) it is a closure's measure (ContractSolver's ExtendRound): a function of (root, G), linear in both, read from no other table.
+        // e2-7 (O-532 (b), G1406-27; SPEC 8.3.3 Limits): the Types of `type` and of the premises it reaches in this table, each once: the
+        // parts of `type` (Arity and Component, as Add walks them) that are no node, and the nodes of each connected part (Reach) that one
+        // of its parts is in, by InGroup's one walk. Over T(G) it is a closure's measure (ContractSolver's ExtendRound): the root's part
+        // of G, a function of (root, G), linear in both, read from no other table.
         internal int TypesWith(BoundType type)
         {
-            var count = this.types.Count;
+            this.Reach();
+            var count = 0;
             this.groupSeen.Clear();
             this.groupWalk.Clear();
             this.groupWalk.Add(type);
@@ -245,15 +249,18 @@ public sealed partial class Binding
             {
                 var part = this.groupWalk[^1];
                 this.groupWalk.RemoveAt(this.groupWalk.Count - 1);
-                if (this.node.ContainsKey(part) || !this.groupSeen.Add(part))
+                if (this.node.TryGetValue(part, out var n))
                 {
-                    continue; // a node's parts are nodes (Add adds them first)
+                    n = this.Part(n);
+                    count += this.groupSeen.Add(this.types[n]) ? -this.reach[n] : 0; // a part once, by its root's Type
                 }
-
-                count++;
-                for (var i = 0; i < Arity(part); i++)
+                else if (this.groupSeen.Add(part))
                 {
-                    this.groupWalk.Add(Component(part, i));
+                    count++;
+                    for (var i = 0; i < Arity(part); i++)
+                    {
+                        this.groupWalk.Add(Component(part, i));
+                    }
                 }
             }
 
@@ -1527,6 +1534,57 @@ public sealed partial class Binding
             return n;
         }
 
+        // TypesWith's connected parts of the nodes (G1406-27): a class's members are one part (a premise joins its sides) and so are a
+        // node and each component with an abstract part (each a node, Add; a closed Type, as a projection's Contract, is itself alone
+        // and connects nothing), built once per table after its last node or join (Union empties them), linear in the nodes and their
+        // components (union by size).
+        private void Reach()
+        {
+            if (this.reach.Count == this.types.Count)
+            {
+                return;
+            }
+
+            this.reach.Clear();
+            for (var n = 0; n < this.types.Count; n++)
+            {
+                this.reach.Add(-1);
+            }
+
+            for (var n = 0; n < this.types.Count; n++)
+            {
+                this.Join(n, this.Find(n));
+                for (var i = 0; i < Arity(this.types[n]); i++)
+                {
+                    if (Component(this.types[n], i) is { HasAbstractPart: true } part)
+                    {
+                        this.Join(n, this.node[part]);
+                    }
+                }
+            }
+        }
+
+        private int Part(int n)
+        {
+            while (this.reach[n] >= 0)
+            {
+                n = this.reach[n];
+            }
+
+            return n;
+        }
+
+        private void Join(int a, int b)
+        {
+            (a, b) = (this.Part(a), this.Part(b));
+            if (a != b)
+            {
+                (a, b) = this.reach[a] <= this.reach[b] ? (a, b) : (b, a); // the larger part keeps its root
+                this.reach[a] += this.reach[b];
+                this.reach[b] = a;
+            }
+        }
+
         private int Find(int n)
         {
             while (this.parent[n] != n)
@@ -1554,6 +1612,7 @@ public sealed partial class Binding
 
             this.parent[y] = x;
             this.incompleteClass[x] |= this.incompleteClass[y];
+            this.reach.Clear();
             return true;
         }
     }
