@@ -39,8 +39,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The storage walk's root storage, the Abstract one (what an abstract part hides), the result's (every position of its Type, one
-    // storage), and Binding's depth bound of the source and part walks, which counts entries: a Dictionary's level is two, (K, V) and then K or
-    // V. A storage nest past 32 entries is past it, however few Dictionaries it holds: the Front's named limit (the owner's O-47, O-49; PLAN G408's class).
+    // storage), and Binding's depth bound of the walks over a contract Type (Enters' census), which counts entries: a Dictionary's level
+    // is two, (K, V) and then K or V. A storage nest past 32 entries is past it, however few Dictionaries it holds: the Front's named limit
+    // (the owner's O-47, O-49; PLAN G408's class).
     private const int OwnStorage = 0;
     private const int AbstractStorage = 1;
     private const int ResultStorage = 2;
@@ -61,9 +62,10 @@ public sealed partial class Binding
     private readonly List<(int Storage, int Node, BoundType? Signature)> storageTargets = new(); // With the walked signature there (Admits).
     private readonly List<(int Storage, BoundType Signature, BoundType Bound)> storageBound = new(); // The written roots of the kept abstract Type's bindings, by storage, with the Type the call binds it to there (HiddenKinds).
     private readonly HashSet<BoundType> storageKept = new(ReferenceEqualityComparer.Instance); // The kept abstract Types the output's walk met (Written's Handed).
-    private readonly Dictionary<BoundType, int> storageResultSeen = new(ReferenceEqualityComparer.Instance); // ResultLeaves' walk: Enters' depths.
+    private readonly Dictionary<BoundType, int> storageResultSeen = new(ReferenceEqualityComparer.Instance); // ResultLeaves' walk: the Types met, once each (value 0).
     private readonly List<(HoldAt At, int Storage)> storageHolds = new();
     private readonly List<BoundType> storageHidden = new();
+    private readonly List<BoundType?> retentionHolders = new(); // The holders the output walks name, per computation (HolderCarries): an Own root's Type, null for the Abstract storage.
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -119,6 +121,11 @@ public sealed partial class Binding
         if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent && ReceiverClosure(outer, referent) is { } receiver)
         {
             var (captures, bindings) = (receiver.ClosureDefinition!.Captures, this.ClosureEnvironment(referent));
+            if (exclusive)
+            {
+                this.retentionHolders.Add(bindings); // The receiver's referent: its environment, an Own root.
+            }
+
             for (var i = 0; exclusive && i < bindings.Components.Count; i++)
             {
                 var binding = StorageAt.Output(OwnStorage, captures[i].Environment.MutableCapture) with { Captured = true };
@@ -150,6 +157,17 @@ public sealed partial class Binding
         ref var seen = ref CollectionsMarshal.GetValueRefOrAddDefault(this.storageSeen, visit, out var met);
         if (!Enters(ref seen.Depth, ref met, source ? at.Depth : 0, StorageBound))
         {
+            if (!met)
+            {
+                var past = this.BodyRun(type, at.Written, at.Holder, out _);
+                if (!this.Asks(at, past))
+                {
+                    this.storageSeen.Remove(visit); // Past the bound, asking nothing (Asks): no state.
+                }
+
+                this.retentionHeld.RemoveRange(past.Start, past.End - past.Start);
+            }
+
             return;
         }
 
@@ -387,6 +405,11 @@ public sealed partial class Binding
                 < 0 => OwnStorage,
                 _ => this.StorageOf(this.Parametric(at.Signature) ? at.Signature! : referent), // The callee's kept T: its own entry (PLAN G935 R1.2).
             };
+            if (at.Storage < 0)
+            {
+                this.retentionHolders.Add(referent); // An Own root: the storages past its exclusive layers lie inside it.
+            }
+
             this.StorageWalk(environment, referent, at with { Storage = past, Writable = true });
         }
         else if (targets >= 0)
@@ -499,17 +522,12 @@ public sealed partial class Binding
 
     // The Types the result holds by value that hold no part by value (R's node-less positions in the result; PLAN G935, K2): the result
     // holds an input's own value only by value (SPEC 15.6.4), never past its own borrow or raw layer, whose referent or pointee it lends.
-    private void ResultLeaves(BoundType? type, int depth)
+    // It serves the result's output walk, which has no bound (StorageWalk), so it has none either: each Type once (G408B-3 Finding 2).
+    private void ResultLeaves(BoundType? type)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null || !this.storageResultSeen.TryAdd(type, 0))
         {
             return;
-        }
-
-        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.storageResultSeen, type, out var met);
-        if (!Enters(ref shallowest, ref met, depth, StorageBound))
-        {
-            return; // Entered at this depth or shallower: a Type's leaves depend on the Type alone (the bounded walks' rule, PLAN G571).
         }
 
         var run = this.BodyRun(type, null, null, out _);
@@ -519,7 +537,7 @@ public sealed partial class Binding
             if (this.ByValue(type, this.retentionHeld[i]))
             {
                 leaf = false;
-                this.ResultLeaves(this.retentionHeld[i].Part, depth + 1);
+                this.ResultLeaves(this.retentionHeld[i].Part);
             }
         }
 

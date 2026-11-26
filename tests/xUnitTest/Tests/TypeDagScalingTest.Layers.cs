@@ -90,6 +90,114 @@ public partial class TypeDagScalingTest
         Assert.Equal("D13<i32>.Item", source.Substring(span.Start, span.Length));
     }
 
+    // SPEC 15.6.4, PLAN G408 (G408B-9 R1, R2): the fits asked at the positions a callee's output walk names (Holds, Borrows) walk the
+    // storage's Type with the output walk's bound, which is none, entering each state once, so one call's contract is decided at any number
+    // of levels up to H. make's result is a Tuple chain over `ref/i32 during q` (D_n's chains: a written one is past the syntax depth),
+    // each level a position whose fit may walk down to the leaf. Holds keeps its answers for one output's positions (G408B-10), so each of
+    // the call's two hold walks enters each level once: at most 2n + 4 steps (TermWalkWork) at n = 0, 1,024 and 8,190 levels (4, 2,052,
+    // 16,384; with the leaf's ref and i32, H = 8,192), with no stack failure. A fit walking the levels below each position anew reads
+    // (n + 1)(n + 2) + 2, 67.1 million at 8,190.
+    [Fact]
+    public void TheHoldFitsOfOneCallAreLinearInTheLevels()
+    {
+        var levels = new[] { 0, 1024, 8190 };
+        var steps = levels.Select(static n => Work(n)).ToArray();
+        var text = string.Join(' ', steps);
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        Assert.True(steps[1] > steps[0] && steps.Zip(levels).All(static x => x.First <= (2L * x.Second) + 4), text);
+
+        static long Work(int levels)
+        {
+            var c = MirBuildTest.Compile(TypeHeightLimitTest.Doubling(12) +
+                $"func make(x: ref/i32 during q) -> {TypeHeightLimitTest.Chain(levels, "ref/i32 during q")} => $abort(\"x\")\n" +
+                "func g()\n    var x = 1\n    var d = make(x@ref)\n" + LayerMain);
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            c.Analyze();
+            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+            return c.Binding.TermWalkWork;
+        }
+    }
+
+    // SPEC 15.6.4, PLAN G408 (G408B-11, G408B-12): the same chain where x's own Type, `uniq/(i64, i32) during q`, fits no level, so each
+    // position's fit asks Borrows whether it is a borrow formed through x's layer: down to the leaf `ref/i32 during q`, whose referent i32
+    // is a part (i64, i32) holds by value. Borrows keeps its answers as Holds does, so each output's two walks enter each level once (Holds'
+    // no also the tuples' i32), with HoldsFrom's three entries in the referent and the two other entries: at most 4n + 14 steps at n = 0,
+    // 1,024 and 8,190 (14, 4,110, 32,774). A Borrows walk anew at each position reads n^2 + 5n + 12 (67,117,062 at 8,190).
+    [Fact]
+    public void TheBorrowFitsOfOneCallAreLinearInTheLevels()
+    {
+        var levels = new[] { 0, 1024, 8190 };
+        var steps = levels.Select(static n => Work(n)).ToArray();
+        var text = string.Join(' ', steps);
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        Assert.True(steps[1] > steps[0] && steps.Zip(levels).All(static x => x.First <= (4L * x.Second) + 14), text);
+
+        static long Work(int levels)
+        {
+            var c = MirBuildTest.Compile(TypeHeightLimitTest.Doubling(12) +
+                $"func make(x: uniq/(i64, i32) during q) -> {TypeHeightLimitTest.Chain(levels, "ref/i32 during q")} => $abort(\"x\")\n" +
+                "func g(v: (i64, i32))\n    var x = v@move\n    var d = make(x@uniq)\n" + LayerMain);
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            c.Analyze();
+            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+            return c.Binding.TermWalkWork;
+        }
+    }
+
+    // SPEC 15.6.4, PLAN G408 (G408B-17; design section 4's s1, s2): a call's retention asks once, over all the subjects its walks left past
+    // their bounds, whether one can carry a Loan or an address (one MayCarry query, one visited set), so the question is linear in the Types
+    // reachable from them. f's input d is an n-level Tuple chain past StorageBound and HandedBound, beside r, whose Loan the result may
+    // hold: over i32 (s1) the query walks the n levels and answers no; over `ref/i32 during q` (s2) it answers yes at level n and the
+    // call's contract is the Limit. At n = 64, 128, 256 and 512 the Binding's work (TermWalkWork: the hold walks; MayCarry has no counter)
+    // grows linearly; the time, the query's measure, is printed.
+    [Theory]
+    [InlineData("i32")]
+    [InlineData("ref/i32 during q")]
+    public void ARetentionSubjectIsAskedOnceAcrossTheLevels(string leaf)
+    {
+        int[] levels = [64, 128, 256, 512];
+        var (steps, times) = (new long[levels.Length], new long[levels.Length]);
+        for (var i = 0; i < levels.Length; i++)
+        {
+            var chain = TypeHeightLimitTest.Chain(levels[i], leaf);
+            (steps[i], times[i]) = RetentionWork(TypeHeightLimitTest.Doubling(9) +
+                $"func make(x: ref/i32 during q) -> {chain} => $abort(\"x\")\nfunc f(d: {chain}, r: ref/i32 during q) -> ref/i32 during q => $abort(\"x\")\n" +
+                "func g()\n    var x = 1\n    var d = make(x@ref)\n    var k = f(d@move, x@ref)\n" + LayerMain);
+        }
+
+        var text = $"leaf {leaf} n {string.Join(", ", levels)}: work {string.Join(", ", steps)}; ms {string.Join(", ", times)}";
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        Assert.True(MirBorrowsTest.Grows(steps[..3], 2.5) && MirBorrowsTest.Grows(steps[1..], 2.5), text);
+    }
+
+    // SPEC 15.6.4, PLAN G408 (G408B-17; design section 4's s3): a Handed frontier. f's input h refers to k structs S_j, each storing a
+    // 33-level Tuple chain over its own `[j of i32]` (distinct Types, so no part is shared), whose last levels lie past HandedBound: the
+    // walk publishes them as the call's subjects, and the one query walks each once. At k = 16, 32, 64 and 128 the Binding's work grows
+    // linearly; the time is printed.
+    [Fact]
+    public void AHandedFrontierIsAskedOnceAcrossItsParts()
+    {
+        int[] counts = [16, 32, 64, 128];
+        var (steps, times) = (new long[counts.Length], new long[counts.Length]);
+        for (var i = 0; i < counts.Length; i++)
+        {
+            var structs = new System.Text.StringBuilder();
+            for (var j = 1; j <= counts[i]; j++)
+            {
+                structs.Append($"struct S{j}\n    public var a: {string.Concat(Enumerable.Repeat("(i32, ", 33))}[{j} of i32]{new string(')', 33)}\n");
+            }
+
+            var tuple = "(" + string.Join(", ", Enumerable.Range(1, counts[i]).Select(static j => $"S{j}")) + ")";
+            (steps[i], times[i]) = RetentionWork(structs.ToString() +
+                $"func f(h: uniq/{tuple} during q, r: ref/i32 during q) -> ref/i32 during q => $abort(\"x\")\n" +
+                $"func g(v: {tuple})\n    var x = 1\n    var t = v@move\n    var k = f(t@uniq, x@ref)\n" + LayerMain);
+        }
+
+        var text = $"k {string.Join(", ", counts)}: work {string.Join(", ", steps)}; ms {string.Join(", ", times)}";
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        Assert.True(MirBorrowsTest.Grows(steps[..3], 2.5) && MirBorrowsTest.Grows(steps[1..], 2.5), text);
+    }
+
     // PLAN G348, R7-D3: a Closure's call signature is an edge BoundType.Height does not count (BU-71), so the walk of the enclosing
     // anonymous functions' atoms at each Closure's formation (FixedAtoms) does not descend it. In a chain of closures each taking the
     // previous (G348-d's `sclo`), the walks grow linearly in the links; descending each signature walked the whole chain at every link.
@@ -202,4 +310,15 @@ public partial class TypeDagScalingTest
     }
 
     private static string Operand(string type) => type.Contains('/') || type.Contains(' ') ? $"({type})" : type;
+
+    // The Binding's work (TermWalkWork) and the milliseconds of one compilation and its analysis, which records no internal failure.
+    private static (long Work, long Ms) RetentionWork(string source)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        c.Analyze();
+        Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        return (c.Binding.TermWalkWork, watch.ElapsedMilliseconds);
+    }
 }

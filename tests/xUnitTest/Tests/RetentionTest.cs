@@ -369,20 +369,22 @@ public sealed partial class RetentionTest
 
     // Binding's bound counts entries, 32 of them, a Dictionary level counting two (the owner's O-47 (b)). A Tuple level is one, so dev's edge
     // stands: n = 32 keeps the conflict, n = 33 is past it. A Dictionary level is two, so n = 16 keeps the conflict and n = 17 to 32 are past it.
+    // Past it f's input fold is undecided, so f's contract is the Limit, recorded at the call (PLAN G408): never acceptance (SPEC 23.1.1).
+    // make's hold walk has no bound (G408B-9 R1), so its result's positions decide make's contract exactly.
     [Theory]
     [InlineData("Dictionary<i32, ", ">", 16, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("Dictionary<i32, ", ">", 17, "")]
-    [InlineData("Dictionary<i32, ", ">", 32, "")]
-    [InlineData("Dictionary<i32, ", ">", 33, "")]
+    [InlineData("Dictionary<i32, ", ">", 17, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
+    [InlineData("Dictionary<i32, ", ">", 32, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
+    [InlineData("Dictionary<i32, ", ">", 33, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
     [InlineData("(i32, ", ")", 32, "ComparisonLoanConflict_Kd x = 3")]
-    [InlineData("(i32, ", ")", 33, "")]
+    [InlineData("(i32, ", ")", 33, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
     public void TheBoundCountsEntries(string open, string close, int levels, string records)
         => Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels))));
 
-    // PLAN G571 (SPEC 15.6.4): the walks that stop at the bound enter a part at the shallowest depth it is met at (Enters), so what lies
-    // below it does not depend on the route that meets it first: the input fold's (`Store`, StoreUse) and the hold fit's (`Through`,
-    // ThroughUse). Each Field is P at its depth: `long` 30 Tuple levels down, where P's borrow lies past the bound, `mid` 20 and `short`
-    // 0, within it; Field order decides nothing. Each valid twin writes nothing while the borrow is used.
+    // PLAN G571 (SPEC 15.6.4): what lies below a part does not depend on the route that meets it first: the input fold, which stops at the
+    // bound, enters a part at the shallowest depth it is met at (Enters; `Store`, StoreUse), and the hold fit, which has none (G408B-9 R1),
+    // enters each part once (`Through`, ThroughUse). Each Field is P at its depth: `long` 30 Tuple levels down, where P's borrow lies past
+    // the bound, `mid` 20 and `short` 0, within it; Field order decides nothing. Each valid twin writes nothing while the borrow is used.
     [Theory]
     [InlineData("long short", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
     [InlineData("short long", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
@@ -420,11 +422,11 @@ public sealed partial class RetentionTest
     }
 
     // The recorded limit (the owner's O-47 and O-49 (a); PLAN G408's class; the Front's, Binding's `StorageBound`): a storage nest past 32 entries,
-    // however few Dictionaries it holds: one under 31 others is enough. These invalid programs are newly accepted, each with no Language record, a
-    // limit and no contract: the 32-entry twin of each keeps the conflict.
+    // however few Dictionaries it holds: one under 31 others is enough. Each invalid program gets the limit at f's call, never acceptance
+    // (G408-B); the 32-entry twin of each keeps the conflict.
     [Theory]
-    [InlineData(1, 31, "")]
-    [InlineData(16, 1, "")]
+    [InlineData(1, 31, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
+    [InlineData(16, 1, "OwnershipDepthLimit_Kd f(slot@uniq, d@move)")]
     [InlineData(1, 30, "ComparisonLoanConflict_Kd x = 3")]
     [InlineData(16, 0, "ComparisonLoanConflict_Kd x = 3")]
     public void AMixedNestPastTheBoundIsTheRecordedLimit(int dictionaries, int tuples, string records)
@@ -432,6 +434,85 @@ public sealed partial class RetentionTest
         var leaf = string.Concat(Enumerable.Repeat("(i32, ", tuples)) + "ref/i32 during q" + new string(')', tuples);
         Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat("Dictionary<i32, ", dictionaries)) + leaf + new string('>', dictionaries)));
     }
+
+    // SPEC 15.6.4 (G408B-6, G408B-17): `ref/P during q` can hold neither x nor a borrow formed through it, so slot never carries x's Loan
+    // and both twins are valid (pr32Ok, pr32OwnOk). The handed-callable walk (TyCtxt.Handed) meets struct P at part 33 over make's result
+    // and over f's input and leaves its stored parts past HandedBound; they are i32, so no part it left can carry a Loan or an address, and
+    // both calls keep dev's acceptance (departing from G408B-9 R3's pinned Limit).
+    [Theory]
+    [InlineData("    let k = slot.a\n    x = 3\n")]
+    [InlineData("    x = 3\n    let k = slot.a\n")]
+    public void AStructPastTheHandedBoundHoldingNoCallableIsAccepted(string tail)
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 32)) + "ref/P during q" + new string(')', 32);
+        Assert.Equal(string.Empty, MirBorrowsTest.Records(
+            "struct P\n    public var a: i32\n    public init(a: i32)\n        self.a = a\n" +
+            "struct W {s}\n    public var a: ref/P during s\n    public init(a: ref/P during s)\n        self.a = a\n" +
+            $"func make(x: ref/i32 during q) -> {nest} => $abort(\"x\")\nfunc f(dst: uniq/(W during q), d: {nest}) => ()\n" +
+            "func g()\n    var x = 1\n    var pr = P.init(a: 1)\n    var slot = W.init(a: pr@ref)\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n" +
+            tail + "public func main() => ()\n"));
+    }
+
+    // SPEC 15.6.4, 15.6.6 (G408B-9 R1, R4 (i)): zz's result may retain d's Loan of x in its `ref/i16` part, its i64 `depth` Tuple levels
+    // down, so a use of r after `x = 3` conflicts (zz33Bad, accepted by dev: class 1). Each valid twin uses r first, and r's Type has no
+    // destruction that may observe a Loan. Past 32 parts A5's own bound (MirTypes.Bound, R4-M153) records the Limit at `var r` (zz33Ok,
+    // the same program as zzp-zz33Ok, and zz34Ok): resource rows for the Middle's RP17. The Middle's unit beside U-B5 (Destruction and
+    // AnyPart.Deep answering Deep only where they would enter a part's components) is predicted to accept zz33Ok (Q13 class 3) and keep
+    // the limit at zz34Ok.
+    [Theory]
+    [InlineData(32, "    let k = r.0\n    x = 3\n", "")]
+    [InlineData(33, "    let k = r.0\n    x = 3\n", "OwnershipDepthLimit_Kd var r = zz(d@move)")]
+    [InlineData(34, "    let k = r.0\n    x = 3\n", "OwnershipDepthLimit_Kd var r = zz(d@move)")]
+    [InlineData(33, "    x = 3\n    let k = r.0\n", "ComparisonLoanConflict_Kd x = 3")]
+    public void AResultRetainsItsInputsBorrowPastTheBound(int depth, string tail, string records)
+    {
+        var result = "(ref/i16 during q, " + string.Concat(Enumerable.Repeat("(i32, ", depth - 1)) + "i64" + new string(')', depth);
+        Assert.Equal(records, MirBorrowsTest.Records(
+            $"func make(x: ref/i32 during q) -> (ref/i32 during q, i64) => $abort(\"x\")\nfunc zz(d: (ref/i32 during q, i64)) -> {result} => $abort(\"x\")\n" +
+            "func g()\n    var x = 1\n    var d = make(x@ref)\n    var r = zz(d@move)\n" + tail + "public func main() => ()\n"));
+    }
+
+    // SPEC 15.6.4 (G408B-17): zz's result can hold an i64, and d holds one by value 34 entries down, so the result may retain d's own value,
+    // x's Loan included: a use of r after `x = 3` conflicts (zzIn33Bad, accepted by dev: class 1); the valid twin uses r first (zzIn33Ok).
+    // The input fold meets that i64 only past StorageBound, so its finding's subject is d, which carries `ref/i32`, never the i64: the
+    // call's contract is the Limit, recorded at the call in both (zzIn33Ok: an R4-M181 Resource row for the Middle's RP17).
+    [Theory]
+    [InlineData("    x = 3\n    let k = r.0\n")]
+    [InlineData("    let k = r.0\n    x = 3\n")]
+    public void AnInputsPartPastTheBoundIsDecidedForTheWholeInput(string tail)
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 33)) + "i64" + new string(')', 33);
+        Assert.Equal("OwnershipDepthLimit_Kd zz(d@move)", MirBorrowsTest.Records(
+            $"func make(x: ref/i32 during q) -> (ref/i32 during q, {nest}) => $abort(\"x\")\n" +
+            $"func zz(d: (ref/i32 during q, {nest})) -> (ref/i16 during q, i64) => $abort(\"x\")\n" +
+            "func g()\n    var x = 1\n    var d = make(x@ref)\n    var r = zz(d@move)\n" + tail + "public func main() => ()\n"));
+    }
+
+    // SPEC 15.3.5, 15.6.4, 15.6.6, 23.1.1 (G408B-10, G408B-11): a fit over a growing family, each level a new instance (D0<Box<T>> under
+    // D0<T>): Holds meets it in W's part d before the fit at a (hfam*), Borrows' layer entry in the referent's part before the i32
+    // (bfam*). Each Bad row (invalid) writes x before r's later use, each Ok row (valid) uses r first; both keep dev's records: the
+    // generation limit at the local holding the family and the call's contract as the Limit, never acceptance (probes\rev2\labels.md).
+    [Theory]
+    [InlineData(
+        "struct W {s}\n    public var d: D0<S>\n    public var a: ref/i32 during s\nfunc make(x: ref/i32 during q) -> W during q => $abort(\"x\")\n" +
+        "func g()\n    var x = 1\n    var r = make(x@ref)\n    x = 3\n    let k = r.a\n",
+        "GenerationResourceLimit_Kd var r = make(x@ref); OwnershipDepthLimit_Kd make(x@ref)")]
+    [InlineData(
+        "struct W {s}\n    public var d: D0<S>\n    public var a: ref/i32 during s\nfunc make(x: ref/i32 during q) -> W during q => $abort(\"x\")\n" +
+        "func g()\n    var x = 1\n    var r = make(x@ref)\n    let k = r.a\n    x = 3\n",
+        "GenerationResourceLimit_Kd var r = make(x@ref); OwnershipDepthLimit_Kd make(x@ref)")]
+    [InlineData(
+        "func make(x: uniq/(D0<S>, i32) during q) -> ref/i32 during q => $abort(\"x\")\n" +
+        "func g(v: (D0<S>, i32))\n    var x = v@move\n    var r = make(x@uniq)\n    x.1 = 3\n    let k = r@follow\n",
+        "GenerationResourceLimit_Kd var x = v@move; OwnershipDepthLimit_Kd var x = v@move; OwnershipDepthLimit_Kd make(x@uniq)")]
+    [InlineData(
+        "func make(x: uniq/(D0<S>, i32) during q) -> ref/i32 during q => $abort(\"x\")\n" +
+        "func g(v: (D0<S>, i32))\n    var x = v@move\n    var r = make(x@uniq)\n    let k = r@follow\n    x.1 = 3\n",
+        "GenerationResourceLimit_Kd var x = v@move; OwnershipDepthLimit_Kd var x = v@move; OwnershipDepthLimit_Kd make(x@uniq)")]
+    public void TheFitsOverAGrowingFamilyKeepTheRecordedLimits(string form, string records)
+        => Assert.Equal(records, MirBorrowsTest.Records(
+            "contract C\nstruct Box<T>\n    T is C\n    Self is C\nstruct D0<T>\n    T is C\n    let next: Array<D0<Box<T>>>\nstruct S\n    Self is C\n" +
+            form + "public func main() => ()\n"));
 
     // SPEC 5.2.1, 15.6.4 (G416 review B1): a raw layer's pointee is walked with no key of the layer, so a slot's cap steps only the layer its
     // declaration states there, and a raw pointee below it stays stated by the Type: rule A keeps what a stored value brings (BU-1), and the

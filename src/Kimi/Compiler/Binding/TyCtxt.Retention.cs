@@ -28,7 +28,9 @@
 // an abstract part hides, and All, their join), each storage with the hold walk's rows of the raw layers it holds itself (a raw layer
 // the call writes retains in the storage holding it, never in every storage of the output; C-352);
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
-// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
+// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), a walk over a
+// contract Type leaves a finding undecided past its own bound where both a holder the rows name and the finding's subject can carry a
+// Loan or an address (Binding.Retention.cs, retentionPast; G408B-17), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
 // arguments; Binding.RawMembers). Storage a Binding failure left Rejected is no limit: its parts that do not substitute hold nothing and
 // the rows that hold whatever they are stay (SPEC 23.1.2; DECISIONS BU-36); in a complete compilation it is a broken contract, an

@@ -167,10 +167,11 @@ public sealed partial class MirBorrowsTest
     // abstract part's erased destruction (BU-47's `0 Content store 0`), which stores what the part carries within its reach: slot's address
     // and w's Loan of y (SPEC 15.6.4's reach rule), so `y = 5` errs, as clearGenOk (AReferentsDestructionIsComposedAtItsCall). R4-M147's
     // located Unsupported_Kd is gone with the composition (the owner's G264 (S) instruction of 2026-11-04). At depth 40 a's own guard is
-    // Deep (R4-M170: the part past the bound decides it), so W does not pass a and the store is the depth limit at the call, a limit
-    // record in place of `y = 5`'s.
+    // Deep (R4-M170: the part past the bound decides it), so W does not pass a. The element `(T, ...)` beside its part past the bound
+    // holds the abstract T, which can carry, so append's and consume's contracts are the Limit, recorded at those calls (G408B-17), a limit
+    // record in place of `y = 5`'s (a Q13 class 4 move from dev's `a.clear()`).
     [Theory]
-    [InlineData("deep", 40, "a.clear() OwnershipDepthLimit_Kd")]
+    [InlineData("deep", 40, "a.append({value}) OwnershipDepthLimit_Kd|consume(a@move) OwnershipDepthLimit_Kd")]
     [InlineData("deep", 10, "y = 5 ComparisonLoanConflict_Kd")]
     [InlineData("alone", 0, "y = 5 ComparisonLoanConflict_Kd")]
     public void AnAbstractPartBesideAPartPastTheBoundIsComposedAtAReferentStore(string form, int depth, string expected)
@@ -181,7 +182,9 @@ public sealed partial class MirBorrowsTest
         var c = CompileDepthForm(Prelude + RawShapes + ReferentShapes + "func clearGen<T>()\n    T is MakeW\n    var y: i32 = 1\n" +
             $"    var w: ref/i32 = y@ref\n    var slot: raw/u8 = null\n    var a: Array<{element}> = []\n    a.append({value})\n    a.clear()\n" +
             "    consume(a@move)\n    usep(slot)\n    y = 5\n");
-        Assert.Equal(expected.Split('|'), DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
+        Assert.Equal(
+            expected.Replace("{value}", value, StringComparison.Ordinal).Split('|'),
+            DepthRecords(c, Analyze(c), "clearGen").Select(static x => $"{x.Line} {x.Code}"));
     }
 
     // SPEC 23.1.2 (R4-M153's revision 3, implementation review 3's N1): a limit record is one failure's, so independent checks at one
