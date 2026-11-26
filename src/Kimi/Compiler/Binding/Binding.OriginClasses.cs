@@ -211,7 +211,8 @@ public sealed partial class Binding
         return false;
     }
 
-    // BodyRelation's end: an atom with a body or a call's region, or a meet with one.
+    // BodyRelation's end: an atom with a body or a call's region, or a meet with one. A meet is flat after normalization (SPEC 15.2.2:
+    // Meet, its one constructor, adds a meet operand's operands), so its one level holds every atom.
     private static bool BodyFormed(BoundOrigin origin)
     {
         for (var i = 0; i < (origin.Kind == OriginKind.Intersection ? origin.Operands.Count : 1); i++)

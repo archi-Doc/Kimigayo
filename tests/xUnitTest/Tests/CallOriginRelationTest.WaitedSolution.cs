@@ -77,6 +77,10 @@ public partial class CallOriginRelationTest
     [InlineData("enum E2 {a}\n    origin a outlives static\n    One(ref/i32 during a)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let e = E2.One(st())\n    return 0\n")]
     // ec2v
     [InlineData("enum E3 {a}\n    origin a outlives static\n    Two(Option<ref/i32 during a>)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let e = E3.Two(.Some(st()))\n    return 0\n")]
+    // e4v (PLAN G990 D1, ruling G990-6 B3): a Case built in a Closure body over an enclosing `var` region, its payload returned `during p`;
+    // by SPEC 15.6.5's Closure sentence `r` is fixed in `c` and equal to its candidate `p`, so the clause is `p outlives p` (Q13: an
+    // acceptance move from Unsupported_Kd, the Enum Case's result premises under `forms`).
+    [InlineData("enum E {a, b}\n    origin a outlives b\n    Two(ref/i32 during a, ref/i32 during b)\nfunc g(p: ref/i32) -> i32\n    var r = p\n    let c = func [r, p] () -> ref/i32 during p\n        let e = E.Two(r, p)\n        match e\n            .Two(let x, let y) => return y\n    return c()@follow\n")]
     // hole6_ok
     [InlineData("func mk(p: Option<ref/(ref/i32 during a) during b>, u: Option<ref/(ref/i32 during e) during a>, w: Option<ref/(ref/i32 during d) during b>, y: ref/i32 during b, z: ref/i32 during e, x: ref/i32 during (a and d), f: (ref/i32 during a, bool) -> i32) -> i32 => 0\nfunc k(c: bool, s: ref/i32 during static) -> i32\n    let short = 2\n    return mk(if c => .None else => .None, if c => .None else => .None, if c => .None else => .None, s, s, s, func [s] (v, c2) => mk(if c2 => .None else => .None, if c2 => .None else => .None, if c2 => .None else => .None, s, s, v, func [] (v2, c3) => 0))\n")]
     // The solve of the callee's other variables (D1's Origin half): a clause that bounds another variable through the waited one (reading RF7), an invariant end, an equality, an associate.
@@ -244,6 +248,13 @@ public partial class CallOriginRelationTest
     [InlineData("enum E2 {a}\n    origin a outlives static\n    One(ref/i32 during a)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = Option.Some(E2.One(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@E2.One(v@ref))")]
     // idn
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc id<U>(x: U) -> U => x@move\nfunc k() -> i32\n    let v: i32 = 5\n    let t = id(T.init(x: v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@T.init(x: v@ref))")]
+    // e4i, ei (G990-6 B3): e4v's invalid twins, each record at the forced read `return y` (SPEC 15.6.5): `r`'s candidate `q` (e4i,
+    // `q outlives p` unproven), a Borrow (ei, Refuted), whose `let v` conflict is independent by SPEC 15.6.1's holder rule. Each was
+    // Unsupported_Kd (Q13: records added on rejected programs, counted by code).
+    // e4i
+    [InlineData("enum E {a, b}\n    origin a outlives b\n    Two(ref/i32 during a, ref/i32 during b)\nfunc g(p: ref/i32, q: ref/i32) -> i32\n    var r = q\n    let c = func [r, p] () -> ref/i32 during p\n        let e = E.Two(r, p)\n        match e\n            .Two(let x, let y) => return y\n    return c()@follow\n", "UnprovenOriginRelation_Kd@y")]
+    // ei
+    [InlineData("enum E {a, b}\n    origin a outlives b\n    Two(ref/i32 during a, ref/i32 during b)\nfunc g(p: ref/i32) -> ref/i32 during p\n    let v: i32 = 1\n    let e = E.Two(v@ref, p)\n    match e\n        .Two(let x, let y) => return y\n", "ComparisonLoanConflict_Kd@let v: i32 = 1|UnsatisfiedOriginRelation_Kd@y")]
     // ec2i
     [InlineData("enum E3 {a}\n    origin a outlives static\n    Two(Option<ref/i32 during a>)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = E3.Two(.Some(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@v@ref))")] // One record (R7-O1 H: the twin went with Binding's).
     // The solve of the callee's other variables (D1's Origin half): a clause that bounds another variable through the waited one (reading RF7), an invariant end, an equality, an associate.
