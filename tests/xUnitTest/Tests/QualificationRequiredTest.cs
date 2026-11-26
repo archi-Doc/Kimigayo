@@ -262,7 +262,7 @@ public class QualificationRequiredTest
     [InlineData("struct T\n    public group G\n        public let n: i32 = 1\nstruct S\n    public let T: i32\n    public init() => self.T = 1\n    public func g() -> i32 => T.G.m\n", "QualificationRequired_Kd T.G.m")]
     // PLAN G1156's t7 (F's ruling G1156-4; fail-before: CheckFaulted_Kd): the selected reading is the value path's 9.5 stop at Box's
     // instance Field `T`, whose record is QualificationRequired_Kd at `T.size`. The row pins head's Unsupported_Kd, the open issue:
-    // MissingFailure (Binding.Expressions.cs:569) reads the requirementGroups row the Type reading's evaluation filled, which the
+    // MissingFailure (Binding.Diagnostics.cs) reads the requirementGroups row the Type reading's evaluation filled, which the
     // selected reading did not gather. Its fix moves the row to QualificationRequired_Kd T.size, a counted class 4 move (Q13).
     [InlineData(ContainerNestingTest.ReaderPlain + "struct Box\n    public let T: i32\n    public init() => self.T = 1\n    public func g<T>(self) -> i32\n        T is Reader\n        return T.size\n", "Unsupported_Kd T.size")]
     public void AFailedLeftKeepsItsOwnStagesRecord(string source, string records)
