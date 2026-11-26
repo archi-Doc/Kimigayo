@@ -7171,6 +7171,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: an index-only bound (a second rule for one decision); the part rule for every Field or Downcast step (Whole is also the
     Case bound's fact, so it accepts the settled I pins rvCaseFieldResBad, rvCasePayloadFieldBad and rvCaseElementBad against
     O-364 (a)'s Field and element rule).
+  - Superseded in part by R4-M250 (G1093, 2026-11-26): the Rule's `Ends` read: besides a root that holds only calls' results, a
+    root whose write slot holds Φ_B after a store of the body through a Deref is read whole.
 - **R4-M219 A5 reads every element of a value at the reading path's Type (the A5 value redesign's chain: U3b, U3c, G785, U6, U7)**
   (2026-11-19, landing with Q-539; Middle, A5 with Binding publications; Major, an acceptance mover; the owner's O-209, O-220 (a),
   O-223 (B'), O-230, O-232 (a), O-254, O-353 (a) and O-424 (a); the redesign's design reviews 1-4 and the re-review, the units'
@@ -7428,6 +7430,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (caseWriteOkCaseOk: a uniq/i32 written reaches only the Ok Case; caseWriteR2CleanOk: a plain u64 carries nothing); unbounding
     the holder a call writes (its Err payload then carried what the Ok Case holds, a Language error on caseWriteR2LenderUseOk);
     reading the written input's later value instead of a slot (caseWriteR2LaterBad: the input overwritten after the call).
+  - Superseded in part by R4-M250 (G1093, 2026-11-26): approximation (2) is replaced: a store of the body through a Deref is the
+    body's own value at the holders it reaches (Φ_B), so rvCaseRefWriteBad is rejected; approximation (1) also names
+    caseWriteR2LenderUseOk and caseWriteR2ExposedUseOk (the split from a call's write is O-383 (b)'s recorded scope). "A call's
+    write is a source" now reads a slot instead only while it lacks Φ_B; a lost argument or a store through a Deref writes every
+    exposed local; Mixing runs before the slots are numbered where a call has a write source or a store passes a Deref
+    (`WriteSourced`). The two Rejected unboundings hold as stated for a call's write; the body's own store unbounds from that point
+    on, not at the borrow or address, and does unbound the holder a call writes.
 - **R4-M221 The A5 landing hunk: W's one step decision past a holder's layer (c1) and the Φ_E rule at a kept binding's hidden
   layers (c4)** (2026-11-19, landed with the A5 one-tree landing, Q-539; Middle, A5; Major, an acceptance mover; the owner's O-312
   (a), O-389 (a), O-398 (a), O-418 (a) and O-424 (a); design `middle\notes\a5v-landing-hunk-design.md` Revisions 1-7 (R7.7) and
@@ -8553,6 +8562,43 @@ and migration obligations remain in force; no numeric cap changes are authorized
     holders, not E); a clause for the AnyOf arm alone (the Any and erased arms are the same fact).
   - Rejected for now: form A in place of the kept clause (the call's own pointer at `writingPlace`'s key): without a holder's
     positions it adds a Language error on the valid r3SibAddrArrOk and needs a route-1 exclusion no fact publishes (U5).
+- **R4-M250 A store of the body through a Deref is the body's own value at the holders it reaches (Φ_B; G1093)** (2026-11-26;
+  Middle, A5; Major, an acceptance mover) SPEC 15.6 Holders and its write sentence (l. 547-548). Amends R4-M220 (its approximation
+  (2) is replaced) and R4-M218 (`Ends`).
+  - Rule: an Assign or returning Call whose Place passes a borrow or raw Deref sets Mixing's `lost`, so every exposed local is
+    written (spread over Mixing's edges), and makes its view WriteSourced (`MirBorrows.Holders`' Mixing, WriteSourced). There,
+    Store joins into the write slot of each holder it reaches what `MirBorrows.Holders`' one classifier (`Puts`, read by Mixing at a
+    direct destination and by `StoredThrough` at the planned location) makes of the stored value (`MirBorrows.Flow`' Store, which
+    the Assign and the Call transfer both reach): the write slot of a local a whole Move or Copy stores (its whole value, Case
+    payload or held reference) where that local is not mixed, nothing where it has no slot; nothing for a call's result that keeps
+    no source slot's input by Value (KeepsSourced); otherwise, a mixed local's value or a part store included, Φ_B. The Case and
+    referent bounds hold at a point only while the root's write slots lack Φ_B (`MirBorrows.Values`' Read); Rewrite replaces the
+    slots at a whole store and clears them at a storage start or end and a call's result.
+  - Φ_B (`MirBorrows`' `Built`, element 6; `Markers` 7): an A5 set marker, no closed vocabulary. It is written only into write
+    slots (Store, and Rewrite's copy of a source slot), read only by Read's bound test, and never in a value's set, so no check,
+    record or Cause reads it. `mixed` (flow-insensitive, a direct part or non-Whole store) and Φ_B (flow-sensitive, a store through
+    a Deref) are two forms of "the body stored a value of its own"; removal stage R7, after G1093 lands (PLAN G1446).
+  - Reason: SPEC 15.6: a write through a reference "adds the written value's Loans to every holder it may reach and ends none", and
+    the bounds hold only from a local that holds only calls' results; no owner cost covers the body's own store. The split from a
+    call's write is O-383 (b)'s recorded scope (R4-M220 approximation (1): caseWriteR2LenderUseOk and caseWriteR2ExposedUseOk stay
+    V); making both I would withdraw that owner cost and is the owner's decision. This rule unbounds at the store, from that point
+    on, not at the borrow or address (R4-M220's rejected unbounding; rvCaseRawOk, rvCaseKeptOk stay V).
+  - Rejected: joining the stored value's Loans into the slot (rwr, vRefOwnLoan: false errors); joining only Loan-free operands
+    (rwry stays accepted); skipping a store whose value carries nothing (itConstStore stays accepted; no cost filter); mixing every
+    exposed result holder flow-insensitively (rvCaseUniqOk, rvCaseRawOk, rvCaseKeptOk: false errors); mixing the reached holders
+    before the walk (Reach before Mixing, a second analysis); a classifier argument at `MirBorrows.Calls`' Store call (Store
+    classifies at the planned location, so a call pays KeepsSourced only at a store through a Deref).
+  - Rows (`MirBorrowsTest`): rvCaseRefWriteBad at `kk = 2`; the 34 G1093 rows of
+    `AValueReadFromAHolderCarriesItsLoansWhateverItsType` (15 I at their writes, 19 V/V* accepted; with rvCaseRefWriteBad, the
+    design's rw0, the 35 programs); `AStoreThroughAReferenceIntoACallsResultIsFollowedInLinearWork`.
+  - Cost: Puts is O(1) per Assign; at a returning Call it runs KeepsSourced as Mixing did before; G1093 adds it only at a
+    through-Deref Call's Store. WriteSourced adds one pass over the statements; every exposed Returned local of a view with a store
+    through a Deref takes a write slot. G1093's write slots multiply the E8 End term by about 1.8-2.0 on N exposed result holders,
+    each stored through (PLAN G768). The linear-work row grows x1.9 per doubling (5214, 8839, 16124). Measured cost (R1.6, 11-26,
+    53 A5 programs against dev): A5 Work +4.9% (at most +11.8%, Iterators), cold A5 allocation +1.0%, warm allocation 0; the
+    Middle accepts it for the class 1 fix (RQ8), and G768 is its removal row.
+  - Limit: Mixing's `mixed` is flow-insensitive, so a Move through a reference of a local the body mixes elsewhere reads the
+    target whole: vLaterMixed and vEarlierMixed (valid) are rejected at `a = 2`, as dev rejects the direct form vLaterMixedDirect.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -12686,7 +12732,7 @@ resumed by R4-M86 (2026-10-20).
     then child rows).
   - Rejected: a leaf column (whether a part has child positions is the composition's, `ChildPositions`); stack-allocated rows (a row
     holds references; rented ones keep warm allocation at 0 B).
-- **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; superseded in part by R7-M95 (E4a-4); PLAN G421; BU's design, accepted by the
+- **BU-96 A value call's failed acquisition stops none of its other judgments** (2026-11-05; superseded in part by R7-M95 (E4a-4, E4d); PLAN G421; BU's design, accepted by the
   planning session without a separate design review; Major) SPEC 3.8, 10 and 10.1 step 5, 23.1.2.
   - Rule: a value call selects no callee, so an argument's failed acquisition (TransferRequired, ExclusiveBorrowRequired) leaves its
     Type known. `AcquireValueCallArguments` adapts with `deferAcquisition`, as `FitTyped` and `CompletePayloads` do, and records the
@@ -12708,7 +12754,8 @@ resumed by R4-M86 (2026-10-20).
     and `CompleteArguments` complete every part, each failure its own record. Selection fixed the solution, and a completed part fills
     no outer slot (SPEC 10.8), so `JudgeSelected` judges the clauses and the other inputs after either stop; the call then forms no
     result and rests on the failed parts, as after a default without a Type (BU-51). A relation judged at a node whose first record is
-    an Origin contract is published with that record (`FollowsContract`, shared by `RecordOriginChains` and `PublishCallRelations`),
+    an Origin contract is its own problem of that node, published by its own key (R7-M95 E4d, which removed `FollowsContract`; the
+    earlier text is in dev c56616439),
     and `RequireInputPremises` judges no input that already failed. Open (PLAN G418): value calls and Case constructions; after the
     `CompleteWaiting` stop the candidate's re-check (`TryCandidate`) and its pending Constraint are not judged, nor are the receiver's
     object erasure and the per-call Origin stop.
@@ -13545,7 +13592,7 @@ resumed by R4-M86 (2026-10-20).
     requires `LimitedCount == 0`, so "complete" still means "rejected no part" (BU-38, BU-102, DIAGNOSTICS rule 8 unchanged), and
     rule 4 is unchanged (a limit sets no state). Before G254c a Defect at a node without a failure was published nowhere; it now is,
     and it makes the Bind incomplete.
-- **BU-126 R7-E1c Several problems at one node** (2026-11-08; plan §5.1 E1; design §1 row 3; DIAGNOSTICS rule 4). A node's records beyond its first are problems of `BindingReport`, one channel: `furtherOriginRecords` with its lists, `CountStates`' role issue and `operatorOperands` go. The pass summary's walk (`CollectProblems`) makes each problem of a failed node but its slot's own an issue with its own code and condition, whichever way the slot stands. An Origin record beyond the first stays out of `Binding.Issues`, whose one row per relation node the test MIR side compares, and is published with the node's first record, as before (temporary until E5, when `Binding.Issues` is the problem list). `ReportProblem` answers from a problem's facts before any table of the node's first failure can, since those tables explain that failure only. `FailOperator`'s fields are rows: `Operand` and `Terminal` (kept Types) and `Constraint` (a kept interned proposition, written for an Unknown or Refuted proof, the failure telling which), with no second path. An Origin record beyond the first is one `OriginRecord` fact, an index in the report's kept records, numbered after the chain's conditions and published under the requirement of the node's first record: temporary until E4's relation fact, which takes both phases' records. A second report of a linked key must equal the first in code and facts, a Type by identity (DIAGNOSTICS 4.3); a differing one is `InternalInvariant_Kd` at its subject, as `MirReport.Add`'s. An import's records (G155): each Type without a C counterpart is `InvalidImportSignature_Kd` with its ordinal among them as the condition, a Type outside the table the located `Unsupported_Kd` beside them, and the symbol table's conflicts stand beside a failed supply; the dependency module's limit stays a `Fail` (BU-92). A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type: `OperatorApplicabilityOf`'s failure is the node's other problem. Rejected: a `Detail` fact (boxes per warm pass, measured), two `FailOperator` paths, a dedupe index beside the chain (`Unlink` would have to keep it; the walk costs what the list's `Contains` cost), the route through `CompleteBinary` (its mismatch would need `RecordTypeMismatch`'s guard lifted for one path; E3 lifts it for the family). Superseded in part by R7-M75's E3d line (Q-764): the failed destination's route sentence (`FailRoute`) and the rejected route through `CompleteBinary`, now taken (E3a-2, Q-635, removed the guard).
+- **BU-126 R7-E1c Several problems at one node** (2026-11-08; plan §5.1 E1; design §1 row 3; DIAGNOSTICS rule 4). A node's records beyond its first are problems of `BindingReport`, one channel: `furtherOriginRecords` with its lists, `CountStates`' role issue and `operatorOperands` go. The pass summary's walk (`CollectProblems`) makes each problem of a failed node but its slot's own an issue with its own code and condition, whichever way the slot stands. An Origin record that is not its node's slot problem stays out of `Binding.Issues`, whose one row per relation node the test MIR side compares, and is published by its own key (`OutsideIssues`, temporary until E5, when `Binding.Issues` is the problem list; R7-M95 E4d). `ReportProblem` answers from a problem's facts before any table of the node's first failure can, since those tables explain that failure only. `FailOperator`'s fields are rows: `Operand` and `Terminal` (kept Types) and `Constraint` (a kept interned proposition, written for an Unknown or Refuted proof, the failure telling which), with no second path. An Origin record, a node's first included, is one `OriginRecord` fact, an index in the report's kept Origin record store, numbered from 0 under its own requirement (R7-M95 E4d; the earlier text of this sentence and the `Binding.Issues` one is in dev c56616439). A second report of a linked key must equal the first in code and facts, a Type by identity (DIAGNOSTICS 4.3); a differing one is `InternalInvariant_Kd` at its subject, as `MirReport.Add`'s. An import's records (G155): each Type without a C counterpart is `InvalidImportSignature_Kd` with its ordinal among them as the condition, a Type outside the table the located `Unsupported_Kd` beside them, and the symbol table's conflicts stand beside a failed supply; the dependency module's limit stays a `Fail` (BU-92). A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type: `OperatorApplicabilityOf`'s failure is the node's other problem. Rejected: a `Detail` fact (boxes per warm pass, measured), two `FailOperator` paths, a dedupe index beside the chain (`Unlink` would have to keep it; the walk costs what the list's `Contains` cost), the route through `CompleteBinary` (its mismatch would need `RecordTypeMismatch`'s guard lifted for one path; E3 lifts it for the family). Superseded in part by R7-M75's E3d line (Q-764): the failed destination's route sentence (`FailRoute`) and the rejected route through `CompleteBinary`, now taken (E3a-2, Q-635, removed the guard).
 - **BU-127 A local region at a fixed longer end is A5's** (2026-11-08; PLAN G572, U1 round 2 and U3's rows; Major; RP17 consent C-131; the owner's O-57 (a), verbatim 「両方とも(a)でお願いします。」, O-59 (a) 「すべて (a)」, O-61 (a) 「O-61 a」, O-63 (a) 「(a) もう 1 回設計」 and O-77 (a) 「a」) SPEC 15.3.6, 15.4.4, 15.6.1, 15.6.5.
   - Cause. A local region is an inference variable, solved over all its bounds (15.3.6). In a Closure's body an enclosing region is fixed
     (BU-28), so a relation over it was a fixed-fixed one: Binding judged it while bodies were being bound, and A5's oracle had no premise
@@ -29081,6 +29128,20 @@ Closure row of `MirCases.Branch`).
         text, recorded at binding time.
     - **Rejected:** the lent Type delivered with no operation (Revision 1's (i): it carries a dependent Origin record to every fixed
       destination, rv-e3p); a named adaptation (a vocabulary entry and an AdaptationBorrow exception, removing nothing).
+  - **E4d (Q-811, D-1315, 2026-11-26; F's R7-E4 design `artifacts\units\r7e4d\design.md` §6, ruling 45). Origin records, O-R.**
+    Every Origin relation or contract record, a node's first included, is a problem with one `OriginRecord` fact. `RecordOrigin`
+    fails its node, and `RecordResolvedOrigin` leaves it Resolved (R7-O1 B4). Both take the record's code and are numbered from 0.
+    - ReportProblem's one Origin row (`ReportOriginRecord`) publishes each record by its own key. Problems under other requirements
+      are their own rows' (B-4).
+    - BindingReport's Origin list is the kept Origin record store, permanent like the kept sides (C8 (a); O-R rejected fact kinds).
+    - BU-126's row rule is the Transitional `OutsideIssues` until R7-E5; BU-126 and BU-96 are rewritten to the part still in force.
+    - Deleted: `originRelations`, `originContracts`, `RecordFurtherOriginRecord`, `FollowsContract` and
+      `ReportFurtherOriginRecords`.
+    - Moves (Q13): M1 at nodes that failed earlier (rows 1, 5, 7 and 9); acceptance moves none.
+    - Ratchet: Binding 3 → 1 (E4e takes it to 0).
+  - Superseded in part by R7-M119 (R7-E4 E4c, Q-807, 2026-11-26): two E4c checks, TypeOrigins' static-Origin check and
+    FailTypeRole's guard over a use that already holds a record (L11's meet), keep a node's first record until PLAN G1442
+    (R7-M119's "Departs" line).
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
@@ -30208,6 +30269,40 @@ Closure row of `MirCases.Branch`).
     - C4b, `RestOnCause` at an Error Copy proof: a TransferRequired row on the node's prerequisite would derive a sibling capture's
       independent record, and an InvalidConstraint problem gives the failure a wrong kind. The common fix, `IsDerived` reading a
       numbered problem's own cause, exceeds the unit (PLAN G1438).
+- **R7-M119 E4c (Origin formation): an Origin formation failure records its facts at the failure** (Back, 2026-11-26; R7-E4
+  E4c, Q-807, D-1311; Major unit of a Major design, R7 plan §5.1 E4; design `artifacts\units\r7e4c\design.md` with B's rulings
+  1-4 (`ruling.md`); the Front's independent design review REVISE, then CONSENT WITH CONDITIONS on Revisions 1 and 2 and the
+  relabels; the implementation review ACCEPT WITH CONDITIONS, its C1 and C2 met at 67125af1d4 and its delta read ACCEPT,
+  R7E4 ruling 46) SPEC 3.3.2, 8.1.2, 8.5.1, 10.6, 15.3.6, 23.1.1, 23.1.2. Applies R7-M95's rule to
+  Origin formation.
+  - **Rule.** An Origin slot's case failure (a `during static` uniq slot, TypeOrigins; a Phantom raw slot, RawOrigins.Written)
+    records `Related` at the declaration of the schema listing the slot, its Instance when there is one, and Reasons by position
+    (R7-M95 E4a-2's order). Reason 1 is the failing LoanRequirement row with the slot's index above bit 8. Then comes one Reason
+    per binder of the slot's requirement, in its order: that binder's SemanticsMask, always present, a zero one keeping its
+    position. A per-call slot records its declaration, the Type parameter's ordinal and dev's `ulong` parameter mask as a second
+    Reason, with S as Expected. A per-call Origin records its argument and, with a named slot, the selected declaration (read, not
+    shown) and the ordinal. An absent slot records the Type's declaration alone. FailTypeRole's Reason packs the TypeRoleCause
+    bits with the admitted SemanticsMask above bit 8, judged at the failure; no adapter re-runs AdmittedSemantics.
+  - **Related roles.** InvalidOriginBinding_Kd: 0 "Origin slot" (a slot case), 1 "header" or "type" (an absent slot).
+    MissingOriginBinding_Kd: 0 "declaration" (a per-call slot), 1 "argument" (a per-call Origin), 2 the selected declaration
+    (read, not shown).
+  - **Removes** perCallSlots, absentSlotProjections, pairCaseRows, PerCallOrigins, PhantomRawOrigins and InvalidStaticOriginSlots
+    (NodeKeyedTableSites Binding 5 -> 3 after E4b).
+  - **Departs from R7-M95's Rule** at two checks, for E4c's sites only, each with an R7-E5 Transitional naming PLAN G1442. R7-M95
+    says a check that reads none of the node's failed inputs "records beside the node's earlier failure"; these two keep the
+    node's first record by a first-failure read spelled at the site. (1) TypeOrigins' static-Origin check records a site's first
+    failing uniq slot and stops: a further slot reads the same Type at the same site, not a failed input. (2) FailTypeRole records
+    no Language cause where the use already holds a record (`RecordedFailure(use) == None`): the occurrence's Origin row
+    (L11's meet) or any earlier failure at the use, although the formation cause is independent; a CheckBound recheck of the
+    same problem takes the same arm and records nothing new. Reason: E4c moves 0 records, and dev reports neither; a Record
+    would add a record under the other code, and under the same code a Defect. Removal: RecordNumbered per failure, with the
+    added records labelled under Q13 (PLAN G1442).
+  - **Moves (Q13).** None, apart from L11's named text change, which zero programs reach (T1 is valid; no test or snapshot row
+    reaches it).
+  - **Rejected.** E4a-2's case-index mask (CaseText's union is not a product, and the mask names no slot); seven 9-bit rows packed
+    per Reason (a new packing whose continuation needs a presence rule); Count rows as parameter ordinals (a second meaning of
+    Count, R7-M62); a requirement role per case (no row needs it); a cap on binders or a continuation Reason (one Reason per
+    binder needs neither); a Record at L11's meet (an added record or a Defect); showing role 2 (a message change).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi

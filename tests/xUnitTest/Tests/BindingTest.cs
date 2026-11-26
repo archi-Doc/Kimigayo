@@ -808,21 +808,22 @@ public class BindingTest
         Assert.False(c.Bind().IsComplete);
         var library = c.Library.Kotonoha.RootKoto;
         var call = KotoTree.Walk(library).OfType<InvocationKoto>().First(x => x.StateOf(c) == BindingState.Resolved && x.ArgumentNodes.Count != 0);
-        var selected = KotoTree.Walk(library).OfType<FunctionKoto>().First(static x => x.GenericArguments.Count != 0);
-        FactFamily<Binding.PerCallOriginFact> family = static (ref NodeColumns columns) => ref columns.PerCallOrigins;
+        var clause = KotoTree.Walk(library).OfType<IsKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var fact = new CallableConstraintFact(call.ArgumentNodes[0], clause, BoundType.Boolean, new(call.ArgumentNodes[0], "f", BoundOrigin.Static, BoundOrigin.Static, false));
+        FactFamily<CallableConstraintFact> family = static (ref NodeColumns columns) => ref columns.CallableConstraints; // The last FactFamily family (E4c).
         var explain = typeof(Binding).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
             .Single(static x => x.Name == "FailExplained" && x.GetParameters()[0].ParameterType is { IsGenericType: true } p && p.GetGenericTypeDefinition() == typeof(FactFamily<>))
-            .MakeGenericMethod(typeof(Binding.PerCallOriginFact));
-        explain.Invoke(c.Binding, [family, call, BindingFailure.MissingOrigin, new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), false]);
+            .MakeGenericMethod(typeof(CallableConstraintFact));
+        explain.Invoke(c.Binding, [family, call, BindingFailure.UnprovenConstraint, fact, false]);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        Assert.Equal((call, BindingFailure.MissingOrigin), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
-        var rows = typeof(Binding).GetField("perCallOrigins", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((call, BindingFailure.UnprovenConstraint), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
+        var rows = typeof(Binding).GetField("callableConstraints", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         object?[] read = [call, null];
         Assert.True((bool)rows.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(rows, read)!);
-        Assert.Equal(new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), read[1]);
-        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.PerCallOrigins.Used);
+        Assert.Equal(fact, read[1]);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.CallableConstraints.Used);
         c.Binding.CheckBound();
-        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.UnprovenConstraint);
     }
 
     // R7-N5 E (B4's precedent, AFactALibraryNodesFailureCarriesIsRecordedWithIt): a node's dependence row is stored by the recorder's

@@ -35,6 +35,7 @@ internal sealed partial class MirBorrows
         this.unformedSet = this.sets.Add(0, Unformed);
         this.offgridSet = this.sets.Add(0, Offgrid);
         (this.maybeSet, this.undecidedSet) = (this.sets.Add(this.escapedSet, Maybe), this.sets.Add(0, Undecided));
+        this.builtSet = this.sets.Add(0, Built);
         this.Loans();
         this.Addresses();
         this.Receivers();

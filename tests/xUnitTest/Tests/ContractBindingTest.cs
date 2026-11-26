@@ -683,6 +683,17 @@ public class ContractBindingTest
         Assert.Equal(fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())), c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
     }
 
+    // SPEC 9.6, 8.6.1 (DIAGNOSTICS rule 3; PLAN G1156): a Property requirement a value reaches through two identities (Reader's and
+    // Sized's `size` under both Constraints) is not implemented: the value path takes none (ReceiverMember), and the access is the
+    // Unsupported_Kd its requirement group names (MissingFailure), whose gather records nothing.
+    [Fact]
+    public void APropertyRequirementOfTwoIdentitiesIsTheImplementationsLimit()
+    {
+        var c = CompilationTestHelper.Parse("contract Reader\n    property size: i32 has get\ncontract Sized\n    property size: i32 has get\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    T is Sized\n    return x.size\n", "Hello.kimi");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "x.size")], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
     [Fact]
     public void RebindingChecksNewMembersInsteadOfReusingAVerifiedMapping()
     {

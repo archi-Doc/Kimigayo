@@ -8,7 +8,8 @@ namespace Kimi.Compiler.Mir;
 // carries what `@raw` of its storage carries (Layered); a Case payload of a holder that holds only calls' results carries nothing where
 // the Case's payload Type holds no Loan but what a call's write source stored there, its holder's write slot's (Sources; SPEC 15.6
 // Holders' Case-payload sentence, the owner's O-383 (b); the Middle's phase-6 decision 2), and so does a read through such a holder's
-// reference where the referent Type holds no Loan (the referent bound, the owner's O-437 (b)). A borrow input's referent (Referent): the
+// reference where the referent Type holds no Loan (the referent bound, the owner's O-437 (b)), while the slot lacks Φ_B, which a
+// store of the body through a Deref puts there (Read; R4-M250). A borrow input's referent (Referent): the
 // value its last borrow or raw Deref goes through, by a Place operand's own steps or the Places its local's referring stores lend; none
 // where it passes no Deref or a store lends no Place. MirBorrows.Calls' Retained keeps what a Value-less row's reads carry less the
 // input's own Loans and addresses that the referent's read does not carry (SPEC 15.6.4, 15.6.3; D-935). Must not decide which
@@ -107,7 +108,10 @@ internal sealed partial class MirBorrows
     // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it; where no
     // Place the read reads (Sources) is a holder's or a static's, what the write slots of the roots whose payloads it reads carry: the
     // Case bound or the referent bound empties the others but for what a call's write source stored there (MirBorrows.Holders' WriteSlots), and a local that
-    // is no holder carries nothing at every point (MirBorrows.Holders' Flowing).
+    // is no holder carries nothing at every point (MirBorrows.Holders' Flowing). The bounds hold only while those write slots lack Φ_B:
+    // once a store of the body through a Deref put a value of its own in such a root, it no longer holds only calls' results, and the
+    // read is val(X) (SPEC 15.6: a write through a reference ends none of its Loans; MirBorrows.Holders' StoredThrough, R4-M250), so Φ_B
+    // never enters a value.
     private int Read(ulong[] state, MirPlace place)
     {
         if ((this.Sources(place) & ReadsHolder) == 0)
@@ -118,7 +122,10 @@ internal sealed partial class MirBorrows
                 written = this.sets.Union(written, this.Set(state[this.writeSlots[root]]));
             }
 
-            return written;
+            if (!this.sets.Contains(written, Built))
+            {
+                return written;
+            }
         }
 
         var (layer, parents) = this.Prefix(state, place.Root, this.placeSteps.Walk(place, reborrow: false, ref this.walk));
@@ -216,8 +223,8 @@ internal sealed partial class MirBorrows
     }
 
     // What a walk that ends at a root reads: nothing where a bound (the Case or the referent bound) empties the Place, but the root's write slot where a call's
-    // write source may store in it (MirBorrows.Holders' written; before the slots are numbered, that it is read); else the Place, a
-    // holder's or a static's.
+    // write source or a store through a Deref may store in it (MirBorrows.Holders' written; before the slots are numbered, that it is
+    // read); else the Place, a holder's or a static's.
     private byte Ends(int root, bool bound)
     {
         if (!(bound && root >= 0 && this.Returned(root)))
