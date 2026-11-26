@@ -36398,3 +36398,43 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Rejected:** an `Unsupported_Kd` at emit for an import `start` (design §3.5 C2: unreachable, since check refuses the import; ruling
     143); the collector's Import root for `start`; a second call writer; adapters with fixed argument shapes per row; `Runs` re-deriving
     the witnesses; Binding reporting a Backend limit.
+
+- **T-M58 The none row's kimi_backend: compiler-rt's soft-float builtins** (Tatara, 2026-11-27; the plan's unit B9e, Q-824, D-1338;
+  Major; the Tatara plan's decision 33; T's rulings 142, 144, 147, 150, 153, 154; notes F1-F6, O1-O4, O8; the owner's O-535 (a)):
+  - **The supply:** `TargetProfile.None.Supplies` is `kimi_backend`, `static`, its symbols the private literal `NoneBackendSymbols`
+    in the catalog's order; `ReservedSymbols` reads them through the table's array, so compiler-rt's names are reserved external names
+    on every target (**change N1**, IMPL 21.2): `#LibraryImport("codec", "__divdf3")` was accepted on windows-x64 and is
+    `InvalidLibraryImport_Kd` on every row; `#LibraryImport("kimi_backend", "__divdf3")` on the none row, `UnavailableReservedImport_Kd`
+    before, is `InvalidLibraryImport_Kd` (the reserved-name test runs first). No repository program names a compiler-rt routine.
+    `CoreModelTest`'s `ReservedSymbols` literal holds the none symbols after `__chkstk` (a revision's change, not a weakened pin).
+  - **The list (O1):** the 28 files defining the routines the generator's float operations call on the row (probe P0b at O0 and O2:
+    add, sub, mul and div for `f32` and `f64` (`adddf3.c` ... `divsf3.c`), `comparedf2.c`, `comparesf2.c`, `extendsfdf2.c`,
+    `truncdfsf2.c`, the signed and unsigned 32- and 64-bit conversions both ways (`fixdfsi.c` ... `floatundisf.c`)), and the generic
+    `fp_mode.c` their members call (`adddf3.c` and `addsf3.c` call `__fe_getround` and `__fe_raise_inexact`; the generic file returns
+    to-nearest and raises nothing, x86's reads mxcsr); every other undefined name of a member is defined by a listed file (probe P1).
+    At O2, `seconds`'s u64-to-f64 conversion calls `__floatdidf` (LLVM proves the operand non-negative, `uitofp nneg`) and at O0
+    `__floatundidf`; both are listed (T's ruling 150 (4)). The six 64-bit conversion members (`fixdfdi.c`, `fixsfdi.c`, `fixunsdfdi.c`, `fixunssfdi.c`,
+    `floatdidf.c`, `floatundidf.c`) compile compiler-rt's hardware-FP branch, because clang defines no `__SOFTFP__` for x86-64 under
+    `-mgeneral-regs-only`; so `__floatdidf` calls `__floatsidf`, `__muldf3` and `__adddf3`. The results are exact or correctly
+    rounded for every in-range input (the generator's range tests keep out-of-range inputs away; the Back's C-597 N1), and the
+    closure check lists the callees. `negdf2.c` and `negsf2.c` dropped (P0b: negation is an integer sign flip, no `__neg*` call). The archive defines 44 symbols
+    (`__cmpdf2`, `__cmpsf2`, `__unordsf2` and the comparison aliases are `comparedf2.c`'s and `comparesf2.c`'s own members). Products:
+    `kimi_backend_none_x64_v1.a` 34,076 bytes, SHA-256 676aa31f74870b69b6d3695304449d2f4eb19194a9c36d70ec959f6db1b26b5c;
+    `LICENSE-compiler-rt.txt` 16,708 bytes, SHA-256 1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d.
+  - **The build:** `src/backend/none-x64/build-compiler-rt.ps1` (development only): the pinned tarball's SHA-256 (its GPG signature
+    checked at the download, key FFB3368980F3E6BB5737145A316C56D064CACBA5), Windows' `tar.exe` (libarchive with liblzma) extracting only
+    `<top>/compiler-rt/lib/builtins/` and `LICENSE.TXT`, the pinned clang with `--target=x86_64-unknown-none -ffreestanding -fno-builtin
+    -nostdlibinc -mno-red-zone -mcmodel=kernel -mgeneral-regs-only -O2 -fno-stack-protector -c` (ruling 142: `-msoft-float -mno-sse
+    -mno-mmx` refuses a float return), `llvm-ar rcD`; checks before any copy: the closure, the defined set equal to the catalog's
+    `providedSymbols`, no `xmm` or x87 instruction, no build path, the catalog's hashes; reproduction: two runs at different depths
+    give the committed bytes (T-M8).
+  - **The catalog:** `src/backend/none-x64/profile.json` in the Linux catalog's form (profile, library, providedSymbols, files), plus
+    `compilerRt` (version, source, sourceSha256, signingKey, licenseSha256), `sources`, and the identity fields Windows' carries
+    (`packageId` `kimi-backend-none-x64`, `abiVersion` 1, `llvmVersion`; F4) for B9f's head, unread until then. `ToolchainIdentity`
+    reads it through the Linux record's read (`ReadCatalog(row, stem)`; `ReadFile` takes the stem), its supplies over `AllRows`;
+    a mismatch is the initializer's `InvalidDataException`. The licence `LICENSE-compiler-rt.txt` is pinned by `licenseSha256` and
+    embedded.
+  - **Rejected:** a per-row reserved list (one name's validity would depend on the target); leaving the names unreserved (a program
+    library's definition meeting the archive's lazy member by link order, B7b's change W5); the whole builtins library (speculative
+    members, O1); a CMake build of compiler-rt (a further download and a second build system); committing the tarball; checking the
+    none catalog's packageId and abiVersion against new constants (a second copy with no reader before B9f).
