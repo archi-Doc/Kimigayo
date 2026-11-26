@@ -39,9 +39,10 @@ public sealed partial class Binding
 {
     private readonly IndexStack indexStack = new();
 
-    // The executable body the walk is in (SPEC 15.3.4; Binding.ExecutableBodies.cs): a function's own body or a default template's
-    // (f, i), none in a Type's declaration or a module's top-level statements; entered where a body begins (EnterIndexBody) and
-    // restored by a Body step after its subtree. DeclareFunction records it as a named function's declaring body.
+    // The executable body the walk is in (SPEC 15.3.4; Binding.ExecutableBodies.cs), with the value Binding enters it with: a function's
+    // own body (FunctionBody: a module's top-level statements' included), a default template's (f, i), an accessor body (AccessorBody) or
+    // a Property's initializer (InitializerBody); none in a Type's declaration. Entered where a body begins (EnterIndexBody) and restored
+    // by a Body step after its subtree. IndexNode records it as a local's declaring body, DeclareFunction as a named function's.
     private ExecutableBody indexBody;
 
     // An entry of the walk: a context, in which a node's row runs (Index; Pattern, a match arm's Pattern and its subtree: pattern
@@ -80,10 +81,15 @@ public sealed partial class Binding
     }
 
     // A node's per-pass fields: its HIR row, its comparison, arithmetic and formatting plans' activity, its identity premise, its
-    // conversion binding and a clause's constraint and runtime test.
+    // conversion binding, a clause's constraint and runtime test, and a Closure literal's plan (BoundClosure.ResetPass).
     private static void ResetRow(Koto node)
     {
         HirTables.Reset(node);
+        if (node is FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan })
+        {
+            plan.ResetPass();
+        }
+
         if (node is BinaryKoto binary)
         {
             binary.ComparisonActive = false;
@@ -393,6 +399,9 @@ public sealed partial class Binding
                     }
 
                     closureSymbol.Scope = scope;
+                    // SPEC 15.3.4, 7.7.2 (DECISIONS BU-258's rule; PLAN G230-H (i)): a Closure's evaluating body is the body the walk
+                    // reaches it in, as a named function's declaring body is, so a demand from its body before it binds reads it.
+                    closureSymbol.DeclaringBody = this.indexBody;
                 }
 
                 if (!function.IsGenerated && !function.IsAnonymous)
@@ -400,7 +409,7 @@ public sealed partial class Binding
                     this.DeclareFunction(function, scope);
                 }
 
-                this.EnterIndexBody(node, scope, function.IsGenerated ? default : FunctionBody(function, this.symbols[function]));
+                this.EnterIndexBody(node, scope, FunctionBody(function, this.symbols.GetValueOrDefault(function)));
 
                 scope = this.GetScope(node, scope);
                 for (var i = 0; i < function.Parameters.Count; i++)
@@ -414,6 +423,7 @@ public sealed partial class Binding
             case PropertyAccessorKoto accessor:
                 scope = this.GetScope(node, scope);
                 this.IndexAccessor(accessor, scope);
+                this.EnterIndexBody(node, scope, AccessorBody(accessor));
                 break;
             case CodeBlockKoto:
                 if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
@@ -435,8 +445,10 @@ public sealed partial class Binding
                 var declarationScope = node is PropertyKoto && scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? scope.Parent! : scope;
                 var variableSymbol = this.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, declarationScope);
                 variableSymbol.ConditionalDeclaration = ReferenceEquals(declarationScope, scope) ? null : (SyntaxFormKoto)scope.Owner;
+                variableSymbol.DeclaringBody = this.indexBody; // SPEC 15.3.4: a local's declaring body (FormingBodyOf); none for a Property.
                 if (node is PropertyKoto property)
                 {
+                    this.EnterIndexBody(node, scope, InitializerBody(variableSymbol));
                     var bound = variableSymbol.Property ??= new(variableSymbol);
                     bound.IsVerified = false;
                     var getter = property.GetAccessor(PropertyAccessorKind.Get);
@@ -684,7 +696,9 @@ public sealed partial class Binding
 
         var symbol = this.Declare(function, function.Name, BindingSymbolKind.Function, function, memberScope);
         symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
-        symbol.DeclaringBody = this.indexBody; // SPEC 15.3.4: a named nested function's declaring body; none for any other.
+        // SPEC 15.3.4, 6.1.1, 11.3 (DECISIONS BU-258): a named function's declaring body is the body the walk declares it in, a module's
+        // top-level statements and an accessor body included; none for a Type's member.
+        symbol.DeclaringBody = this.indexBody;
         // The members of the fixed array and the integer Position witness are receiver functions of internal
         // Kimi groups (SPEC 22.1, 4.6.1, PLAN G32).
         if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || this.Library.IsBuiltinMemberGroup(memberScope.Owner))

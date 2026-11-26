@@ -9,9 +9,9 @@
 // enclosing body formed, are fixed; in a Closure k's body and the bodies nested in it, that row also fixes k's receiver Origin ρ (SPEC
 // 15.6.5: a receiver Origin), and until k is classified ρ and k's environment atoms are pending, neither fixed nor finite (DECISIONS
 // R4-M126 P5); in the declaration judge's frame (ExecutableBody.Declarations) every body's atoms are, an enclosing body's Origin a
-// declaration names being a fixed Origin of it (SPEC 15.3.4; DECISIONS BU-89); in a named nested function's body, through its declaring
-// body (BindingSymbol.DeclaringBody, PLAN G230 (A)), the atoms of the bodies that declare it are fixed with no premise. The view's row 5
-// (OwnCallAtom), B's own call receiver and call result, is another such shared rule.
+// declaration names being a fixed Origin of it (SPEC 15.3.4; DECISIONS BU-89); in a named function's body, through its declaring body
+// (BindingSymbol.DeclaringBody; a root function's is its module's top-level statements), the atoms of the bodies that declare it are
+// fixed with no premise. The view's row 5 (OwnCallAtom), B's own call receiver and call result, is another such shared rule.
 // - Inputs: an Origin as the caller has it at its use, and the body that formed the relation (an obligation's Body, or the forming body
 //   while binding; no body after binding); the formation context (BoundOrigin.Body, BindingSymbol.DeclaringBody, Binding.ExecutableBodies.cs)
 //   and whether a Closure is classified (BoundClosure.Classified).

@@ -495,7 +495,7 @@ public sealed partial class Binding
         this.BindHeader(accessor.Property.Symbol);
         if (syntax.Body is { } body)
         {
-            var saved = this.EnterBody(new(accessor.SignatureSymbol)); // The accessor's own body (DECISIONS R4-M101 E1).
+            var saved = this.EnterBody(AccessorBody(syntax)); // The accessor's own body (DECISIONS R4-M101 E1).
             try
             {
                 var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
