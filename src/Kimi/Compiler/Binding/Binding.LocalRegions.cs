@@ -80,12 +80,22 @@ public sealed partial class Binding
     internal static bool IsLocalRegion(BoundOrigin origin)
         => origin.Open || (origin is { Kind: OriginKind.Inference, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder));
 
-    // SPEC 14.8.2, 14.6.1, 15.4.4, 15.6.5: the declarations whose Types have region slots, the body locals: every local, every Pattern
-    // binding (a BindingPattern form) and every for slot (a name a ForKoto declares, never its Iterable), and a Subject borrowed in place
-    // (its match or for construct; SPEC 15.1.6).
-    internal static bool IsRegionOwner(Koto declaration)
-        => declaration is VariableKoto or MatchKoto or ForKoto or SyntaxFormKoto { Akind: KotoKind.BindingPattern } ||
-            (declaration is IdentifierNameKoto { Parent: ForKoto loop } && !ReferenceEquals(loop.Iterable, declaration));
+    // SPEC 14.8.2, 14.6.1, 15.4.4, 15.6.5, 15.1.6: the declarations whose Types have region slots, the body locals (DeclaringPart).
+    internal static bool IsRegionOwner(Koto declaration) => DeclaringPart(declaration) is not null;
+
+    // The region owners, one row each, and each one's declaring part, the node a use within is "the one being declared" (LocalRegionOf;
+    // ruling G922-34): every local, every Pattern binding (a BindingPattern form) and every for slot (a name a ForKoto declares, never its
+    // Iterable) is its own; a Subject borrowed in place (SPEC 15.1.6) is owned by its match or for construct and declared by its Subject,
+    // the match's Expression or the for construct's Iterable. Any other declaration owns no region: null.
+    internal static Koto? DeclaringPart(Koto declaration)
+        => declaration switch
+        {
+            VariableKoto or SyntaxFormKoto { Akind: KotoKind.BindingPattern } => declaration,
+            IdentifierNameKoto { Parent: ForKoto loop } when !ReferenceEquals(loop.Iterable, declaration) => declaration,
+            MatchKoto match => match.Expression,
+            ForKoto loop => loop.Iterable,
+            _ => null,
+        };
 
     internal bool RegionContains(BoundOrigin expression, BoundOrigin origin)
     {
