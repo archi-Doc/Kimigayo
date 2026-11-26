@@ -153,6 +153,44 @@ public class AbiTest
         Assert.False(Abi.Matches(signed, layout, Abi.Convention.SystemV, Abi.Flags.None, i16, [u16]));
     }
 
+    // IMPL 21.3.1 with SPEC 22.4.5: a program-supplied platform's members under the internal convention, in Platform's requirement order:
+    // start's Self is a slot Type returned through the result slot (none where it is zero-sized) and its Boot an owned slot; every receiver
+    // `uniq/Self` a pointer value, a zero-sized platform's too; write's Text.Utf8Slice an owned slot; terminate's Never no return.
+    [Theory]
+    [InlineData(
+        false,
+        "void (ptr ret ResultSlot -1, ptr a0 OwnedSlot 0) slot",
+        "ptr (ptr a0 Value 0, i64 a1 Value 1)",
+        "i64 (ptr a0 Value 0, ptr a1 Value 1, i64 a2 Value 2)",
+        "i64 (ptr a0 Value 0, i32 a1 Value 1, ptr a2 OwnedSlot 2)",
+        "i64 (ptr a0 Value 0)",
+        "void (ptr a0 Value 0, i32 a1 Value 1) noreturn")]
+    [InlineData(
+        true,
+        "void (ptr a0 OwnedSlot 0)",
+        "ptr (ptr a0 Value 0, i64 a1 Value 1)",
+        "i64 (ptr a0 Value 0, ptr a1 Value 1, i64 a2 Value 2)",
+        "i64 (ptr a0 Value 0, i32 a1 Value 1, ptr a2 OwnedSlot 2)",
+        "i64 (ptr a0 Value 0)",
+        "void (ptr a0 Value 0, i32 a1 Value 1) noreturn")]
+    public void APlatformsMembersTakeTheInternalConvention(bool fieldless, params string[] expected)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(TargetProfile.None.Target));
+        var board = fieldless ? KernelSources.FieldlessBoard : KernelSources.Board + KernelSources.BoardTerminate;
+        c.Kotonoha.AddSource(new SourceDocument("Kernel.kimi", KernelSources.Hello + board));
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete, string.Join('\n', c.Binding.StartupIssues));
+        var described = new List<string>();
+        foreach (var witness in c.Binding.PlatformWitnesses)
+        {
+            BoundType[] parameters = [.. ((FunctionKoto)witness.Declaration).Parameters.Select(static x => x.Type.TypeOf()!)];
+            described.Add(Describe(Abi.Of(c.Layout, Abi.Convention.Internal, Abi.Flags.None, witness.Type!, parameters)));
+        }
+
+        Assert.Equal(expected, described);
+    }
+
     private static BoundType[] Parameters(Compilation c, string name)
         => [.. KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name).Parameters.Select(static x => x.Type.TypeOf()!)];
 

@@ -197,7 +197,7 @@ public class CoreModelTest
     // row's frame always has its layer.
     [Fact]
     public void EveryRowNamesOneRuntimeLayer()
-        => Assert.All(TargetProfile.Rows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
+        => Assert.All(TargetProfile.AllRows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
 
     // The Tatara plan's B7b2a: Find gives each row for its triple, the staged row included, and none for a triple without a row.
     [Fact]

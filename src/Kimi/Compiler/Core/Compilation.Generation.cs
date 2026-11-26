@@ -19,12 +19,13 @@
 // Error severity fails Analysis, and check publishes it (Compilation.Publication.cs), so the refusal adds none, and, like every request,
 // clears the partition first.
 // Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
-// closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
-// catalog Check discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
-// override whose slot Applies refutes and a constructor whose Type has no layout (InstanceCollector.Generates, checked only, R4-M28,
-// R5-M149), each a declaration's own body (no Closure's or body-declared function's, which their makers reach, R5-M153); a root without
-// an item or with an undecided slot is a broken contract, as is a test build whose catalog was not discovered for the version generated
-// (its version stamp; PLAN G157 (15), DECISIONS R5-M136): its roots and its verification sites' numbers are that discovery's.
+// closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body (then, with a platform, its witnesses'
+// bodies in PlatformRows' order, IMPL 21.6), a test build's discovered tests (the catalog Check discovers after acceptance, never
+// discovered again here) or a Library's every root but the body of a closed virtual or override whose slot Applies refutes and a
+// constructor whose Type has no layout (InstanceCollector.Generates, checked only, R4-M28, R5-M149), each a declaration's own body (no
+// Closure's or body-declared function's, which their makers reach, R5-M153); a root without an item or with an undecided slot is a broken
+// contract, as are a platform's witness count other than PlatformRows' and a test build whose catalog was not discovered for the version
+// generated (its version stamp; PLAN G157 (15), DECISIONS R5-M136): its roots and its verification sites' numbers are that discovery's.
 // Invariants: every generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test; tests
 // and src/Benchmark's measurements, which read its records) passes this gate, and none runs the old generator: MIR code generation is the
 // one code generator since G4 (DECISIONS R5-M160), and R6-gen's G7 deleted the old one (DECISIONS R5-M162). One ModuleCodegen per
@@ -126,14 +127,16 @@ public partial class Compilation
         return false;
     }
 
-    // K package 4.10: the items of the output roots, an Application's startup body, a test build's discovered tests or a Library's every
-    // root the collector generates; false, recorded, when one has no item or a test build's catalog is another version's (at the project) or
-    // a slot is undecided (at the root's site, as the collector records it at a VTable's).
+    // K package 4.10: the items of the output roots, an Application's startup body (then, with a platform, its witnesses' in
+    // PlatformRows' order, positional: PlatformRoots), a test build's discovered tests or a Library's every root the collector generates;
+    // false, recorded, when one has no item or a test build's catalog is another version's (at the project) or a slot is undecided (at the
+    // root's site, as the collector records it at a VTable's).
     private bool OutputRoots(Mir.MirProgram program, Backend.InstanceCollector collector)
     {
         var (roots, set) = (this.outputRoots, collector.Set);
         roots.Clear();
         var startup = this.Binding.Startup;
+        var platformRoots = true;
         if (startup.Kind == StartupKind.Test)
         {
             if (this.Tests.Version != program.Version)
@@ -167,12 +170,43 @@ public partial class Compilation
         {
             var body = new Mir.MirDefKey(startup.Kind == StartupKind.Explicit ? startup.Symbol : null, Mir.MirBodyKind.Fn);
             roots.Add(set.Find(new(Backend.MonoKind.Body, new(body, null), null, null, 0, null)));
+            platformRoots = startup.Platform is not { } platform || this.PlatformRoots(platform, set);
         }
 
         if (roots.Contains(-1))
         {
             this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
             return false;
+        }
+
+        return platformRoots;
+    }
+
+    // IMPL 21.6: an Application's platform roots, after its startup body, each witness's Body item in PlatformRows' order (Binding's
+    // PlatformWitnesses, positional), which ModuleCodegen.Start reads as roots 1 to 6 and its adapters trust. Witness i is paired with
+    // row i here, the one place the count is checked. Every witness is a body: an import has no receiver and takes and returns no struct
+    // by value (SPEC 22.6), while `start` takes and returns structs by value and the other requirements take a receiver, so no checked
+    // program selects a platform with an import witness. A witness count other than PlatformRows' (before any root is added) or a
+    // witness without its Body item is a broken Binding contract, InternalInvariant_Kd at the platform struct.
+    private bool PlatformRoots(BindingSymbol platform, Backend.CheckedSet set)
+    {
+        var witnesses = this.Binding.PlatformWitnesses;
+        if (witnesses.Count != Backend.PlatformRows.Rows.Length)
+        {
+            this.Locate(DiagnosticRequirement.Emission, DiagnosticCode.InternalInvariant_Kd, SourceRef.Of(platform.Declaration));
+            return false;
+        }
+
+        for (var i = 0; i < witnesses.Count; i++)
+        {
+            var root = set.Find(new(Backend.MonoKind.Body, new(new(witnesses[i], Mir.MirBodyKind.Fn), null), null, null, 0, null));
+            if (root < 0)
+            {
+                this.Locate(DiagnosticRequirement.Emission, DiagnosticCode.InternalInvariant_Kd, SourceRef.Of(platform.Declaration));
+                return false;
+            }
+
+            this.outputRoots.Add(root);
         }
 
         return true;
