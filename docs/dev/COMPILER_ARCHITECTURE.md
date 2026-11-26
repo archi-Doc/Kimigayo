@@ -282,11 +282,9 @@ is restricted to Parsing/Binding. IntrinsicId's limit is 30 since the Tatara pla
     the base E5 c's later design starts from; removed in that design's unit if it does not use it (R7-E5 c's later parts; DECISIONS
     R7-M87);
   - R7-E4 E4c's (DECISIONS R7-M119): two first-failure reads, TypeOrigins' stop after a site's first failing uniq slot and
-    FailTypeRole's L11 meet arm (Transitional), removed by PLAN G1442; and four `Fail` arms that read a failed input whose
+    FailTypeRole's L11 meet arm (Transitional), removed by PLAN G1442; and three `Fail` arms that read a failed input whose
     record is already reported (Aliases' failed Origin clause, BoundContracts' BindContainerReference, Origins.Annotations'
-    BindOriginName or operand, TypeOrigins' null BindOrigin result; Transitional), kept until R7-E5's per-problem inputs;
-    TypeOrigins' null arm goes earlier, with the projection row's unit (an Origin binding on an associated-Type projection;
-    no PLAN row yet).
+    BindOriginName or operand; Transitional), kept until R7-E5's per-problem inputs.
   - R7-N2d's, removed at R7-D2 d3 (a conformance's specification read by demand; DECISIONS R7-M9): `clausesBindable`, `notReadyReads`,
     `earlyReads`, `knownBases`, DirectBase's name read of a clause not yet bound (`BaseLayers.cs`, a `ProbePath`; DECISIONS BU-144's exception E1), `knownMode`, `secondRun`, `verifiedClause`, `StartRuns`, `VerifyEarlyReads`, the loop in `Bind` and the second
     `PublishInheritedOptOuts`;
