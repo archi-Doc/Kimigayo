@@ -60,7 +60,7 @@ public sealed partial class Binding
     {
         instance = null;
         if (annotation.OriginExpression is not MemberAccessKoto { Left: IdentifierNameKoto input, Right: IdentifierNameKoto target } ||
-            !this.OriginCandidate(input.IdentifierName, use, scope, out _, out instance, out _))
+            this.OriginCandidate(input.IdentifierName, use, scope, out _, out instance, out _) is not true)
         {
             return null;
         }

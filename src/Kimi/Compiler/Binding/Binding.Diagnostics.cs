@@ -30,11 +30,6 @@ public sealed partial class Binding
     // SPEC 15.2.3: the Owned failure of a common Function conversion, recorded only when it fails.
     private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
 
-    // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
-
-    // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
-    // slot would hold (as bits) and that signature.
-
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
 
@@ -248,8 +243,12 @@ public sealed partial class Binding
             condition: condition);
     }
 
-    // The capture entry that names an environment binding, when the closure has a capture list.
+    // The capture entry that names an environment binding, when the closure has a capture list (CaptureEntryIndex).
     private static CaptureKoto? CaptureEntryOf(FunctionKoto closure, string name)
+        => CaptureEntryIndex(closure, name) is { } entry ? closure.Captures![entry] : null;
+
+    // The index of the written entry that names an environment binding; null when the closure has no such entry or no capture list.
+    private static int? CaptureEntryIndex(FunctionKoto closure, string name)
     {
         if (closure.Captures is { } captures)
         {
@@ -257,7 +256,7 @@ public sealed partial class Binding
             {
                 if (captures[i].Name == name)
                 {
-                    return captures[i];
+                    return i;
                 }
             }
         }
@@ -699,9 +698,6 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.erasureOutcomes?.Clear();
-        this.captureFailures?.Clear();
-        this.captureRepeats?.Clear();
-        this.captureRepeatRows.Clear();
         this.ResetParameterShapes();
         this.duplicateOrder.Clear();
         this.specificationLinks?.Clear();

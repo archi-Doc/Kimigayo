@@ -31,7 +31,7 @@ internal sealed partial class MirBorrows
         this.mixedKnown = false;
         this.sets.Clear();
         (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));
-        this.escapedSet = this.sets.Add(this.writableSet, Escaped);
+        (this.escapedSet, this.readEscapedSet) = (this.sets.Add(this.writableSet, Escaped), this.sets.Add(0, Escaped));
         this.unformedSet = this.sets.Add(0, Unformed);
         this.offgridSet = this.sets.Add(0, Offgrid);
         (this.maybeSet, this.undecidedSet) = (this.sets.Add(this.escapedSet, Maybe), this.sets.Add(0, Undecided));
@@ -81,8 +81,9 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }
 
-    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), which
-    // a call may write (Φ_W; SPEC 15.6.4, R4-M170), so every value read through E carries Φ_E (R4-M120, B1).
+    // σ at the entry: a Loan-capable argument, and what storage the body does not own holds, refer to such storage (Φ_E; SPEC 15.6), so
+    // every value read through E carries Φ_E (R4-M120, B1). E's content is writable (Φ_W), and an argument is where its Type reaches past
+    // its own storage through no shared layer, the holding walk's Writable (SPEC 15.6.4 item 1, 5.2.1 condition 3; R4-M170).
     private void Initial(ulong[] state)
     {
         state.AsSpan(0, this.holderCount).Clear();
@@ -91,7 +92,8 @@ internal sealed partial class MirBorrows
         {
             if (this.slots[i] >= 0)
             {
-                state[this.slots[i]] = State(this.escapedSet, 0);
+                var writable = this.ReachesWritable(cases.KnownType(this.body.Locals[i].Type));
+                state[this.slots[i]] = State(writable ? this.escapedSet : this.readEscapedSet, 0);
             }
         }
     }

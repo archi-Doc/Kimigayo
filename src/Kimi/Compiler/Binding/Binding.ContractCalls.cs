@@ -46,8 +46,8 @@ public sealed partial class Binding
             Add(own);
         }
 
-        // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
-        // rows: the use is judged).
+        // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, each non-Alias row of Enumerate's rows (the use is
+        // judged); the reader (Identified) identifies the rest.
         var start = this.premiseRows.Count;
         this.PremiseRows(type, scope, this.premiseRows);
         for (var i = start; i < this.premiseRows.Count; i++)
@@ -175,14 +175,14 @@ public sealed partial class Binding
             }
         }
 
-        // R7-C3 (C-f3a; SPEC 8.2.3, 8.6.1): a requirement reached through two references the judge identifies in the use's view
-        // (`P<U.(HasItem).Item>` and `P<i32>` under `U.(HasItem).Item is i32`) is one candidate.
+        // R7-C3 (C-f3a; SPEC 8.2.3, 8.6.1): a requirement reached through two references that are one Type in the use's view is one
+        // candidate, by a premise (`P<U.(HasItem).Item>` and `P<i32>` under `U.(HasItem).Item is i32`) or by a completed binding, a
+        // ground with no premise (`P<SrcI.(HasItem).Item>` and `P<i32>`); SameNormalizedRequirement judges it.
         bool Identified(List<BindingSymbol> requirements, List<BindingSymbol> contracts, BoundRequirement identity)
         {
             for (var j = 0; j < requirements.Count; j++)
             {
-                if (ReferenceEquals(requirements[j], identity.Symbol) && contracts[j].Type is { } kept && identity.Contract.Type is { } reached &&
-                    this.IdentityProven(kept, reached, scope))
+                if (this.SameNormalizedRequirement(new(requirements[j], contracts[j]), identity, scope, member))
                 {
                     return true;
                 }

@@ -553,12 +553,13 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   inference, a function's inherited contract), made only through `Forming` in the formation's files (ArchitectureRulesTest). An
 //   occurrence of that name forms the declaration it names: it reads no other declaration and answers no other component.
 // - Outputs: `Resolves`, `Substitution`, `Substitutions` and `SubstitutionPairs` (ResolveOrigin follows them; a function's inherited
-//   contract copies its original's); `Completed`, `Relations` and `Body`; `Failure` and `PendingCause`; `Set`;
+//   contract copies its original's); `Completed`, `Relations` and `Body`; `PendingCause`; `Set`;
 //   `InferredVariance`. Each is the state as the formation left it, with no judgment.
 // - A failed clause's answers (SPEC 15.3.3, 23.1.2; H11b-0 B1): a clause that does not bind fails itself, never its owner or the
-//   declaration's other clauses. `Failure` is the first failed clause; a failed clause's bound Origins (the formation's FailedClauses)
+//   declaration's other clauses. A failed clause's bound Origins (the formation's FailedClauses)
 //   are no premise or obligation anywhere and name only the slots it leaves Unbound (RestsOnFailedClause). Every other
-//   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s,
+//   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s
+//   (a local's slot by its region valued by the other end, FixedRegion: its clauses assume nothing, SPEC 15.3.3, 15.3.6),
 //   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
 //   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
 //   before completion (RestPendingOn).
@@ -581,7 +582,6 @@ public sealed partial class Binding
 
         // 0: not begun. 1: begun, its pending slots collected. 2: its pending slots completing. 3: completed.
         private int state;
-        private Koto? failure;
 
         // The failed part its pending Origins rest on (RestPendingOn): a failed clause, or its Type, alias target or payload operand that
         // failed before completion. Written for every owner and read only for a declaration's rows (UnboundCause): a local's pending
@@ -622,9 +622,6 @@ public sealed partial class Binding
         // The clauses that bound, in order, each failed one aside: empty before completion, which adds them one by one.
         internal ReadOnlySpan<OriginRelation> Relations => CollectionsMarshal.AsSpan(this.relations);
 
-        // The first failed clause, or null. The declaration goes on without it.
-        internal Koto? Failure => this.failure;
-
         // The failed part its Unbound pending Origins rest on (RestPendingOn), or null.
         internal Koto? PendingCause => this.pendingFailure;
 
@@ -641,7 +638,6 @@ public sealed partial class Binding
         internal void Reset()
         {
             this.state = 0;
-            this.failure = null;
             this.pendingFailure = null;
             this.failedClauses?.Clear();
             this.scope = null;
@@ -660,8 +656,6 @@ public sealed partial class Binding
             internal ref ExecutableBody Body => ref declaration.body;
 
             internal ref int State => ref declaration.state;
-
-            internal ref Koto? Failure => ref declaration.failure;
 
             internal ref Koto? PendingFailure => ref declaration.pendingFailure;
 

@@ -1,0 +1,5 @@
+Targets={"x86_64-unknown-linux-musl"}
+OutputKind="Application"
+NativeLibraries=
+  "x86_64-unknown-linux-musl"=
+    codec={ Kind="static" Input="native/print.a" }

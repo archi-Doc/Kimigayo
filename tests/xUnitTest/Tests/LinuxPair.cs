@@ -54,6 +54,12 @@ internal static class LinuxPair
     /// <returns>The build.</returns>
     internal static Task Build(ArtifactPaths paths) => NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
 
+    /// <summary>Reads a committed Linux program's file, tests/linux-elf/&lt;path&gt; (Tatara B7b9: the one copy CI's linux-elf job
+    /// builds and the test rows over the same programs read).</summary>
+    /// <param name="path">The path segments below tests/linux-elf.</param>
+    /// <returns>The file text.</returns>
+    internal static string Program(params string[] path) => Repository.ReadText(["tests", "linux-elf", .. path]);
+
     /// <summary>Builds directory/native/&lt;library&gt;.a: each member's C source compiled by the pinned clang for the Linux triple (a
     /// member named *.bc with -flto: LLVM bitcode) and archived by the llvm-ar copy in command-line order, which its index keeps (an
     /// llvm-ar index lists definers in member order).</summary>

@@ -246,7 +246,7 @@ public sealed partial class CheckServiceTest : IDisposable
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "Hello.kimiproj");
         File.WriteAllText(path, $"OutputKind=\"Application\" Targets={{{targets}}}");
-        File.WriteAllText(Path.Combine(folder, "Hello.kimi"), "::Kimi.Console.writeLine(\"Hello, world!\")\n");
+        File.WriteAllText(Path.Combine(folder, "Hello.kimi"), LinuxPair.Program("Hello", "Hello.kimi"));
         foreach (var target in targets.Split(", ").Select(static x => x.Trim('"')))
         {
             Assert.True(this.Run(path, CheckMode.Product, target).Accepted, target);
