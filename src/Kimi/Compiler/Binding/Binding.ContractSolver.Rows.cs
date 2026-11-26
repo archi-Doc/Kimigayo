@@ -251,10 +251,11 @@ public sealed partial class Binding
     }
 
     // e2-7 (G1406-11 C2, C-e, C-f; SPEC 8.2.3 grounds, 8.3.3 Limits): the closure of the dependent abstract part `root` in `scope`'s
-    // view under the reading's `serial`, CloseAsked's one closer (at the request boundary: no request is open). Its rounds
-    // (ExtendRound) walk the root and its key over the table of the declaration's grounds and the rows so far, first T(G), whose key
-    // enters it (a re-rooting); each walk records its supplies as rows (C-f). A lower key re-roots and restarts with no rows; a restart
-    // onto a root filed in the publication ends it. A walk whose rows join no two classes ends it with its rows; past its one budget
+    // view under the reading's `serial`, CloseAsked's one closer (at the request boundary: no request is open). The root is its own key
+    // in T(G) (CloseAsked closes a part's key, G1406-42 (2) (iii)), so its first round re-roots nothing. Its rounds (ExtendRound) walk
+    // the root and its key over the table of the declaration's grounds and the rows so far, first T(G); each walk records its supplies
+    // as rows (C-f). A lower key in a later round's table re-roots and restarts with no rows; a restart onto a root filed in the
+    // publication ends it. A walk whose rows join no two classes ends it with its rows; past its one budget
     // (PremiseClosureLimit: rounds and re-rootings together, G1406-19, and rows per Type of the root and G, O-532 (b)) it is Limited
     // with the last round's rows, and its reader refuses (ReadIdentityLimit). Filed by FileClosure, which keeps E (the rows that join
     // the key's class), the entry's pair row and what the entry and its key spent (G1406-16 B1, C2). It records nothing: the scope's

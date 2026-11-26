@@ -69,7 +69,8 @@ public sealed partial class Binding
 
     // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C2, G1406-16 B1, C2): the publication's closed roots (ContractSolver's CloseRoot), each
     // closed part filed by FileClosure under its view scope and the part as asked: its closure (IdentityClosure), a Limited one as a
-    // Complete one (G1406-19). The readings' kept tables (ReadingOf), each under its closure set (a range of identityReadingClosures) and
+    // Complete one (G1406-19); a part whose T(G) key is another Type is filed under its key's closure (CloseAsked, G1406-42 (2) (iii)).
+    // The readings' kept tables (ReadingOf), each under its closure set (a range of identityReadingClosures) and
     // Limited bit, with the serial it is memoized for (-1: kept, not memoized), chained per view scope from its last reading
     // (identityReadingHeads; G1406-18 N1: a key scan reads its scope's readings alone). All are forgotten at each publication and each
     // pass, capacity kept.
@@ -200,9 +201,11 @@ public sealed partial class Binding
     }
 
     // A(X)'s closures (G1406-11 C2; R3.1): each dependent abstract part of the asked Types (AddAbstractParts), read from the
-    // publication's filing or closed under `serial` (ContractSolver's CloseRoot, which files it). Appended to identityAsked from `start`,
-    // each once, are those holding rows of a reading (a pair row or E, G1406-16 B1); a closure with neither (a prefix closure) gives the
-    // reading its Limited bit alone. Returns whether one is Limited.
+    // publication's filing or, at its first ask, its key's in T(G) (GroundsOf, G1406-42 (2) (iii)): a part is a member of its key's
+    // class in G, so it reads the key's closure, closed under `serial` if the key has none (ContractSolver's CloseRoot, which files it),
+    // and is filed under it with no pair row (`part is key` is G's own identity, which every reading's table joins). Appended to
+    // identityAsked from `start`, each once, are those holding rows of a reading (a later round's pair row or E, G1406-16 B1); a closure
+    // with neither (a prefix closure) gives the reading its Limited bit alone. Returns whether one is Limited.
     private bool CloseAsked(BindingScope scope, int serial, ReadOnlySpan<BoundType?> asked, int start)
     {
         var parts = this.identityParts.Count;
@@ -222,7 +225,9 @@ public sealed partial class Binding
 
             if (!this.identityRoots.TryGetValue((scope, part), out var closure))
             {
-                closure = this.CloseRoot(scope, serial, part);
+                var key = this.ClassKey(part, this.GroundsOf(scope, serial) ?? throw new InvalidOperationException("T(G) re-entered at the request boundary (InternalInvariant; e2-7)."));
+                closure = this.identityRoots.TryGetValue((scope, key), out var keyed) ? keyed : this.CloseRoot(scope, serial, key);
+                this.identityRoots[(scope, part)] = closure;
             }
 
             var filed = this.identityClosures[closure];
