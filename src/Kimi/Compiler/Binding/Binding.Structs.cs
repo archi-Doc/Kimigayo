@@ -156,7 +156,7 @@ public sealed partial class Binding
     // it is only looked up, never interned to check.
     private BoundOrigin? InternedHelper(FunctionKoto function)
         => Receiver(this.SpecialReceiver(function)) is { Whole: true } &&
-            this.originAtoms.TryGetValue((function, OriginKind.Projection, HelperSlot), out var helper) ? helper : null;
+            this.originAtoms.TryGetValue((function, OriginKind.Projection, HelperSlot, false), out var helper) ? helper : null;
 
     // SPEC 16.3.1, 7.7.2: no Closure created in the body of a destructor captures a value that carries its helper borrow (SPEC 15.6),
     // judged on Origins without flow (15.6.5) where the capture is made (an explicit entry, an omitted list's use), over the facts

@@ -307,7 +307,8 @@ public sealed class DeclarationSchema(GenericSlot[] slots, OriginParameter[] ori
     public IReadOnlyList<OriginParameter> Origins { get; } = origins;
 }
 
-/// <summary>Immutable Origin expression. Identity belongs to its binder, never its spelling.</summary>
+/// <summary>Immutable Origin expression. Identity belongs to its binder, or to the root occurrence of the Borrow it names
+/// (<see cref="BorrowRoot"/>), never its spelling.</summary>
 public sealed class BoundOrigin
 {
     internal BoundOrigin(OriginKind kind, Koto? binder = null, int slot = 0, string? name = null, BoundOrigin[]? operands = null)
@@ -341,6 +342,10 @@ public sealed class BoundOrigin
     internal static BoundOrigin Unstated { get; } = new(OriginKind.Unstated, name: "a raw pointer without `during`");
 
     internal Koto? Occurrence { get; init; }
+
+    // SPEC 15.6.5: the root occurrence of the one Borrow a Place atom names (Binding.PlaceAtom), its identity beside its binder, which
+    // stays the Place's declaration: the owner-keyed interner and CompareOrigins read `BorrowRoot ?? Binder`. Null for every other atom.
+    internal Koto? BorrowRoot { get; init; }
 
     internal int TargetSlot { get; init; }
 

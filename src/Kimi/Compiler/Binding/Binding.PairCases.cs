@@ -140,7 +140,7 @@ public sealed partial class Binding
     {
         // A negative slot keeps the atom apart from the declared Origins of the same binder (slots 0 and up, Binding.Origins);
         // the closure environment slots of Binding.ArgumentOperations are Projection atoms and never meet a Parameter atom.
-        var key = (target.Scope.Owner, OriginKind.Parameter, -1 - target.Slot);
+        var key = (target.Scope.Owner, OriginKind.Parameter, -1 - target.Slot, false);
         if (!this.originAtoms.TryGetValue(key, out var origin))
         {
             this.originAtoms.Add(key, origin = new(OriginKind.Parameter, key.Owner, key.Item3, target.Pair?.Name ?? target.Name) { Occurrence = target.Declaration });

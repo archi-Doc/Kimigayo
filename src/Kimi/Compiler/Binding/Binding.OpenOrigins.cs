@@ -621,7 +621,7 @@ public sealed partial class Binding
     private readonly struct OpenOriginRows(Binding binding)
     {
         internal bool TryGetValue((Koto Source, int Key) key, [NotNullWhen(true)] out BoundOrigin? origin)
-            => (origin = key.Source.SyntaxOwner is { } table ? KeyedRow.Find(table.Hir.Families.OpenOrigins.Get(key.Source.SyntaxId), (OriginKind.Inference, key.Key), AtomKey, ref binding.originRowProbes) : null) is not null;
+            => (origin = key.Source.SyntaxOwner is { } table ? KeyedRow.Find(table.Hir.Families.OpenOrigins.Get(key.Source.SyntaxId), (OriginKind.Inference, key.Key, false), AtomKey, ref binding.originRowProbes) : null) is not null;
 
         internal void Add((Koto Source, int Key) key, BoundOrigin origin)
         {
@@ -630,7 +630,7 @@ public sealed partial class Binding
                 throw new ArgumentException($"An open region is already interned at {key}.", nameof(key));
             }
 
-            KeyedRow.Put(ref HirTables.Of(key.Source).Families.OpenOrigins.Ref(key.Source.SyntaxId), Interned(origin, key.Source, (OriginKind.Inference, key.Key)), AtomKey, ref binding.originRowProbes);
+            KeyedRow.Put(ref HirTables.Of(key.Source).Families.OpenOrigins.Ref(key.Source.SyntaxId), Interned(origin, key.Source, (OriginKind.Inference, key.Key, false)), AtomKey, ref binding.originRowProbes);
         }
     }
 }

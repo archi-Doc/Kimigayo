@@ -6,16 +6,18 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Origin expressions (SPEC 15.3.1, 15.3.6): atoms interned per binder, kind and slot (OriginAtom, kept in the binder's module's
-// NodeColumns: OriginAtomRows, DECISIONS BU-220), meets interned in one canonical operand order (Meet, CompareOrigins; over the library
-// layer's frozen level and the compilation's, PassPart.Levels, PLAN G949 Stage 2 U4) and the
+// Origin expressions (SPEC 15.3.1, 15.3.6): atoms interned per owner (a Borrow's root occurrence, else the binder) and AtomKey
+// (OriginAtom, kept in the owner's module's NodeColumns: OriginAtomRows, DECISIONS BU-220), meets interned in one canonical operand
+// order (Meet, CompareOrigins; over the library layer's frozen level and the compilation's, PassPart.Levels, PLAN G949 Stage 2 U4) and the
 // context-free outlives facts (OriginOutlives); an obligation's record is
 // Binding.Obligations.cs's. Declaration schemas are Binding.Origins.Schemas.cs's; a Type position's written and omitted Origins
 // Binding.Origins.Annotations.cs's.
 public sealed partial class Binding
 {
-    // An owner-keyed interner's row key (KeyedRow: originAtoms, openOrigins): an atom's kind, then its slot.
-    private static readonly Func<BoundOrigin, (OriginKind Kind, int Slot)> AtomKey = static x => (x.Kind, x.Slot);
+    // An owner-keyed interner's row key (KeyedRow: originAtoms, openOrigins): an atom's kind, its slot, then whether it names one Borrow
+    // (ruling G922-19). With its owner it is the atom's whole identity: a row's atoms are its owner's own (the owner their binder) or name
+    // the Borrow rooted at it (BorrowRoot, their binder that root's declaration: Binding.PlaceAtom).
+    private static readonly Func<BoundOrigin, (OriginKind Kind, int Slot, bool HasBorrowRoot)> AtomKey = static x => (x.Kind, x.Slot, x.BorrowRoot is not null);
 
     private readonly OriginAtomRows originAtoms;
     private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
@@ -47,7 +49,7 @@ public sealed partial class Binding
             return order;
         }
 
-        if (a.Binder is { } left && b.Binder is { } right)
+        if ((a.BorrowRoot ?? a.Binder) is { } left && (b.BorrowRoot ?? b.Binder) is { } right)
         {
             order = CompareNodes(left, right);
             if (order != 0)
@@ -68,7 +70,8 @@ public sealed partial class Binding
             order = CompareOrigins(a.Operands[i], b.Operands[i]);
         }
 
-        return order;
+        // The binder last (ruling G922-19): an atom naming a Borrow and its root's own atom share kind, owner and slot.
+        return order != 0 || a.Binder is not { } x || b.Binder is not { } y ? order : CompareNodes(x, y);
     }
 
     // A declaration node's place among every source: its module, its source path, its span and, for a source-less generated fragment,
@@ -152,19 +155,21 @@ public sealed partial class Binding
         return false;
     }
 
-    // The atom an owner-keyed interner puts at its owner's key (KeyedRow: originAtoms, openOrigins), which is its own.
-    private static BoundOrigin Interned(BoundOrigin atom, Koto owner, (OriginKind Kind, int Slot) key)
-        => ReferenceEquals(atom.Binder, owner) && (atom.Kind, atom.Slot) == key ? atom
-            : throw new InvalidOperationException($"{atom} was interned at ({owner}, {key.Kind}, {key.Slot}) (InternalInvariant; DECISIONS BU-220).");
+    // The atom an owner-keyed interner puts at its owner's key (KeyedRow: originAtoms, openOrigins), which is its whole identity: its owner
+    // (its BorrowRoot, else its binder) and its row key (AtomKey).
+    private static BoundOrigin Interned(BoundOrigin atom, Koto owner, (OriginKind Kind, int Slot, bool HasBorrowRoot) key)
+        => ReferenceEquals(atom.BorrowRoot ?? atom.Binder, owner) && AtomKey(atom) == key ? atom
+            : throw new InvalidOperationException($"{atom} was interned at ({owner}, {key}) (InternalInvariant; DECISIONS BU-220).");
 
-    private BoundOrigin OriginAtom(Koto binder, OriginKind kind, int slot, string? name = null)
+    // The atom of `binder`'s slot, owned by `borrowRoot` when it names one Borrow (PlaceAtom alone passes it) and else by its binder.
+    private BoundOrigin OriginAtom(Koto binder, OriginKind kind, int slot, string? name = null, Koto? borrowRoot = null)
     {
-        var key = (binder, kind, slot);
+        var key = (borrowRoot ?? binder, kind, slot, borrowRoot is not null);
         if (!this.originAtoms.TryGetValue(key, out var origin) || (name is not null && origin.Name != name))
         {
             // An edited declaration may reuse a slot with a different name. Keep old expressions immutable while
             // rebuilding the current signature; unchanged passes retain the same interned atom.
-            this.originAtoms[key] = origin = new(kind, binder, slot, name) { Body = this.formingBody };
+            this.originAtoms[key] = origin = new(kind, binder, slot, name) { Body = this.formingBody, BorrowRoot = borrowRoot };
         }
 
         return origin;
@@ -285,45 +290,45 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>The `originAtoms` family's one accessor (DECISIONS BU-220): a kept interner, a binder's atoms in its module's NodeColumns
-    /// at its SyntaxId, one KeyedRow of them by kind and slot, never reset; a renumbering moves the row with its binder. From the freeze
-    /// (PLAN G949 S1-1; ruling 203 (4)) an atom a later step interns at a binder of the frozen library table, such as a library
-    /// requirement member's Input atoms that an Item's call context interns at MIR time (RequirementItemContext, `Body` the forming body),
-    /// is a program fact: a row of the program's (programAtoms: the same KeyedRow form at the binder's library id, emptied with the item
-    /// contexts at an edit), found after the library's column, so the frozen layer holds no row a later step made. Its members keep the
-    /// names and the tuple key its readers use.</summary>
+    /// <summary>The `originAtoms` family's one accessor (DECISIONS BU-220): a kept interner, an owner's atoms (a Borrow's root occurrence,
+    /// else the binder) in its module's NodeColumns at its SyntaxId, one KeyedRow of them by AtomKey, never reset; a renumbering
+    /// moves the row with its owner. From the freeze (PLAN G949 S1-1; ruling 203 (4)) an atom a later step interns at an owner of the
+    /// frozen library table, such as a library requirement member's Input atoms that an Item's call context interns at MIR time
+    /// (RequirementItemContext, `Body` the forming body), is a program fact: a row of the program's (programAtoms: the same KeyedRow form
+    /// at the owner's library id, emptied with the item contexts at an edit), found after the library's column, so the frozen layer holds
+    /// no row a later step made. Its members keep the names and the tuple key its readers use.</summary>
     private readonly struct OriginAtomRows(Binding binding)
     {
-        internal BoundOrigin this[(Koto Binder, OriginKind Kind, int Slot) key]
+        internal BoundOrigin this[(Koto Owner, OriginKind Kind, int Slot, bool HasBorrowRoot) key]
         {
             set
             {
-                var atom = Interned(value, key.Binder, (key.Kind, key.Slot));
-                if (key.Binder.SyntaxOwner is { Frozen: true } library)
+                var atom = Interned(value, key.Owner, (key.Kind, key.Slot, key.HasBorrowRoot));
+                if (key.Owner.SyntaxOwner is { Frozen: true } library)
                 {
                     binding.programAtoms.Grow(library.Count); // A frozen table's count is final.
-                    KeyedRow.Put(ref binding.programAtoms.Ref(key.Binder.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
+                    KeyedRow.Put(ref binding.programAtoms.Ref(key.Owner.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
                 }
                 else
                 {
-                    KeyedRow.Put(ref HirTables.Of(key.Binder).Families.OriginAtoms.Ref(key.Binder.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
+                    KeyedRow.Put(ref HirTables.Of(key.Owner).Families.OriginAtoms.Ref(key.Owner.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
                 }
             }
         }
 
-        internal bool TryGetValue((Koto Binder, OriginKind Kind, int Slot) key, [NotNullWhen(true)] out BoundOrigin? origin)
+        internal bool TryGetValue((Koto Owner, OriginKind Kind, int Slot, bool HasBorrowRoot) key, [NotNullWhen(true)] out BoundOrigin? origin)
         {
-            var table = key.Binder.SyntaxOwner;
-            origin = table is null ? null : KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
+            var table = key.Owner.SyntaxOwner;
+            origin = table is null ? null : KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Owner.SyntaxId), (key.Kind, key.Slot, key.HasBorrowRoot), AtomKey, ref binding.originRowProbes);
             if (origin is null && table is { Frozen: true })
             {
-                origin = KeyedRow.Find(binding.programAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
+                origin = KeyedRow.Find(binding.programAtoms.Get(key.Owner.SyntaxId), (key.Kind, key.Slot, key.HasBorrowRoot), AtomKey, ref binding.originRowProbes);
             }
 
             return origin is not null;
         }
 
-        internal void Add((Koto Binder, OriginKind Kind, int Slot) key, BoundOrigin origin)
+        internal void Add((Koto Owner, OriginKind Kind, int Slot, bool HasBorrowRoot) key, BoundOrigin origin)
         {
             if (this.TryGetValue(key, out _))
             {
