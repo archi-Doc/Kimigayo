@@ -98,8 +98,9 @@ public sealed partial class Binding
     // a clause instance a request's walk recorded names the Contract supplying it and the clause it instantiates, as a DerivedFacts entry
     // names its source (Source, Origin; Environment null) and is read with its Availability: Provisional while its walk runs (a derived
     // availability, R7-M27), its closure's Completion once filed (FileClosure: a Complete closure's rows keep a reading's table Final);
-    // a closure's pair row (FileClosure, G1406-16 B1) names nothing and is read with its closure's Completion.
-    private readonly record struct IdentityRow(BoundConstraint Fact, ConstraintEnvironment? Environment, BindingSymbol? Source, IsKoto? Origin, Completion Availability);
+    // a closure's pair row (FileClosure, G1406-16 B1) names nothing and is read with its closure's Completion. Internal as ViewIndex is
+    // (a T(G) entry keeps a closure's whole walk's rows, ViewIndex.Walks, e2-7 (ii)).
+    internal readonly record struct IdentityRow(BoundConstraint Fact, ConstraintEnvironment? Environment, BindingSymbol? Source, IsKoto? Origin, Completion Availability);
 
     // A closed part's closure (FileClosure; G1406-11 C2, G1406-16 B1, C2): its final key; its pair row `part is Key` (an index of
     // identityClosed) when the part is not the key, else -1; its rows E (a range of identityClosed, the key's); what its closure spent of

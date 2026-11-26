@@ -179,7 +179,10 @@
 //   entry's serial, per link, with whether that walk recorded an identity row or deferred a mate (c2-2, PLAN G881b: such rows answer
 //   only a refinement among them) and the first proof limit the walk wrote (W6, Not replayed below; a walk that wrote one keeps
 //   its request's subject and key links alone); and, in a table of their own, a Contract's head depth. Rows are kept only in a
-//   Kept entry (both need final keys and every reading kept), so a row lives no longer than its entry.
+//   Kept entry (both need final keys and every reading kept), so a row lives no longer than its entry. A view's T(G) entry
+//   (GroundsEntry) keeps no request's rows: a closure's first walk over it keeps its root's whole walk there (e2-7 (ii), G1406-43
+//   (3): the root's rows and the identity rows the walk recorded, ViewIndex.Walks), which a later walk over the entry replays at its
+//   memo miss on the root (Enumerate).
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading asks and both keepers, PremiseRefines and FirstRows, ask
 //   through RowsRequest), an outermost request, a preparation that formed no reading, final keys (no identity premise, or a Final
 //   identity table), and a Complete walk: every availability read it made was Complete (W6, W8). Nested demands never read or fill
@@ -221,7 +224,8 @@
 //   limit their walk wrote (SetAsideLimit), and a read of them joins it as the walk did (ScopeReads.Limit ??= it), as a read of a
 //   memoized identity table joins its build's (ClassesOf, W7; R7-C2c2 c2-5b2's b1-r2-failed: a capability work that read rows
 //   another reader kept lost the limit its cause rests on), and as a read of a closure's filing joins the first limit its closure's
-//   frame wrote (CloseRoot, CloseAsked; e2-7). The limit is the walk's, so a walk that wrote one keeps its request's
+//   frame wrote (CloseRoot, CloseAsked; e2-7), and as a replay of a closure's kept whole walk joins its walk's (Enumerate; e2-7
+//   (ii)). The limit is the walk's, so a walk that wrote one keeps its request's
 //   subject and key links alone (KeepRows): the subject's own request reads that walk, and the key's walks the key's class, which
 //   covers it, so at most its first cause differs (record selection, Q13). A prefix or mate link is formed again by its own
 //   request: kept with the walk's limit, it would rest an independent record on another link's failure (F's CC-66 B1; P-res1).
@@ -276,8 +280,9 @@ public sealed partial class Binding
         internal bool Negative { get; init; }
     }
 
-    // C1 §5: whether an answer rests only on what is final in the pass (Complete) or not (Provisional, the zero).
-    private enum Completion : byte
+    // C1 §5: whether an answer rests only on what is final in the pass (Complete) or not (Provisional, the zero). Internal as
+    // IdentityRow is.
+    internal enum Completion : byte
     {
         Provisional,
         Complete,
@@ -568,8 +573,11 @@ public sealed partial class Binding
     // The rows of `subject` in the view (the contract above): its chain is walked from the root up, each link once per request and
     // view and round; a link's rows are closed before a taller link reads them, and a prefix stays active while its height plus its
     // rows' head depth reaches the link. No chain holding an open link is walked (row (5) defers such a mate), so a link is never
-    // demanded while open. A link's identity rows are recorded at its memo computation, still open (RecordLinkIdentities). A link
-    // that closes with rows that are not its last round's is noted (EnumerateClosed's stop test).
+    // demanded while open. A link's identity rows are recorded at its memo computation, still open (RecordLinkIdentities), or, for a
+    // link a closure's kept whole walk over the entry started from (a T(G) entry's Walks, CloseRoot; e2-7 (ii), G1406-43 (3)), its
+    // rows are that walk's and its identity rows are replayed under the walk's dedupe (RecordIdentity), its limit joined (W6): a
+    // closure's walk is a function of (root, G), so the rows are the ones its own walk would record. Only a closure's first round
+    // walks a T(G) entry, at depth 1. A link that closes with rows that are not its last round's is noted (EnumerateClosed's stop test).
     private List<PremiseRow>? Enumerate(BoundType subject, EvidenceView view, ViewIndex index)
     {
         var serial = index.Serial;
@@ -600,9 +608,22 @@ public sealed partial class Binding
 
                 if (!this.enumerateMemo.TryGetValue((link, view, serial), out var rows))
                 {
-                    this.enumerateMemo[(link, view, serial)] = null; // Open: row (5) walks no chain holding it.
-                    rows = this.EnumerateLink(link, view, index, activeStart);
-                    this.RecordLinkIdentities(rows, link, view);
+                    if (index.Walks.TryGetValue(link, out var walk))
+                    {
+                        (rows, var limit) = index.Rows[link]; // a closure's kept whole walk from the link (e2-7 (ii))
+                        this.ScopeReads.Limit ??= limit;
+                        for (var w = 0; w < walk.Count; w++)
+                        {
+                            this.RecordIdentity(walk[w]);
+                        }
+                    }
+                    else
+                    {
+                        this.enumerateMemo[(link, view, serial)] = null; // Open: row (5) walks no chain holding it.
+                        rows = this.EnumerateLink(link, view, index, activeStart);
+                        this.RecordLinkIdentities(rows, link, view);
+                    }
+
                     this.enumerateMemo[(link, view, serial)] = rows;
                     this.enumerateMoved |= this.enumerateSeed.Count == 0 ? rows.Count != 0 : RowWeight(rows) != RowWeight(this.enumerateSeed.GetValueOrDefault((link, view, serial)));
                 }
@@ -783,16 +804,25 @@ public sealed partial class Binding
             var supply = this.SupplyOf(shape, at, view.Premises);
             for (var i = supply.Start; i < supply.Start + supply.Count; i++)
             {
-                // A row the walk has not recorded (its pair and source; interned Types, by reference).
-                if (this.enumerateSupplied[i] is { Conjunct: { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } premise, Clause: var clause } &&
-                    this.enumerateIdentityKeys.Add((left, right, shape.Symbol)))
+                if (this.enumerateSupplied[i] is { Conjunct: { Kind: ConstraintKind.TypeIdentity, Subject: not null, RequiredType: not null } premise, Clause: var clause })
                 {
-                    this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional));
-                    this.enumerateJoined += this.RowJoins(left, right) ? 1 : 0;
+                    this.RecordIdentity(new(premise, null, shape.Symbol, clause, Completion.Provisional));
                 }
             }
 
             this.DropSupply(supply);
+        }
+    }
+
+    // A walk's identity row, if the walk has not recorded it (its pair and source; interned Types, by reference): RecordLinkIdentities'
+    // and a kept whole walk's replay (Enumerate), so a replayed row joins the round's classes as a recorded one does (RowJoins).
+    private void RecordIdentity(IdentityRow row)
+    {
+        var (left, right) = (row.Fact.Subject!, row.Fact.RequiredType!);
+        if (this.enumerateIdentityKeys.Add((left, right, row.Source!)))
+        {
+            this.enumerateIdentities.Add(row);
+            this.enumerateJoined += this.RowJoins(left, right) ? 1 : 0;
         }
     }
 

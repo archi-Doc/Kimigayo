@@ -959,7 +959,8 @@ public class ArchitectureRulesTest
     // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row atom (RowAtom, c2-5b) and row merge (AddRow) are members.
     // G1407: row (2)'s intake of one source row's supply (AddSupplyRows) is a member; the conjunct split it calls (AddConjuncts, in
     // Binding.Constraints.cs) only appends a constraint and its conjuncts. e2-7: a link's identity rows' recorder at its memo
-    // computation (RecordLinkIdentities) is a member; its rows' (pair, source) keys compare references. O-533 (a): its join test
+    // computation (RecordLinkIdentities) is a member; its rows' (pair, source) keys compare references. e2-7 (ii): its one adder, split
+    // out (RecordIdentity), which a kept whole walk's replay calls too, is a member, so its join test is read here. O-533 (a): its join test
     // (RowJoins, JoinRoot) reads class keys and numbers them, comparing no Types. G1406-30: the walk's supply instances (SupplyOf,
     // DropSupply) form ContractSupply's items (MoveNext) and split them (AddConjuncts) into a list kept by reference keys. R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
@@ -970,7 +971,7 @@ public class ArchitectureRulesTest
         string[] walk =
         [
             "Enumerate", "EnumerateLink", "EnumerateMates", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
-            "RowContract", "RowAtom", "AddRow", "AddSupplyRows", "RecordLinkIdentities", "RowJoins", "JoinRoot", "HoldsOpenLink", "RowWeight", "SupplyOf", "DropSupply",
+            "RowContract", "RowAtom", "AddRow", "AddSupplyRows", "RecordLinkIdentities", "RecordIdentity", "RowJoins", "JoinRoot", "HoldsOpenLink", "RowWeight", "SupplyOf", "DropSupply",
         ];
         string[] allowed =
         [
@@ -978,7 +979,7 @@ public class ArchitectureRulesTest
             "AvailableContractPremise", "CauseOf", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
             "DerivedFailure", "DropSupply", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
             "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "JoinRoot", "KeyOf", "Max", "Meet", "MoveNext",
-            "ProjectionMembers", "ReadSourceState", "Rebuild", "RecordLinkIdentities", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
+            "ProjectionMembers", "ReadSourceState", "Rebuild", "RecordIdentity", "RecordLinkIdentities", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
             "RowAtom", "RowContract", "RowJoins", "RowWeight", "SameClass", "SetKey", "SubjectKey", "SupplyOf", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",
         ];

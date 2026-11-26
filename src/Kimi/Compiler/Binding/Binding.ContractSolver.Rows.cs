@@ -272,7 +272,11 @@ public sealed partial class Binding
     // which joins first) is set aside from the enclosing proof until both filings are made, so its filing keeps the first (W6;
     // FileClosure), which each read of the filing joins (CloseAsked): the asker that closes it and one that reads its filing rest on
     // the same cause (G1406-41's open point, G1406-43). Its first round walks the view's T(G) entry (GroundsEntry, kept per pass with
-    // its formation's limit), so a closure forms, re-files and un-Keeps no request's entry (G1406-42 (2) (i)).
+    // its formation's limit), so a closure forms, re-files and un-Keeps no request's entry (G1406-42 (2) (i)). That walk (one root:
+    // a round's root is its own key in the round's table, ExtendRound re-roots otherwise), when Complete (KeepRows' rule), is kept with
+    // a Kept entry as the root's whole walk: it started with no identity row, so the rows it recorded are the root's exactly, and its
+    // first proof limit is kept with them (W6, CC-66's form: the root's alone, never a nested link's, recorded against its walk's
+    // earlier rows). A later walk over the entry replays it at its memo miss on the root (Enumerate; G1406-43 (3)).
     // Returns the closure.
     private int CloseRoot(BindingScope scope, int serial, BoundType root)
     {
@@ -295,7 +299,11 @@ public sealed partial class Binding
                 while (this.ExtendRound(ref closure, scope, serial, view, grounds, own) is { } round)
                 {
                     var at = this.extendRoots[0];
-                    this.EnumerateClosed(at, this.ClassKey(at, round.Table), view, round.Entry);
+                    var (rows, _, limit) = this.EnumerateClosed(at, this.ClassKey(at, round.Table), view, round.Entry);
+                    if (ReferenceEquals(round.Entry, grounds) && grounds.Kept && this.WalkComplete && rows is { } walked)
+                    {
+                        grounds.KeepWalk(at, walked, limit, this.enumerateIdentities); // e2-7 (ii): the root's whole walk over T(G)
+                    }
                 }
 
                 key = this.extendRoots[0];
@@ -886,8 +894,10 @@ public sealed partial class Binding
     {
         private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> lists = new();
         private readonly List<List<PremiseRow>> rowLists = new();
+        private readonly List<List<IdentityRow>> walkLists = new();
         private int used;
         private int rowsUsed;
+        private int walksUsed;
 
         internal int Serial { get; private set; }
 
@@ -901,6 +911,10 @@ public sealed partial class Binding
         // The kept rows (the class header's Kept rows): a link's rows, walked over closed roots (e2-7), so a kept hit answers, and the
         // first proof limit its walk wrote (W6).
         internal Dictionary<BoundType, (List<PremiseRow> Rows, ICheckCause? Limit)> Rows { get; } = new(ReferenceEqualityComparer.Instance);
+
+        // A T(G) entry's kept whole walks (Binding.CloseRoot; e2-7 (ii)): the identity rows a closure's first walk recorded from its
+        // root, in order, beside the root's Rows, replayed at a walk's memo miss on the root (Binding.Enumerate).
+        internal Dictionary<BoundType, List<IdentityRow>> Walks { get; } = new(ReferenceEqualityComparer.Instance);
 
         // A T(G) entry's formation's first proof limit (Binding.GroundsEntry; W6), joined at each read of the kept entry.
         internal ICheckCause? Limit { get; set; }
@@ -917,6 +931,8 @@ public sealed partial class Binding
             this.used = 0;
             this.Rows.Clear();
             this.rowsUsed = 0;
+            this.Walks.Clear();
+            this.walksUsed = 0;
         }
 
         // A link's rows, copied into a pooled list; a link already kept keeps its first copy.
@@ -936,6 +952,27 @@ public sealed partial class Binding
             copy.Clear();
             copy.AddRange(rows);
             this.Rows.Add(link, (copy, limit));
+        }
+
+        // A closure's whole walk from `link` (Binding.CloseRoot): its rows as KeepRow keeps them and its identity rows, copied into a
+        // pooled list; a link already kept keeps its first.
+        internal void KeepWalk(BoundType link, List<PremiseRow> rows, ICheckCause? limit, List<IdentityRow> identities)
+        {
+            if (this.Walks.ContainsKey(link))
+            {
+                return;
+            }
+
+            if (this.walksUsed == this.walkLists.Count)
+            {
+                this.walkLists.Add(new(identities.Count));
+            }
+
+            var copy = this.walkLists[this.walksUsed++];
+            copy.Clear();
+            copy.AddRange(identities);
+            this.Walks.Add(link, copy);
+            this.KeepRow(link, rows, limit);
         }
 
         // A closure's later round's entry (Binding.ExtendRound) starts as its first round's: `first`'s buckets copied into this
