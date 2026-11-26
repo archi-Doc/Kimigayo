@@ -23,8 +23,8 @@ public sealed partial class Binding
         {
             for (var i = 0; i < requirement.InputCount; i++)
             {
-                var required = requirement.Input(i);
-                var actual = this.WrittenSignaturePart(implementation, i); // R7-C2e2 e2-5b: as written, formed in the comparison (design R3.1).
+                var required = this.WrittenSignaturePart(requirement, i); // R7-C2e2 e2-5b: both sides as written, formed in the comparison (design R3.2).
+                var actual = this.WrittenSignaturePart(implementation, i);
                 if (required is null || actual is null)
                 {
                     if (required != actual)
@@ -58,7 +58,7 @@ public sealed partial class Binding
                 demanded[count++] = required;
             }
 
-            var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
+            var expected = this.WrittenSignaturePart(requirement, requirement.InputCount) is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
 
             // SPEC 15.3.7, 15.6.1, the owner's (a): a whole-contract comparison; each of its proofs, its solve's too, assumes the own
             // well-formedness of the requirement as substituted (Self, the Type's arguments), as 10.7's does (ContractFits).

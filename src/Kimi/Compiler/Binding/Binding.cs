@@ -250,12 +250,13 @@ public sealed partial class Binding
         // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
         // module's edit columns stale, StampedColumn), local regions, member paths (keyed by SyntaxIds the edit renumbers), item contexts
         // with the atoms their plans hold at library binders (programAtoms, G949 ruling 205 N4), the signature parts as written
-        // (writtenParts) and the Type context's view memos.
+        // (writtenParts, and programParts at frozen library signatures) and the Type context's view memos.
         this.edit++;
         this.knownBases.Empty();
         this.localRegions.Clear();
         this.memberPaths.Clear();
         this.writtenParts.Clear();
+        this.programParts.Clear();
         this.functionItemContexts.Clear();
         this.programAtoms.Empty();
         this.types.ResetViews();

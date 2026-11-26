@@ -201,6 +201,19 @@ public partial class KimiLibraryShapeTest
     [MemberData(nameof(LayerPrograms))]
     public void TheLibraryLayerIsIndependentOfTheProgram(string program) => SameLayerAsTheEmptyPrograms(program);
 
+    // CC-60 (R7-C2e2 e2-5b 3a-req; DECISIONS BU-220's frozen layer): a program's conformance to a library Contract reads the requirement's
+    // signature parts as written (WrittenSignaturePart: Equatable.equals' receiver, input and result); from the freeze each is a row of
+    // the program's part (programParts), so the library layer is the empty program's. Before CC-60 they were three writtenParts rows at
+    // the library function's symbol, library-layer facts a program step made.
+    [Fact]
+    public void AProgramsConformanceWritesNoLibraryRowOfTheWrittenParts()
+    {
+        var c = CompilationTestHelper.Parse("struct Key\n    Self is Equatable\n    public let v: i32\n    public init(v: i32) => self.v = v\n    public func equals(self: ref/Self, other: ref/Self) -> bool => self.v == other.v\n");
+        Assert.True(c.Bind().IsComplete);
+        SameLayer("Key is Equatable", EmptyProgramLayer.Value, LibraryLayer.Dump(c), c.Library.Layer.TypeCount);
+        Assert.NotEmpty((IDictionary)LibraryLayer.ValueAt(c.Binding, "Binding.programParts"));
+    }
+
     // ContractSolver's request tables (Rows.cs): the outermost request empties, capacity kept, the pooled link lists it lent (LeaveRows;
     // PLAN x41n, F's ruling 188 X1), so no row outlives its request and Enumerate's pool is empty after every Bind; the library-layer row
     // above then holds for the pool because it is empty, not because the requests that ran last left the same rows.
@@ -392,6 +405,7 @@ public partial class KimiLibraryShapeTest
             ["Binding.types.erasedSubsts"] = Rule.Memo, // A substitution's erased form, structural.
             ["Binding.types.substs"] = Rule.Memo, // The substitution interner: a row is its own key, keyed by no Type (constraints' class).
             ["Binding.programAtoms"] = Rule.Memo, // The program's atoms at library binders (ruling 203 (4)): a function of the binder, kind and slot, kept as the item contexts holding them are, until an edit (ruling 205 N4).
+            ["Binding.programParts"] = Rule.Memo, // The program's signature parts as written at frozen library signatures (CC-60, programAtoms' rule): a function of the signature and position, kept until an edit.
 
             // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works, Enumerate's view index, whose
             // entries hold its kept rows (ViewIndex.Rows, R7-C2e2 e2-3a), and a Contract's head depths.

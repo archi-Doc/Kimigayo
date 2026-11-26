@@ -86,9 +86,11 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
+        // R7-C2e2 e2-5b (design R3.3.6): the requirement's parts as written, formed in the comparison, as the implementation's are.
+        var demanded = new FnSig(requirement);
         receiver = this.ContractType(receiver, scope, self);
-        result = this.ContractType(result, scope, self);
-        var input = requirement.Input is { } requiredInput ? this.ContractType(requiredInput, scope, self) : null;
+        result = this.ContractType(this.WrittenSignaturePart(demanded, demanded.InputCount)!, scope, self);
+        var input = this.WrittenSignaturePart(demanded, 1) is { } requiredInput ? this.ContractType(requiredInput, scope, self) : null;
         var kind = PropertyWitnessKind.AccessorCall;
         BoundOrigin[] inputOrigins = [];
         BoundOrigin[] originBindings = [];

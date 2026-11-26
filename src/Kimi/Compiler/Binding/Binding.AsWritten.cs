@@ -7,48 +7,71 @@ namespace Kimi.Compiler;
 // Owns a bound Type syntax node's Type as written (AsWritten; PLAN G1001; SPEC 8.5.5, 8.6.3): the Type the binder formed for the node
 // (BoundType) with each associated projection written in it kept as the projection BindAssociatedProjection formed (the node's `Right`, or
 // an Origin application's target), its receiver and its Contract reference as written, as an associated specification's candidate keeps
-// them while Constraint Types are bound. Inputs: a bound Type syntax node and its scope. Output: a Type, stored only for an
-// implementation's signature part (writtenParts, WrittenSignaturePart: per signature and position, filled on its first read, kept across unchanged
-// passes and revoked by every edit, Binding.Invalidate), so a warm read walks and allocates nothing. Invariants: a node
-// with no projection written below it is its BoundType; a composed Type keeps its BoundType's kind, symbol and Origins and takes the
+// them while Constraint Types are bound, and an associated Type named bare as its projection identity. Inputs: a bound Type syntax
+// node and its scope. Output: a Type, stored only for a signature's part, a requirement's or an implementation's (writtenParts and
+// programParts, WrittenSignaturePart: per signature and position, filled on its first read, kept across unchanged passes and revoked by every edit,
+// Binding.Invalidate), so a warm read walks and allocates nothing. Invariants: a node with no projection written below it is its
+// BoundType; a composed Type keeps its BoundType's kind, symbol and Origins and takes the
 // written parts in the binder's component order for the form: the Type list a form interns, a container reference's own arguments and
 // then its environment (ContainerPath and QualifierEnvironment, the binder's members: the lookup at the qualifier's declared Self, the
 // written qualifier's arguments substituted, StoredType), a Wrapping over a written projection the Constructed Wrapping TyCtxt interns.
 // Prohibitions: no component position counted from syntax; no lookup but QualifierEnvironment's; no proof, record or obligation.
 public sealed partial class Binding
 {
-    // WrittenSignaturePart's walks, per signature (the function's symbol, or the property's for its Field) and position; owner
-    // Binding.AsWritten, reset by Binding.Invalidate with the other facts kept across unchanged passes.
+    // WrittenSignaturePart's walks, per signature and position. Each key names one syntax node and one scope, so an entry's value is a
+    // function of its key: a function's symbol, its parameter's or return Type node in the function's scope; an accessor's own
+    // (SignatureSymbol), a Type node its declaration writes, in the accessor's scope; else its Property's symbol, the Property's Type
+    // node in the Property's declaration scope, one part, so a getter and a setter that both read it (the Field) share its entry. The
+    // frozen layer's rule (DECISIONS BU-220, OriginAtomRows' form; CC-60): writtenParts holds the rows a module's own bind forms, the
+    // library's included; from the freeze (PLAN G949 S1-1) a row a later step forms for a signature of the frozen library table (its
+    // written node's SyntaxOwner) is a program fact, a row of programParts, found after writtenParts, so the frozen layer holds no row a
+    // later step made. Owner Binding.AsWritten; both emptied by Binding.Invalidate with the other facts kept across unchanged passes.
     private readonly Dictionary<(BindingSymbol Signature, int Position), BoundType> writtenParts = [];
+    private readonly Dictionary<(BindingSymbol Signature, int Position), BoundType> programParts = [];
 
     // `syntax`'s Type as written, `bound` where it binds no Type.
     private BoundType AsWritten(Koto? syntax, BindingScope scope, BoundType bound)
         => syntax is { BoundType: not null } ? this.Written(syntax, scope) : bound;
 
-    // SPEC 8.6.3, 8.5.5 (R7-C2e2 e2-5b, design R3.1): an implementation's signature part as written, so a requirement's evidence reads
-    // both sides in one image: a function's parameter at `position` or its result (position InputCount); an accessor's stored Field (its
-    // property's Type, the one part a storage bridge writes) at InputCount + 1, its receiver, input and result being formed, not written;
+    // SPEC 8.6.3, 8.5.5 (R7-C2e2 e2-5b, design R3.2, R3.3.6): a requirement's or an implementation's signature part as written, so a
+    // comparison reads both sides in one image: a function's parameter at `position` or its result (position InputCount); an accessor's
+    // value input (1) or result (InputCount) as its declaration writes it, else as its Property's Type writes it where the part is that
+    // Type (a standard accessor's, a getter's unwritten result), and its stored Field at InputCount + 1; an accessor's receiver is formed;
     // the formed Type where nothing is written, none where the header has none. Its readers form it in the comparison's scope
-    // (ContractType), as the header's formation forms it in the implementation's (N3).
+    // (ContractType), as the header's formation forms it in the declaration's (N3).
     private BoundType? WrittenSignaturePart(FnSig signature, int position)
     {
-        var field = signature.Function is null && position > signature.InputCount;
-        if ((field ? signature.Accessor!.Property.Type : position == signature.InputCount ? signature.Result : signature.Input(position)) is not { } formed)
+        var accessor = signature.Accessor;
+        if ((accessor is not null && position > signature.InputCount ? accessor.Property.Type : position == signature.InputCount ? signature.Result : signature.Input(position)) is not { } formed)
         {
             return null;
         }
 
-        var syntax = signature.Function is not { } function ? field ? signature.Accessor!.Property.Declaration.TypeKoto : null
-            : position == signature.InputCount ? function.ReturnType : function.Parameters[position].Type;
+        Koto? own;
+        Koto? syntax;
+        if (signature.Function is { } function)
+        {
+            syntax = own = position == signature.InputCount ? function.ReturnType : function.Parameters[position].Type;
+        }
+        else
+        {
+            // N1: the part its declaration writes; else the Property's Type where the part is it (Properties.cs:206-207 and :230: a
+            // standard accessor's value, a getter's unwritten result, the Field); the receiver and an implicit setter input are formed.
+            var result = position == signature.InputCount;
+            own = position == 0 || position > signature.InputCount || accessor!.IsStandard ? null : result ? accessor.Declaration?.ReturnType : accessor.Declaration?.ValueType;
+            syntax = own ?? (position != 0 && (position > signature.InputCount || (result ? accessor!.Kind == PropertyAccessorKind.Get : accessor!.IsStandard)) ? accessor!.Property.Declaration.TypeKoto : null);
+        }
+
         if (syntax is not { BoundType: not null })
         {
             return formed;
         }
 
-        var key = (signature.Function is { } owner ? owner.BoundSymbol! : signature.Accessor!.Property.Symbol, position);
-        if (!this.writtenParts.TryGetValue(key, out var written))
+        var key = (signature.Function is { } owner ? owner.BoundSymbol! : own is null ? accessor!.Property.Symbol : accessor!.SignatureSymbol!, position);
+        if (!this.writtenParts.TryGetValue(key, out var written) && !this.programParts.TryGetValue(key, out written))
         {
-            this.writtenParts[key] = written = this.Written(syntax, signature.Function is { } scoped ? this.scopes[scoped] : this.DeclarationScope(key.Item1));
+            var scope = signature.Function is { } scoped ? this.scopes[scoped] : own is null ? this.DeclarationScope(accessor!.Property.Symbol) : this.scopes[accessor!.Declaration!];
+            (syntax.SyntaxOwner is { Frozen: true } ? this.programParts : this.writtenParts)[key] = written = this.Written(syntax, scope);
         }
 
         return written;
@@ -61,8 +84,11 @@ public sealed partial class Binding
         {
             case MemberAccessKoto { Right.BoundType: { Kind: BoundTypeKind.AssociatedProjection } projection } member:
                 return this.WrittenProjection(member, projection, scope);
-            case OriginApplicationKoto application when UnwrapTransparentType(application.Type) is MemberAccessKoto { BoundType: { Kind: BoundTypeKind.AssociatedProjection } applied } target:
-                return this.WrittenProjection(target, applied, scope);
+            case OriginApplicationKoto application when UnwrapTransparentType(application.Type) is { BoundType: { Kind: BoundTypeKind.AssociatedProjection } applied } target:
+                return target is MemberAccessKoto qualified ? this.WrittenProjection(qualified, applied, scope) : applied; // a bare target is bound as its identity
+            case IdentifierNameKoto or TypeSemanticsKoto { Type: null } when syntax.BoundSymbol is { Kind: BindingSymbolKind.AssociatedType } associated &&
+                this.EnclosingContractSelf(scope) is { Symbol.SelfOf: { } contract } self:
+                return this.ProjectionIdentity(self, associated, this.DeclaringReference(associated, this.SelfType(contract)), null); // SPEC 8.6.1 (B3)
             case SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ BoundType: not null } operand] }:
                 return this.Through(bound, operand, scope);
             case FunctionTypeKoto function when bound is { Kind: BoundTypeKind.Function, Components: [var inputs, _] }:
@@ -105,7 +131,7 @@ public sealed partial class Binding
             : TypeSpelling(written) is not null ? projection.Components[0]
             : throw new InvalidOperationException($"The receiver of `{projection}` has no Type (InternalInvariant; SPEC 8.5.5).");
         var contract = member.Left is MemberAccessKoto { Right: ParenthesizedTypeKoto selector } && WrittenReference(selector) is { BoundType: { } type } reference &&
-            !ReferenceEquals(type, BoundType.Unit) ? this.DeclaringReference(projection.Symbol!, this.Written(reference, scope)) : projection.Components[1];
+            !ReferenceEquals(type, BoundType.Unit) ? this.ProjectionContract(projection.Symbol!, this.DeclaringReference(projection.Symbol!, this.Written(reference, scope))) : projection.Components[1];
         return ReferenceEquals(receiver, projection.Components[0]) && ReferenceEquals(contract, projection.Components[1]) ? projection
             : this.types.Rebuild(projection, [receiver, contract], projection.Origin, (BoundOrigin[])projection.OriginArguments);
     }
@@ -113,16 +139,16 @@ public sealed partial class Binding
     // SPEC 8.4.3, 8.5.3, 8.6.1: the declaring Contract reference of `associated` as the Contract reference `reference` sees it: the
     // identity's declaring reference in the bound reference's associated identities (BoundContractReference, their one former: the
     // reference itself where its own declaration declares `associated`, else the declared identity's reference with the arguments
-    // substituted), as SearchAssociated reads it, the projection's Contract component (ProjectionContract) as BindAssociatedProjection
-    // makes it.
-    private BoundType DeclaringReference(BindingSymbol associated, BoundType reference)
+    // substituted), as SearchAssociated reads it; the projection's Contract component is ProjectionContract's of it, as
+    // BindAssociatedProjection makes it.
+    private BindingSymbol DeclaringReference(BindingSymbol associated, BoundType reference)
     {
         var identities = this.BoundContractReference(reference).Contract!.AssociatedTypes;
         for (var i = 0; i < identities.Count; i++)
         {
             if (ReferenceEquals(identities[i].Symbol, associated))
             {
-                return this.ProjectionContract(associated, identities[i].Contract);
+                return identities[i].Contract;
             }
         }
 
