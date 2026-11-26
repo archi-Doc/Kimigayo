@@ -730,7 +730,9 @@ public class ClosureEnvironmentOriginTest
     // relation's record whether or not a body header formed the entries first (hdr_res_early, hdr_res_late), and a parameter Type
     // naming it is p's too (hdr_par_early; its control hdr_par_late). That is a visibility row, not a scope (F's G230H-13): the
     // parameters share the body's one space, so a body local repeating one is a duplicate (hdr_dup_par, SPEC 9.3), and an inner
-    // literal in the body captures the environment binding (env_inner, SPEC 7.7.2). An entry's record that a body header's demand
+    // literal in the body captures the environment binding (env_inner, SPEC 7.7.2), and an inner literal's own header names it
+    // (hdr_outer_env, SPEC 7.7.2, 15.8.2; F's G230H-14 (ii)): returning the inner parameter's own Origin against it is Unknown
+    // (hdr_outer_env_inv, SPEC 15.6.5). An entry's record that a body header's demand
     // makes first and the literal's header mismatch are independent, so both are reported (thdr_inf, SPEC 23.1.2, 10.5, 7.7.2;
     // G230H-12 C-b). A nested header that completes c before f's statements
     // gives the comparison's located limit at h@move, as its header-free twins do (rvd_hdr_let, rvd_hdr_set; R7 O-400 (b)).
@@ -791,6 +793,15 @@ public class ClosureEnvironmentOriginTest
     [InlineData(
         "func f(p: ref/i32) -> i32\n    let c = func [p] () -> i32\n        let d = func [p] () -> i32 => p@follow\n        return d()\n" +
             "    return c()\npublic func main() => ()\n")] // env_inner
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> i32\n" +
+            "        let d = func (v: ref/(ref/i32 during p) during p) -> ref/(ref/i32 during p) during p\n" +
+            "            return v\n        return d(p)@follow@follow\n    return c()\npublic func main() => ()\n")] // hdr_outer_env
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> i32\n" +
+            "        let d = func (v: ref/(ref/i32 during p)) -> ref/(ref/i32 during p) during p\n" +
+            "            return v\n        return d(p)@follow@follow\n    return c()\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n        return d(p)")] // hdr_outer_env_inv
     [InlineData(
         "func f(p: ref/i32) -> i32\n    let g: i32 = func [p, p] (k) -> i32\n        func h(v: ref/i32 during p) -> i32 => 0\n        return 0\n" +
             "    return g\npublic func main() => ()\n",
