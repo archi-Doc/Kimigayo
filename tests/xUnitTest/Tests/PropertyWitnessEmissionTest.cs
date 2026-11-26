@@ -167,13 +167,14 @@ public class PropertyWitnessEmissionTest
         Assert.Equal(code, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics).Code);
     }
 
-    // SPEC 11.9: a Property requirement is instance-only, so a Type names none.
+    // SPEC 11.9, 9.6: a Property requirement is instance-only, so the Type path reaching it requires a receiver (QualificationRequired_Kd,
+    // PLAN G1156, F's ruling G1156-3 P1; it was UnresolvedBinding_Kd, the gather's own record).
     [Fact]
     public void ARequirementPropertyIsNoTypeMember()
     {
         const string Source = "contract C\n    property item: i32 has get\nfunc read<T>() -> i32\n    T is C\n    return T.item\npublic func main() => ()\n";
         var record = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal(("UnresolvedBinding_Kd", Source.IndexOf("T.item", StringComparison.Ordinal), "T.item".Length), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
+        Assert.Equal(("QualificationRequired_Kd", Source.IndexOf("T.item", StringComparison.Ordinal), "T.item".Length), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
     }
 
     [Theory]
