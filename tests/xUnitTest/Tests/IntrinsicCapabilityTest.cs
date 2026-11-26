@@ -310,10 +310,12 @@ public class IntrinsicCapabilityTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
+    // S opts in to Copy, so the proof reads its incomplete storage: without the opt-in, S is Refuted by its declaration before any
+    // Field is read (SPEC 3.5.2; G1220-1 O2, as G1220-2 rules for TypeDagScalingTest.AFailedPartOfASharedTupleFailsItsConstraint).
     [Fact]
     public void IncompleteStorageDoesNotSupplyNegativeCopyEvidence()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct S\n    let x: Missing\nfunc inspect(x: S) => ()");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    Self is Copy\n    let x: Missing\nfunc inspect(x: S) => ()");
         c.Bind();
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
