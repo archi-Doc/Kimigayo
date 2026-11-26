@@ -367,7 +367,7 @@ public sealed partial class Binding
     // fail the input, and its instantiated well-formedness is a requirement of its own (SPEC 15.6.4 step 3). As for the fit, an argument
     // that carries no Origin, such as one that transfers control, supplies none; and an input Binding already failed (its fit's
     // structure, SPEC 5.7's raw-layer rules, a located limit, or its conversion's contract: a Function value's, ConvertFunctionValue,
-    // whose relations are published with it, FollowsContract) is no instance of its parameter, so its well-formedness, read from its
+    // whose relations are records beside it, RecordOrigin) is no instance of its parameter, so its well-formedness, read from its
     // supplied Type, would rest on that failure (SPEC 23.1.2), as a premise over a variable `solved`, the call's solve, marked does
     // (OriginInference.Marked).
     private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution, OriginInference? solved)

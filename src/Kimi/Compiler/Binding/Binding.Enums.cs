@@ -312,7 +312,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (expected.Kind == BoundTypeKind.OpenSlot)
+        if (IsOpenAtom(expected))
         {
             // Binding.OpenSlots (SPEC 10.8.1, 10.5.1; design v3-A 11.8.7 B1): an atom is no owner Type of the declaration, so it fills
             // nothing and holds against the result; each own slot left unbound is its open atom at the next owner level while the outer
@@ -499,7 +499,7 @@ public sealed partial class Binding
             {
                 fixedTypes[i] = frame.Types[i] ?? (inferred ? owner!.Components[i] : null);
                 anyFixed |= frame.Types[i] is not null;
-                forms |= frame.Types[i] is null or { Kind: BoundTypeKind.OpenSlot };
+                forms |= frame.Types[i] is not { } fixedSlot || IsOpenAtom(fixedSlot);
             }
 
             for (var i = 0; i < originCount; i++)
@@ -561,7 +561,7 @@ public sealed partial class Binding
             {
                 if (origins[i] is null)
                 {
-                    return this.Fail(use, BindingFailure.MissingOrigin, true);
+                    return this.Record(use, BindingFailure.MissingOrigin, [], unresolved: true);
                 }
             }
 

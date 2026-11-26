@@ -362,7 +362,9 @@ public partial class EffectBoundImplementationTest
     // StaticStorage record at a settable static, DECISIONS R5-M82, and Binding's located Unsupported_Kd at a static's Borrow; STATUS
     // Static members). The rule reads no startup record, so a hosted row's Unsupported_Kd stands beside it (35); a failed conformance
     // owes nothing (36, SPEC 8.6.3); an environment effect alone accesses no static storage (the Console twin, SPEC 22.4.5 ¶3); a
-    // callee's static access and a destruction's are the member's (34, E2, E3).
+    // callee's static access and a destruction's are the member's (34, E2, E3). A requirement call that takes its effects from a
+    // `confined` bound may read an immutable static, so it fails as an unbounded one does (C-591's R4c and R4d, R4, and R4cf through a
+    // Callable input; T's rulings 134 and 136), and a closed Contract's `tryResolve` reads none (R4p, SPEC 8.7.5).
     [Theory]
     [InlineData("31", CountedRecords + " | " + Write)]
     [InlineData("32", "")]
@@ -380,6 +382,11 @@ public partial class EffectBoundImplementationTest
     [InlineData("E3v", "")]
     [InlineData("E4", Start)]
     [InlineData("E4v", "")]
+    [InlineData("R4c", Write)]
+    [InlineData("R4d", Write)]
+    [InlineData("R4", Write)]
+    [InlineData("R4p", "")]
+    [InlineData("R4cf", Write)]
     public void APlatformMemberAccessesNoStaticStorage(string row, string records)
     {
         var (target, source) = PlatformProgram(row);
@@ -468,8 +475,20 @@ public partial class EffectBoundImplementationTest
             "E3v" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        let mark = Mark.init()\n" + Bytes)) + "struct Mark\n    public init() => ()\n    drop => ()\n"),
             "E4" => (Freestanding, StartupBindingTest.Derive(Kernel, ("window + 0x0100_0000", "window + Layout.pageBase")) + layout),
             "E4v" => (Freestanding, Kernel + layout),
+            "R4c" => (Freestanding, WideProgram("        effect confined\n", "Screen.width")),
+            "R4d" => (Freestanding, WideProgram("        effect confined\n", "80")),
+            "R4" => (Freestanding, WideProgram(string.Empty, "80")),
+            "R4p" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, Bytes + "        let first: isize = 0\n        _ = bytes.tryGet(first)\n"))),
+            "R4cf" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        let read = func () => Tables.scale\n        _ = Apply.run(read@ref)\n" + Bytes)) +
+                "group Tables\n    public let scale: i64 = 3\ngroup Apply\n    public func run<F>(f: ref/F) -> i64\n        F is Callable<() -> i64>\n            effect confined\n        return f()\n"),
             _ => throw new ArgumentOutOfRangeException(nameof(row)),
         };
+
+        // R4c, R4d and R4: `write` divides by Util.wide<Eighty>(), whose requirement call on the abstract T takes its effects from Wide's
+        // bound, if any; Eighty's witness returns `width`.
+        static string WideProgram(string bound, string width) => StartupBindingTest.Derive(Kernel, (Cells, "(self.cell / Util.wide<Eighty>() + 1) * 80")) +
+            "group Screen\n    public let width: isize = 80\ncontract Wide\n    func width() -> isize\n" + bound +
+            $"struct Eighty\n    Self is Wide\n    public func width() -> isize => {width}\ngroup Util\n    public func wide<T>() -> isize\n        T is Wide\n        return T.width()\n";
 
         static string CountedProgram(string kernel) => StartupBindingTest.Derive(
             kernel,

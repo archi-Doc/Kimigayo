@@ -689,7 +689,7 @@ public sealed partial class Binding
 
         // PLAN G924 AF-3b v3-A (Binding.OpenSlots; S1): an atom on the actual side holds against a pattern part that is no slot of the
         // solve and binds nothing; a slot of the solve takes it above, as any first binding (a fill).
-        if (actual.Kind == BoundTypeKind.OpenSlot)
+        if (IsOpenAtom(actual))
         {
             return true;
         }

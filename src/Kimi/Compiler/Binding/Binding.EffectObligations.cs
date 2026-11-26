@@ -10,8 +10,8 @@ namespace Kimi.Compiler;
 // The rule an obligation is judged under, which names the effect classes that fail it (A4's one table, MirEffects.Failing).
 internal enum EffectRule : byte
 {
-    Confined, // SPEC 8.11.2: a `confined` bound; an environment or unknown effect fails it.
-    StaticFree, // SPEC 22.4.5 (the Tatara plan's decision 45): a platform member; a static access or an unknown effect fails it.
+    Confined, // SPEC 8.11.2: a `confined` bound.
+    StaticFree, // SPEC 22.4.5 ¶2 (the Tatara plan's decision 45): a platform member.
 }
 
 // An obligation under Rule that Binding decided and A4 judges (DECISIONS R4-M22, R4-M23), reported as Code at Subject under Requirement
@@ -111,10 +111,8 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 8.7.5: every `tryResolve` implementation, the one requirement a closed Contract declares, reads only its boundaries and
-        // the length and has no other effect. The `format` they inherit is Utf8Format's and takes its bound from their effect item.
-        return callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange
-            ? true : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), QuerySite.AfterPass, reference: contract);
+        return TyCtxt.ClosedRequirement(callee) ||
+            this.AvailableEffectBounds(function, self, this.EffectPremises(definition), QuerySite.AfterPass, reference: contract);
     }
 
     // SPEC 8.11.4: the bounds a call through an abstract Callable input may use under the calling definition's premises, those of the

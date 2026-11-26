@@ -77,7 +77,7 @@ public sealed partial class Binding
     {
         if (failure.IsCondition && TyCtxt.StorageMatches(required, implementation))
         {
-            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
+            this.RecordOrigin(node, new(null, this.ContractFact(node, failure, node)));
         }
         else if (failure.Kind != ComparisonFailureKind.Shape)
         {
