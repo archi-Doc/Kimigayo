@@ -594,13 +594,15 @@ public class LibraryImportTargetBindingTest
     // supply of the name and the reserved external names are the table's, so an import of a symbol no row's supply of that name provides is
     // unavailable, and one of a reserved name (a memory function, main) invalid, on every target; the selected row decides only the located
     // Unsupported_Kd at the import, for another row's supply or symbol (the Windows import of c's write, the Linux one of kernel32's
-    // GetLastError, which joins Windows' runtime declaration with no conflict); a target without a row (x86_64-unknown-linux-gnu) reports
-    // none (G2). Each expected code is a record at the import, in every pass.
+    // GetLastError, which joins Windows' runtime declaration with no conflict; both on the staged none-x64 row, which has no supply); a
+    // target without a row (x86_64-unknown-linux-gnu) reports none (G2). Each expected code is a record at the import, in every pass.
     [Theory]
     [InlineData("c", "write", null, "x86_64-unknown-linux-musl", "")]
     [InlineData("c", "write", null, "x86_64-unknown-linux-gnu", "")]
     [InlineData("c", "write", null, "x86_64-pc-windows-msvc", "Unsupported_Kd")]
+    [InlineData("c", "write", null, "x86_64-unknown-none", "Unsupported_Kd")]
     [InlineData("kernel32", "GetLastError", null, "x86_64-unknown-linux-musl", "Unsupported_Kd")]
+    [InlineData("kernel32", "GetLastError", null, "x86_64-unknown-none", "Unsupported_Kd")]
     [InlineData("kernel32", "GetLastError", null, "x86_64-unknown-linux-gnu", "")]
     [InlineData("c", "getpid", null, "x86_64-pc-windows-msvc", "UnavailableReservedImport_Kd")]
     [InlineData("c", "getpid", null, "x86_64-unknown-linux-musl", "UnavailableReservedImport_Kd")]
@@ -618,17 +620,19 @@ public class LibraryImportTargetBindingTest
         AssertRecordsAtImports(c, code.Length == 0 ? [] : [code + "@Hello.kimi:G0"]);
     }
 
-    // The Tatara plan's B7b5 (IMPL 20.4, Q3a (a); design §5 row 13): the project file accepts an import Kind under the Linux key, and each
-    // import of that library is the located Unsupported_Kd on the static-only linux-x64 row; windows-x64 links it.
+    // IMPL 20.4: the project file accepts a requirement's Kind under the target's key, and the selected row's Kinds decide each import of
+    // that library: an import library's imports are each the located Unsupported_Kd on a static-only row (linux-x64,
+    // x86_64-unknown-none) and have no record on windows-x64, as a static library's have on x86_64-unknown-none.
     [Theory]
-    [InlineData("x86_64-unknown-linux-musl", "Unsupported_Kd")]
-    [InlineData("x86_64-pc-windows-msvc", "")]
-    public void AKindOutsideTheRowsKindsIsUnsupported(string target, string code)
+    [InlineData("x86_64-unknown-linux-musl", "import", "Unsupported_Kd")]
+    [InlineData("x86_64-unknown-none", "import", "Unsupported_Kd")]
+    [InlineData("x86_64-unknown-none", "static", "")]
+    [InlineData("x86_64-pc-windows-msvc", "import", "")]
+    public void AKindOutsideTheRowsKindsIsUnsupported(string target, string kind, string code)
     {
-        var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeRequirements={\"x86_64-unknown-linux-musl\"={codec={Kind=\"import\"}}}"))!;
-        Assert.Equal("import", file.NativeRequirements[TargetProfile.Linux.Target]["codec"].Kind);
-        string[] imports = ["#LibraryImport(\"codec\", \"first\")", "#LibraryImport(\"codec\", \"second\")"];
-        var c = AnalyzeImport(string.Concat(imports.Select(static (x, i) => $"group G{i}\n    {x}\n    public unsafe func imported() -> i32\n")), "codec", target: target);
+        var file = ProjectFile.Load(Encoding.UTF8.GetBytes("NativeRequirements={\"" + target + "\"={codec={Kind=\"" + kind + "\"}}}"))!;
+        Assert.Equal(kind, file.NativeRequirements[target]["codec"].Kind);
+        var c = BindImports(target, "codec=" + kind, "codec first () -> i32|codec second () -> i32");
         AssertRecordsAtImports(c, code.Length == 0 ? [] : [code + "@Hello.kimi:G0", code + "@Hello.kimi:G1"]);
     }
 

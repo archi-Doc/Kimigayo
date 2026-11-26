@@ -16,7 +16,7 @@ public sealed partial class Binding
         }
 
         this.ResetStartup();
-        return this.Startup = new(OutputKind.Application, StartupKind.Test, null, null, this.Result.IsComplete);
+        return this.Startup = new(OutputKind.Application, StartupKind.Test, null, null, this.Result.IsComplete, null);
     }
 
     private MessageTransfers? messageTransfers;
