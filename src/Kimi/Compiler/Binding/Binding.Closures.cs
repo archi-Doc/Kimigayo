@@ -16,12 +16,12 @@
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Signature, EnvironmentType and InfersResult (its
 //   Storage and Carried are Binding.Captures'; the symbol's DeclaringBody the index walk's); the Environment query (FormEnvironment);
 //   a ClosureReceiverRefutation; the located InternalInvariant_Kd of each use no consumer takes.
-// - Invariants: BindClosure clears the published Signature, Published and Classified before a binding, and the pending relations an
-//   earlier binding formed in its body; the environment (Storage, Carried) is formed once in the pass (FormEnvironment, from the index
+// - Invariants: BindClosure clears the published Signature, Published and Classified before a binding; the environment (Storage,
+//   Carried) is formed once in the pass (FormEnvironment, from the index
 //   walk's reset, BoundClosure.ResetPass) and kept by every later binding, and is not ready before the literal's header binds an
 //   omitted parameter Type or an entry's source binds (abandoned, no record); BindConcreteClosure starts from reset receiver facts (Shared,
-//   no exclusive cause) and has them classified right after the body is bound, its pending relations judged then
-//   (Binding.OriginProof.cs); PublishClosure publishes the definition on both paths, with no Signature where a parameter's or the
+//   no exclusive cause) and has them classified right after the body is bound (a relation naming a pending atom is a row, DECISIONS
+//   R7-M66); PublishClosure publishes the definition on both paths, with no Signature where a parameter's or the
 //   result's slot failed (BoundClosure's Access paragraph), and, in a Property header's frame, for a literal its header types before
 //   any body (TypedByHeader), whose body the Property's variable binding binds with its parts (BindLeftBodies); a header probe binds no
 //   parameter, visits no body and restores the enclosing probe on exit (its header scope records the literal's written entries'
@@ -351,8 +351,8 @@ public sealed partial class Binding
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
         // included; classification reads neither the signature nor the environment Type. A use of a pair-layer capture that no consumer
-        // takes is a broken contract, a located InternalInvariant_Kd (DECISIONS R7-M53; it was R4-M145's net). The relations that waited
-        // for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
+        // takes is a broken contract, a located InternalInvariant_Kd (DECISIONS R7-M53; it was R4-M145's net). No relation waits for the
+        // classification: one naming a pending atom is a row, which A5 judges (SPEC 15.8.2; DECISIONS R7-M66).
         var effects = this.closureEffects ??= new(this);
         effects.Classify(function, plan);
         foreach (var use in effects.Unlisted)
