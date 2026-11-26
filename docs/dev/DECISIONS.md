@@ -30441,7 +30441,7 @@ Closure row of `MirCases.Branch`).
   - **Ratchets** (`ArchitectureRulesTest`): no source in `src/Kimi` or test names the body judge's deleted members;
     `JudgeOriginRelation`'s calls in `src/Kimi/Compiler/Binding` and the explicit `new OriginRelationFact(` constructions (V5's two,
     V6, V7) stay at their sites. Their known limits: the records row does not count a target-typed `new(` (the A5 adapter's two at
-    `Compilation.Publication.cs:272, 287`; the house form at record sites), and the judge row scans Binding only (PLAN G1457).
+    `Compilation.Publication.cs:272, 287`; the house form at record sites), and the judge row scans Binding only (PLAN G1457). Amended by R7-M123: the Owned record (OJ3) is a fifth site.
   - **`originStateVersion` stays** (f): the one version of the Origin state premise environments are built from; a premise
     session's and a Callable comparison's environment are reused only at it, the body's oracle is read only at it, and a proof
     request leaves it unchanged (PLAN G74). Why: the well-formedness enumeration's session changes that state between its requests
@@ -30492,7 +30492,7 @@ Closure row of `MirCases.Branch`).
     argument", and an inherited member from its Actual fact (`BindingReport.Value` or `OriginSide`); it reads neither
     CapabilityParts nor InheritedArguments (ruling 49); a capture's name comes from the subject's closure definition (BoundClosure.Of),
     and the prepared capture from its plan (PreparedCapture), as dev's adapter read them. The capture entry is read from syntax (`CaptureEntryOf`), never kept as a fact (ruling 31 N8). `Ordinal` has one copy, the adapter's (`Binding.Diagnostics.Conversions`), for ContractFact, the Owned member
-    and the Origin diagnostics.
+    and the Origin diagnostics. The OriginRecord's `new OriginRelationFact(` is the fifth site of R7-M120's records ratchet (`Binding.OwnedConversions.cs=1`): the record of OJ3's own judgment, as V5 records OJ1's (B and M, board 11-27).
   - **Callable.** `RecordCallableConstraint` is the one builder, for FailUnprovenConstraint's Callable branch and
     FailCallableSelection: FailClauseRecord's facts (Related role 0 "constraint" at the clause, Constraint) plus OriginRecord(null,
     the trial's OriginContractFact), whose At is the record's location. `ReportCallableConstraint` reads them.
