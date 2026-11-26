@@ -331,8 +331,8 @@ internal sealed partial class MirEffects
         var receiver = (SemanticsKind)(kind - 1);
         if (type.IsAbstract)
         {
-            // A call through an abstract input: none where the premises with the call's signature declare confined, else the summary's
-            // atom with its signature. Every call through an abstract Type carries the signature it selected (Atom.Signature's producers);
+            // A call through an abstract input: the bound's class where the premises with the call's signature declare confined
+            // (Discharged), else the summary's atom with its signature. Every call through an abstract Type carries the signature it selected (Atom.Signature's producers);
             // Obligations' Callable row reaches here only with a concrete Type (Binding.AddCallableObligation decides an abstract one).
             if (signature is null)
             {
@@ -341,7 +341,11 @@ internal sealed partial class MirEffects
                 return;
             }
 
-            if (!types.CallableBounds(this.definition, type, signature, receiver))
+            if (types.CallableBounds(this.definition, type, signature, receiver))
+            {
+                this.found |= Discharged(bound: true, callee: null);
+            }
+            else
             {
                 this.AddAtom(type, kind, signature: signature);
             }
@@ -359,7 +363,7 @@ internal sealed partial class MirEffects
                 var function = item?.Target ?? type.Symbol!;
                 if (types.DispatchBounds(this.definition, function, item?.Self, types.ItemContract(type)) is { } dispatched)
                 {
-                    this.found |= dispatched ? (byte)0 : Unknown;
+                    this.found |= Discharged(dispatched, function);
                     break;
                 }
 
@@ -421,9 +425,10 @@ internal sealed partial class MirEffects
         => types.BindingComplete ? throw new InvalidOperationException($"{contract} (InternalInvariant).") : Derived;
 
     // SPEC 4.9.6, 8.11.3: a published requirement on a Type under the Contract reference its call recorded. An abstract Type has no
-    // implementation: the requirement is nothing where the definition's premises declare it confined, else the summary's atom, composed at
-    // the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a conformance only of a closed Self; a
-    // built-in target's requirement, the one a Terminator records on an abstract Self, resolves without it). Any other Type runs each
+    // implementation: the requirement is the bound's class where the definition's premises declare it confined (Discharged), else the
+    // summary's atom, composed at the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a
+    // conformance only of a closed Self; a built-in target's requirement, the one a Terminator records on an abstract Self, resolves
+    // without it). Any other Type runs each
     // target Binding resolves under that reference and those premises, at the instance Binding gives it for the call (a conformance witness
     // at the call's own Types and lengths, SPEC 8.6.3; TyCtxt.Witnesses: a compiler function, a composite comparison's leaf witnesses, a
     // witness body, a library witness at the Self's arguments among them, or an accessor as a dynamic edge, a virtual witness by its slot's
@@ -435,7 +440,11 @@ internal sealed partial class MirEffects
     {
         if (type.IsAbstract)
         {
-            if (types.DispatchBounds(this.definition, requirement, type, null) != true)
+            if (types.DispatchBounds(this.definition, requirement, type, null) == true)
+            {
+                this.found |= Discharged(bound: true, requirement);
+            }
+            else
             {
                 this.AddAtom(type, Requires, requirement, contract);
             }
@@ -451,7 +460,7 @@ internal sealed partial class MirEffects
             var (target, instance) = this.targets[i];
             if (target.Definition.Kind == DispositionKind.Body && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
             {
-                this.found |= dispatched ? (byte)0 : Unknown; // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
+                this.found |= Discharged(dispatched, target); // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
             }
             else
             {

@@ -72,7 +72,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     /// <summary>A class of a summary: the body may access static storage, a static Field's read, borrow, write, replacement, destruction or
     /// first-access initialization (SPEC 15.6.4), set at every <c>staticEnsure</c>, through which each such access is reached
-    /// (MirBuilder.Static).</summary>
+    /// (MirBuilder.Static), and at a call that takes its effects from a <c>confined</c> bound, which may read an immutable static
+    /// (Discharged).</summary>
     internal const byte Static = 32;
 
     /// <summary>An atom's kind: the destruction of a value of its Type; any other kind but <see cref="Requires"/> is 1 + the receiver of
@@ -98,7 +99,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     /// <summary>Gets the one answer of classes under a rule (DECISIONS R4-M153): the Join of their outcomes, a class that fails the rule
     /// (<see cref="Failing"/>) decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep, for every rule. A4's obligations record
-    /// by it under their row's rule, and A5's effect rule under Confined.</summary>
+    /// by it under their row's rule, and A5's unknown-effect Loan conflict (SPEC 15.6.4) under Confined, whose classes Keys and Summary
+    /// mask, so only Unknown decides there.</summary>
     /// <param name="classes">Classes of a summary or a site.</param>
     /// <param name="rule">The rule the classes are judged under.</param>
     /// <returns>The classes' outcome.</returns>
@@ -231,15 +233,23 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         _ => null,
     };
 
+    // SPEC 8.11.3 (X2), 8.11.4, 22.4.5 ¶2 (T's rulings 134, 136): the class of a call the caller's premises may discharge by an effect
+    // bound (TyCtxt.DispatchBounds, CallableBounds), every discharge site's: Unknown without the bound; with it, none for a closed
+    // Contract's requirement (SPEC 8.7.5), else Static, since a `confined` bound gives no environment effect (8.11.3 item 2) but for ¶2
+    // may read an immutable static, as a `confined` implementation may (8.11.2). Where a call without the bound stays an atom, composed
+    // at the callers, only the bound's case is read.
+    private static byte Discharged(bool bound, BindingSymbol? callee)
+        => !bound ? Unknown : callee is not null && TyCtxt.ClosedRequirement(callee) ? (byte)0 : Static;
+
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters its declaration's summary at the call's substitution (SPEC
     // 15.6.4: its specializations included, Local), one without a body is what Binding classifies (TyCtxt.Bodyless). A tuple operator's call runs its parts'
     // comparisons (Compared). A requirement call that selects a built-in
     // target or whose Self is not abstract (an inline default copy's instance, SPEC 7.2.3) runs what its Self's witnesses run under the
     // Contract reference the call recorded (Require); one on an abstract Self or a dynamic virtual call has the bounds of the caller's
-    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure is
-    // an access to static storage (Static) and the static's first-access initialization (Initialize); a Drop destroys what A2's verdicts
-    // leave (Dropped).
+    // premises (X2; Discharged) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input;
+    // staticEnsure is an access to static storage (Static) and the static's first-access initialization (Initialize); a Drop destroys
+    // what A2's verdicts leave (Dropped).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
     {
         var callee = terminator.Callee;
@@ -277,7 +287,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
             var subject = callee.Kind == MirCalleeKind.Requirement ? callee.Subst?.Self : null;
-            this.found |= types.DispatchBounds(body.Key.Decl, callee.Symbol!, subject, callee.Contract) == true ? (byte)0 : Unknown;
+            this.found |= Discharged(types.DispatchBounds(body.Key.Decl, callee.Symbol!, subject, callee.Contract) == true, callee.Symbol);
             this.Given(body, terminator);
         }
         else if (callee.Kind == MirCalleeKind.Value)
@@ -396,7 +406,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.Function(program, new(MirCalleeKind.Fn, node.Target, node.Subst));
                 break;
             case ComparisonKind.Requirement:
-                this.found |= types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true ? (byte)0 : Unknown;
+                this.found |= Discharged(types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true, node.Target);
                 break;
             case ComparisonKind.None:
                 this.found |= this.Broken();

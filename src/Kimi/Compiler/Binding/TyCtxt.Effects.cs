@@ -31,6 +31,9 @@ internal sealed partial class TyCtxt
         _ => BodylessKind.Unclassified,
     };
 
+    // SPEC 8.7.5: whether a dispatching callee is a closed Contract's requirement, which has no effect (Binding.ClosedRequirement).
+    internal static bool ClosedRequirement(BindingSymbol callee) => Binding.ClosedRequirement(callee);
+
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
     // parameter On, the parameter below which it destroys, -1 for none, whether it destroys that target in place (`replace`), and the
     // by-value Callable parameter it calls through a shared borrow and then destroys, -1 for none (`removeAll`); null for an operation

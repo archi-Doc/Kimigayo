@@ -10,8 +10,8 @@ namespace Kimi.Compiler;
 // The rule an obligation is judged under, which names the effect classes that fail it (A4's one table, MirEffects.Failing).
 internal enum EffectRule : byte
 {
-    Confined, // SPEC 8.11.2: a `confined` bound; an environment or unknown effect fails it.
-    StaticFree, // SPEC 22.4.5 (the Tatara plan's decision 45): a platform member; a static access or an unknown effect fails it.
+    Confined, // SPEC 8.11.2: a `confined` bound.
+    StaticFree, // SPEC 22.4.5 ¶2 (the Tatara plan's decision 45): a platform member.
 }
 
 // An obligation under Rule that Binding decided and A4 judges (DECISIONS R4-M22, R4-M23), reported as Code at Subject under Requirement
@@ -27,6 +27,12 @@ internal readonly record struct EffectObligation(
 
 public sealed partial class Binding
 {
+    // SPEC 8.7.5: whether a callee is `tryResolve`, the one requirement a closed Contract declares, whose every implementation reads only
+    // its boundaries and the length and has no other effect (DispatchBounds: every bound). The `format` they inherit is Utf8Format's and
+    // takes its bound from their effect item.
+    internal static bool ClosedRequirement(BindingSymbol callee)
+        => callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange;
+
     /// <summary>Lists the effect obligations of the latest pass (DECISIONS R4-M22). Confined: each witness of a conformance whose Contract
     /// or an ancestor declares <c>confined</c> for its requirement, each virtual function whose slot declares it, and each selected use of a
     /// Callable clause declaring it whose premises do not prove it; a holding premise adds none. StaticFree (SPEC 22.4.5, the Tatara plan's
@@ -111,10 +117,8 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 8.7.5: every `tryResolve` implementation, the one requirement a closed Contract declares, reads only its boundaries and
-        // the length and has no other effect. The `format` they inherit is Utf8Format's and takes its bound from their effect item.
-        return callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange
-            ? true : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), QuerySite.AfterPass, reference: contract);
+        return ClosedRequirement(callee) ||
+            this.AvailableEffectBounds(function, self, this.EffectPremises(definition), QuerySite.AfterPass, reference: contract);
     }
 
     // SPEC 8.11.4: the bounds a call through an abstract Callable input may use under the calling definition's premises, those of the
