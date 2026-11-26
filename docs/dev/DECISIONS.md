@@ -14898,10 +14898,11 @@ resumed by R4-M86 (2026-10-20).
     temporary). The one writer is the element row `FitElement` (`FitArgument` at the position, called by `ProbeAggregateArgument`);
     the one reader is `BetterCandidate`. Each candidate evaluation removes what it appended when it ends, beside its retained child
     rows.
-  - **Comparison.** Two fits of one argument walk its syntax alike, so two fitted candidates record the same positions. A candidate
-    that leaves the argument open (no Type) records none and the pair is compared at the argument only (step 2 then makes it
-    incomparable). Two non-empty, unequal counts are a broken contract: `InternalInvariant_Kd` at the argument, the pair
-    incomparable.
+  - **Comparison.** Two fits of one argument are compared position by position from each range's end; a part one fit holds whole
+    (no positions) is compared by its own class and the other's positions within it are skipped, and an argument held at a bare atom
+    is that case at its root. Ranges that do not end together are a broken contract: `InternalInvariant_Kd` at the argument, the pair
+    incomparable (rewritten by BU-266, PLAN G814; the earlier text, "a candidate that leaves the argument open (no Type) records none
+    and the pair is compared at the argument only", is at 21b05f8b95).
   - **Not recorded:** a nested literal's or a nested fill's own class at its position: a nested aggregate fits only by value today,
     so it always ties. Removal condition: the unit that lets a nested literal fit a `ref/(...)` element position (a borrowed
     temporary, SPEC 10.2 row 2; `r-nref3`, PLAN G746, `NoApplicableOverload_Kd` today) records it.
@@ -18916,9 +18917,9 @@ resumed by R4-M86 (2026-10-20).
     slot first and keeps no first-met atom at a nested slot (K's D-1132 reading; ruling 154; `FillOpenSlots`). InferCtxt holds the
     in-flight owners (`PushOwner`, `PopOwner`, `OwnerCount`), since the check needs them at its one write path (`CheckOpenWrite`: no
     in-flight owner's frame is written, no atom outlives its owner; a broken write ends the check as `CheckFaulted_Kd`).
-  - **A checked part at an open position (design v3-A 11.8; rulings 156-160):** a nested call, a construction included, is checked at
-    the position's open Type itself, a bare atom included, by its own resolution (`FitChecked`), whose non-null result is judged by
-    the closed fit at that Type, in which the atom holds; a checked part that is not a nested call (a literal form, a join, a
+  - **A checked part at an open position (design v3-A 11.8; rulings 156-160):** a nested call, a construction included, is checked at the position's open Type itself, a bare atom included, by its own resolution
+    (`FitChecked`), whose non-null result is judged by the closed fit at that Type, in which the atom holds; a Tuple or array literal or a
+    join is fitted there by `FitArgument` with its class and positions (BU-266; an atom is also a projection over one, `IsOpenAtom`); a checked part that is not a nested call (a literal form, a join, a
     leading-dot Case, an awaited anonymous function or function reference) whose place is a bare atom holds and is completed after
     selection (`PlacedAtOpenSlot`). No owner is carried into a query (SPEC 10.5.1 judges a checked part by the part and its expected
     Type alone). Its outcomes are the closed E's: no applicable candidate or an ambiguous resolution makes the outer candidate
@@ -19599,6 +19600,67 @@ resumed by R4-M86 (2026-10-20).
       hdr_dup_par would be accepted; a cross-scope duplicate rule (a second copy of 9.3's), a per-form declaration clause, or the
       parameters declared in the body scope (restructures every `scopes[literal]` reader for no SPEC difference) (G230H-13 (a), (b),
       (d)).
+- **BU-266 An open literal or join argument is fitted and ranked at its open Type; a projection over an atom is an atom (PLAN G814)**
+  (Front, 2026-11-26; Binding; Major, an acceptance mover both ways (Q17 class 1 and class 3); design `artifacts\units\g814\design.md`
+  with its review ACCEPT WITH CONDITIONS C1-C3 and F's rulings G814-1 to G814-4 (`artifacts\units\g814\ruling.md`); R7-I2's E1 step
+  under the owner's O-251 (b)) SPEC 10.4 steps 1-2, 10.5.1, 10.5.3, 10.8, 4.3.
+  - **The open fit (R).** A Tuple or array literal or a join at a parameter Type that holds a slot no evidence binds is fitted at the
+    position's open Type (`SlotSolution.OpenType`) by `FitArgument`, under the in-flight owner, as an awaited Call or Case is
+    (BU-252): a part that does not fit there makes the candidate inapplicable, and the argument's operation carries the fit's class
+    and `Positions`. A Pending or Error open fit, of an awaited Call or Case as well, is now the candidate's state, as the closed row
+    returns it (`TryCandidateCore`); dev returned only an Inapplicable one and let the others continue as applicable (G814-7 C4; no
+    record moved). Its closed positions are checked and ranked; a part placed at a bare atom holds whole (the place rule,
+    `PlacedAtOpenSlot`; `FitsPosition` reads the same hold as its first row). A Dictionary literal whose position forms its Type
+    (`IsAggregatePart`: one holding a failed part or a part awaiting its position) is a literal form there, as a Tuple or array
+    literal is, so a failed part inside it decides no misfit at an atom (BU-79). Whether a position forms a part's Type is SPEC 14.9.2's answer,
+    kept apart from ClassifyPart's 10.5.1 ranking kind (PLAN G814-5, G814-6); one typed whole (BU-43) is evidence. A null `OpenType` keeps the unformed path, and under the
+    argument probe (`ProbedResultOpen`) a literal or join keeps the class of its materialization at the pattern, with no positions.
+  - **The walk (W).** 10.4 step 1 compares two fits of one argument position by position from each range's end
+    (`ComparePositions`, `Binding.CandidateEvaluation`), since a nested literal's operation follows its own positions (BU-165). Where
+    one fit holds a part whole (an operation with no positions: at a bare atom, or a join at an open Type) and the other records the
+    part's positions, the part's own classes are compared and the other's positions skipped; two parts that both record positions
+    are walked into. The root is that case too: an argument held at a bare atom has no positions. Ranges that do not end together
+    are a broken contract, `InternalInvariant_Kd` at the argument.
+  - **The length atom (L).** An array literal's length agrees with a target length that holds a length atom (`SameArrayShape`,
+    `ConstructsAt`), as `SameShape` says; `ProbeAggregateArgument` reads `ConstructsAt` for its length test (one copy).
+  - **A projection over an atom (G814-4).** A projection over an atom that the premises do not reduce, one formed with no closed
+    form, is as open as its subject (SPEC 10.8: a projection is never inverted), so one predicate, `IsOpenAtom`
+    (`Binding.OpenSlots`: an atom, or a projection whose subject holds one), is read by every reader of the atom rule: the relation
+    walk's atom arm (`MetOpenSlot`), `PlacedAtOpenSlot`, `CheckedClass`, Infer's head, the construction's atom arm and its forms
+    (`Binding.Enums`) and `FillOpenSlots`. A projection that a binding fixes is formed closed and is fitted; one a premise fixes is
+    still formed over the atom and held (open issue G814-P, o5-fixed). o5,
+    `fp((b, 1))` with `fp<T>(p: (T.Item, i32))` (`T is Src`) beside `fp(p: (i64, i32))`, stays `AmbiguousBinding_Kd`.
+  - **A waiting callable at its own F (SPEC 10.5.3).** The place rule ranks an awaited anonymous function or function reference held
+    at a bare atom Exact, as the top-level callable row does at its own F (`TryCandidateCore`): it binds its own Function Item or
+    closure there without erasure. One named source, `CallableAtSlotClass` (`Binding.ArgumentKinds.Fit`), holds that class, and both
+    rows read it (G814-7 C3). (ap4 stays `AmbiguousBinding_Kd`.)
+  - **Staged (open issue G814-J):** a join whose expected Type holds an atom keeps no positions (`FitComposite` drops its rows) and is
+    ranked by its own class, since a join's Aggregate position records no operation (BU-203). Removal condition: the closed path
+    ranks a value join as one value (G814-1 O2; PLAN G814-V).
+  - **Removes:** BU-164's "compared at the argument only" rule (now W's root case), dev's skipped applicability at an open argument's
+    closed positions, the open row's class clause outside `ProbedResultOpen`, and `ProbeAggregateArgument`'s second length test.
+  - **Moves (Q13):** newly rejected (I, class 1): p1-bool, p1-deep-bool, p1-int (`AmbiguousBinding_Kd`), p1v-bool
+    (`TypeMismatch_Kd`); newly accepted (V, class 3): p1g-bool, p1v-int, sh1-int, sh1j-int, k19-bool; the review's twins a1-arr, a3f,
+    a3jf and the implementation review's r2-two-generic (`AmbiguousBinding_Kd`), e10l-v (accepted), t-probe
+    (`NoApplicableOverload_Kd`); the implementation review's r3-proj-misfit and r5-proj-join-misfit (a closed misfit beside a
+    projection over an atom, a Tuple or a join) move from dev's `UnboundTypeArgument_Kd` to `NoApplicableOverload_Kd` alone, as
+    group A's rows (class 4). Unmoved: ap4, o5, o5j, o5-deep, o5-mixed,
+    o5-mkf (`AmbiguousBinding_Kd`), o5-bound (accepted). Filed records (Q13 class 4, G814-5): a formed source that misfits a closed
+    part at the open Type makes the one candidate inapplicable, so the call's `NoApplicableOverload_Kd` is the argument's one record
+    (SPEC 14.9.2 step 1, 10.5.1): cf-first-5, cf-first-x-true, cf-first-r-true and cf-first-nested (`first<T>(value: (T, i64))`;
+    dev's `TypeMismatch_Kd` at the join), cf-applyarg-fn (a function value at `(F, i64)`) and m5n (`fgu(((1, 2), 3))` at `uniq/T`:
+    no temporary is borrowed at `uniq/U`, SPEC 10.2), these two dev's `UnboundTypeArgument_Kd`; and rh_head (G814-6),
+    `g(if c => undefinedName else => identity(.None), .None)` beside `g<T>(x: Option<T>, ...)` and `g<U>(x: Array<U>, ...)`: `.None`
+    names no Case of Array, so g<U> is inapplicable; dev's `AmbiguousBinding_Kd` -> `UnboundTypeArgument_Kd` at `identity(.None)`
+    (identity's T, a gap dev already shows on rh_one: PLAN G814-R) beside the name's record. Kept at dev's records: the rule-W
+    row `applyArg(if c => (["k": func [] (v) => v], x) else => (stop(), x))`; its twin with 2.5 at the closed `i64` is
+    `NoApplicableOverload_Kd` beside `v`'s record. wb-wait, `first(if c => (["k": 5], x) else => (["k": stop()], x))` (V), stays
+    accepted. Corpus snapshot against 21b05f8b9: no difference.
+  - **Rejected:** a guard keeping dev's open row for a literal or join where OpenType forms a projection over an atom (G814-3's (a):
+    it does not reach o5, which fails at the fit, and keeps two paths for one meaning); OpenType forming no Type there (loses the closed
+    positions' check); OpenType forming such a projection as its own atom (a rebuild walk and a symbol choice, longer than the
+    predicate); a stored index per position (the walk from the end needs none); ranking positions inside a join (would newly reject
+    p1j-bool and accept p1jv-int).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
