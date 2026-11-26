@@ -1,0 +1,41 @@
+/// The platform a freestanding program supplies (SPEC 22.4.5): one root-level struct of the Application conforms;
+/// the runtime calls `start` once and the other members as its platform operations (IMPL 21.6). The requirements'
+/// order is the order the startup check publishes and the runtime's adapters read. `mapPages`, `releasePages` and
+/// `write` return the platform's raw results, which the runtime's adapters forward and its layer's routines check.
+#Lang("Platform")
+public contract Platform
+    Self is Copy
+
+    /// Called once by the runtime before the startup body, with what the loader described.
+    func start(boot: Boot) -> Self
+    /// A page-aligned run of at least `bytes`, or null.
+    func mapPages(self: uniq/Self, bytes: isize) -> raw/u8
+    /// Releases a whole run `mapPages` returned: 0, or a nonzero platform error.
+    func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64
+    /// Writes every byte of `text` to stream 1 (Console) or 2 (the Abort report): 0, or a nonzero platform error.
+    func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64
+    /// Monotonic nanoseconds, or a negative value when there is no clock.
+    func clock(self: uniq/Self) -> i64
+    /// Ends the program: status 0 after the startup body and shutdown, 1 after an Abort's report.
+    func terminate(self: uniq/Self, status: i32) -> Never
+
+/// What the loader described (IMPL 21.6), built by the runtime before `Platform.start`; it declares no constructor.
+#Layout("C")
+public struct Boot
+    Self is Copy
+
+    /// The higher-half direct map: physical address p is at p + directMapOffset.
+    public let directMapOffset: usize
+    /// The loader's array of `regionCount` pointers to its memory map entries.
+    public let regions: raw/raw/Boot.Region
+    public let regionCount: isize
+
+    /// One memory map entry, as the loader wrote it.
+    #Layout("C")
+    public struct Region
+        Self is Copy
+
+        public let address: u64
+        public let length: u64
+        /// The loader's entry type: 0 usable, 1 reserved, ..., 5 bootloader reclaimable, ...
+        public let kind: u64

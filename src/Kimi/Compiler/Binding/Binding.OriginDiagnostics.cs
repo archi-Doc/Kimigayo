@@ -458,8 +458,6 @@ public sealed partial class Binding
         {
             builder.Dispose();
         }
-
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
     // SPEC 15.3.6, 10.8: a selected call whose slot only the argument's own per-call Origin would satisfy, at the call (FailPerCallOrigin's
@@ -546,7 +544,7 @@ public sealed partial class Binding
 
     // The first Borrow in a value whose Origin supplies an atom (LocalBorrow), in source order: an explicit Borrow, or a call's implicit
     // Borrow of an argument (SPEC 15.6.1: `take(local)`), found as that argument. A call's plan is read as this pass recorded it, also at
-    // a value its own record failed afterwards (a pending relation's record is at its value, R4-M133), where CallOf reads none.
+    // a value its own record failed afterwards, where CallOf reads none.
     private sealed class LocalBorrowFinder(Binding binding, BoundOrigin supplier) : KotoVisitor
     {
         internal Koto? Found { get; private set; }

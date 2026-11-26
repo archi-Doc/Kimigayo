@@ -356,7 +356,7 @@ public sealed partial class Binding
                 return true; // DECISIONS BU-240 (rule W): a position a split binding decides holds without a record, judged case by case.
             }
 
-            if (actual.Kind == BoundTypeKind.OpenSlot || expected.Kind == BoundTypeKind.OpenSlot)
+            if (IsOpenAtom(actual) || IsOpenAtom(expected))
             {
                 this.metOpenSlot = true; // Binding.OpenSlots: an atom holds against any part and binds nothing.
                 return true;

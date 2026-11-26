@@ -11,6 +11,17 @@ namespace XunitTest;
 
 public class CoreModelTest
 {
+    // The none row's kimi_backend symbols: compiler-rt 22.1.8's soft-float routines in src/backend/none-x64/profile.json's order (the
+    // Tatara plan's B9e; the catalog's providedSymbols, the archive's defined set).
+    private static readonly string[] NoneBackendSymbols =
+    [
+        "__adddf3", "__addsf3", "__cmpdf2", "__cmpsf2", "__divdf3", "__divsf3", "__eqdf2", "__eqsf2", "__extendsfdf2", "__fe_getround",
+        "__fe_raise_inexact", "__fixdfdi", "__fixdfsi", "__fixsfdi", "__fixsfsi", "__fixunsdfdi", "__fixunsdfsi", "__fixunssfdi",
+        "__fixunssfsi", "__floatdidf", "__floatdisf", "__floatsidf", "__floatsisf", "__floatundidf", "__floatundisf", "__floatunsidf",
+        "__floatunsisf", "__gedf2", "__gesf2", "__gtdf2", "__gtsf2", "__ledf2", "__lesf2", "__ltdf2", "__ltsf2", "__muldf3", "__mulsf3",
+        "__nedf2", "__nesf2", "__subdf3", "__subsf3", "__truncdfsf2", "__unorddf2", "__unordsf2",
+    ];
+
     [Fact]
     public void CompilationRegistersItsPrimaryKotonoha()
     {
@@ -83,23 +94,28 @@ public class CoreModelTest
         Assert.False(compilation.Variables.TryGetValue("pointerWidth", out _));
     }
 
-    // The target table (IMPL 21.4, 21.5): two rows, windows-x64, whose triple is the literal the [InlineData] rows name, and linux-x64 (the
-    // Tatara plan's B7b2a). Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
+    // The target table (IMPL 21.4, 21.5, 21.6): two selectable rows, windows-x64, whose triple is the literal the [InlineData] rows name,
+    // and linux-x64 (the Tatara plan's B7b2a), and the staged none-x64 (outside Rows; every row is Rows, then Staged).
+    // Each row's reserved supplies (IMPL 20.4): distinct names in Ordinal order (publication interleaves a program's
     // supplies by name), pairwise disjoint symbol sets (IMPL 21.2: an external symbol has one providing library), each one's kind among the
     // row's Kinds and the table's supply of its name (B7b5), and a C runtime, if any, that names one of them; each runtime declaration is
     // the table's for its symbol, provided by one of the row's supplies (G1 (i)). The Windows row: kernel32 providing every runtime
     // declaration (IMPL 21.4.7), both kinds, no C runtime and no argument extension; the Linux row (B7b2b): c, a static library providing
     // the C functions the layer stands for, its C runtime, the static kind (Q3a (a)), and System V's argument extension (IMPL 21.2). The
     // table's reserved external names (IMPL 21.2, every target; B7b5) are built once from pairwise disjoint parts: each row's float marker
-    // and kimi_backend symbols (Windows': __chkstk alone, B7r5), MemorySymbols and MainSymbol.
+    // and kimi_backend symbols (Windows': __chkstk alone, B7r5; none-x64's: compiler-rt's soft-float routines, the Tatara plan's B9e,
+    // change N1), MemorySymbols and MainSymbol. Fail-before (B9e): the none row had no supply, and the literal no compiler-rt name.
     [Fact]
     public void TheReservedSuppliesAreOneTable()
     {
         Assert.Equal([TargetProfile.Windows, TargetProfile.Linux], TargetProfile.Rows);
+        Assert.Equal([TargetProfile.None], TargetProfile.Staged);
+        Assert.Equal([.. TargetProfile.Rows, .. TargetProfile.Staged], TargetProfile.AllRows);
         Assert.Equal("x86_64-pc-windows-msvc", TargetProfile.Windows.Target);
         Assert.Equal("x86_64-unknown-linux-musl", TargetProfile.Linux.Target);
+        Assert.Equal("x86_64-unknown-none", TargetProfile.None.Target);
         List<string> reserved = [];
-        foreach (var row in TargetProfile.Rows)
+        foreach (var row in TargetProfile.AllRows)
         {
             reserved.AddRange(row.FloatMarker is { } marker ? [marker] : []);
             reserved.AddRange(row.Supply("kimi_backend")?.Symbols ?? []);
@@ -139,7 +155,7 @@ public class CoreModelTest
         Assert.Equal(["__chkstk"], windows.Supply("kimi_backend")!.Symbols);
         reserved.AddRange([.. TargetProfile.MemorySymbols, TargetProfile.MainSymbol]);
         Assert.Equal(reserved.Distinct(StringComparer.Ordinal), reserved);
-        Assert.Equal(["_fltused", "__chkstk", "memcmp", "memcpy", "memmove", "memset", "main"], TargetProfile.ReservedSymbols);
+        Assert.Equal(["_fltused", "__chkstk", .. NoneBackendSymbols, "memcmp", "memcpy", "memmove", "memset", "main"], TargetProfile.ReservedSymbols);
         Assert.Same(TargetProfile.ReservedSymbols, TargetProfile.ReservedSymbols);
         Assert.Null(windows.CRuntime);
         Assert.Null(windows.ArgumentExtension);
@@ -151,14 +167,35 @@ public class CoreModelTest
         Assert.Equal("c", linux.CRuntime);
         Assert.Equal("SystemV", linux.ArgumentExtension);
 
+        // IMPL 21.6.1: none-x64's kernel code generation, no SSE or x87 state (soft float, whose System V ABI passes floating values in
+        // integer registers), no red zone and no stack probe (SPEC 17.4.3's freestanding exception); one supply, kimi_backend, static,
+        // compiler-rt 22.1.8's soft-float routines in its catalog's order (IMPL 21.6.7; the Tatara plan's B9e); no runtime declaration or
+        // C runtime; the static kind.
+        var none = TargetProfile.None;
+        Assert.Equal("-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,+soft-float", none.Features);
+        Assert.Equal("kernel", none.CodeModel);
+        Assert.Equal("static", none.RelocationModel);
+        Assert.Equal(["noredzone"], none.FunctionAttributes);
+        Assert.Equal(("NonePlatform.ll.in", "SystemV"), (none.Layer, none.ArgumentExtension));
+        var backend = Assert.Single(none.Supplies);
+        Assert.Equal(("kimi_backend", "static"), (backend.Name, backend.Kind));
+        Assert.Equal(NoneBackendSymbols, backend.Symbols);
+        Assert.Empty(none.RuntimeDeclarations);
+        Assert.Null(none.CRuntime);
+        Assert.Equal(["static"], none.Kinds);
+
+        // SPEC 22.4.5: the program supplies the platform layer's routines on the freestanding row alone.
+        Assert.Equal([false, false, true], TargetProfile.AllRows.Select(static x => x.ProgramPlatform));
+
         // The Tatara plan's B7b7: each row's input extension and executable format (IMPL 20.3.2, 20.4); a subsystem, a float marker and
         // a load configuration symbol exactly on the COFF rows (LinkRoots: windows-x64's _load_config_used).
-        Assert.Equal([(".lib", "COFF"), (".a", "ELF")], TargetProfile.Rows.Select(static x => (x.InputExtension, x.Format)));
-        Assert.All(TargetProfile.Rows, static x => Assert.Equal((x.Format == "COFF", x.Format == "COFF", x.Format == "COFF"), (x.Subsystem is not null, x.FloatMarker is not null, x.LoadConfigSymbol is not null)));
+        Assert.Equal([(".lib", "COFF"), (".a", "ELF"), (".a", "ELF")], TargetProfile.AllRows.Select(static x => (x.InputExtension, x.Format)));
+        Assert.All(TargetProfile.AllRows, static x => Assert.Equal((x.Format == "COFF", x.Format == "COFF", x.Format == "COFF"), (x.Subsystem is not null, x.FloatMarker is not null, x.LoadConfigSymbol is not null)));
         Assert.Equal("_load_config_used", TargetProfile.Windows.LoadConfigSymbol);
 
-        // The Tatara plan's B7b8: the host that runs each row's executables, as HostName spells one; none for linux-x64 until B8.
-        Assert.Equal(["windows x64", null], TargetProfile.Rows.Select(static x => x.ExecutionHost));
+        // The Tatara plan's B7b8: the host that runs each row's executables, as HostName spells one; none for linux-x64 until B8, and none
+        // for the staged none-x64.
+        Assert.Equal(["windows x64", null, null], TargetProfile.AllRows.Select(static x => x.ExecutionHost));
     }
 
     // Each row's data layout is the one the pinned clang writes for its triple (`clang --target=<triple> -S -emit-llvm` of an empty C
@@ -167,20 +204,21 @@ public class CoreModelTest
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
     [InlineData("x86_64-unknown-linux-musl", "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
+    [InlineData("x86_64-unknown-none", "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128")]
     public void TheProfileLayoutIsItsTriplesLayout(string triple, string layout)
-        => Assert.Equal(layout, Assert.Single(TargetProfile.Rows, row => row.Target == triple).DataLayout);
+        => Assert.Equal(layout, Assert.Single(TargetProfile.AllRows, row => row.Target == triple).DataLayout);
 
     // The Tatara plan's B7b2a (N2): each row's Layer names exactly one of the Backend's RuntimeLayer records, which Core cannot name, so a
     // row's frame always has its layer.
     [Fact]
     public void EveryRowNamesOneRuntimeLayer()
-        => Assert.All(TargetProfile.Rows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
+        => Assert.All(TargetProfile.AllRows, static row => Assert.Single(RuntimeAbi.Layers, x => x.Template == row.Layer));
 
-    // The Tatara plan's B7b2a: Find gives each row for its triple, and none for a triple without a row.
+    // The Tatara plan's B7b2a: Find gives each row for its triple, the staged row included, and none for a triple without a row.
     [Fact]
     public void FindGivesTheRowOfATriple()
     {
-        Assert.All(TargetProfile.Rows, static row => Assert.Same(row, TargetProfile.Find(row.Target)));
+        Assert.All(TargetProfile.AllRows, static row => Assert.Same(row, TargetProfile.Find(row.Target)));
         Assert.Null(TargetProfile.Find(string.Empty));
         Assert.Null(TargetProfile.Find("x86_64-unknown-linux-gnu"));
     }

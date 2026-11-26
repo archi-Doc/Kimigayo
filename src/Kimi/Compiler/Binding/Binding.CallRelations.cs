@@ -185,7 +185,7 @@ public sealed partial class Binding
                 var at = this.ClauseInput(selected, operations, argumentCount, relation.Longer) ?? call;
                 var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, declaringType);
                 var shorter = this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, declaringType);
-                this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
+                this.FormCallRelation(at, longer, shorter, relation.Equality, null, relation.Syntax);
 
                 // G147 ruling 75 Q-B: a clause letting another Origin outlive (or equal) an input raw layer's Origin summarizes a fit the
                 // callee may make into that layer, so the call forms that raw fit (the second source of rawFits, by its one entry rule).
@@ -215,7 +215,7 @@ public sealed partial class Binding
         {
             // SPEC 5.6, 5.7 (D14): the result of an operation whose catalog row names Within lies within the Origin its argument states.
             var bound = this.SubstituteClauseOrigin(result, selected, origins, inputs, declaringType);
-            this.JudgeCallPosition(storage, within, bound, equality: false, variable: null, clause: null);
+            this.FormCallRelation(storage, within, bound, equality: false, variable: null, clause: null);
         }
     }
 
@@ -294,7 +294,7 @@ public sealed partial class Binding
         if (this.FitOuterOrigins(actual, expected, context.At, context.At, default, this.rawFits, invariant) is (OuterOriginFit.Relation, var longer, var shorter))
         {
             // SPEC 8.1.2, 15.6.5: a pair layer's slot, `o` included, exists only in its binder's borrow cases.
-            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At, default));
+            this.FormCallRelation(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At, default));
         }
 
         var exclusive = IsInvariantLayer(actual, this, context.At, default);
@@ -309,11 +309,11 @@ public sealed partial class Binding
             var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
             if (both || variance == OriginVariance.Covariant)
             {
-                this.JudgeCallPosition(context.At, actual.OriginArguments[i], expected.OriginArguments[i], both, pattern?.OriginArguments[i], null, context: context, slot: slot);
+                this.FormCallRelation(context.At, actual.OriginArguments[i], expected.OriginArguments[i], both, pattern?.OriginArguments[i], null, context: context, slot: slot);
             }
             else
             {
-                this.JudgeCallPosition(context.At, expected.OriginArguments[i], actual.OriginArguments[i], false, pattern?.OriginArguments[i], null, context: context, slot: slot);
+                this.FormCallRelation(context.At, expected.OriginArguments[i], actual.OriginArguments[i], false, pattern?.OriginArguments[i], null, context: context, slot: slot);
             }
         }
 
@@ -345,14 +345,15 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 15.6.4 step 3, 15.6.5 (R7-O1 b1a): a selected call's relation `longer outlives shorter` (`==` when `equality`) at `at`,
     // formed as a row of the body (FormBodyRelation), which A5 judges; Binding judges no call position. Its row carries the fit's
-    // destination (the completed parameter Type), a declared relation's clause, and, for an `==` whose fresh Origin or Type slot another
-    // input fixed, that input (SPEC 15.6.1, Location; SPEC 10.8: the first invariant binding of a slot is its solution).
-    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null, bool wellFormed = false, ulong condition = 0)
+    // destination (the completed parameter Type; a declared relation's row has none, its caller passing no fit), a declared relation's
+    // clause, and, for an `==` whose fresh Origin or Type slot another input fixed, that input (FixedBy; SPEC 15.6.1, Location; SPEC
+    // 10.8: the first invariant binding of a slot is its solution).
+    private void FormCallRelation(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, in CallFit context = default, BoundType? slot = null, bool wellFormed = false, ulong condition = 0)
     {
         var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
             : variable is not null ? this.EqualitySource(context, variable, shorter)
             : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
-        this.FormBodyRelation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition, FixedBy: fixedBy));
+        this.FormBodyRelation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, context.Parameter, longer, shorter, Equality: equality, Clause: clause, WellFormed: wellFormed, Condition: condition, FixedBy: fixedBy));
     }
 
     // The input, other than the failing one, whose parameter names the callee's Origin `variable` and whose adapted Type carries the

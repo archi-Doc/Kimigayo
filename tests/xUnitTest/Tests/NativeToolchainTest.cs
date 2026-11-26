@@ -76,35 +76,44 @@ public sealed class NativeToolchainTest : IDisposable
     // start, libc.a library, crtn.o end), and the catalog's providedSymbols are c's symbols. Each file's SHA-256 is its catalog's, and each
     // embedded resource has that SHA-256 and is the file committed beside the catalog, so a build stages the adopted bytes. musl's notice,
     // which the compiler carries as Kimi.Linux.COPYRIGHT, is the tarball's COPYRIGHT: the catalog's copyrightSha256, which build-musl.ps1
-    // checks in the extracted tarball.
+    // checks in the extracted tarball. The staged none-x64 row's kimi_backend (the Tatara plan's B9e, IMPL 21.6.7): compiler-rt's
+    // soft-float archive, one file at the library place, its catalog's providedSymbols the supply's symbols, and compiler-rt's licence,
+    // carried as Kimi.None.LICENSE-compiler-rt.txt, the tarball's LICENSE.TXT (the catalog's licenseSha256, build-compiler-rt.ps1's
+    // check). Fail-before (B9e): no none record.
     [Fact]
     public void EachCompilerSupplyIsTheCatalogsCommittedFile()
     {
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64"));
-        var linux = Path.Combine(directory, "../linux-x64");
-        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "profile.json")));
-        using var musl = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(linux, "profile.json")));
+        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(CatalogFolder(TargetProfile.Windows), "profile.json")));
+        using var musl = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(CatalogFolder(TargetProfile.Linux), "profile.json")));
+        using var none = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(CatalogFolder(TargetProfile.None), "profile.json")));
         Assert.Equal(
             [
                 $"windows-x64-v1 kernel32 kernel32.lib library {catalog.RootElement.GetProperty("kernel32").GetProperty("sha256").GetString()}",
                 $"windows-x64-v1 kimi_backend kimi_backend_windows_x64_v1.lib library {catalog.RootElement.GetProperty("artifactSha256").GetString()}",
                 .. musl.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"linux-x64-v1 c {x.GetProperty("name").GetString()} {x.GetProperty("place").GetString()} {x.GetProperty("sha256").GetString()}"),
+                .. none.RootElement.GetProperty("files").EnumerateArray().Select(static x => $"none-x64-v1 kimi_backend {x.GetProperty("name").GetString()} {x.GetProperty("place").GetString()} {x.GetProperty("sha256").GetString()}"),
             ],
             ToolchainIdentity.Supplies.SelectMany(static x => x.Files.Select(f => $"{x.Row.Name} {x.Supply.Name} {f.Name} {f.Place.ToString().ToLowerInvariant()} {f.Sha256}")));
         Assert.Equal(["crt1.o Start", "crti.o Start", "libc.a Library", "crtn.o End"], Assert.Single(ToolchainIdentity.Supplies, static x => x.Row == TargetProfile.Linux).Files.Select(static x => $"{x.Name} {x.Place}"));
         Assert.Equal(TargetProfile.Linux.Supply("c")!.Symbols, musl.RootElement.GetProperty("providedSymbols").EnumerateArray().Select(static x => x.GetString()));
+        Assert.Equal(["kimi_backend_none_x64_v1.a Library"], Assert.Single(ToolchainIdentity.Supplies, static x => x.Row == TargetProfile.None).Files.Select(static x => $"{x.Name} {x.Place}"));
+        Assert.Equal(TargetProfile.None.Supply("kimi_backend")?.Symbols ?? [], none.RootElement.GetProperty("providedSymbols").EnumerateArray().Select(static x => x.GetString()));
         foreach (var supply in ToolchainIdentity.Supplies)
         {
             foreach (var file in supply.Files)
             {
-                AssertCommitted(file.Open(), file.Sha256, Path.Combine(supply.Row == TargetProfile.Linux ? linux : directory, file.Name));
+                AssertCommitted(file.Open(), file.Sha256, Path.Combine(CatalogFolder(supply.Row), file.Name));
             }
         }
 
         AssertCommitted(
             typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.Linux.COPYRIGHT")!,
             musl.RootElement.GetProperty("musl").GetProperty("copyrightSha256").GetString()!,
-            Path.Combine(linux, "COPYRIGHT"));
+            Path.Combine(CatalogFolder(TargetProfile.Linux), "COPYRIGHT"));
+        AssertCommitted(
+            typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.None.LICENSE-compiler-rt.txt")!,
+            none.RootElement.GetProperty("compilerRt").GetProperty("licenseSha256").GetString()!,
+            Path.Combine(CatalogFolder(TargetProfile.None), "LICENSE-compiler-rt.txt"));
 
         static void AssertCommitted(Stream stream, string sha256, string file)
         {
@@ -140,7 +149,7 @@ public sealed class NativeToolchainTest : IDisposable
         {
             foreach (var file in supply.Files)
             {
-                var path = Path.Combine(Repository.Root, "src", "backend", supply.Row == TargetProfile.Linux ? "linux-x64" : "windows-x64", file.Name);
+                var path = Path.Combine(CatalogFolder(supply.Row), file.Name);
                 var inspection = Tatara.Instance.InspectTexts(context, path);
                 Assert.Empty(messages);
                 using var fresh = new MemoryStream();
@@ -228,11 +237,11 @@ public sealed class NativeToolchainTest : IDisposable
     public void ACatalogFileOutsideThePlacesIsRefused(string? place)
     {
         using var valid = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\", \"place\": \"start\"}");
-        Assert.Equal(SupplyPlace.Start, ToolchainIdentity.ReadFile(valid.RootElement).Place);
+        Assert.Equal(SupplyPlace.Start, ToolchainIdentity.ReadFile(valid.RootElement, "Linux").Place);
         using var file = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\"" + (place is null ? string.Empty : ", \"place\": " + place) + "}");
         Assert.Equal(
             "The embedded native supply catalog's file 'crt1.o' has no place on an ELF link line (start, library or end).",
-            Assert.Throws<InvalidDataException>(() => ToolchainIdentity.ReadFile(file.RootElement)).Message);
+            Assert.Throws<InvalidDataException>(() => ToolchainIdentity.ReadFile(file.RootElement, "Linux")).Message);
     }
 
     // The invalidation is the record's incomplete state: its status and the compiler's and LLVM's versions, and no member more (PLAN
@@ -461,18 +470,20 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // IMPL 20.3: a build records its one selected target's output; several selected targets or one without a row (the Tatara plan's
-    // B7b8: Unsupported) fail before the output's paths, so no record is written under any bin\ directory. Fail-before (B7b8, the design's
-    // fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete") whatever target was selected.
+    // B7b8: Unsupported), a staged row (none-x64) included, fail before the output's paths, so no record is written under any bin\
+    // directory. Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete")
+    // whatever target was selected.
     [Theory]
     [InlineData("", false)]
     [InlineData("aarch64-pc-windows-msvc", false)]
     [InlineData("x86_64-unknown-linux-gnu", false)]
+    [InlineData("x86_64-unknown-none", false)]
     [InlineData("x86_64-pc-windows-msvc", true)]
     public async Task LibraryBuildRequiresOneSelectedSupportedTarget(string selected, bool accepted)
     {
         var project = this.Create("public group Example");
         project.ProjectFile.OutputKind = OutputKind.Library;
-        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", "x86_64-unknown-linux-gnu", TargetProfile.Windows.Target];
+        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-unknown-none", TargetProfile.Windows.Target];
         project.KimiOptions.Target = selected;
         Assert.Equal(accepted, await project.Build(TestContext.Current.CancellationToken));
         var bin = Path.Combine(this.directory, "bin");
@@ -1964,6 +1975,9 @@ public sealed class NativeToolchainTest : IDisposable
 
     // windows-x64's compiler supplies (kernel32, kimi_backend), one file each.
     private static IEnumerable<CompilerSupply> Windows64Supplies() => ToolchainIdentity.Supplies.Where(static x => x.Row == TargetProfile.Windows);
+
+    // A row's committed catalog folder: src/backend/<the row's name less its version>.
+    private static string CatalogFolder(TargetProfile row) => Path.Combine(Repository.Root, "src", "backend", row.Name[..row.Name.LastIndexOf('-')]);
 
     // A Linux program with an import of each (library, symbol) as int name(void), which writes "ok" (LinuxPair's source form).
     private static string LinuxSource((string Library, string Symbol)[] imports)
