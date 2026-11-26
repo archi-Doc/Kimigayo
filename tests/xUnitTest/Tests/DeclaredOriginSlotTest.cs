@@ -178,6 +178,7 @@ public class DeclaredOriginSlotTest
     [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "    let call: (ref/i32 during a) -> i32\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
     [InlineData(Mixed + "    let at: raw/i32 during m", null)]
     [InlineData("struct C {s}\n    let call: (ref/i32 during s) -> i32\nfunc f(c: ref/C, p: raw/i32 during c.s) => ()", "InvalidOriginBinding_Kd: raw/i32 during c.s")]
+    [InlineData("struct C {s}\n    let call: (ref/i32 during s) -> i32\nfunc f(c: ref/(C during a), p: raw/i32 during a) => ()", "InvalidOriginBinding_Kd: raw/i32 during a")]
     public void ARawLayerStatesNoPhantomSlot(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
 
