@@ -30,11 +30,6 @@ public sealed partial class Binding
     // SPEC 15.2.3: the Owned failure of a common Function conversion, recorded only when it fails.
     private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
 
-    // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
-
-    // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
-    // slot would hold (as bits) and that signature.
-
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
 
