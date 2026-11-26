@@ -54,7 +54,9 @@ public partial class OriginPremiseCatalogTest
         // region of the layer its reach adds, valued at the reach's dependency, so a nested signature that names two bindings of one Subject
         // names two fixed Origins with no premise relating them. Moves (class 1: invalid, accepted before): pbn, pbnc, pbca1 (b carried by
         // nothing), pbf (a for decomposition), tsu, tpr, tnw (through two reference layers) and tux (an exclusive reach). Valid guards:
-        // pbnq, pbcab and tcr (carried, each fixed equal to its value), pbfq, tow (an Owned erasure), rpb (D-693's A row) and tuxq.
+        // pbnq, pbcab and tcr (carried, each fixed equal to its value), pbfq, tow (an Owned erasure), rpb (D-693's A row), tuxq and pv3v
+        // (a binding past a qualifying pair layer of an owned Subject: its acquisition Borrow is formed under the reach's Origin, so a
+        // raw pointer read through it has the Subject's members).
         { "pbn", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:68" },
         { "pbnc", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let k = func [] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:74" },
         { "pbca1", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:75" },
@@ -70,6 +72,7 @@ public partial class OriginPremiseCatalogTest
         { "tow", "func outer(u: ref/(ref/i64 during static, ref/i64 during static) during static) -> i32\n    match u\n        (let a, _)\n            let f: () -> i32 = func [a] () -> i32 => 0\n            return f()\n    return 0\n", string.Empty },
         { "rpb", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            var c = func [var a, var b] () -> ()\n                swap(a@uniq, b@uniq)\n            c()\n    return 0\n", string.Empty },
         { "tuxq", "func outer(u: uniq/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, let b)\n            func inner(x: uniq/(ref/i64 during e) during a) -> uniq/(ref/i64 during e) during a => x\n            return 0\n    return 0\n", string.Empty },
+        { "pv3v", "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nfunc q<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _)\n            var h = Wrap.init(x@follow@raw@raw/u8)\n", string.Empty },
     };
 
     // SPEC 15.3.7, 15.3.6, 15.6.5 under the owner's O-363 (a), O-375 (a)(a) (PLAN G492-a (ii) with (iii)): a Callable comparison in a `let`
