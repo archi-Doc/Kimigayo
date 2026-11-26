@@ -26,7 +26,8 @@ namespace Kimi.Compiler;
 //   outcome (ResultContext.Outcome, DECISIONS BU-43), written once where it becomes true: Waiting, with what it awaits (Awaiting, by
 //   its one writer Wait, published again when its call takes its parts: PublishAwaiting; DECISIONS BU-87); Conflict, its own record;
 //   Dependent, resting on its first failed part or on the join it waited for (Cause), with no record (SPEC 23.1.2), written only at the
-//   join's verdict (DecideRest; U1.6h: a recorded cause decides nothing before, so a failed source takes no part in its join's kind);
+//   join's verdict (DecideRest; U1.6h: a recorded cause decides nothing before, so a failed source takes no part in its join's kind),
+//   typed by the Type it formed where a source supplied a candidate (DecideResult; its consumers' checks read it);
 //   Decided. A part's
 //   failure is read from who decides it (PartFailed). A join tree (a join holding nested joins through its sources, the forms that
 //   deliver them and Tuple, array and Dictionary literals, none supplying a candidate) is judged once, at its root, each conflict
@@ -418,7 +419,7 @@ public sealed partial class Binding
         if (context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
         {
             this.BindWaitedSources(node, context, ResultExpectation(node, expected));
-            return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependentJoin(node, context);
+            return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependent(node, context.Cause!);
         }
 
         context.Outcome = JoinOutcome.Undecided;

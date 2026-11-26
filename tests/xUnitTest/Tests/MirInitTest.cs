@@ -1662,7 +1662,7 @@ public sealed class MirInitTest
     [InlineData("func use(s: string) -> i32 => 0\nfunc f() -> i32\n    var s = \"a\"\n    let t = use(s@move)\n    return use(s)\n", "MovedPlace_Kd use(s) 1")]
     [InlineData(
         "func f(c: bool) -> i32\n    var x: i32\n    let v = if c => missing else => x\n    return 0\n",
-        "UninitializedPlace_Kd let v = if c => missing 1")] // The site, the let (its else prints on the next line): G121's record selection.
+        "UninitializedPlace_Kd x 1")] // At x: the join is typed by x (G103 C; fail-before: the site, the let, G121's record selection; DECISIONS Q13).
     [InlineData("func f(c: bool) -> i32\n    var x: i32\n    let v = if c => 1 else => x\n    return 0\n", "UninitializedPlace_Kd x 1")]
     [InlineData("func f() -> i32\n    var x: i32\n    return x.missing()\n", "UninitializedPlace_Kd x.missing() 1")] // The site: G1172.
     [InlineData(Callees + "func f()\n    var a: [2 of i32]\n    missing(a[0])\n", "UninitializedPlace_Kd missing(a[0]) 1")]
