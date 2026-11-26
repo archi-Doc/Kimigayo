@@ -390,7 +390,9 @@ public sealed partial class Binding
 
                 break;
             case ForKoto loop:
-                this.PublishedBindings(BoundMatch.Of(this, loop));
+                var iteration = BoundMatch.Of(this, loop);
+                this.RecordBorrow(this.publishedBorrows, iteration?.SubjectBorrow);
+                this.PublishedBindings(iteration);
                 break;
             case MatchKoto match:
                 var plan = BoundMatch.Of(this, match);

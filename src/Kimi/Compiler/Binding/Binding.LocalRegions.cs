@@ -79,8 +79,9 @@ public sealed partial class Binding
     internal static bool IsLocalRegion(BoundOrigin origin)
         => origin.Open || (origin is { Kind: OriginKind.Inference, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder));
 
-    // SPEC 15.4.4, 15.6.5: the declarations whose Types have region slots: every local, and a reassignable Pattern binding or for slot.
-    internal static bool IsRegionOwner(Koto declaration) => declaration is VariableKoto || IsMutableDeclaration(declaration);
+    // SPEC 15.4.4, 15.6.5, 15.1.6: the declarations whose Types have region slots: every local, a reassignable Pattern binding or for
+    // slot, and a match's or for's Subject Place borrowed in place (AcquireSubject, its construct's slot -1).
+    internal static bool IsRegionOwner(Koto declaration) => declaration is VariableKoto or MatchKoto or ForKoto || IsMutableDeclaration(declaration);
 
     internal bool RegionContains(BoundOrigin expression, BoundOrigin origin)
     {
