@@ -131,7 +131,7 @@ public sealed partial class Binding
         }
 
         if (KotoHelper.UnwrapParentheses(node) is not BinaryKoto selection || selection is not (IndexKoto { Right: not RangeKoto } or MemberAccessKoto) ||
-            IsGetterResult(selection) || this.OwnedPathRoot(selection) is not null)
+            IsGetterResult(selection))
         {
             return null;
         }
@@ -141,9 +141,16 @@ public sealed partial class Binding
             this.adaptations[selection.Left] = new(ExpectedAdaptationKind.SharedBorrow, receiver);
         }
 
-        // PLAN G59: an owned fixed-array element at a runtime index is compared in place like an element of a borrowed receiver.
-        return this.IsBorrowedReceiver(selection.Left) || this.IsRuntimeFixedElement(selection) ? this.SharedElementRead(node, selection.BoundType) : null;
+        return this.InPlaceSelection(selection) ? this.SharedElementRead(node, selection.BoundType) : null;
     }
+
+    // SPEC 13.4, 4.7.1, 4.8.2: a selection whose Place no owned root holds, so that a Non-Copy element of it is read in place through
+    // one shared borrow: no range or getter, below a borrowed receiver or at a runtime fixed index (PLAN G59: an owned fixed-array
+    // element at a runtime index is read like an element of a borrowed receiver), with no owned static path. The receiver tests come
+    // before OwnedPathRoot's walk of the chain.
+    private bool InPlaceSelection(BinaryKoto selection)
+        => selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto && !IsGetterResult(selection) &&
+            (this.IsBorrowedReceiver(selection.Left) || this.IsRuntimeFixedElement(selection)) && this.OwnedPathRoot(selection) is null;
 
     // SPEC 4.8.1, 4.8.2: a range selection of a fixed-array element reached through a Slice or a borrowed array borrows
     // the element slot in place, whatever the element's Copy capability, so the view retains the backing source.
