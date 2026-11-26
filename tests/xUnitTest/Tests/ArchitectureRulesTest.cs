@@ -710,14 +710,14 @@ public class ArchitectureRulesTest
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
     // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
     [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
-    // R7-O1 c (RP6; DECISIONS R7-M66, R7-M120): Binding judges no body relation, so the relation judge is read only by OJ1, the
+    // R7-O1 c (RP6; DECISIONS R7-M66, R7-M120, R7-M123): Binding judges no body relation, so the relation judge is read only by OJ1, the
     // declaration frame (JudgeDeclarationPosition's two directions, JudgeOriginObligation's two), OJ3, Owned's static check
     // (RefutedStatic), and OJ4, a Callable comparison (the walk's OriginFailure, ComparedRegionLimit, LeavesBodyRows), besides its
     // declaration and its meet recursion; and Binding constructs an Origin relation record only at V5 (the declaration judge's two), V6
-    // (an Unstated end; its other direction, in the same conditional, is target-typed) and V7 (a holder place). A further site fails here
-    // until its row is reviewed.
+    // (an Unstated end; its other direction, in the same conditional, is target-typed), V7 (a holder place) and the Owned record (OJ3's
+    // judged `origin outlives static`, R7-M123). A further site fails here until its row is reviewed.
     [InlineData("The relation judge's call sites (OJ1, OJ3, OJ4)", "src/Kimi/Compiler/Binding", @"\bJudgeOriginRelation\(", "Binding.OriginClauses.cs=2;Binding.OriginProof.cs=6;Binding.OwnedConversions.cs=1;Binding.TypeRelations.Walk.cs=1")]
-    [InlineData("Binding's Origin relation records (V5, V6, V7)", "src/Kimi/Compiler", @"\bnew OriginRelationFact\(", "Binding/Binding.Obligations.cs=1;Binding/Binding.OriginClauses.cs=2;Binding/Binding.RawOrigins.Holder.cs=1")]
+    [InlineData("Binding's Origin relation records (V5, V6, V7)", "src/Kimi/Compiler", @"\bnew OriginRelationFact\(", "Binding/Binding.Obligations.cs=1;Binding/Binding.OriginClauses.cs=2;Binding/Binding.OwnedConversions.cs=1;Binding/Binding.RawOrigins.Holder.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
