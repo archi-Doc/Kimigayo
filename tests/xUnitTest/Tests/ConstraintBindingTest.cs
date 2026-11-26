@@ -788,6 +788,18 @@ public class ConstraintBindingTest
         Assert.Equal("UnprovenConstraint_Kd", error.Code);
     }
 
+    // SPEC 3.5.2 "only by opt-in", 10.1 (G1220-1 O2): Copy of a struct without a Copy declaration is Refuted from the declaration alone,
+    // also while an inferred Property's header types its initializer, so the refuted candidate is inapplicable: c3 selects the fallback
+    // (tag: i64; it was rejected, an acceptance mover), and c2's one candidate leaves the call's own record alone (no cycle: no Field read).
+    [Theory]
+    [InlineData("    public func dupOf<T>(extra: i32 = 0) -> i64\n        return 0\n", "")] // c3
+    [InlineData("", "NoApplicableOverload_Kd 6:15 Tags.dupOf<Entry>()")] // c2
+    public void ACopyRequestWithoutTheOptInIsRefutedByTheDeclaration(string fallback, string records)
+    {
+        var source = "group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n" + fallback + "struct Entry\n    var tag = Tags.dupOf<Entry>()\npublic func main() => ()\n";
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.LocatedRecords(source).Select(static x => x.Split(", ")[0])));
+    }
+
     // SPEC 23.1.2, 14.6.2, 10.1 (DECISIONS: G572 U2a): a loop over a conditional IntoIterable whose condition no premise proves selects its
     // entry call under the rule, and that call's obligation fails after selection. The loop rests on its entry call, so the one fact is one
     // record at the loop (it was the loop's own record beside the call's).

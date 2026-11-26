@@ -234,6 +234,16 @@ public sealed partial class Binding
             return true;
         }
 
+        if (kind == IntrinsicKind.Copy && this.capabilityMode == BindingMode.Final && type.Kind != BoundTypeKind.SemanticsAdaptation && !type.IsAbstract &&
+            type.Symbol?.Declaration is DeclarationContainerKoto container && !(this.copyByType.TryGetValue(container, out var copies) && copies.Count != 0))
+        {
+            // SPEC 3.5.2 "only by opt-in": a struct or enum without a Copy declaration is not Copy, decided from the declaration alone, also
+            // while the headers are bound (G1220-1 O2). A Final pass registers every Copy declaration before its headers (BindConstraints);
+            // a Provisional one can leave a clause pending, so NominalCopy answers Unknown there.
+            result = ConstraintProof.Refuted;
+            return true;
+        }
+
         return false;
     }
 
@@ -778,7 +788,7 @@ public sealed partial class Binding
 
         if (!this.copyByType.TryGetValue(container, out var declarations) || declarations.Count == 0)
         {
-            return this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return ConstraintProof.Unknown; // A Provisional pass's: a pending clause may still name Copy. At Final the leaf rule refutes it.
         }
 
         var result = ConstraintProof.Refuted;
