@@ -356,9 +356,9 @@ public sealed partial class Binding
         => type is not null && !ReferenceEquals(type, BoundType.Never) && this.IsBarePlace(expression);
 
     // SPEC 15.1.6, 15.6.3, 15.6.5 (DECISIONS R8-M56): the Subject Place is a body slot holding the Borrow its acquisition forms, so the
-    // Borrow's Origin is the Place's region, published with the Origin the acquisition names (the Copied reference's, the Reborrow's or
-    // the shared borrow's) as its value, as a `let` local's region is: the body reads the value, a nested signature the region. Only
-    // the outer layer is rebuilt; a Subject with no outer Origin owns no region.
+    // Borrow's Origin is the Place's region (ValuedRegion), published with the Origin the acquisition names (the Copied reference's, the
+    // Reborrow's or the shared borrow's) as its value, as a `let` local's region is: the body reads the value, a nested signature the
+    // region. Only the outer layer is rebuilt; a Subject with no outer Origin owns no region.
     private BoundType SubjectRegion(Koto construct, Koto expression, BoundType subject)
     {
         if (subject is not { Kind: BoundTypeKind.Semantics, Origin: { } value })
@@ -366,8 +366,7 @@ public sealed partial class Binding
             return subject;
         }
 
-        var region = this.LocalRegionSlot(construct, -1, OriginVariance.Covariant);
-        this.PublishRegionValue(region, value, expression);
+        var region = this.ValuedRegion(construct, -1, OriginVariance.Covariant, value, expression);
         return this.types.Rebuild(subject, (BoundType[])subject.Components, region, (BoundOrigin[])subject.OriginArguments);
     }
 

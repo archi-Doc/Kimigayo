@@ -52,8 +52,9 @@ public partial class OriginPremiseCatalogTest
         // SPEC 15.1.6, 14.6.2, 15.6.5 (PLAN G922 tws): a Subject borrowed in place (a bare Place) owns its Borrow's region, so a nested
         // signature naming a binding of it (a match's `let`, a loop's element) names that region, with no premise from the body: the
         // match and `for` forms move to rejection, their reflexive and value-Subject forms stay (tfq to rvc), the `let`-local controls tfl
-        // and twl keep their code and site, and the pair-layer twins (plf to plmq) follow 13.5.5. rcp (a `@copy` Subject's `let`), tex,
-        // tcv, vsr and vsp (a value Subject) are invalid but outside the rule (G922's O-T3): pinned as recorded.
+        // and twl keep their code and site, and the pair-layer twins (plf to plmq) follow 13.5.5. rcp (a `@copy` Subject's `let`) is valid
+        // and outside every rule (G922-9). tex, tcv, vsr and vsp (a value Subject) are invalid but outside the rule (G922's O-T3): pinned
+        // as recorded.
         { "tws", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:134" },
         { "tfs", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for x in pairs\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during pairs => y\n    return 0\n", "UnprovenOriginRelation_Kd@3:134" },
         { "twn", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        let w\n            match w\n                let z\n                    func inner(x: ref/(ref/i64 during e, ref/i64 during e) during z) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n                    return 0\n    return 0\n", "UnprovenOriginRelation_Kd@6:142" },
@@ -81,6 +82,30 @@ public partial class OriginPremiseCatalogTest
         { "plq", "func outer<s/T>(p: s/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    s is value or valueborrow\n    for x in p\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during x => y\n    return 0\n", string.Empty },
         { "plm", "func outer<s/T>(p: s/(ref/i64 during e, ref/i64 during e)) -> i32\n    s is value or valueborrow\n    match p\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during p => x\n            return 0\n    return 0\n", "InvalidOriginBinding_Kd@5:129" },
         { "plmq", "func outer<s/T>(p: s/(ref/i64 during e, ref/i64 during e)) -> i32\n    s is value or valueborrow\n    match p\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during w => x\n            return 0\n    return 0\n", string.Empty },
+
+        // PLAN G922 (R1.3; SPEC 14.8.2, 14.8.3, 15.1.6, 15.6.5): a `let` Pattern binding or for slot reached through a reference owns the
+        // region of the layer its reach adds, valued at the reach's dependency, so a nested signature that names two bindings of one Subject
+        // names two fixed Origins with no premise relating them. Moves (class 1: invalid, accepted before): pbn, pbnc, pbca1 (b carried by
+        // nothing), pbf (a for decomposition), tsu, tpr, tnw (through two reference layers) and tux (an exclusive reach). Valid guards:
+        // pbnq, pbcab and tcr (carried, each fixed equal to its value), pbfq, tow (an Owned erasure), rpb (D-693's A row), tuxq and pv3v
+        // (a binding past a qualifying pair layer of an owned Subject: its acquisition Borrow is formed under the reach's Origin, so a
+        // raw pointer read through it has the Subject's members).
+        { "pbn", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:68" },
+        { "pbnc", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let k = func [] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:74" },
+        { "pbca1", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:75" },
+        { "pbf", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for (u, v) in pairs\n        func inner(x: ref/i64 during u) -> ref/i64 during v => x\n    return 0\n", "UnprovenOriginRelation_Kd@3:64" },
+        { "tsu", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, _)\n            func inner(x: ref/(ref/i64 during e) during a) -> ref/(ref/i64 during e) during u => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:98" },
+        { "tpr", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, let b)\n            func inner(x: ref/(ref/i64 during e) during a) -> ref/(ref/i64 during e) during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:98" },
+        { "tnw", "func outer(p: ref/i64) -> i32\n    let t = (p, p)\n    let w = (t@ref, 0)\n    match w\n        ((let a, let b), _)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@6:68" },
+        { "tux", "func outer(u: uniq/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, let b)\n            func inner(x: uniq/(ref/i64 during e) during a) -> uniq/(ref/i64 during e) during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:100" },
+        { "pbnq", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during a => x\n            return 0\n    return 0\n", string.Empty },
+        { "pbcab", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let g = func [a, b] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", string.Empty },
+        { "pbfq", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for (u, v) in pairs\n        func inner(x: ref/i64 during u) -> ref/i64 during u => x\n    return 0\n", string.Empty },
+        { "tcr", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, _)\n            let g = func [a] () -> ref/(ref/i64 during e) during u => a\n            return 0\n    return 0\n", string.Empty },
+        { "tow", "func outer(u: ref/(ref/i64 during static, ref/i64 during static) during static) -> i32\n    match u\n        (let a, _)\n            let f: () -> i32 = func [a] () -> i32 => 0\n            return f()\n    return 0\n", string.Empty },
+        { "rpb", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            var c = func [var a, var b] () -> ()\n                swap(a@uniq, b@uniq)\n            c()\n    return 0\n", string.Empty },
+        { "tuxq", "func outer(u: uniq/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, let b)\n            func inner(x: uniq/(ref/i64 during e) during a) -> uniq/(ref/i64 during e) during a => x\n            return 0\n    return 0\n", string.Empty },
+        { "pv3v", "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nfunc q<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _)\n            var h = Wrap.init(x@follow@raw@raw/u8)\n", string.Empty },
     };
 
     // SPEC 15.3.7, 15.3.6, 15.6.5 under the owner's O-363 (a), O-375 (a)(a) (PLAN G492-a (ii) with (iii)): a Callable comparison in a `let`
