@@ -5941,6 +5941,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     what this rule lets it write; A4 and A5 share `MirTypes.SealedPayload`. count<S> stays valid by this rule, yet A5 errs at its
     `for` (`$for.iterator`, `for _ in items`) until PLAN G416: the lent item's composed destruction passes the item by next()'s
     exclusive Loan on the iterator (route (1)) and stores that Loan into the iterator, a self-row; an (e) row (R4-M150's S2 line).
+  - Superseded in part by R4-M249 (G415-N3 P1): S1′'s strip in `Content` and `Chain` ("E for a set without Φ_W, read without Φ_W")
+    holds only for a set carrying Φ_E; for a set with neither Φ_E nor a direct Loan, O-60's reach (R4-M183), E is read writable, as at
+    W's first step. The reason that no longer holds: the strip was written while a write past a holder at a Through guard still wrote
+    E on Φ_E, so marking that reach read-only mattered only at Named guards; under R4-M249 every writer past a holder reads Φ_W, and no
+    producer forms that reach's mode, so the strip lost E writes the first step makes (MirBorrowsTest.Guard's duringNull, `z = 5`).
+    S1′'s Φ_W "issued with Φ_E by the one `escapedSet`" holds except at a parameter whose Type reaches past its own storage through
+    shared layers only, whose slot is {Φ_E} (R4-M249's Formation, by this entry's reads-only sentence).
 - **R4-M175 MIR construction follows SPEC 14.10.3's Never form (PLAN G428)** (2026-11-05; the owner, R4's dialog, verbatim
   「推奨どおり開始して下さい」 and 「SPEC's letter」; after BU-101, the owner's 「BU の G52 の修正を先にする で決定です」; per part, the owner,
   R4's dialog, verbatim 「A で進める（推奨）」 (14.10.3's letter per part; SPEC 14.9.2's examples `pick` and `pickFill` revised), and after
@@ -6032,7 +6039,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one chain followed by a selector (it would join different continuations); `TargetBody` holding a block body's temp
     itself (a second copy of Operand's guards, Value's hold and Result's input wrapper).
 - **R4-M177 Rule W writes no holder that only a shared Loan names, at every step (PLAN G474)** (2026-11-06; R4, the planning
-  session, D8's option (b); class Major) SPEC 15.6.4 item 1, 5.2.1 condition 3, 5.7.
+  session, D8's option (b); class Major; superseded in part by R4-M249: E's mode at Through and in `Changes`) SPEC 15.6.4 item 1,
+  5.2.1 condition 3, 5.7.
   - Rule (`MirBorrows.Reach`): a call's store writes the holders that direct Loans not shared and addresses name, never one that only
     a shared Loan names, at every step of W: the first (`Referents`, its own loop: E where the set carries Φ_E or no direct Loan at
     all, a shared one counting, so a set of shared Loans alone writes nothing), past a holder whose guard is Through as past a Named
@@ -8491,6 +8499,59 @@ and migration obligations remain in force; no numeric cap changes are authorized
     accepted (Q17 class 3). No other program moves (48 probes; the whole suite's diagnostic and semantic snapshots, 0 differences; the A5
     corpus oracle, 0 of 1,764).
   - **Rejected:** `PastLayer.ReadOnly` (revision 0: a class row that changed the declared step of `Any` layers).
+- **R4-M249 E is written by its reach's mode at every step of W past a holder, and a parameter forms that mode from its Type (PLAN
+  G419's E half; G415-N3 P1)** (2026-11-26; the Middle, the planning session; class Major, an acceptance and record mover) SPEC
+  15.6.4 item 1 and its reads-only sentence, 5.2.1 condition 3, 15.6 Holders, 5.7 Calls.
+  - Rule (`MirBorrows.Reach`): past a holder whose guard is Through, as past a Named one, and in the Deep step's comparison
+    (`Changes`), W writes E only where the state read carries Φ_W, E reached through no shared layer (15.6.4 item 1: "what is reached
+    on from them by reads through no shared layer"). Through and Named take one step from a state; Through alone composes the call's
+    own pointer (`OwnPointer`). W's first step (`Refs`: E where the set carries Φ_E or no direct Loan) is unchanged, its no-Loan
+    clause being the owner's exception O-60 (R4-M183).
+  - Content (`MirBorrows.Reach`'s `ReadDeclared`): at the declared step from a holder whose root Type's own storage holds storage
+    its Type does not state (the holding walk's `MirHolding.Unstated`: an erased environment, a layer a declaration wrote without an
+    Origin, a `during self` layer's AnyOf content of Origins that may keep an exclusive Loan), W of a call whose writes compose
+    writes E where the holder's state carries Φ_E, whatever its Φ_W. Such a content holds values the state does not list (any value
+    of the holder's Origins, the owner's O-13 Q3 (a); storage no Type states, BU-46): its mode is the content's (what such a value
+    may refer to is storage the call may write, BU-225), and Φ_E says that the holder's Origins reach storage the body does not own.
+    The Rule's reason does not hold there: Φ_W is the mode of what the body stored in the holder, which while every parameter formed
+    Φ_W hid the difference. Once a parameter forms its mode, a `ref/` argument's {Φ_E} bounded a content of an Origin the signature
+    binds by `uniq` (MirBorrowsTest.HiddenWritable's anyUniqBad). It is the declared step's rule for a layer a declaration wrote:
+    the kept clause (`DeclaredUnowned`, until U5) keeps E by Φ_E only at a raw layer the walked Type expression writes, and this
+    rule, like rule 4, writes nothing at a call whose writes SPEC states (15.6.4).
+  - Kept clause (`DeclaredUnowned`), a temporary structure: at a W target that no layer read makes a node (no ViaKey), read by the
+    declared step at Through (`DeclaredGuard`), whose root Type holds at its own address a raw layer without an Origin that its Type
+    expression writes (`RawOwn`: `PastLayer.Its` only), W writes E where the target's state carries Φ_E, as before this entry: the
+    call may write its own pointer there (15.6.4's composition) at a part A5 cannot place, since a holder's state carries no
+    positions and the declared step reads it whole. Removal condition: a holder's state carries positions (U5); the clause then
+    becomes form A, the call's own pointer at the key of the Place the reaching Loan names (`writingPlace`).
+  - Formation (`MirBorrows.Solve`'s `Initial`): a Loan-capable argument's slot is {Φ_E, Φ_W} where its Type reaches past its own
+    storage through no shared layer, else {Φ_E}: the holding walk's answer `Writable` (`MirTypes.HoldsLoans`' `MirHolding`, one walk
+    per case Type, R4-M140). The mode, for every producer (an untied record's included): a value reaches E writable when, from a
+    position of its own storage, a step that is no shared dereference (Binding's `HoldStep.Shared`) leads past it, or it holds an
+    abstract part, an erased environment, a declaration-written content or a part past the walk's bound; a Type argument's part
+    gives nothing (15.3.5). New representations: `MirHolding` (with `Unstated`) and A5's interned {Φ_E}.
+  - Φ_W is also formed where content and chain reach E for a set with neither Φ_E nor a direct Loan: O-60's reach (R4-M183),
+    writable as at W's first step, the mode of an integer's pointer (A5 does not follow a scalar written through a raw pointer).
+  - Supersedes in part R4-M177's "past a holder whose guard is Through as past a Named one (`Write`; Through keeps Φ_E, Named Φ_W),
+    and the Deep step's comparison (`Changes`)" for E. The reason that no longer holds: R4-M177 left reads past a shared layer to
+    G419's read-only Loan variant, but for E the read-only mark already exists (Φ_W, R4-M170's strip), and once a parameter forms its
+    mode, Through and the Deep comparison write E through read-only reaches in programs dev accepts (G415-N3's W5 and W6). It also
+    amends A5's formation at a parameter (every Loan-capable argument {Φ_E, Φ_W}) by R4-M170's own reads-only sentence. G419 keeps
+    its holder half (an address or Loan read past a shared layer keeps its non-shared entry: tiedShChainOk) and W's first step for a
+    read-only set.
+  - Records (Q13): accepted, valid by SPEC: tiedShRefOk (G419's shRefParamGen form), x04 and t11v (BU-113's Limit), and
+    MirBorrowsTest.DepthLimit's `escaped` at 40 (its limit goes); anyUniqBad keeps `v@follow = 5`; the invalid p1dProbe gains a
+    dependent limit record. The A5 corpus oracle moves 0 of 1,764 programs.
+  - Rejected: keeping Φ_E at Through and the comparison and stopping N3 at its W5 and W6 programs for the owner (a mode-blind fact
+    at two of three writers: the cause one level up); the mode from the guard (guard None at `raw/u8` and `uniq/i32` reaches E
+    writable by route 4: a class-1 acceptance); the mode at the first step (it narrows O-60, an option R4-M183 rejected).
+  - Rejected: a marker for O-60's E (a new representation for one reach).
+  - Rejected for a content: Φ_W at a parameter whose Origin the signature also binds by `uniq` (it re-rejects programs valid only by
+    their read-only path, and follows the stored argument, not the content); Φ_W formed at every value of a content-holding Type (a
+    formation rule at every producer for a fact of the Type); G338's cover over `during self` layers (it writes the covered inputs'
+    holders, not E); a clause for the AnyOf arm alone (the Any and erased arms are the same fact).
+  - Rejected for now: form A in place of the kept clause (the call's own pointer at `writingPlace`'s key): without a holder's
+    positions it adds a Language error on the valid r3SibAddrArrOk and needs a route-1 exclusion no fact publishes (U5).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -13304,6 +13365,11 @@ resumed by R4-M86 (2026-10-20).
     (G148 (1)'s option (a) or (b)).
   - Superseded in part by R7-M86 (Z6-M, 2026-11-23): "A5's reader is unchanged" (A5's guard reads the binder arm's members as
     retention does).
+  - Superseded in part by R4-M249 (G415-N3 P1): the Limit bullet above no longer covers a pointer read through a parameter whose Type
+    reaches past its own storage through shared layers only, which A5's slot mode reads for reads only, so x04 and t11v are accepted
+    (t09c's parameter form is not confirmed: the A5 corpus has no t09c program). The reason that no longer holds: A5 did not trace
+    the read-only path to a parameter. Remains: the other paths, removed with a per-value raw provenance fact (G148 (1)'s option (a)
+    or (b)).
 
 - **BU-115 A value call completes its waiting parts at their instantiated parameter; a call stopped before its solution, at their
   declared one until rule W** (2026-11-07; PLAN G494 unit 1, unit bu198; Major; a temporary structure) SPEC 10.5.1, 10.5.4, 7.7.4,
