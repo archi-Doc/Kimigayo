@@ -22,9 +22,6 @@ public sealed partial class Binding
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
 
-    // SPEC 15.2.3: the Owned failure of a common Function conversion, recorded only when it fails.
-    private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
-
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
 
@@ -432,32 +429,6 @@ public sealed partial class Binding
         return null;
     }
 
-    // Fails a node with the facts that explain the failure. A node keeps its first failure only (DIAGNOSTICS rule 4), so the facts are
-    // recorded only with the failure the slot takes: a fact in a publication table always explains the failure of its node, whatever the
-    // failure's code.
-    private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
-    {
-        if (this.RecordedFailure(node) == BindingFailure.None)
-        {
-            (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
-        }
-
-        return this.Fail(node, failure, unresolved);
-    }
-
-    // FailExplained's form for a pass family's column (R7-N5, DECISIONS BU-220): the same rule, the fact stored with the failure by the
-    // recorder (SetRecordedFact: the node's module's column, or the pass's foreign entry's row). The Dictionary form above goes with the
-    // last explanation store that uses it, its staged removal: R7-E3's and R7-E4's, which delete them (R7-N5 E converts none).
-    private BoundType? FailExplained<T>(FactFamily<T> facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
-    {
-        if (this.RecordedFailure(node) == BindingFailure.None)
-        {
-            this.SetRecordedFact(node, facts, fact);
-        }
-
-        return this.Fail(node, failure, unresolved);
-    }
-
     /// <summary>Records a write whose target's path denies it (SPEC 3.4, 15.1.5) with the target (`Related` role 0, "target"), beside any
     /// other failure of the write (SPEC 23.1.2: the check reads the target's path, never the value or the route); an unsupported path is
     /// located only.</summary>
@@ -680,7 +651,6 @@ public sealed partial class Binding
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
-        this.ownedConversions?.Clear();
         this.erasureOutcomes?.Clear();
         this.ResetParameterShapes();
         this.duplicateOrder.Clear();
