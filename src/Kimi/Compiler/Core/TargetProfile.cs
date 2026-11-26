@@ -23,8 +23,8 @@
 // row (B7b5): a reserved supply of a name (ReservedSupply; its name is reserved under every target key, IMPL 20.4), whether a supply
 // of that name provides a symbol (Provides), and a symbol's runtime declaration with its providing supply (TryGetRuntimeDeclaration).
 // Invariants: constants and arrays only, but HostName, this process's, read once; triples distinct; no two rows run on one host
-// (ExecutionHost); each selectable row's Layer names exactly one of the Backend's RuntimeLayer records (Core names no Backend type, so
-// CoreModelTest pins it; the staged row's record is B9d1's); each row's supplies distinct, in Ordinal name order (publication
+// (ExecutionHost); each row's Layer names exactly one of the Backend's RuntimeLayer records (Core names no Backend type, so
+// CoreModelTest pins it); each row's supplies distinct, in Ordinal name order (publication
 // interleaves a program's supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2), each
 // one's kind among its row's Kinds and one kind for every row's supply of its name (a reserved supply's kind is fixed, IMPL 20.4); a
 // row's CRuntime names one of its supplies; every row declaring a runtime symbol declares it alike (one physical signature, provided
@@ -191,8 +191,9 @@ internal sealed class TargetProfile
     internal static TargetProfile[] Staged { get; } = [None];
 
     /// <summary>Gets every row of the table, <see cref="Rows"/> then <see cref="Staged"/>, which <see cref="Find"/> and the reads over
-    /// every row read (<see cref="ReservedSupply"/>, <see cref="Provides"/>, <see cref="TryGetRuntimeDeclaration"/> and
-    /// <see cref="ReservedSymbols"/>' build); B9g deletes it with <see cref="Staged"/>.</summary>
+    /// every row read (<see cref="ReservedSupply"/>, <see cref="Provides"/>, <see cref="TryGetRuntimeDeclaration"/>,
+    /// <see cref="ReservedSymbols"/>' build and the Backend's module frames, LlvmModuleText.Frame); B9g deletes it with
+    /// <see cref="Staged"/>.</summary>
     [Transitional("B9g", Reason = "Every row while Staged holds the x86_64-unknown-none row (the Tatara plan's B9b): B9g appends None to Rows, so AllRows equals Rows, and its readers read Rows; B9g deletes it.")]
     internal static TargetProfile[] AllRows { get; } = [.. Rows, .. Staged];
 
@@ -286,8 +287,9 @@ internal sealed class TargetProfile
     /// host Kimi runs on runs them (linux-x64 until the Tatara plan's B8: no Linux host runs Kimi's native build or its launcher).</summary>
     internal required string? ExecutionHost { get; init; }
 
-    /// <summary>Gets a value indicating whether the program supplies the platform layer's routines through Kimi.Platform (SPEC 22.4.5;
-    /// the Tatara plan's decision 29): true on a freestanding row, false on a hosted row, whose layer the runtime defines.</summary>
+    /// <summary>Gets a value indicating whether the program supplies its platform through Kimi.Platform (SPEC 22.4.5; the Tatara plan's
+    /// decision 29), whose members the layer's routines call: true on a freestanding row, false on a hosted row, whose layer calls the
+    /// OS.</summary>
     internal required bool ProgramPlatform { get; init; }
 
     /// <summary>Gets the row of a target triple, staged rows included.</summary>
