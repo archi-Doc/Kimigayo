@@ -78,7 +78,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Guard, "g", "v@ref", "Finite", "Place")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
-    [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
+    [InlineData(Pick + "func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + pick(v, 1@ref)\n    return sum\n", "total", "1@ref", "Finite", "Place")]
     [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Inferred", "None")]
     [InlineData(LocalOmission, "f", "x", "Fixed", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
@@ -87,10 +87,10 @@ public sealed partial class OriginRowsTest
         Assert.Equal((kind, role), (slice.Atoms[row.Longer].Kind.ToString(), slice.Atoms[row.Longer].Role.ToString()));
     }
 
-    // Rows 1, 2' and 8 on the shorter ends: B's contract and static are Fixed, a meet with a Finite operand an Inferred node, a local's
-    // inference Inferred, and a call's meet of its call regions Inferred (MeetTrans' `t@uniq`; Unclassed while they were the callee's
-    // Parameter atoms, U3-design.md's twelfth amendment); an end a Binding failure left Unbound, a slot a local's failed clause names
-    // (FailedClause), is Dependent (DECISIONS R4-M118). RepeatedSet's `k`, whose clause names no bound Origin, is no row (H11b-0 B1).
+    // Rows 1, 2' and 8 on the shorter ends: B's contract and static are Fixed, a local's inference Inferred, and a call's meet of its
+    // call regions Inferred (pick's `3@ref` and MeetTrans' `t@uniq`; Unclassed while they were the callee's Parameter atoms,
+    // U3-design.md's twelfth amendment); an end a Binding failure left Unbound, a slot a local's failed clause names (FailedClause), is
+    // Dependent (DECISIONS R4-M118). RepeatedSet's `k`, whose clause names no bound Origin, is no row (H11b-0 B1).
     [Theory]
     [InlineData(EnvStoreConsuming, "", "x@ref", "Fixed")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "g", "3@ref", "Inferred")]

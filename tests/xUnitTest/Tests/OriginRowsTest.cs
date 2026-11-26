@@ -20,14 +20,17 @@ public sealed partial class OriginRowsTest
 
     private const string Main = "public func main() => ()\n";
 
-    private const string Pick = "func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
+    // A callee whose parameters name the meet of two distinct declared Origins: each argument's Origin outlives the meet of the call's
+    // regions, a row. With one Origin, `during s`, the call's s is the meet of the arguments' Origins, which outlive it by identity,
+    // no row (G844 E, ruling G844-11).
+    private const string Pick = "func pick(x: ref/i32 during (a and b), y: ref/i32 during (a and b)) -> i32 => x@follow\n";
 
     // A default whose Type is well formed only when `b outlives a` (PLAN G277 (1)).
     private const string Put2 = "func put2(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: Option<ref/(ref/i32 during b) during a> = .None)\n" +
         "    slot@follow = v\n";
 
     // Pick in a group, for callers a top-level function does not reach (a group's or struct's member).
-    private const string Util = "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
+    private const string Util = "group Util\n    public func pick(x: ref/i32 during (a and b), y: ref/i32 during (a and b)) -> i32 => x@follow\n";
 
     // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store), under an
     // Exclusive receiver and, consuming another capture, under `owner/Self`.
@@ -46,9 +49,10 @@ public sealed partial class OriginRowsTest
         "        let t: Option<ref/(ref/i32 during b) during a> = Option.None\n        yield 0\n    else => 0\n" +
         "    public init(p: ref/i32 during a, w: ref/(ref/i32 during b) during a)\n        self.p = p\n";
 
-    // A getter iterating a borrowed sequence (2a0-D's cf/p/accessor-for): its `for` row is the accessor's.
-    private const string Getter = "struct Wrap {s}\n    public let values: Slice<i32> during s\n    public init(values: Slice<i32> during s) => self.values = values\n" +
-        "    public computed first: i32\n        get() -> i32\n            var sum = 0\n            for v in self.values\n                sum = sum + v@follow\n            return sum\n";
+    // A getter iterating a borrowed sequence (2a0-D's cf/p/accessor-for): the row of its `for` item is the accessor's (its iterator's
+    // own borrow outlives itself by identity, no row: G844 E).
+    private const string Getter = Util + "struct Wrap {s}\n    public let values: Slice<i32> during s\n    public init(values: Slice<i32> during s) => self.values = values\n" +
+        "    public computed first: i32\n        get() -> i32\n            var sum = 0\n            for v in self.values\n                sum = sum + Util.pick(v, 1@ref)\n            return sum\n";
 
     // An enclosing body's local whose value Origin a named nested signature names (BU-56's unannotated class; DECISIONS BU-89).
     private const string Local = "func leak(a: ref/i32) -> i32\n    var arr: Array<ref/i32> = []\n    arr.append(a)\n    let r = arr[0]\n";
@@ -172,13 +176,13 @@ public sealed partial class OriginRowsTest
     [Theory]
     [InlineData(EnvStoreConsuming, "x@ref", "Closure")]
     [InlineData(EnvStore, "func [x, target]() => store(target, value: x@ref)", "Fn:g")]
-    [InlineData(Getter, "$for.iterator", "Accessor")]
+    [InlineData(Getter, "v", "Accessor")]
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "3@ref", "Default:g:0")]
     [InlineData(Pick + "func h(n: i32, f: () -> i32 = func [] () => pick(7@ref, 8@ref)) -> i32 => f()\n", "7@ref", "Closure")]
     [InlineData(Util + "group G\n    public let n: i32 = Util.pick(3@ref, 4@ref)\n", "3@ref", "Static:n")]
     [InlineData(FieldInit, "3@ref", "Layer:S")]
     [InlineData(Pick + "let v = pick(3@ref, 4@ref)\n", "3@ref", "TopLevel")]
-    [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "$for.iterator", "Fn:total")]
+    [InlineData(Pick + "func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + pick(v, 1@ref)\n    return sum\n", "v", "Fn:total")]
     [InlineData(Put2 + "func outer() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        put2(keep@uniq, short@ref)\n    return keep@follow\n", "put2(keep@uniq, short@ref)", "Fn:outer")]
     public void ARowIsTheBodyBindingFormsItIn(string source, string site, string expected)
     {
@@ -189,14 +193,27 @@ public sealed partial class OriginRowsTest
         Assert.All(rows, x => Assert.Equal(expected, Describe(x.Body)));
     }
 
-    // The library's `for` in Slice.contains forms its row at a parentless Use; it is contains' own.
+    // G844 E (SPEC 15.3.6): a relation held by identity forms no row. With `during s`, the call's s is the meet of the arguments'
+    // Origins, which holds each as an operand, so the call is accepted with no row at either argument, in any body's slice.
     [Fact]
-    public void TheLibrarysForRowIsItsFunctions()
+    public void ARelationHeldByIdentityFormsNoRow()
+    {
+        var c = MirBuildTest.Compile("func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n" +
+            "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n" + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.DoesNotContain(Rows(c, false), static x => First(x.Use) is "3@ref" or "4@ref");
+        Assert.All(Bodies(c), x => Assert.DoesNotContain(c.Types.OriginRows(x.Key.Body).Rows, y => Site(c, y) is "3@ref" or "4@ref"));
+    }
+
+    // A library row is its function's: Storage.sliceUniq's `start`, its view's `source` outliving the remainder's inferred Origin, is
+    // sliceUniq's own. (The library's `for` loops relate their iterators by identity, no row: G844 E, ruling G844-12.)
+    [Fact]
+    public void TheLibrarysRowIsItsFunctions()
     {
         var c = SemanticSnapshotTest.Bind("library").Compilation;
-        var rows = Rows(c, true).Where(static x => First(x.Use) == "$for.iterator").ToList();
+        var rows = Rows(c, true).Where(static x => First(x.Use) == "start").ToList();
         Assert.NotEmpty(rows);
-        Assert.All(rows, x => Assert.Equal("Fn:contains", Describe(x.Body)));
+        Assert.All(rows, x => Assert.Equal("Fn:sliceUniq", Describe(x.Body)));
     }
 
     // DECISIONS R4-M101 E4 (Q1 (a)): a constructor's slice is its own rows, then its layer's, the same in each constructor; the layer's rows
