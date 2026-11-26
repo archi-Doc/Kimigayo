@@ -35105,7 +35105,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `[Windows, Linux]`. The header writes the float marker's definition only where the row has one.
   - **The layer's routine set per row (N6):** every layer defines `PlatformRoutines` (`__kimi_exit`, `__kimi_write`, `__kimi_pages`,
     `__kimi_release_pages`) and `@__kimi_os_prefix`; `__kimi_platform_start` (`RuntimeAbi.PlatformStart`, `void ()`) and
-    `__kimi_clock` (`RuntimeAbi.Clock`, `i64 ()`) are Linux's alone and never join `PlatformRoutines` (which
+    `__kimi_clock` (`RuntimeAbi.Clock`, `i64 ()`) are the layers of linux-x64 and x86_64-unknown-none (T-M56) and never join `PlatformRoutines` (which
     `NativeAllocationAudit.AssertOsCallsInLayer` pins). The record's definition list states the set (Linux: `PlatformRoutines`,
     `PlatformStart`, `Clock`, then the allocator's and the common part's); no row column or `Supports*` gate. Its validator is LLVM's
     parser and verifier in `tatara_emit` (`src/Tatara/module.cpp`, `verifyModule`): a call of `@__kimi_clock` on a row whose layer
@@ -36004,4 +36004,66 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     records the location-only `Unsupported_Kd` (base: `TestTargetUnavailable_Kd`; IMPL 20.6.1's "a row in the target table", the
     CLI's Test-mode record; until B9g an AllTargets project listing none first gets its test unit on none). Hosted rows: none.
   - **Until B9d1** a none module's generation is a broken contract no product path reaches (`LlvmModuleText.Frame` refuses a row
-    outside `Rows`).
+    outside `Rows`). Superseded by T-M56 and T-M57: the frames and `CoreModelTest.EveryRowNamesOneRuntimeLayer`
+    cover `AllRows`, and until B9f a none module's generation fails at the link.
+
+- **T-M56 The none row's layer: Limine's boot, the busy flag and the platform's adapters** (Tatara, 2026-11-26; the plan's unit B9d1,
+  Q-<n>, D-<n>; Major; the Tatara plan's decisions 30 and 31; T's rulings 119, 121, 122, 123, 127 and 133; rulings-briefs-w2 E1, E8, O4):
+  - **The boot template:** `NonePlatform.ll.in` holds Limine's data in the template: the start and end markers, the base-revision tag
+    (base revision 6, `PROTOCOL.md` at limine-protocol c5a7f597a, implemented by Limine v11.2.1; tag `{0xf9562b2d5c95a6c8,
+    0x6a7b384944536bdc, 6}`, the loader writing 0 to its third word when it accepts) and the higher-half direct map and memory map
+    requests (common magic `0xc7b1dd30df4c8b88, 0x0a82e883a194f07b`; ids `0x48dcf1cb8ad2b852, 0x63984e959a98244b` and
+    `0x67cf3d9d378a806f, 0xe304acdfc50c3c62`; revision 0), each an internal 8-byte-aligned global in `.limine_requests_start`,
+    `.limine_requests` or `.limine_requests_end` (the link's convention; B9f's linker script keeps them). `__kimi_boot` reads the tag's
+    third word and the two response pointers `volatile` (the loader writes them outside the program), halts on an unaccepted revision or
+    a null response, and fills the Boot local of `__kimi_platform_start` (0, 8, 16; 24 bytes, `Layout.Of(Kimi.Boot)`).
+  - **The keep list (E1 (a)):** the template's own `@llvm.compiler.used` lists the five globals, beside the start form's `@llvm.used`,
+    which is unchanged. Rejected: one merged `@llvm.used` (the start form would read a layer's globals); `@llvm.used` for the requests
+    (they need no keep past the IR passes; the linker script keeps the sections).
+  - **The six routines in the template:** `__kimi_platform_start`, `__kimi_exit`, `__kimi_write`, `__kimi_pages`, `__kimi_release_pages`
+    and `__kimi_clock`, each of one shape: the busy flag's test (set: halt with interrupts disabled), its set, the adapter's call, its
+    clear (not in `__kimi_exit`, which never returns), then the result's mapping (write and release: 0 → −1, −1 → `NoOsError`, other →
+    the result; pages: below `UnmappedBound` or misaligned → null; clock: as is). The flag is an `i8`, never `i1` in memory. Rejected:
+    shared enter/leave helpers (OSF3b's saved RFLAGS is per routine; one shape per routine reads locally); the mappings in the adapters
+    (the adapters are the program's members' spelling only, B9d2).
+  - **The six adapters' records:** `RuntimeAbi.PlatformMember*`, named `__kimi_platform_member_` and the Platform requirement's name
+    verbatim (`start`, `mapPages`, `releasePages`, `write`, `clock`, `terminate`; ruling 127 Q1 (a), O4 against design §3.4/§3.5's
+    `__kimi_witness_*` spelling, ruling 119's `terminate`), with the requirements' signatures (`terminate` `void (i32) noreturn`). No
+    layer defines them; the module frame defines each over the program's member (B9d2). The layer routine `__kimi_exit` keeps its name.
+  - **The start text:** one function of the row's entry symbol (`RuntimeAbi.StartAssembly(entry)`), linux-x64's and
+    x86_64-unknown-none's records each calling it with its row's `EntrySymbol`; linux-x64's bytes are unchanged (E8). Rejected: a second
+    copy of the text for the none row.
+  - **The frames cover the table's rows:** `LlvmModuleText.Frames` holds one lazily built frame per row of `TargetProfile.AllRows`,
+    and `CoreModelTest.EveryRowNamesOneRuntimeLayer` pins every row of `AllRows` (T-M55's `Layer`; Transitional until B9g, ruling
+    123 N4: no new Transitional).
+
+- **T-M57 The none row's platform adapters and output roots** (Tatara, 2026-11-26; the plan's unit B9d2, Q-<n>, D-<n>; Major; the
+  Tatara plan's decision 30; T's rulings 139, 140 and 143):
+  - **The adapters:** for an Application whose check published a platform (`StartupResult.Platform`), `ModuleCodegen.Platform`
+    defines the platform's storage `@__kimi_platform` (`internal global [S x i8] zeroinitializer, align A`, the platform struct's
+    layout; `[0 x i8]`, align 1, for a field-less one) and one adapter per `PlatformRows` row, named and typed by its
+    `RuntimeAbi.PlatformMember*` record. Each calls its witness's function through `FunctionCodegen`'s one entry call: the storage as
+    `start`'s result slot and as every receiver, the loader's `boot` passed through, a `Text.Utf8Slice` parameter a slot of the
+    adapter's data and length, `terminate`'s call followed by `unreachable`. A Library on the row declares the six adapters, which the
+    layer's routines call, and defines no storage. A witness parameter without a source, an adapter parameter left over, or a
+    pass-through parameter's Type, the result or `NoReturn` unlike the adapter's is `InternalInvariant_Kd` at the witness (the
+    `Utf8Slice` pair's Types are `WriteTextSlot`'s contract); a witness count other than the rows' is `InternalInvariant_Kd` at the
+    platform declaration (`Compilation.PlatformRoots`). The one receiverless row, `start`, returns the platform.
+  - **`PlatformRows`:** the Backend's table of `Platform`'s requirements in declaration order, each row its name, whether it has a
+    receiver (`Receiver`) and its adapter's record; `KimiLibraryShapeTest` holds it equal to `Platform`'s declaration. A new requirement
+    adds a row.
+  - **The output roots, positional:** `Compilation.OutputRoots` adds, after an Application's startup body, each witness's Body item in
+    `PlatformRows`' order (Binding's `PlatformWitnesses`); `ModuleCodegen.Start` reads roots 1 to 6 by position.
+  - **No import witness reaches generation (ruling 143):** SPEC 22.6's import has no receiver and takes and returns no struct by value.
+    `start` takes and returns structs by value, and the other five requirements take a receiver, so check refuses every import witness
+    (a by-value struct: Binding's located `Unsupported_Kd`; a receiver: `InvalidLibraryImport_Kd`). A witness without its Body item at
+    generation is a broken Binding contract, `InternalInvariant_Kd` at the platform struct. A witness body may call an import.
+  - **One entry call (ruling 140 (b)):** commit 1's `WriteEntryCall(output, caller, routine, arguments)` is split into
+    `BeginFrameFunction(output, caller)` (the output, the caller as the spelling context, the value counter), `WriteTextSlot(text,
+    data, length)` and `WriteEntryCall(routine, arguments)`; the frame's start and the adapters write through it (OSF3b's thunk will).
+    The `Value` prefix `P` spells `@__kimi_platform`.
+  - **One declaration writer:** `LlvmModuleText.WriteDeclaration` writes a `FunctionAbi`'s `declare` line, for the frame's
+    declarations and a Library's adapters.
+  - **Rejected:** an `Unsupported_Kd` at emit for an import `start` (design §3.5 C2: unreachable, since check refuses the import; ruling
+    143); the collector's Import root for `start`; a second call writer; adapters with fixed argument shapes per row; `Runs` re-deriving
+    the witnesses; Binding reporting a Backend limit.
