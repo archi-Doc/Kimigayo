@@ -452,8 +452,9 @@ public sealed partial class Binding
 
     // SPEC 23.1.2: a check's one read (CompleteDependent's cause and each Place it rests, RestOnRepeatedSet's set, a failed base rule's
     // part) is its node's prerequisite range. Inside the node's own frame, unless the frame is held, it is also a read of that frame, taken
-    // unfiltered as Fail's: the frame's end replaces the range with the frame's reads, which hold it. The range is written in either case,
-    // for the readers inside the frame (a temporary's rest in BindAndAdaptNode, a conformance's use in CheckConformance).
+    // unfiltered (the readers filter at publication): the frame's end replaces the range with the frame's reads, which hold it. The range
+    // is written in either case, for the readers inside the frame (a temporary's rest in BindAndAdaptNode, a conformance's use in
+    // CheckConformance).
     private void RecordRead(Koto node, Koto read)
     {
         if (ReferenceEquals(node, this.consultationNode) && !this.consultationHeld)
