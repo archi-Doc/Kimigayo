@@ -141,14 +141,14 @@ public sealed partial class Binding
     private void StorageWalk(OriginPremiseEnvironment environment, BoundType? type, StorageAt at)
     {
         var source = at.Source.Input >= 0;
-        if (type is null || (source && at.Depth > StorageBound))
+        if (type is null)
         {
             return;
         }
 
         var visit = (at.Storage, at.Writable, at.Captured, at.Routed, at.Dropped, at.Source with { Above = -1 }, type, at.Signature); // The layer above is no part of the key.
         ref var seen = ref CollectionsMarshal.GetValueRefOrAddDefault(this.storageSeen, visit, out var met);
-        if (!Enters(ref seen.Depth, met, source ? at.Depth : 0))
+        if (!Enters(ref seen.Depth, ref met, source ? at.Depth : 0, StorageBound))
         {
             return;
         }
@@ -507,7 +507,7 @@ public sealed partial class Binding
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.storageResultSeen, type, out var met);
-        if (!Enters(ref shallowest, met, depth))
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
             return; // Entered at this depth or shallower: a Type's leaves depend on the Type alone (the bounded walks' rule, PLAN G571).
         }

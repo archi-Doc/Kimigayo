@@ -35,19 +35,29 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundType Type, BoundType? Written, BoundType? Holder), int> retentionWalked = new(); // Enters' depths, reused.
     private readonly Dictionary<(BoundType Type, HoldStep Reach), int> retentionReaches = new(); // WrittenThrough's (Type, reach) depths, reused.
 
-    // The one visit rule of the walks that stop at a depth bound and key their visits (G416, PLAN G571). A search of every depth bound in
-    // Binding and TyCtxt finds four: three at StorageBound and TyCtxt.Handed at HandedBound. A walk enters a state at the shallowest depth
-    // it is met at, and again where it is met shallower. So what it reaches below a state is a function of the state, not of the route
-    // that met it first: within the bound it is the routes' answer, in at most bound + 1 entries per state (G416: a branching recursion
-    // has 2^(depth/2) routes). `shallowest` is the state's entry in its walk's own table (`met`: it had one), a reference the caller reads
-    // no more once its walk may insert (a resize moves the entry). Each walk keys its own state, all that decides what lies below it: the
+    // The one visit rule of the walks that stop at a depth bound and key their visits (G416, PLAN G571, G408). Binding and TyCtxt have eight
+    // such walks, each counting its own steps against its bound: seven at StorageBound, which counts Holdings entries (the input fold's
+    // StorageWalk, Borrows, Holds, HiddenKind, WrittenThrough, ResultLeaves, MayCarry), and TyCtxt.Handed at HandedBound, which counts Type
+    // parts; Viewed, a Type map memoized by depth, is no visit walk. A walk enters a state at the shallowest depth within the bound it is
+    // met at, and again where it is met shallower. So what it reaches below a state is a function of the state, not of the route that met
+    // it first: within the bound it is the routes' answer, in at most bound + 1 entries per state (G416: a branching recursion has
+    // 2^(depth/2) routes). A meeting past the bound enters nothing and marks a state not entered within it (its depth, past the bound).
+    // `shallowest` is the state's entry in its walk's own table (`met`: it had one; on return, it was entered within the bound), a
+    // reference the caller reads no more once its walk may insert (a resize moves the entry). Each walk keys its own state, all that decides what lies below it: the
     // borrow fit's (Type, Written, Holder) (Borrows, retentionWalked), the hold fit's storage Type, its asked entry fixed per query and its
     // run read with neither (Holds, retentionParts), and the handed-callable walk's Type (TyCtxt.Handed, handedSeen). The storage walk's
     // StorageAt leaves out the layer above, the Written Type and the holder (StorageWalk): meetings that differ only in those count as one
     // state (the layer above changes no fit, Revision 10; the other two steer raw steps, and a shallower meeting walks below with its own:
     // PLAN G571's design, N1). Holds runs inside Borrows' walk, so their tables stay apart.
-    internal static bool Enters(ref int shallowest, bool met, int depth)
+    internal static bool Enters(ref int shallowest, ref bool met, int depth, int bound)
     {
+        met &= shallowest <= bound;
+        if (depth > bound)
+        {
+            shallowest = met ? shallowest : depth;
+            return false;
+        }
+
         if (met && shallowest <= depth)
         {
             return false;
@@ -186,13 +196,13 @@ public sealed partial class Binding
     // layer.
     private bool Borrows(BoundType? position, BoundType? written, BoundType? holder, BoundType referent, int depth)
     {
-        if (position is null || depth > StorageBound)
+        if (position is null)
         {
             return false;
         }
 
         ref var walked = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionWalked, (position, written, holder), out var met);
-        if (!Enters(ref walked, met, depth))
+        if (!Enters(ref walked, ref met, depth, StorageBound))
         {
             return false;
         }
@@ -231,13 +241,8 @@ public sealed partial class Binding
             return true;
         }
 
-        if (depth > StorageBound)
-        {
-            return false;
-        }
-
         ref var entered = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionParts, storage, out var met);
-        if (!Enters(ref entered, met, depth))
+        if (!Enters(ref entered, ref met, depth, StorageBound))
         {
             return false;
         }

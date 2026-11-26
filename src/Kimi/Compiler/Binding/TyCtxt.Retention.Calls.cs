@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // an edit, and the instantiated contract Binding computes it over (Binding.Retention.cs).
 internal sealed partial class TyCtxt
 {
-    // HandedCallables' depth bound, MirTypes.Holding's: past it a growing recursive Type's parts are the Limit its hold walk reports.
+    // HandedCallables' depth bound on its own steps, Type parts (Handed), where Binding's StorageBound counts Holdings entries (a Dictionary
+    // level is one part, two entries): past it a growing recursive Type's parts are the Limit, as MirTypes.Holding's bound reports it.
     private const int HandedBound = 32;
 
     // Per callee, signature or erased destruction's receiver, Type instantiation (a direct call's case key, CaseSubst), the premise scope
@@ -405,44 +406,55 @@ internal sealed partial class TyCtxt
 
     // HandedCallables' walk, to the depth bound past which a growing recursive Type's parts are a Limit Held reports: each part entered at
     // the shallowest depth it is met at (Binding.Enters, PLAN G571), so a callable within the bound is found whatever route meets its holder
-    // first; each callable found once.
+    // first; each callable found once. Its steps at a part are HandedStep's.
     private void Handed(BoundType? type, int depth)
     {
-        if (type is null || depth > HandedBound)
+        if (type is null)
         {
             return;
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.handedSeen, type, out var met);
-        if (!Binding.Enters(ref shallowest, met, depth))
+        if (!Binding.Enters(ref shallowest, ref met, depth, HandedBound))
         {
             return;
         }
 
-        if (type.Kind == BoundTypeKind.Function && !met)
+        if (this.HandedStep(type, out var target, out var parts, out var stored, out var parent) && !met)
         {
             this.handedFound.Add(type);
         }
 
-        if (Binding.TryPairLayer(type, out _, out var target))
-        {
-            this.Handed(target, depth + 1);
-            return;
-        }
-
-        var parts = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
+        this.Handed(target, depth + 1);
         for (var i = 0; parts is not null && i < parts.Components.Count; i++)
         {
             this.Handed(parts.Components[i], depth + 1);
         }
 
-        var stored = this.StoredParts(type, out var parent);
         for (var i = 0; i < stored.Length; i++)
         {
             this.Handed(stored[i], depth + 1);
         }
 
         this.Handed(parent, depth + 1);
+    }
+
+    // Handed's step predicate (G408B-4 C-B1), the one place naming the forms of a part at which Handed's body asks: whether the part is a
+    // callable it lists (a Function), and the parts below it: a pair layer's target alone (`target`), else the components of the part, or
+    // of a Closure's environment as its body sees it (`parts`), the part's stored parts and its parent (StoredParts, TyCtxt.Raw.cs).
+    private bool HandedStep(BoundType type, out BoundType? target, out BoundType? parts, out ReadOnlySpan<BoundType?> stored, out BoundType? parent)
+    {
+        if (Binding.TryPairLayer(type, out _, out target))
+        {
+            (parts, parent) = (null, null);
+            stored = default;
+            return false;
+        }
+
+        target = null;
+        parts = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
+        stored = this.StoredParts(type, out parent);
+        return type.Kind == BoundTypeKind.Function;
     }
 
     // The retention memo's key (R7-N5 B8b; DECISIONS BU-220), each field compared by reference and null where its form has none: Retains

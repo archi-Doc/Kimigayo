@@ -23,7 +23,7 @@ public sealed partial class Binding
     // (by target node: the start and count of its run in retentionClosureNodes), and the storages' kinds, reused.
     private readonly Dictionary<BoundType, RetentionKind[]> retentionHidden = new(ReferenceEqualityComparer.Instance); // HiddenKinds' per Type, per Storages.
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
-    private readonly HashSet<BoundType> retentionCarried = new(ReferenceEqualityComparer.Instance); // CanCarryLoan's walk, per query: the Types met.
+    private readonly Dictionary<BoundType, int> retentionCarried = new(ReferenceEqualityComparer.Instance); // CanCarryLoan's walk, per query: Enters' depths.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
     private readonly HashSet<(HoldAt At, HeldIn In, int Storage)> retentionMet = new();
@@ -535,8 +535,8 @@ public sealed partial class Binding
     // They disagree only at a part Binding did not bind (HoldsLoans: no Loan; here: carries, failing closed); PLAN's open issue: one
     // publisher, TyCtxt, that both read. It decides no Loan, holder or write. At Binding's Limit it answers true and makes the contract
     // the Limit (retentionLimit, as HiddenKind); past StorageBound it answers true and reports nothing, as the input fold's walk stops
-    // there silently (StorageWalk). Each Type is walked once per query (retentionCarried), so a recursive Type ends; its repeat adds
-    // nothing its first meeting lacks.
+    // there silently (StorageWalk). Each Type is entered at the shallowest depth it is met at (Enters, retentionCarried), so a recursive
+    // Type ends.
     private bool CanCarryLoan(BoundType type)
     {
         this.retentionCarried.Clear();
@@ -546,14 +546,15 @@ public sealed partial class Binding
     // CanCarryLoan's fold over Holdings: a Type and, through the entries that pass on, its parts.
     private bool MayCarry(BoundType? type, int depth)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null)
         {
             return true;
         }
 
-        if (!this.retentionCarried.Add(type))
+        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionCarried, type, out var met);
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
-            return false;
+            return depth > StorageBound;
         }
 
         var run = this.HeldRun(type, null, null, out var complete);
@@ -599,13 +600,13 @@ public sealed partial class Binding
     // members' referents are read through it too (`p: raw/u8 during a` beside `n: uniq/(K<T> during a)` reads K's kept T).
     private RetentionKind HiddenKind(BoundType? declared, BoundType hidden, RetentionKind kind, int depth)
     {
-        if (declared is null || depth > StorageBound)
+        if (declared is null)
         {
             return RetentionKind.None;
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionHiddenSeen, (declared, kind), out var met);
-        if (!Enters(ref shallowest, met, depth))
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
             return RetentionKind.None; // Entered at this depth or shallower: what lies below it is counted there (the bounded walks' rule).
         }
@@ -782,13 +783,13 @@ public sealed partial class Binding
     // makes the contract the Limit, never "writes nothing".
     private bool WrittenThrough(BoundType? type, BoundType position, HoldStep reach, int depth, BindingScope? view)
     {
-        if (type is null || depth > StorageBound)
+        if (type is null)
         {
             return false;
         }
 
         ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionReaches, (type, reach), out var met);
-        if (!Enters(ref shallowest, met, depth))
+        if (!Enters(ref shallowest, ref met, depth, StorageBound))
         {
             return false;
         }
