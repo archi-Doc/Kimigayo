@@ -30469,7 +30469,7 @@ Closure row of `MirCases.Branch`).
   - **Rejected:** (b), Phantom and invariant as the old Phantom sentence read. A callable wrapper `Callback during b` could not
     then serve where `Callback during a` is wanted, although every input it receives outlives `b`.
 - **R7-M123 E4e (Owned and Callable): the Owned conversion and Callable Origin-only records record through `RecordConstraint`**
-  (Back, 2026-11-26; R7-E4 E4e, Q-820, D-????; Major unit of a Major design, R7 plan §5.1 E4; design
+  (Back, 2026-11-26; R7-E4 E4e, Q-820, D-1332; Major unit of a Major design, R7 plan §5.1 E4; design
   `artifacts\units\r7e4e\design.md` Revision 1 with B's ruling 1 and F's R7-E4 rulings 47 and 48; the Front's independent design
   read ACCEPT WITH CONDITIONS, C1-C4 met in Revision 1) SPEC 7.7.2, 7.7.4, 8.3, 15.2.3, 15.6.1, 23.1.1, 23.1.2. Applies R7-M95's
   rule (by input) and R7-M75 E3b-2's recorder to the last two family-3 records.
