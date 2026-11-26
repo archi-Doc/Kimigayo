@@ -557,6 +557,32 @@ public partial class LayoutTest
         Assert.Equal(row.FieldOffsets.ToArray(), layout.FieldOffsets.ToArray());
     }
 
+    // IMPL 21.1.3, 21.6: the none row's boot fills a Kimi.Boot as the library's declaration is placed: the boot local takes its size and
+    // alignment, and directMapOffset, regions and regionCount are stored at their offsets.
+    [Fact]
+    public void BootIsPlacedAsTheNoneBootFillsIt()
+    {
+        var c = CompilationTestHelper.BindSuccess("()");
+        var boot = LibrarySource.Declaration(c.Library, "Boot").SymbolOf(c)!.Type!;
+        var placed = c.Layout.Of(boot);
+        Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
+        var layout = placed.Value!.Layout;
+        var offsets = layout.FieldOffsets.Span;
+        var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
+        Assert.Contains($"  %boot = alloca [{layout.Size} x i8], align {layout.Alignment}\n", runtime, StringComparison.Ordinal);
+        Assert.Equal(0, offsets[AdtDef.IndexOf(boot, "directMapOffset")]);
+        Assert.Contains("  store i64 %offset, ptr %boot, align 8\n", runtime, StringComparison.Ordinal);
+        Assert.Contains(
+            $"  %regions = getelementptr i8, ptr %boot, i64 {offsets[AdtDef.IndexOf(boot, "regions")]}\n  store ptr %entries, ptr %regions, align 8\n",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"  %region_count = getelementptr i8, ptr %boot, i64 {offsets[AdtDef.IndexOf(boot, "regionCount")]}\n" +
+            "  store i64 %count, ptr %region_count, align 8\n",
+            runtime,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void LoanIsPlacedAsAStructWithoutStoredFields()
     {

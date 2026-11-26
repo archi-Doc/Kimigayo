@@ -244,29 +244,6 @@ internal sealed partial class FunctionCodegen
         return -1;
     }
 
-    // An adapter entry's end: unreachable after a callee that never returns, else its value or nothing returned.
-    private void End(FunctionAbi callee, Value? result)
-    {
-        var output = this.output;
-        if (callee.NoReturn)
-        {
-            output.Write("  unreachable\n}\n");
-            return;
-        }
-
-        if (result is not { } value)
-        {
-            output.Write("  ret void\n}\n");
-            return;
-        }
-
-        output.Write("  ret ");
-        output.Write(this.abi.Result);
-        output.Write(' ');
-        this.WriteValue(value);
-        output.Write("\n}\n");
-    }
-
     // A heap environment's release (the table's drop entry, a glue function's parameters): its glue at the address the word holds, then
     // the heap release, each at the location received.
     private void Release(int item, int glue)
