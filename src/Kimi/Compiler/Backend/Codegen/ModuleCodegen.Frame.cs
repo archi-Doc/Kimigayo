@@ -27,7 +27,8 @@ internal sealed partial class ModuleCodegen
     private const string ZeroSizedDefinition = "@" + ZeroSized + " = private unnamed_addr constant [1 x i8] zeroinitializer, align 16\n";
 
     private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
-    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
+    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer (in the
+    // entry, whose signature, void () without parameters, is RuntimeAbi.Start's).
     private readonly StringWriter helperText = new(System.Globalization.CultureInfo.InvariantCulture); // The helpers of the latest Write.
     private Needs needs; // The module parts the definitions of the latest Write requested.
 
@@ -125,6 +126,7 @@ internal sealed partial class ModuleCodegen
         }
 
         output.Write(this.functions.GetStringBuilder());
+        output.Write(this.platformText.GetStringBuilder()); // The platform part (ModuleCodegen.Platform), empty on a hosted row.
         this.Entry = null;
         if (start is not null)
         {
@@ -152,15 +154,13 @@ internal sealed partial class ModuleCodegen
     private string WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
     {
         var main = this.row.CRuntime is { } runtime && this.Requires(runtime);
-        if (main)
-        {
-            output.Write(RuntimeAbi.Main.GetDefinition(exported: true));
-        }
-        else
+        var routine = main ? RuntimeAbi.Main : layer.Start;
+        if (!main)
         {
             output.Write(layer.StartAssembly);
-            output.Write(layer.Start.GetDefinition(exported: layer.Start.Name == this.row.EntrySymbol));
         }
+
+        output.Write(routine.GetDefinition(exported: main || layer.Start.Name == this.row.EntrySymbol));
 
         output.Write("entry:\n");
         foreach (var call in layer.StartCalls)
@@ -172,7 +172,8 @@ internal sealed partial class ModuleCodegen
             output.Write("()\n");
         }
 
-        this.bodies.WriteEntryCall(output, startup);
+        this.bodies.BeginFrameFunction(output, routine);
+        _ = this.bodies.WriteEntryCall(startup, default);
         if (main)
         {
             output.Write("  ret i32 0\n}\n");
@@ -188,10 +189,14 @@ internal sealed partial class ModuleCodegen
     // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test
     // build's is the test runtime's entry, which calls each test root, in the catalog's case order as the generation entry gives the roots,
     // under its signature: a Test body takes no parameter and returns Unit, so another signature is a broken contract at the root's subject.
-    // False for an Application whose startup root has no signature while nothing explains it: a broken contract without a subject.
+    // On a row whose program supplies its platform, the platform part (ModuleCodegen.Platform): an Application's roots are its startup
+    // body, then its witnesses' in PlatformRows' order (positional, as OutputRoots gives them), over which it defines the adapters
+    // (PlatformAdapters); a Library has none and declares them (PlatformDeclarations). False for an Application whose startup root has no
+    // signature while nothing explains it: a broken contract without a subject.
     private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
     {
         entry = null;
+        this.platformText.GetStringBuilder().Clear();
         if (this.IsTestBuild)
         {
             this.cases.Clear();
@@ -214,10 +219,20 @@ internal sealed partial class ModuleCodegen
 
         if (startup.OutputKind == OutputKind.Library)
         {
+            this.PlatformDeclarations();
             return true;
         }
 
+        // On a row whose program supplies its platform, roots 1 to 6 are the witnesses' items in PlatformRows' order (OutputRoots, whose
+        // PlatformRoots checks their count); an Application there without a platform (Binding's startup check refuses it) is a broken
+        // contract without a subject.
+        if (this.row.ProgramPlatform && startup.Platform is null)
+        {
+            return false;
+        }
+
         entry = roots[0] < this.signatures.Length ? this.signatures[roots[0]] : null;
+        this.PlatformAdapters(roots[1..]);
         return entry is not null || this.Records.Count != 0;
     }
 }
