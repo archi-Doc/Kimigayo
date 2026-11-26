@@ -27,7 +27,8 @@ internal sealed partial class ModuleCodegen
     private const string ZeroSizedDefinition = "@" + ZeroSized + " = private unnamed_addr constant [1 x i8] zeroinitializer, align 16\n";
 
     private readonly List<FunctionAbi> cases = []; // A test build's test roots' signatures, in catalog order (Start), kept across Writes.
-    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer.
+    private readonly Action<TextWriter, int> caseCall; // The test entry's call of a case's root, through the one call writer (in the
+    // entry, whose signature, void () without parameters, is RuntimeAbi.Start's).
     private readonly StringWriter helperText = new(System.Globalization.CultureInfo.InvariantCulture); // The helpers of the latest Write.
     private Needs needs; // The module parts the definitions of the latest Write requested.
 
@@ -152,15 +153,13 @@ internal sealed partial class ModuleCodegen
     private string WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
     {
         var main = this.row.CRuntime is { } runtime && this.Requires(runtime);
-        if (main)
-        {
-            output.Write(RuntimeAbi.Main.GetDefinition(exported: true));
-        }
-        else
+        var routine = main ? RuntimeAbi.Main : layer.Start;
+        if (!main)
         {
             output.Write(layer.StartAssembly);
-            output.Write(layer.Start.GetDefinition(exported: layer.Start.Name == this.row.EntrySymbol));
         }
+
+        output.Write(routine.GetDefinition(exported: main || layer.Start.Name == this.row.EntrySymbol));
 
         output.Write("entry:\n");
         foreach (var call in layer.StartCalls)
@@ -172,7 +171,7 @@ internal sealed partial class ModuleCodegen
             output.Write("()\n");
         }
 
-        this.bodies.WriteEntryCall(output, startup);
+        _ = this.bodies.WriteEntryCall(output, routine, startup, default);
         if (main)
         {
             output.Write("  ret i32 0\n}\n");

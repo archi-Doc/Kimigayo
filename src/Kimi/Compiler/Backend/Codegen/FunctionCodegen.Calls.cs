@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Backend;
 // The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e, C9a, C9b; DECISIONS R5-M89,
 // R5-M92, R5-M93, R5-M102, R5-M114, R5-M121, R5-M124, R5-M128, R5-M130): a callee by its kind's row (a Value callee's in
 // FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once in its site's order, and the one call
-// writer, which the intrinsic rows, the glue items and the module's entry call too; each argument is FunctionCodegen.Arguments' (its
+// writer, which the intrinsic rows, the glue items and the module frame's root calls (WriteEntryCall: a caller and its arguments) call
+// too; each argument is FunctionCodegen.Arguments' (its
 // parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot, which only makes the callee
 // value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's signature (ModuleCodegen.Slot); a body target
 // that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or PropertyWitness target its shim's function
@@ -17,13 +18,19 @@ internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
 
-    /// <summary>Writes the module entry's call of its startup root, which takes no argument (IMPL 21.4.2), through the one call writer.</summary>
+    /// <summary>Writes a call of a root from a function the module frame writes (IMPL 21.4.2; DECISIONS R5-M89), the one member through
+    /// which the frame calls a root (the module entry's call of its startup root, a test entry's of a case's root; an interrupt thunk's
+    /// call of its handler is to reuse it): through the one call writer, with the calling function as the spelling context of the
+    /// arguments (its parameters, and its values numbered from 0, as a body's are).</summary>
     /// <param name="output">The module's writer.</param>
-    /// <param name="startup">The startup root's signature.</param>
-    internal void WriteEntryCall(TextWriter output, FunctionAbi startup)
+    /// <param name="caller">The signature of the function the frame is writing, whose parameters the arguments may name.</param>
+    /// <param name="routine">The root's signature.</param>
+    /// <param name="arguments">The call's arguments, one per parameter of the root's signature.</param>
+    /// <returns>The call's value, or null for a void result.</returns>
+    internal Value? WriteEntryCall(TextWriter output, FunctionAbi caller, FunctionAbi routine, ReadOnlySpan<Value> arguments)
     {
-        this.output = output;
-        _ = this.WriteCall(startup, default);
+        (this.output, this.abi, this.next) = (output, caller, 0);
+        return this.WriteCall(routine, arguments);
     }
 
     // A Call by its callee's row: a Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer

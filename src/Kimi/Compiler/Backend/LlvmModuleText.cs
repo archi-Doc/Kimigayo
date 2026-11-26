@@ -180,22 +180,29 @@ internal static partial class LlvmModuleText
             }
 
             output.Write(external.DllImport ? "declare dllimport " : "declare ");
-            output.Write(abi.Result);
-            output.Write(" @");
-            output.Write(abi.Name);
-            output.Write('(');
-            for (var i = 0; i < abi.Parameters.Length; i++)
-            {
-                if (i != 0)
-                {
-                    output.Write(", ");
-                }
+            WriteDeclaration(output, abi);
+        }
+    }
 
-                output.Write(abi.Parameters[i].Type);
+    // The one writer of a function's declaration after its `declare` and linkage words: its result, its name and its parameter Types,
+    // without names or attributes (an external's every call writes its own, AbiParameter.Attributes).
+    internal static void WriteDeclaration(TextWriter output, FunctionAbi abi)
+    {
+        output.Write(abi.Result);
+        output.Write(" @");
+        output.Write(abi.Name);
+        output.Write('(');
+        for (var i = 0; i < abi.Parameters.Length; i++)
+        {
+            if (i != 0)
+            {
+                output.Write(", ");
             }
 
-            output.Write(")\n");
+            output.Write(abi.Parameters[i].Type);
         }
+
+        output.Write(")\n");
     }
 
     // A runtime template (a row's runtime, the memory part, the erased writer, the formatting parts and the test runtime) expanded in one

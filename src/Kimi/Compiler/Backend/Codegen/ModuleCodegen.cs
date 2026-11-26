@@ -84,7 +84,7 @@ internal sealed partial class ModuleCodegen
         (this.Layout, this.Locations, this.types, this.imports, this.Tests, this.row) = (layout, locations, types, imports, tests, row);
         this.importConvention = ImportConvention(row);
         this.bodies = new(this, types);
-        this.caseCall = (output, index) => this.bodies.WriteEntryCall(output, this.cases[index]);
+        this.caseCall = (output, index) => _ = this.bodies.WriteEntryCall(output, RuntimeAbi.Start, this.cases[index], default);
     }
 
     /// <summary>Gets the layout of the compilation's Types.</summary>
