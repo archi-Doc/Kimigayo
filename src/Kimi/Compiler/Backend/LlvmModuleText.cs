@@ -131,15 +131,15 @@ internal static partial class LlvmModuleText
         [RuntimeAbi.TransferBytes],
         []);
 
-    // The rows' frames, each built on its first use (Frame), in TargetProfile.Rows' order.
-    private static readonly Lazy<ModuleFrame>[] Frames = Array.ConvertAll(TargetProfile.Rows, static row => new Lazy<ModuleFrame>(() => new(row)));
+    // The frames of the target table's rows, each built on its first use (Frame), in TargetProfile.AllRows' order.
+    private static readonly Lazy<ModuleFrame>[] Frames = Array.ConvertAll(TargetProfile.AllRows, static row => new Lazy<ModuleFrame>(() => new(row)));
 
     /// <summary>Gets a target row's module frame, built once, on the row's first use.</summary>
-    /// <param name="row">A row of TargetProfile.Rows; another is a broken contract.</param>
+    /// <param name="row">A row of the target table; another is a broken contract.</param>
     /// <returns>The row's frame.</returns>
     internal static ModuleFrame Frame(TargetProfile row)
     {
-        var index = Array.IndexOf(TargetProfile.Rows, row);
+        var index = Array.IndexOf(TargetProfile.AllRows, row);
         return index >= 0 ? Frames[index].Value : throw new ArgumentException("The row must be a row of the target table.", nameof(row));
     }
 

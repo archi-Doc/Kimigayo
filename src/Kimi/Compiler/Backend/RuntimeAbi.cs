@@ -196,14 +196,6 @@ internal static class RuntimeAbi
     // The routines every layer's runtime defines after the layer's own: the allocator's, then the common part's compiler-facing ones.
     private static readonly FunctionAbi[] CommonDefinitions = [HeapAllocate, HeapRelease, DestroyString, Abort, AbortMessage];
 
-    // linux-x64's libc-free start (IMPL 21.5.2): the module asm defining the entry, which clears the frame pointer, aligns the stack to
-    // 16 bytes and calls the start body, never returning; @llvm.used keeps the internal body, whose only caller the asm is.
-    private static readonly string LinuxStart =
-        "module asm \".text\"\nmodule asm \".globl " + TargetProfile.Linux.EntrySymbol + "\"\nmodule asm \".type " + TargetProfile.Linux.EntrySymbol +
-        ", @function\"\nmodule asm \"" + TargetProfile.Linux.EntrySymbol + ":\"\nmodule asm \"  xorl %ebp, %ebp\"\nmodule asm \"  andq $-16, %rsp\"\n" +
-        "module asm \"  callq " + StartBody.Name + "\"\nmodule asm \"  ud2\"\n@llvm.used = appending global [1 x ptr] [ptr @" + StartBody.Name +
-        "], section \"llvm.metadata\"\n";
-
     // The target-free constants a runtime template spells through a marker, by the marker's name (Expand), each as its text.
     private static readonly (string Name, string Text)[] Constants =
     [
@@ -220,7 +212,13 @@ internal static class RuntimeAbi
     [
         new("WindowsPlatform.ll.in", " (win32=", [.. PlatformRoutines, .. CommonDefinitions], Start, null, [], Testing.TestRuntime.Resource),
         new(
-            "LinuxPlatform.ll.in", " (errno=", [.. PlatformRoutines, PlatformStart, Clock, .. CommonDefinitions], StartBody, LinuxStart, [PlatformStart], null),
+            "LinuxPlatform.ll.in",
+            " (errno=",
+            [.. PlatformRoutines, PlatformStart, Clock, .. CommonDefinitions],
+            StartBody,
+            StartAssembly(TargetProfile.Linux.EntrySymbol),
+            [PlatformStart],
+            null),
     ];
 
     /// <summary>Gets the hidden diagnostic location parameter (SPEC 22.5.1); a property, so the field initializers above may read it.</summary>
@@ -259,6 +257,14 @@ internal static class RuntimeAbi
     // (none for a target-free template); false for any other marker.
     internal static bool Expand(ReadOnlySpan<char> marker, ReadOnlySpan<(string Name, string Text)> rowConstants, StringBuilder runtime)
         => Append(marker, Constants, runtime) || Append(marker, rowConstants, runtime);
+
+    // The libc-free start of a layer whose module asm defines the row's entry (IMPL 21.5.2), as a function of the entry symbol: the asm
+    // defining the entry, which clears the frame pointer, aligns the stack to 16 bytes and calls the start body, never returning;
+    // @llvm.used keeps the internal body, whose only caller the asm is.
+    private static string StartAssembly(string entry)
+        => "module asm \".text\"\nmodule asm \".globl " + entry + "\"\nmodule asm \".type " + entry + ", @function\"\nmodule asm \"" + entry +
+        ":\"\nmodule asm \"  xorl %ebp, %ebp\"\nmodule asm \"  andq $-16, %rsp\"\nmodule asm \"  callq " + StartBody.Name +
+        "\"\nmodule asm \"  ud2\"\n@llvm.used = appending global [1 x ptr] [ptr @" + StartBody.Name + "], section \"llvm.metadata\"\n";
 
     private static bool Append(ReadOnlySpan<char> marker, ReadOnlySpan<(string Name, string Text)> constants, StringBuilder runtime)
     {

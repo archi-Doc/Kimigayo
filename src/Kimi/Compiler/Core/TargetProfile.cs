@@ -191,8 +191,9 @@ internal sealed class TargetProfile
     internal static TargetProfile[] Staged { get; } = [None];
 
     /// <summary>Gets every row of the table, <see cref="Rows"/> then <see cref="Staged"/>, which <see cref="Find"/> and the reads over
-    /// every row read (<see cref="ReservedSupply"/>, <see cref="Provides"/>, <see cref="TryGetRuntimeDeclaration"/> and
-    /// <see cref="ReservedSymbols"/>' build); B9g deletes it with <see cref="Staged"/>.</summary>
+    /// every row read (<see cref="ReservedSupply"/>, <see cref="Provides"/>, <see cref="TryGetRuntimeDeclaration"/>,
+    /// <see cref="ReservedSymbols"/>' build and the Backend's module frames, LlvmModuleText.Frame); B9g deletes it with
+    /// <see cref="Staged"/>.</summary>
     [Transitional("B9g", Reason = "Every row while Staged holds the x86_64-unknown-none row (the Tatara plan's B9b): B9g appends None to Rows, so AllRows equals Rows, and its readers read Rows; B9g deletes it.")]
     internal static TargetProfile[] AllRows { get; } = [.. Rows, .. Staged];
 
