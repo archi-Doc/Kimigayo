@@ -35,6 +35,25 @@ public sealed partial class Binding
         return false;
     }
 
+    // Whether a walk's query of `table` meets a part for the first time in a state, one bit: a walk whose effect at a part depends on a
+    // small state as well keeps the visits of each state apart. A leaf is cheaper to answer again than to record.
+    private static bool FirstVisit(TypeMemo<BoundType, byte> table, BoundType part, uint query, byte state)
+    {
+        if (part.Components.Count == 0)
+        {
+            return true;
+        }
+
+        table.TryGet(part, query, out var met);
+        if ((met & state) != 0)
+        {
+            return false;
+        }
+
+        table.Set(part, query, (byte)(met | state));
+        return true;
+    }
+
     private bool InvalidDeclarationContext(Koto declaration)
         => this.InvalidDeclarationContextCause(declaration) is not null;
 
@@ -286,25 +305,9 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether an existence walk's query meets a part for the first time; a leaf is cheaper to answer again than to record.
-    private bool FirstVisit(BoundType part, uint query) => this.FirstVisit(part, query, 1);
+    // Whether an existence walk's query of visitedParts meets a part for the first time.
+    private bool FirstVisit(BoundType part, uint query) => FirstVisit(this.visitedParts, part, query, 1);
 
-    // Whether a walk's query meets a part for the first time in a state, one bit: a walk whose effect at a part depends on a small state
-    // as well keeps the visits of each state apart (visitedParts).
-    private bool FirstVisit(BoundType part, uint query, byte state)
-    {
-        if (part.Components.Count == 0)
-        {
-            return true;
-        }
-
-        this.visitedParts.TryGet(part, query, out var met);
-        if ((met & state) != 0)
-        {
-            return false;
-        }
-
-        this.visitedParts.Set(part, query, (byte)(met | state));
-        return true;
-    }
+    // The same in a state, one bit of visitedParts.
+    private bool FirstVisit(BoundType part, uint query, byte state) => FirstVisit(this.visitedParts, part, query, state);
 }
