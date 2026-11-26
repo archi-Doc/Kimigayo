@@ -112,6 +112,14 @@ public class ArchitectureRulesTest
     private const string DeletedByR8InSources =
         @"\bBodylessWitnes[s]\b|\bLegacyRo[w]\b|\bBuiltinForma[t]\b|\bFormattin[g]Rows\b|\bForma[t](?:Buffer|Finish|Segment)\b";
 
+    // R7-O1 c (RP6; DECISIONS R7-M51, R7-M66, R7-M95, R7-M120): the body judge's members R7-O1 deleted, its pending list and its
+    // Origin relation slot, and the two names c replaced (FormCallRelation, ConstrainsRegions); no source or test names one, comments
+    // included. A letter in brackets keeps the pattern from matching its source.
+    private const string DeletedByO1 =
+        @"\b(?:RecordOriginFitFailur[e]|OriginFitSearc[h]|OriginFitMod[e]|OriginRelationFail[s]|RecordOriginChain[s]|IsTwinRecor[d]|" +
+        @"pendingRelation[s]|(?:Add|Leave|Judge|Route)PendingRelatio[n]s?|HasCallRelatio[n]|JudgeCallPositio[n]|" +
+        @"RecordFurtherOriginRecor[d]|originRelation[s]|BodyChai[n])\b";
+
     // PLAN G609 (InterfaceEnumerationsStayAtTheirSites): the compiler's cold interface enumerations, by top-level type and method.
     private const string InterfaceEnumerationSites = "DeclarationContainerKoto.TryParsePropertyOrFunction=1;DeclarationContainerKoto.WriteAsBlockItem=2;" +
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
@@ -501,6 +509,9 @@ public class ArchitectureRulesTest
     [InlineData("Source references to R8's deleted components", "src", "*.cs", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
     [InlineData("Project references to R8's deleted components", "src/Kimi", "*.csproj", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
     [InlineData("Test references to R8's deleted components", "tests", "*.cs", DeletedByR8, 0)]
+    // R7-O1 c (RP6): the same for R7-O1's deleted body judge and the names c replaced.
+    [InlineData("Compiler references to R7-O1's deleted body judge", "src/Kimi", "*.cs", DeletedByO1, 0)]
+    [InlineData("Test references to R7-O1's deleted body judge", "tests", "*.cs", DeletedByO1, 0)]
     // R7-I2 (RP6): a slot frame is private to InferCtxt (the type system admits no unlogged write); SlotSolution's trial copies of
     // its frame (PerCallCallables' stand-ins) fall to 0 with PLAN G988 (R7-I2 c keeps the copy: in place it moves constructors).
     [InlineData("SlotSolution's trial copies of a frame", "src/Kimi/Compiler/Binding", "Binding.ArgumentKinds*.cs", @"\btypeScratch\.Rent\(", 1)]
@@ -700,6 +711,14 @@ public class ArchitectureRulesTest
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
     // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
     [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
+    // R7-O1 c (RP6; DECISIONS R7-M66, R7-M120): Binding judges no body relation, so the relation judge is read only by OJ1, the
+    // declaration frame (JudgeDeclarationPosition's two directions, JudgeOriginObligation's two), OJ3, Owned's static check
+    // (RefutedStatic), and OJ4, a Callable comparison (the walk's OriginFailure, ComparedRegionLimit, LeavesBodyRows), besides its
+    // declaration and its meet recursion; and Binding constructs an Origin relation record only at V5 (the declaration judge's two), V6
+    // (an Unstated end; its other direction, in the same conditional, is target-typed) and V7 (a holder place). A further site fails here
+    // until its row is reviewed.
+    [InlineData("The relation judge's call sites (OJ1, OJ3, OJ4)", "src/Kimi/Compiler/Binding", @"\bJudgeOriginRelation\(", "Binding.OriginClauses.cs=2;Binding.OriginProof.cs=6;Binding.OwnedConversions.cs=1;Binding.TypeRelations.Walk.cs=1")]
+    [InlineData("Binding's Origin relation records (V5, V6, V7)", "src/Kimi/Compiler", @"\bnew OriginRelationFact\(", "Binding/Binding.Obligations.cs=1;Binding/Binding.OriginClauses.cs=2;Binding/Binding.RawOrigins.Holder.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
