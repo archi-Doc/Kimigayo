@@ -237,7 +237,7 @@ public sealed partial class Binding
     // qualifier forms, or a nested declaration. Null when the qualifier's formation failed (its record).
     private SideSelection? TypeSideMember(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? expected)
     {
-        if (qualifier is null || qualifier.Declaration is ContractKoto || !this.scopes.ContainsKey(qualifier.Declaration))
+        if (qualifier is null || !this.FormsOwnType(qualifier))
         {
             return this.QualifierSelection(member, qualifier, name, scope, null);
         }
@@ -284,7 +284,7 @@ public sealed partial class Binding
     {
         type = type is null ? null : this.ClassForm(type, scope, out _);
         var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Named.Type;
-        var requirement = requirementType is null ? null : this.RequirementMember(member, scope, requirementType, true);
+        var requirement = requirementType is null ? null : this.RequirementMember(member, scope, requirementType);
         if (type is not null && (qualifier is null || qualifier.Type is not null || qualifier.Declaration is GroupKoto))
         {
             var selection = this.LookupMember(type, name, scope, LookupRole.Value);
@@ -328,8 +328,14 @@ public sealed partial class Binding
 
             if (receiverType is not null)
             {
-                // A nominal member takes priority over a requirement member of the same receiver.
-                valueMember = this.RequirementMember(member, scope, receiverType, false);
+                // A nominal member takes priority over a requirement member of the same receiver. A requirement Property its group (just
+                // gathered) reaches through several identities is not implemented: the path takes none (MissingFailure's Unsupported_Kd).
+                valueMember = this.RequirementMember(member, scope, receiverType);
+                if (valueMember is { Kind: BindingSymbolKind.Property } && this.requirementGroups.TryGetValue(member, out var group) && group.Properties.Count > 1)
+                {
+                    valueMember = null;
+                }
+
                 valueSelection = this.LookupMember(receiverType, name, scope, LookupRole.Value, receiverType);
                 valueMember = valueSelection.Member ?? valueMember;
             }
