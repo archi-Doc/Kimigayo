@@ -4,7 +4,8 @@
 // in B (FixedIn), a region B judges through its sources (RegionIn), an enclosing body's region B reads as its value (CarriedRegion, from
 // the capture formation's fact, in turn through the regions' values), an Origin B judges through the sources the region graph records
 // (SourcesIn) or may bound (BoundableIn), a finite Origin local to B (BodyLocalIn), a relation that takes part in region inference
-// (ConstrainsRegions, RegionChain), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom). They share one rule, the
+// (ConstrainsRegions, RegionChain), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom); and, in no body, a
+// called Type's relation over an Origin a body formed (BodyRelation), from the formation fact alone. The others share one rule, the
 // view's row 6 (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an
 // enclosing body formed, are fixed; in a Closure k's body and the bodies nested in it, that row also fixes k's receiver Origin ρ (SPEC
 // 15.6.5: a receiver Origin), and until k is classified ρ and k's environment atoms are pending, neither fixed nor finite (DECISIONS
@@ -125,6 +126,14 @@ public sealed partial class Binding
     internal static bool ConstrainsRegions(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body)
         => !FixedIn(longer, body) || !FixedIn(shorter, body) || RegionChain(longer, shorter, body);
 
+    // SPEC 15.6.4 step 3, 15.6.5 (DECISIONS R7-M66, BU-104; PLAN G990): whether a called Type's declared relation is over an Origin an
+    // executable body formed: an end is an atom with a body (BoundOrigin.Body), a call's region (IsCallRegion), or a meet holding one.
+    // Such a relation is a body relation, the call's row (RequireResultPremises, through FormCallRelation and FormBodyRelation) that A5
+    // judges; any other is between Origins no body formed, the formation proof's from the premises (CheckTypeOriginRelations). It needs
+    // no body, so the row gate while binding and the proof's skip after it read one class; a selected call's or a Case construction's
+    // result Type, which the proof visits, is walked by that call's step 3 (RequireResultPremises), so over it the two are exact complements.
+    internal static bool BodyRelation(BoundOrigin longer, BoundOrigin shorter) => BodyFormed(longer) || BodyFormed(shorter);
+
     // SPEC 15.3.6, 15.6.5: a relation in `body` with a local region at either end, an enclosing body's, fixed there, included: the region's
     // value is known only once every body is bound, so A5 alone reads it (UniversalRelations: a region `body` carries equals its value)
     // and Binding leaves a row; the judge answers Unknown for it (JudgeOriginAtoms).
@@ -194,6 +203,21 @@ public sealed partial class Binding
         {
             var atom = value.Kind == OriginKind.Intersection ? value.Operands[i] : value;
             if (IsLocalRegion(atom) && !SlotRegion(atom))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // BodyRelation's end: an atom with a body or a call's region, or a meet with one.
+    private static bool BodyFormed(BoundOrigin origin)
+    {
+        for (var i = 0; i < (origin.Kind == OriginKind.Intersection ? origin.Operands.Count : 1); i++)
+        {
+            var atom = origin.Kind == OriginKind.Intersection ? origin.Operands[i] : origin;
+            if (atom.Body.IsBody || IsCallRegion(atom))
             {
                 return true;
             }

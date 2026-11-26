@@ -43,7 +43,7 @@ public sealed partial class Binding
 
     // Whose well-formedness premises an enumeration reads: an input's, which no other premise of the definition replaces (its Types' own
     // clauses included); a named function's result, which its definition may prove without the premise; or a selected call's result,
-    // those premises and its Types' own clauses, which are the call's where they are over its region (RequireResultClause).
+    // those premises and its Types' own clauses, the call's rows where they are over an Origin a body formed (RequireResultPremises).
     private enum WellFormedSubject : byte
     {
         Input,

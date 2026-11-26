@@ -63,6 +63,27 @@ public class AssociatedBindingSetTest
         Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))));
     }
 
+    // SPEC 15.6.4 step 3, 15.6.5 (PLAN G990 D1): over Borrows, the call's instantiated domain is the call's row, which A5 judges. Two
+    // Borrows' finite Origins prove `first outlives second` (valid, c4 and c4d). A Borrow's region tied through the domain to the fixed
+    // `p` is Refuted, in both spellings and through a local that holds the result (invalid, c4p): A5's record at the call, naming the
+    // clause, and the Loan conflict at `let v` that SPEC 15.6.5 derives from it (DECISIONS R7-M66 F-H1-1). Each was a fact-less
+    // UnprovenConstraint_Kd at the call, judged from the premises alone.
+    [Theory]
+    [InlineData(false, "func g() -> i32\n    let v: i32 = 1\n    let w: i32 = 2\n    let r = f(v@ref, w@ref)\n    return 0\n", null)]
+    [InlineData(true, "func g() -> i32\n    let v: i32 = 1\n    let w: i32 = 2\n    let r = f(v@ref, w@ref)\n    return 0\n", null)]
+    [InlineData(false, "func g(p: ref/i32) -> ref/i32 during p\n    let v: i32 = 1\n    let r = f(v@ref, p)\n    return r.right\n", "f(v@ref, p)")]
+    [InlineData(true, "func g(p: ref/i32) -> ref/i32 during p\n    let v: i32 = 1\n    let r = f(v@ref, p)\n    return r.right\n", "f(v@ref, p)")]
+    [InlineData(false, "func g(p: ref/i32) -> ref/i32 during p\n    let v: i32 = 1\n    let r = f(v@ref, p)\n    let s = r@move\n    return s.right\n", "f(v@ref, p)")]
+    public void ACallOverBorrowsProvesTheDomainByItsRow(bool direct, string caller, string? at)
+    {
+        var source = Related + Family + (direct ? Direct : Applied) + "    $abort(\"unused\")\n" + caller + Main;
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        (string, string)[] expected = at is null ? [] : [(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let v: i32 = 1"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at)];
+        Assert.Equal(expected, records.Select(x => (x.Code, Text(source, x.Span))));
+        var clause = source.IndexOf("origin first outlives second", StringComparison.Ordinal);
+        Assert.All(records.Where(static x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)), x => Assert.Contains(clause, x.Related!.Select(static y => y.Span!.Value.Start)));
+    }
+
     // The same reading at the signature's other positions (SPEC 8.2.3, 15.6.1): a method's, a Contract requirement's and a nested result,
     // and an input; an application in a body under the direct result's premise, and one under `-> i32`, where nothing gives the domain.
     [Theory]

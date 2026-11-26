@@ -218,37 +218,31 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7: the selected call's obligations for its substituted result; SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): with them
-    // the declared relations over the call's region of the result's Types, down to its slots, as rows of the call (RequireResultClause),
-    // which A5 judges with the call's other rows (FormBodyRelation).
-    private void RequireResultPremises(FunctionKoto function, BoundType result, Koto use)
+    // SPEC 15.3.7, 15.3.3, 15.6.4 step 3 (J2, PLAN G936 and G990, DECISIONS BU-104, R4-M164 U4): a selected call's step 3 for its result,
+    // as RequireInputPremises is for its inputs: `pattern` is the result its use proves (AssumedResult; a construction's, a constructor's
+    // or an Enum Case's, its owner's own Type, whose components are slots, so its top clauses alone) and `result` its instantiation. Each
+    // stored premise is an obligation (RequireResultOutlives); each declared clause of the result's Types, down to its slots, over an
+    // Origin a body formed (BodyRelation) is a `declared` relation of the call, its row, which A5 judges with the call's other rows
+    // (FormCallRelation, FormBodyRelation); every other clause stays the formation proof's (CheckTypeOriginRelations). With the input
+    // Types' clauses this is the one judge of such a relation: a Type derived from an input, a slot's solution or the result holds the
+    // call's Origins only through them, and each call walks its result once, so a relation has one row per call.
+    private void RequireResultPremises(BoundType? pattern, BoundType result, FunctionKoto? named, Koto use)
     {
-        if (CarriesResultPremises(function))
+        if (pattern is not { StoresOrigin: true })
         {
-            foreach (var premise in new WellFormedPremises(this, function.BoundSymbol!.Type!, result, null, WellFormedSubject.CallResult, function, use, default))
-            {
-                if (premise.Clause is { } clause)
-                {
-                    this.RequireResultClause(use, premise.Longer, premise.Outer, premise.Equality, clause);
-                }
-                else
-                {
-                    this.RequireResultOutlives(premise.Type, premise.Value, premise.Substituted, use, premise.Condition);
-                }
-            }
+            return; // No result to prove, or one that stores no Origin, which the walk enters with nothing (EnterPart).
         }
-    }
 
-    // SPEC 15.3.3, 15.6.4 step 3: a clause of a selected call's result Type (a constructor's construction Type included,
-    // JudgeCallClauses) is a `declared` relation at the call when it is over the call's region (CallRowRelation: J2, PLAN G936,
-    // DECISIONS BU-104); every other one stays the formation proof's (CheckTypeOriginRelations). With an input Type's clauses
-    // (RequireInputPremises) this is the one judge of such a relation: a Type derived from an input, a slot's solution or the result holds
-    // the call's region only through them.
-    private void RequireResultClause(Koto use, BoundOrigin longer, BoundOrigin shorter, bool equality, Koto clause)
-    {
-        if (CallRowRelation(longer, shorter))
+        foreach (var premise in new WellFormedPremises(this, pattern, result, null, WellFormedSubject.CallResult, named, use, default))
         {
-            this.FormCallRelation(use, longer, shorter, equality, null, clause);
+            if (premise.Clause is null)
+            {
+                this.RequireResultOutlives(premise.Type, premise.Value, premise.Substituted, use, premise.Condition);
+            }
+            else if (BodyRelation(premise.Longer, premise.Outer))
+            {
+                this.FormCallRelation(use, premise.Longer, premise.Outer, premise.Equality, null, premise.Clause);
+            }
         }
     }
 
@@ -614,7 +608,7 @@ public sealed partial class Binding
             // J2 (SPEC 15.3.6, 15.2.2; PLAN G936; R7-O1 b1, the Middle's ruling of 2026-11-19): the direct call's rule, one member for both
             // paths (SlotSolution.OpenWaited): an Origin parameter that a waiting part's position and an evidence position both name is a
             // variable the waiting part's check bounds too, solved as `(E and region)` with the call's region, so the waiting part is completed
-            // over the region and its Type's clauses are the call's rows (CallRowRelation), never a second judgment of its formation. Only a
+            // over the region and its Type's clauses are the call's rows (BodyRelation), never a second judgment of its formation. Only a
             // function binds Origin parameters (a Function Type's Origins are per-call inputs, SPEC 15.3.4), and a value call's Type slots
             // are fixed at its callee's reference, so only Origin parameters open.
             var function = binder as FunctionKoto;

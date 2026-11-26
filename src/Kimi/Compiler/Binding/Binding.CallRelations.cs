@@ -196,21 +196,6 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): a constructor proves nothing of its owner Type's clauses, which are premises
-        // inside the Type and obligations of each use, and it carries no result premises (CarriesResultPremises). Its result is the
-        // construction Type, whose declared relations go to the result's clause judge (RequireResultClause): a row of the call over a
-        // region of the construction, the formation proof's otherwise.
-        if (selected.IsConstructor && declaringType is { Symbol: { } owner } &&
-            this.originDeclarations.TryGetValue(owner.Declaration, out var ownerDeclaration) && ownerDeclaration.Completed)
-        {
-            foreach (var relation in ownerDeclaration.Relations)
-            {
-                var longer = this.SubstituteStoredOrigin(relation.Longer, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-                var shorter = this.SubstituteStoredOrigin(relation.Shorter, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-                this.RequireResultClause(call, longer, shorter, relation.Equality, relation.Syntax);
-            }
-        }
-
         if (this.StatedWithin(selected, operations, out var storage) is { } within && selected.BoundSymbol!.Type?.Origin is { } result)
         {
             // SPEC 5.6, 5.7 (D14): the result of an operation whose catalog row names Within lies within the Origin its argument states.

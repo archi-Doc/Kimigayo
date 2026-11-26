@@ -175,32 +175,6 @@ public sealed partial class Binding
         => SlotVariableIndex(origin) is var index && (uint)index < (uint)slotValues.Length ? index
             : throw new InvalidOperationException("A slot variable is read only within its solve's span of SlotVariableCount values (InternalInvariant).");
 
-    // DECISIONS BU-104 (twelfth amendment), SPEC 15.6.1: whether a declared Origin relation is a row of a call: an end is a call's
-    // region, or a meet holding one. "Every relation of the call over [its region] is a body row: Binding neither judges nor drops
-    // it", so the formation walk leaves it (CheckTypeOriginRelations) to the row the call's step 3 forms for the Type the call
-    // instantiates: an input's (RequireInputPremises, JudgePositionRows) or its result's, a constructor's construction Type included
-    // (RequireResultClause, the other caller: RequireResultPremises, JudgeCallClauses). A Type derived from these holds the call's region
-    // only through them and rests on their rows. Every other declared relation keeps the formation proof.
-    private static bool CallRowRelation(BoundOrigin longer, BoundOrigin shorter) => HoldsCallRegion(longer) || HoldsCallRegion(shorter);
-
-    private static bool HoldsCallRegion(BoundOrigin origin)
-    {
-        if (IsCallRegion(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (HoldsCallRegion(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // Whether `origin` is `part` or a meet holding it.
     private static bool HoldsOrigin(BoundOrigin origin, BoundOrigin part)
     {

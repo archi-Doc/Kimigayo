@@ -483,7 +483,16 @@ public sealed partial class Binding
                 return this.Fail(call, BindingFailure.MissingType, true); // Fail, not Record: the method's Transitional (R7-E5).
             }
 
-            this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
+            // SPEC 15.3.7, 15.6.4 step 3: the callee's result premises; a constructor's result is its construction Type, whose pattern is
+            // its owner's own Type (DECISIONS BU-104's BU-223 amendment).
+            var resultPattern = AssumedResult(CalleeDefinition(selected));
+            if (selected.IsConstructor)
+            {
+                result = selectedType!;
+                resultPattern = this.SelfType(result.Symbol!);
+            }
+
+            this.RequireResultPremises(resultPattern, result, selected, call);
             callee.BoundSymbol = winner;
             callee.BindingState = BindingState.Resolved;
             if (callee is MemberAccessKoto selectedMember)
@@ -504,11 +513,6 @@ public sealed partial class Binding
             }
 
             call.BoundSymbol = winner;
-            if (selected.IsConstructor)
-            {
-                result = selectedType!;
-            }
-
             if (this.ExecutedTarget(winner, self) is not { } executed)
             {
                 return this.Fail(call, BindingFailure.Internal); // SPEC 22.1: the catalog links every linked constructor.

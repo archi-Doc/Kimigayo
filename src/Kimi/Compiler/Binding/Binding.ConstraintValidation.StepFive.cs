@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 //   frame, the Types' in the use's frame; PLAN G651 a2, B4). An instantiated input is not one of them (SPEC 15.6.4 step 3; PLAN G464):
 //   its Origin part is RequireInputPremises', its Contract part follows from this conjunction and the judgment of each Type where it
 //   is written (R7-V1c, SPEC 8.6.3). Step 5's slot formation is no second judge of a slot-typed input: it is the binding's formation
-//   (10.1 step 5), whose Origin part skips call-region relations (CallRowRelation), and the positions a fit replaces are
+//   (10.1 step 5), whose Origin part skips relations over an Origin a body formed (BodyRelation), and the positions a fit replaces are
 //   RequireInputPremises'.
 // - Inputs: the trial's solution (SlotSolution.Prove) with the Contract reference its candidate is tried under (the
 //   activeRequirementContract CallSelection sets), or the selected call's plan (CallPlan's columns, RequirementContract among them);

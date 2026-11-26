@@ -19,7 +19,8 @@ namespace Kimi.Compiler;
 //   comparison's rows in its query's row sink (comparisonRows).
 // - Invariants: a proof request leaves originStateVersion unchanged (PLAN G74's throw); between fixed Origins the judge reads premises
 //   alone, so a relation they do not prove is Unknown.
-// - Prohibitions: no body relation is judged here (FormBodyRelation forms its row and A5 judges it); no record (its callers record);
+// - Prohibitions: no body relation is judged here (FormBodyRelation forms its row and A5 judges it; a Type's clause over an Origin a body
+//   formed is the row of the call that instantiated the Type, BodyRelation); no record (its callers record);
 //   no message text.
 public sealed partial class Binding
 {
@@ -579,8 +580,8 @@ public sealed partial class Binding
 
     // SPEC 15.3.3, 15.6.1: the declared Origin relations of an instantiated Type, proven from the premises at `at` (a scope's owner for
     // a Type formed in a scope, the occurrence for an associated formation, whose walk reaches a header's getter, HeaderGetter); Unknown
-    // when one is not. A relation over a call's region is not this proof's: it is a row of that call (CallRowRelation), which premises
-    // can never decide and which never decides applicability.
+    // when one is not. A relation over an Origin a body formed is not this proof's: it is a row of the call that instantiated the Type
+    // (BodyRelation; DECISIONS R7-M66, PLAN G990), which A5 judges and which never decides applicability.
     private ConstraintProof CheckTypeOriginRelations(BoundType type, Koto at)
     {
         if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || !declaration.Completed)
@@ -592,7 +593,7 @@ public sealed partial class Binding
         {
             var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
             var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-            if (!CallRowRelation(a, b) &&
+            if (!BodyRelation(a, b) &&
                 (!this.ProvesOriginOutlives(a, b, at) || (relation.Equality && !this.ProvesOriginOutlives(b, a, at))))
             {
                 return ConstraintProof.Unknown;

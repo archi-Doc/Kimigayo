@@ -310,17 +310,20 @@ public sealed partial class OriginRowsTest
         Assert.Equal(OriginAtomKind.Fixed, Atom(c, aliases[1].Body, aliases[1].Shorter!, aliases[1].Use).Kind);
     }
 
-    // 2a0-D D5 (T1): no row comes from a Constraint proof: a Type's own clause forms rows only at a local annotation of that Type, never at
-    // a use its Constraint check proves (CheckTypeOriginRelations). The clause is a body chain here (w.b is a local Borrow's Origin), a row
-    // A5 judges; a fixed-fixed one the premises entail is Binding's proof and no row (the next fact; 2a0-D D1, PLAN G962).
+    // 2a0-D D5 (T1): no row comes from a Constraint proof: a Type's own clause forms rows only where the Type is formed, at a local
+    // annotation of that Type and at the call that instantiates it, never at a use its Constraint check proves (CheckTypeOriginRelations).
+    // The clause is a body chain here (v@ref is a local Borrow's Origin), a row A5 judges: the annotation's, and the construction's, since
+    // a call's result clause over an Origin a body formed is the call's row (SPEC 15.6.4 step 3; PLAN G990 D1, RequireResultPremises); a
+    // fixed-fixed one the premises entail is Binding's proof and no row (the next fact; 2a0-D D1, PLAN G962).
     [Fact]
-    public void ATypesClauseFormsRowsOnlyAtLocalAnnotations()
+    public void ATypesClauseFormsRowsOnlyWhereTheTypeIsFormed()
     {
         var c = MirBuildTest.Compile(ClauseS + "func f(p: ref/i32) -> i32\n    let v: i32 = 1\n    let s: S{w} = S.init(p, v@ref)\n" +
             "        origin w.a == p\n    return keep(s@move)\n" + Main);
         var clauses = Rows(c, false).Where(static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto)).ToList();
-        Assert.NotEmpty(clauses);
-        Assert.All(clauses, x => Assert.True(Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)), $"{x.Use}"));
+        Assert.Contains(clauses, static x => Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)));
+        Assert.Contains(clauses, static x => $"{x.Use}" == "S.init(p, v@ref)");
+        Assert.All(clauses, x => Assert.True($"{x.Use}" == "S.init(p, v@ref)" || Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)), $"{x.Use}"));
     }
 
     // 2a0-D D1 (PLAN G962): a Type's clause at a local annotation whose substituted relation is fixed-fixed and entailed by the premises

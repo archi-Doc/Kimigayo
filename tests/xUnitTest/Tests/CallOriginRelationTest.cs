@@ -1049,6 +1049,22 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal(records, string.Join("|", check.Diagnostics.Select(x => x.Code + "@" + At(source, x.Span))));
     }
 
+    // SPEC 15.6.4 step 3, 15.6.5 (PLAN G990 D1): a result Type's clause over the call's regions is the call's row. In rt3, `p'` holds a
+    // Borrow's finite Origin and `q'` is `cell`'s region: no chain joins the Borrow to Q, so `p' outlives q'` is Proven (valid). In rt2,
+    // `x = 2` writes x while `cell` retains its Loan through `w`: that independent record was hidden behind a fact-less
+    // UnprovenConstraint_Kd at the call (invalid).
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("    x = 2\n", "ComparisonLoanConflict_Kd@x = 2")]
+    public void AResultClauseOverTheCallsRegionsIsItsRow(string write, string records)
+    {
+        var source = "struct S {a, b}\n    origin a outlives b\n    public let x: ref/i32 during a\n    public let y: ref/i32 during b\n" +
+            "    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.x = x\n        self.y = y\n\n" +
+            "func k(p: ref/i32, w: uniq/(ref/i32 during q), q: ref/i32) -> S{r}\n    origin r.a == p\n    origin r.b == q\n    w@follow = p\n    return $abort(\"no\")\n" +
+            "func m(q: ref/i32) -> i32\n    var cell = q\n    var x: i32 = 1\n    let s = k(x@ref, cell@uniq, q)\n" + write + "    let y = cell\n    return 0\n" + Main;
+        Assert.Equal(records, string.Join("|", DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + "@" + At(source, x.Span))));
+    }
+
     // The source from a span's start to the end of its line, at most 20 characters.
     private static string At(string source, SourceSpan? span)
     {

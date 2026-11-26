@@ -649,7 +649,7 @@ public sealed partial class Binding
 
             if (conditioned is not null)
             {
-                this.RequireResultPremises(conditioned, result, call); // SPEC 15.3.7: the callee's result premises.
+                this.RequireResultPremises(AssumedResult(CalleeDefinition(conditioned)), result, conditioned, call); // SPEC 15.3.7: the callee's result premises.
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));

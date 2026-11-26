@@ -226,16 +226,24 @@ public partial class CallOriginRelationTest
     [InlineData("struct T3 {a}\n    origin a outlives static\n    public let o: Option<ref/i32 during a>\n    public init(o: Option<ref/i32 during a>) => self.o = o\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    let t = T3.init(o: .Some(p))\n    return 0\n", "UnprovenOriginRelation_Kd@T3.init(o: .Some(p))")]
     // rc3i
     [InlineData("struct T4 {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public let o: Option<ref/i32 during a>\n    public init(x: ref/i32 during a, o: Option<ref/i32 during a>)\n        self.x = x\n        self.o = o\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let t = T4.init(x: st(), o: .Some(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@v@ref))")] // One record (R7-O1 H: the twin went with Binding's).
+    // PLAN G990 D1: the owner Type's clause over an Origin a body formed is the construction's row, A5's (SPEC 15.6.4 step 3, 15.6.5;
+    // RequireResultPremises): a Borrow to `static` is Refuted (rf1, ec1i), a `var` region over `p` to `static` is unproven (rf2). Nested in
+    // `Option.Some` or `id`, the record is the inner construction's alone: the outer formation judged its failed result Type again (rf8,
+    // ec1n; DECISIONS Q13), and a slot's solution forms no outer row (idn, DECISIONS BU-99). Each was a fact-less UnprovenConstraint_Kd.
     // rf1
-    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k() -> i32\n    let v: i32 = 5\n    let t = T.init(x: v@ref)\n    return 0\n", "UnprovenConstraint_Kd@T.init(x: v@ref)")]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k() -> i32\n    let v: i32 = 5\n    let t = T.init(x: v@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd@T.init(x: v@ref)")]
     // rf2
-    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    var a = p\n    let t = T.init(x: a)\n    return 0\n", "UnprovenConstraint_Kd@T.init(x: a)")]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    var a = p\n    let t = T.init(x: a)\n    return 0\n", "UnprovenOriginRelation_Kd@T.init(x: a)")]
     // rf3
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    let t = T.init(x: p)\n    return 0\n", "UnprovenConstraint_Kd@T.init(x: p)")]
     // rf8
-    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    var a = p\n    let o = Option.Some(T.init(x: a))\n    return 0\n", "UnprovenConstraint_Kd@Option.Some(T.init(x|UnprovenConstraint_Kd@T.init(x: a))")]
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    var a = p\n    let o = Option.Some(T.init(x: a))\n    return 0\n", "UnprovenOriginRelation_Kd@T.init(x: a))")]
     // ec1i
-    [InlineData("enum E2 {a}\n    origin a outlives static\n    One(ref/i32 during a)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = E2.One(v@ref)\n    return 0\n", "UnprovenConstraint_Kd@E2.One(v@ref)")]
+    [InlineData("enum E2 {a}\n    origin a outlives static\n    One(ref/i32 during a)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = E2.One(v@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd@E2.One(v@ref)")]
+    // ec1n
+    [InlineData("enum E2 {a}\n    origin a outlives static\n    One(ref/i32 during a)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = Option.Some(E2.One(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@E2.One(v@ref))")]
+    // idn
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc id<U>(x: U) -> U => x@move\nfunc k() -> i32\n    let v: i32 = 5\n    let t = id(T.init(x: v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@T.init(x: v@ref))")]
     // ec2i
     [InlineData("enum E3 {a}\n    origin a outlives static\n    Two(Option<ref/i32 during a>)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = E3.Two(.Some(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@v@ref))")] // One record (R7-O1 H: the twin went with Binding's).
     // The solve of the callee's other variables (D1's Origin half): a clause that bounds another variable through the waited one (reading RF7), an invariant end, an equality, an associate.

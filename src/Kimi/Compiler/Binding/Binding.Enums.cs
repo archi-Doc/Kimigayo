@@ -604,6 +604,14 @@ public sealed partial class Binding
                 }
             }
 
+            // Its result's side (DECISIONS R4-M164 U4: a construction is a call; PLAN G990): the Enum's clauses over an Origin a body formed
+            // are the construction's rows where it forms its Type, the `forms` the plan publishes and its formation proof reads (FormsType);
+            // a carried Type is its own site's.
+            if (forms)
+            {
+                this.RequireResultPremises(this.SelfType(enumeration.Owner), result, null, use);
+            }
+
             // A construction that holds its own record (a payload's Type mismatch or acquisition) has no second one: R7-E1's one record
             // per node, whose removal removes this gate (PLAN G418).
             if (!completed && use.BindingFailure != BindingFailure.None)
