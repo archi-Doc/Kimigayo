@@ -1093,7 +1093,7 @@ internal enum ReferenceSlotFailure : byte
 // comparison, never a call-time Origin of the implementation.
 internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
 
-// SPEC 23.1.2: a record of a node beyond its first, of either Origin kind: a failed chain of an Origin relation (Relation) or a failed
+// SPEC 23.1.2: an Origin record of a node, its first included, of either kind: a failed chain of an Origin relation (Relation) or a failed
 // condition of a whole-contract comparison (Contract); exactly one is set, and the diagnostics adapter publishes it by its kind.
 internal readonly record struct OriginRecord(OriginRelationFact? Relation, OriginContractFact? Contract);
 

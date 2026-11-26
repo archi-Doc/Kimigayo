@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // body, which A5 judges (FormBodyRelation; R7-O1: Binding judges no call position and records none), each row with the input that fixed
 // its equality (FixedBy); and the bounds its fits give omitted Origins (CollectFitBounds). Its input fits and its substituted clauses that
 // relate an input raw layer's Origin to another form the call's raw fits (rawFits; G147 ruling 75). Files: this one; .Records.cs (the
-// records of a node beyond the first).
+// Origin records).
 public sealed partial class Binding
 {
     // Whether the Origins and Origin arguments of a Type's parts name `origin`, a meet's operand included (a meet's operands are atoms,

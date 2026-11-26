@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length,
 // call and erasure rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at
 // the obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which
-// it leaves Resolved: RecordFurtherOriginRecord); each is stamped with the body Binding formed it in, but an Origin relation formed in a
+// it leaves Resolved: RecordResolvedOrigin); each is stamped with the body Binding formed it in, but an Origin relation formed in a
 // body with an end foreign to it (ForeignEnd) is its nested signature's declaration row (R7-O3 U-O3); a Definition obligation still
 // recorded at Final fails its use; an Owned obligation is judged at Final by its discharge: an erasure's Owned condition deferred while
 // a body is bound (Judgment), its failure the erasure's Language record at its use (JudgeErasedOwned), or a result slot's default
@@ -134,7 +134,7 @@ public sealed partial class Binding
                 // The record states the producer's kind: a declared clause, a well-formedness relation or a fit.
                 var fact = holds ? new OriginRelationFact(at, shorter, this.SuppliedAtUse(shorter, at), longer, Equality: true, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed)
                     : new(at, longer, this.SuppliedAtUse(longer, at), shorter, obligation.Equality, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed);
-                this.RecordFurtherOriginRecord(at, new(fact, null));
+                this.RecordResolvedOrigin(at, fact);
             }
 
             return;

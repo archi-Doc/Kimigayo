@@ -336,15 +336,10 @@ public sealed partial class Binding
         return OriginIncludes(borrowed, supplier) || OriginIncludes(supplier, borrowed);
     }
 
-    // SPEC 15.4.3, 15.6.1: an Origin failure whose omitted result Origin defaulted to static because the only matching borrow sits
-    // inside an Option input explains that boundary in the Note. Run only while publishing failures.
+    // SPEC 15.4.3, 15.6.1: an Origin relation record whose omitted result Origin defaulted to static because the only matching borrow
+    // sits inside an Option input explains that boundary in the Note (ReportOriginRecord, its one caller). Run only while publishing.
     private string? OmittedResultNote(Koto node)
     {
-        if (node.BindingFailure != BindingFailure.OriginRelation)
-        {
-            return null;
-        }
-
         var returned = node as ReturnKoto ?? node.Parent as ReturnKoto;
         var function = returned is not null ? KotoHelper.ResolveTransferTarget(returned) as FunctionKoto : node.Parent as FunctionKoto;
         var syntax = function?.ReturnType;

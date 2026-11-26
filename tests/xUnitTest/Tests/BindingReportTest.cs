@@ -85,8 +85,8 @@ public sealed class BindingReportTest
     }
 
     // A further problem at a subject (one rule, Condition; R7-E2 E2-3b): an equal problem keeps its condition and adds nothing; new facts take
-    // their check's condition, or the one after the subject's last when that is taken (an Origin record beyond the first comes at 1, its
-    // first being the slot's, as OriginCondition numbered it; a refining Contract's inherited conflicts from 0); a retried attempt starts over.
+    // their check's condition, or the one after the subject's last when that is taken (an Origin record and a refining Contract's inherited
+    // conflicts from 0); a retried attempt starts over.
     [Fact]
     public void AFurtherProblemIsNumberedAfterItsSubjectsLast()
     {

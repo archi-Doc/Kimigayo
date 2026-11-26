@@ -433,7 +433,7 @@ public sealed partial class Binding
             {
                 if (incompatible is { } contract)
                 {
-                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                    this.RecordOrigin(function, new(null, contract));
                 }
                 else
                 {
