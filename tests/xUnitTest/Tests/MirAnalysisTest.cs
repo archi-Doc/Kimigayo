@@ -18,8 +18,10 @@ public sealed class MirAnalysisTest
 {
     // One problem of each recording rule of A1-A4 and of A5's conflict, depth-limit and effect rules (Rules has the rest; MirEffectsTest's,
     // MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys: R3, a static's destruction reading itself, which needs no
-    // Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42).
-    internal const string Requirements = """
+    // Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42), and A4's platform rule (SPEC 22.4.5, the Tatara plan's
+    // decision 45): the Kernel's Board whose `write` reads an immutable static, judged on this hosted row too, since the rule reads no
+    // startup record. A property, not a constant: the Board is derived from KernelSources (ruling 121 N7).
+    internal static string Requirements { get; } = """
         contract Sink
             func put(self: uniq/Self, value: i32) -> i32
                 effect confined
@@ -107,7 +109,7 @@ public sealed class MirAnalysisTest
             public func effect() => tally = Tally.init()
         public func main() => ()
 
-        """;
+        """ + EffectBoundImplementationTest.ScreenBoard;
 
     // One problem of each recording rule Requirements lacks, the rest of DIAGNOSTICS' A6 code table's Language and Proof rows (Z21), each
     // its family test's form, invalid by SPEC but the Warning: A1's Move of a default's prepared slot (7.2.3; MirInitTest); A5's Borrow of a target an
@@ -770,9 +772,9 @@ public sealed class MirAnalysisTest
     // R5-M23, R4-M71, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code, and the body whose views
     // number its problem's views: A1's uses, Moves without a Move Path and second initializations of a let, A2's incomplete layer at a
     // Drop, A3's falling failure body, and A5's Loan conflicts, its depth limit (a destruction past the walk's bound; R4-M153) and its
-    // effect rule, which the driver gives A4's keys (R4-M92), the body they analyze; A4's confined obligations as Binding's row carries
-    // them (a conformance, a virtual function, a Callable binding) and its depth limit none, since they lie at Binding's rows. One exact
-    // list pins each site's requirement, code, subject and body, so two sites of one code cannot swap requirements, which
+    // effect rule, which the driver gives A4's keys (R4-M92), the body they analyze; A4's obligations as Binding's row carries them (a
+    // conformance, a virtual function, a Callable binding, a platform member) and its depth limit none, since they lie at Binding's
+    // rows. One exact list pins each site's requirement, code, subject and body, so two sites of one code cannot swap requirements, which
     // EachRequirementHasItsA6Rows, reading pairs, would pass (Z21). The storage limits need large bodies: A5ChecksTheViewsA1Completed has
     // A1's. A parameter's record is at its Type occurrence (DECISIONS BU-48's locations, settled (a): R4-M90 D6's rule extended).
     [Fact]
@@ -786,7 +788,9 @@ public sealed class MirAnalysisTest
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init() effect",
                 "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2 conflict",
                 "Ownership.DepthLimit OwnershipDepthLimit_Kd Nest<ref/i32 during a> deep", "Ownership.DepthLimit OwnershipDepthLimit_Kd Self is Store -",
-                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink -", "Ownership.PossiblyMovedUse MovedPlace_Kd r moved",
+                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink -",
+                "Ownership.PlatformStatic UnsatisfiedEffectBound_Kd public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64 -",
+                "Ownership.PossiblyMovedUse MovedPlace_Kd r moved",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make()) layer",
                 "Ownership.ReassignedLet ReassignedLet_Kd resource = make() twice",
                 "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i] runtime", "Ownership.UninitializedUse UninitializedPlace_Kd n unset",

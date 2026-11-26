@@ -3,7 +3,7 @@
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
 // Environment, Unknown, Limit, Derived, Deep (R4-M153) and Static, and atoms over the definition's abstract Types (Drop(T), a call through
 // a Callable input T with the signature the call selected) — and
-// the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
+// the obligations Binding publishes, each judged under its rule (TyCtxt.EffectObligations; EffectRule: `confined`, SPEC 22.4.5's StaticFree).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds) and
 // into which store (MirDropTable.LibraryHolds: the driver records a body's local facts in the store it began or continued, BeginLibrary,
@@ -96,16 +96,21 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private byte found; // The classes the current evaluation or local walk found.
     private (MirReport Problems, SourceRef Subject, int Body, ulong Views) site; // The call Local reads (Terminator), where Broken records.
 
-    /// <summary>Gets the one answer of classes (DECISIONS R4-M153): the Join of their outcomes, an <see cref="Environment"/> or
-    /// <see cref="Unknown"/> effect decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep. A4's obligations and A5's effect
-    /// rule record by it.</summary>
+    /// <summary>Gets the one answer of classes under a rule (DECISIONS R4-M153): the Join of their outcomes, a class that fails the rule
+    /// (<see cref="Failing"/>) decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep, for every rule. A4's obligations record
+    /// by it under their row's rule, and A5's effect rule under Confined.</summary>
     /// <param name="classes">Classes of a summary or a site.</param>
+    /// <param name="rule">The rule the classes are judged under.</param>
     /// <returns>The classes' outcome.</returns>
-    internal static MirOutcome Outcome(byte classes)
+    internal static MirOutcome Outcome(byte classes, EffectRule rule)
     {
-        var decided = (classes & (Environment | Unknown)) != 0 ? MirOutcome.Decided : MirOutcome.None;
+        var decided = (classes & Failing[(int)rule]) != 0 ? MirOutcome.Decided : MirOutcome.None;
         return decided.Join((classes & Limit) != 0 ? MirOutcome.Limit : MirOutcome.None).Join((classes & Deep) != 0 ? MirOutcome.Deep : MirOutcome.None);
     }
+
+    // The classes that fail an obligation, by its rule (the one table, EffectRule's order): Confined an Environment or Unknown effect (SPEC
+    // 8.11.2), StaticFree a Static or Unknown one (SPEC 22.4.5, the Tatara plan's decision 45). Derived fails neither.
+    private static ReadOnlySpan<byte> Failing => [Environment | Unknown, Static | Unknown];
 
     // The number of nodes recorded: the library segment's, then the program's.
     private int NodeCount => this.writing.End;

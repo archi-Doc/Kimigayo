@@ -22,13 +22,16 @@ public enum StartupKind : byte
 }
 
 /// <summary>A startup selection for the latest final Bind; this does not certify ownership or emission. <c>Symbol</c> is the explicit
-/// <c>main</c>; an Implicit selection's body is the generated function, <c>MirDefKey(null, Fn, 0)</c> (DECISIONS R5-M25).</summary>
-public readonly record struct StartupResult(OutputKind OutputKind, StartupKind Kind, BindingSymbol? Symbol, SourceDocument? Source, bool IsComplete);
+/// <c>main</c>; an Implicit selection's body is the generated function, <c>MirDefKey(null, Fn, 0)</c> (DECISIONS R5-M25).
+/// <c>Platform</c> is a complete Application's one platform on a row whose program supplies it (SPEC 22.4.5), whose witnesses
+/// <c>Binding.PlatformWitnesses</c> lists; null otherwise.</summary>
+public readonly record struct StartupResult(OutputKind OutputKind, StartupKind Kind, BindingSymbol? Symbol, SourceDocument? Source, bool IsComplete, BindingSymbol? Platform);
 
 public sealed partial class Binding
 {
     private readonly List<BindingIssue> startupIssues = new();
     private readonly List<Koto> startupItems = new();
+    private readonly List<BindingSymbol> platformWitnesses = new(); // The published platform's witnesses (PlatformWitnesses).
 
     // SPEC 22.4.5 (DECISIONS T-M52): the Application's platform candidates in the order of the root's NestedContainers, each with its own
     // path to Platform (the first in registration order, never an inherited one), and the clauses whether a platform exists rests on: each
@@ -47,12 +50,17 @@ public sealed partial class Binding
     /// <summary>Gets output-specific failures, kept separate from ordinary Binding failures.</summary>
     public IReadOnlyList<BindingIssue> StartupIssues => this.startupIssues;
 
+    /// <summary>Gets the published platform's witnesses (<c>Startup.Platform</c>; SPEC 22.4.5, the Tatara plan's decision 45), one per
+    /// requirement of <c>Platform</c> in its declaration order; empty where nothing is published. Generation reads them and decides
+    /// nothing.</summary>
+    public IReadOnlyList<BindingSymbol> PlatformWitnesses => this.platformWitnesses;
+
     /// <summary>Selects startup after final Binding. Library functions do not receive Application signature restrictions. An Application's
     /// platform (SPEC 22.4.5) is judged over the root's NestedContainers (its root-level structs): several platforms, a generic one and
     /// one with Origin parameters are errors on every target, a platform on a row whose program supplies none and no platform on a row
     /// whose program supplies it are each the located Unsupported_Kd, and a target without a row records neither. The no-platform record
     /// is derived from the parse Errors of the declarations the parser omitted and from the root Self clauses that did not bind, where any
-    /// exist, and is direct otherwise.</summary>
+    /// exist, and is direct otherwise. A complete check publishes the platform it selects and its witnesses (PlatformWitnesses).</summary>
     /// <param name="outputKind">The requested output kind.</param>
     /// <returns>The selection and front-end startup validity, independently of later execution checks.</returns>
     public StartupResult CheckStartup(OutputKind outputKind)
@@ -136,7 +144,8 @@ public sealed partial class Binding
         }
 
         // SPEC 22 ¶1, 22.4.5: the row decides only where a platform is Unsupported; neither record reads the conformance's verdict.
-        if (TargetProfile.Find(this.compilation.TargetTriple.Value) is { } row)
+        var row = TargetProfile.Find(this.compilation.TargetTriple.Value);
+        if (row is not null)
         {
             if (!row.ProgramPlatform)
             {
@@ -157,8 +166,16 @@ public sealed partial class Binding
             this.startupItems.Clear();
         }
 
+        // SPEC 22.4.5 (the Tatara plan's decision 45): only the publication reads the conformance's verdict. A complete check on a row
+        // whose program supplies the platform publishes its one candidate whose conformance is verified, with that path's witnesses.
+        var platform = complete && row is { ProgramPlatform: true } && this.platformCandidates is [(_, { IsVerified: true } path)] ? path : null;
+        for (var i = 0; platform is not null && PlatformWitness(platform, i) is { } witness; i++)
+        {
+            this.platformWitnesses.Add(witness);
+        }
+
         var symbol = kind == StartupKind.Explicit ? main!.BoundSymbol : null;
-        return this.Startup = new(outputKind, complete ? kind : StartupKind.None, complete ? symbol : null, complete ? source : null, complete);
+        return this.Startup = new(outputKind, complete ? kind : StartupKind.None, complete ? symbol : null, complete ? source : null, complete, platform?.Type);
     }
 
     /// <summary>Publishes startup diagnostics only when the caller commits to an output kind.</summary>
@@ -202,11 +219,21 @@ public sealed partial class Binding
             (function.Body is not null || function.ExpressionBody is not null) && function.FindAttribute(AttributeKind.LibraryImport) is null &&
             ReferenceEquals(function.BoundSymbol?.Type, BoundType.Unit);
 
+    // SPEC 22.4.5, 8.6 (the Tatara plan's decision 45): a platform candidate's witness of Platform's requirement at an index, in
+    // Platform's declaration order, read through its stored path's requirement-to-member mapping, which the conformance fixes (never a
+    // lookup by name); null past the last requirement. The path is verified, so it maps every requirement.
+    private static BindingSymbol? PlatformWitness(BoundConformancePath path, int index)
+    {
+        var requirements = path.Contract.Contract!.Requirements;
+        return index < requirements.Count ? path.WitnessMap[requirements[index]].Implementation : null;
+    }
+
     private void ResetStartup()
     {
         this.Startup = default;
         this.startupItems.Clear();
         this.startupIssues.Clear();
+        this.platformWitnesses.Clear();
         this.platformCandidates.Clear();
         this.platformUnresolved.Clear();
     }

@@ -48,11 +48,12 @@ internal sealed partial class MirEffects
     // never entered within it (MirDepths: a slot left Past).
     private byte Found => (byte)(this.found | (this.glued.ContainsValue(MirDepths.Past) ? Deep : 0));
 
-    /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3, a round) and judges each <c>confined</c>
-    /// obligation whose subject is in the root range (the library's are the library check's, PLAN G951 E3): per view of its target an
-    /// environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the premises decide covers
-    /// every view. A round that read a body A2's table does not hold missed and adds no problem; the driver steps the bodies built since
-    /// its last step and runs the next round.</summary>
+    /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3, a round) and judges each obligation whose
+    /// subject is in the root range (the library's are the library check's, PLAN G951 E3): per view of its target an effect that fails its
+    /// rule (a <c>confined</c> bound's environment or unknown effect, a platform member's static access or unknown effect) is its code at
+    /// its subject, else a limit <c>Unsupported_Kd</c>; a failure the premises decide covers every view. A round that read a body A2's
+    /// table does not hold missed and adds no problem; the driver steps the bodies built since its last step and runs the next
+    /// round.</summary>
     /// <param name="program">The program whose bodies were recorded.</param>
     /// <param name="report">The problems of the program version.</param>
     /// <param name="rootModules">The root range: the obligations whose subject's module is below it are judged (DECISIONS R5-M168).</param>
@@ -134,11 +135,12 @@ internal sealed partial class MirEffects
         return true;
     }
 
-    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer (Outcome): decided (an
-    // Environment or Unknown effect) fails it; a Limit is the located Unsupported_Kd and Deep the depth limit (R4-M153).
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer under its rule (Outcome):
+    // decided (a class that fails the rule) fails it; for every rule a Limit is the located Unsupported_Kd and Deep the depth limit
+    // (R4-M153).
     private void Verdict(in EffectObligation row, byte found)
     {
-        var outcome = Outcome(found);
+        var outcome = Outcome(found, row.Rule);
         if (outcome.IsDecided)
         {
             this.report.Add(MirProblem.WithoutBody(row.Code, row.Requirement, row.Subject));

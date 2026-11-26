@@ -11,6 +11,35 @@ namespace XunitTest;
 
 public class StartupBindingTest
 {
+    // Row 19 (SPEC 22.4.5: a platform is a root-level struct of an Application): the root's Fwd conforms to Platform by forwarding each
+    // member to the Library's Board (ForwardedLibrary), whose `write` writes a settable static.
+    internal const string Forwarding = KernelSources.Hello + """
+        struct Fwd
+            Self is Copy
+            Self is Platform
+            var inner: Lib.Board
+
+            init(inner: Lib.Board) => self.inner = inner
+
+            public func start(boot: Boot) -> Self => Fwd.init(Lib.Board.start(boot))
+
+            public func mapPages(self: uniq/Self, bytes: isize) -> raw/u8 => self.inner.mapPages(bytes)
+
+            public func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64 => self.inner.releasePages(run, bytes)
+
+            public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64 => self.inner.write(stream, text)
+
+            public func clock(self: uniq/Self) -> i64 => self.inner.clock()
+
+            public func terminate(self: uniq/Self, status: i32) -> Never => self.inner.terminate(status)
+
+        """;
+
+    internal static readonly string ForwardedLibrary = Derive(
+        KernelSources.Board + KernelSources.BoardTerminate,
+        ("struct Board", "public struct Board"),
+        ("        let bytes = text.bytes()\n", "        Metrics.writes += 1\n        let bytes = text.bytes()\n")) + "public group Metrics\n    public var writes: i64 = 0\n";
+
     // The targets as data: the two hosted rows, the freestanding row and a triple without a row.
     private const string WindowsX64 = "x86_64-pc-windows-msvc";
     private const string LinuxX64 = "x86_64-unknown-linux-musl";
@@ -124,6 +153,25 @@ public class StartupBindingTest
         // A Library's conforming struct is an ordinary struct.
         { Freestanding, OutputKind.Library, [CompleteBoard], string.Empty, string.Empty },
         { WindowsX64, OutputKind.Library, [CompleteBoard], string.Empty, string.Empty },
+    };
+
+    // SPEC 22.4.5 (the Tatara plan's decision 45): a complete check on a row whose program supplies the platform publishes its one
+    // platform and the witnesses of its conformance to Platform, one per requirement in Platform's declaration order (B9a's
+    // ContractShapesAreFixed row), through a refining Contract and beside a redundant direct clause too (one path); nothing elsewhere: on
+    // a hosted row (its Unsupported_Kd), for two candidates, for a failed conformance (the Board without `terminate`), on a target without
+    // a row and for a Library. The obligation reads no startup record: each witness of every candidate whose conformance is verified owes
+    // StaticFree, a Library's struct and a failed conformance none.
+    public static TheoryData<string, OutputKind, string[], string, int> PublishedRows => new()
+    {
+        { Freestanding, OutputKind.Application, [KernelSources.Hello, CompleteBoard], "Board start mapPages releasePages write clock terminate", 6 },
+        { Freestanding, OutputKind.Application, [KernelSources.Hello, RefiningBoard], "Board start mapPages releasePages write clock terminate", 6 },
+        { Freestanding, OutputKind.Application, [KernelSources.Hello, RedundantBoard], "Board start mapPages releasePages write clock terminate", 6 },
+        { WindowsX64, OutputKind.Application, [KernelSources.Hello, CompleteBoard], "-", 6 },
+        { LinuxX64, OutputKind.Application, [KernelSources.Hello, CompleteBoard], "-", 6 },
+        { Freestanding, OutputKind.Application, [KernelSources.Hello, CompleteBoard, SecondBoard], "-", 12 },
+        { Freestanding, OutputKind.Application, [KernelSources.Hello, KernelSources.Board], "-", 0 },
+        { NoRow, OutputKind.Application, [KernelSources.Hello, CompleteBoard], "-", 6 },
+        { Freestanding, OutputKind.Library, [CompleteBoard], "-", 0 },
     };
 
     [Theory]
@@ -433,6 +481,21 @@ public class StartupBindingTest
     public void EachPlatformRecordReadsItsOwnInputs(string target, OutputKind kind, string[] sources, string issues, string records)
         => AssertStartupRecords(Parse(target, sources), kind, issues, records);
 
+    [Theory]
+    [MemberData(nameof(PublishedRows))]
+    public void TheSelectedPlatformIsPublishedWithItsWitnesses(string target, OutputKind kind, string[] sources, string published, int owed)
+        => AssertPublished(Parse(target, sources), kind, published, owed);
+
+    // Row 19: an Application's root struct forwarding each member to a Library's struct conforming to Platform is its platform, published
+    // with its own witnesses; the Library's struct is no candidate and owes nothing.
+    [Fact]
+    public void AForwardingRootStructIsThePlatform()
+        => AssertPublished(
+            ModuleBindingTest.Create(Forwarding, ForwardedLibrary, row: TargetProfile.Find(Freestanding)),
+            OutputKind.Application,
+            "Fwd start mapPages releasePages write clock terminate",
+            6);
+
     // SPEC 23.1.2 (AGENTS "Diagnostics"): whether a freestanding Application has a platform rests on its whole root member set, so the
     // no-platform record is derived from a declaration the parser skipped and from a root struct's Self clause that did not bind: each
     // failure's own record is the one published, also where the startup form is a runtime `is` test (SPEC 14.10.1). Without a startup
@@ -569,6 +632,19 @@ public class StartupBindingTest
         Assert.Equal(expected, await c.Project.Check(TestContext.Current.CancellationToken));
     }
 
+    // KernelSources' text derived by exact replacements (ruling 121 N7), each old text occurring once.
+    internal static string Derive(string source, params (string Old, string New)[] edits)
+    {
+        foreach (var (old, replacement) in edits)
+        {
+            var at = source.IndexOf(old, StringComparison.Ordinal);
+            Assert.True(at >= 0 && at == source.LastIndexOf(old, StringComparison.Ordinal), old);
+            source = source.Replace(old, replacement, StringComparison.Ordinal);
+        }
+
+        return source;
+    }
+
     private static FunctionKoto GetMain(Compilation c)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "main");
 
@@ -595,6 +671,18 @@ public class StartupBindingTest
         c.Binding.ReportStartupDiagnostics();
         Assert.Equal(issues, string.Join(" | ", c.Binding.StartupIssues.Select(static x => $"{x.Code} {x.Node}")));
         Assert.Equal(records, string.Join(" | ", TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Text?.Split('\n')[0]}")));
+    }
+
+    // The final Bind and the startup check for the output kind: the published platform's name and its witnesses' names in order ("-" for
+    // none), and the number of StaticFree obligations Binding lists.
+    private static void AssertPublished(Compilation c, OutputKind kind, string published, int owed)
+    {
+        c.Bind();
+        var startup = c.Binding.CheckStartup(kind);
+        var rows = new List<EffectObligation>();
+        c.Binding.EffectObligations(rows);
+        var names = c.Binding.PlatformWitnesses.Select(static x => x.Name).Prepend(startup.Platform?.Name ?? "-");
+        Assert.Equal((published, owed), (string.Join(' ', names), rows.Count(static x => x.Rule == EffectRule.StaticFree)));
     }
 
     // A source one block deeper, as the body of a Condition or a container.

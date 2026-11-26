@@ -7,21 +7,31 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// An obligation of `confined` that Binding decided and A4 judges (DECISIONS R4-M22, R4-M23), reported as Code at Subject under Requirement
-// (DECISIONS R5-M23): a conformance's witness (SPEC 8.11.3, at the `Self is C` clause; EffectBound), a virtual function under its slot's
-// bound (virtual-dispatch 6; VirtualEffectBound) or a selected Callable binding (SPEC 8.11.4, at the argument or Type argument;
-// CallableEffectBound). Definition: the definition whose body owes, or whose premises judge the Callable (null at a module's top-level
-// statements); without a Callable, null where the premises already decide a failure. A Callable binding is its subject Type called with
-// Receiver; Owner: its owner acquisition also destroys the Closure's remaining environment.
+// The rule an obligation is judged under, which names the effect classes that fail it (A4's one table, MirEffects.Failing).
+internal enum EffectRule : byte
+{
+    Confined, // SPEC 8.11.2: a `confined` bound; an environment or unknown effect fails it.
+    StaticFree, // SPEC 22.4.5 (the Tatara plan's decision 45): a platform member; a static access or an unknown effect fails it.
+}
+
+// An obligation under Rule that Binding decided and A4 judges (DECISIONS R4-M22, R4-M23), reported as Code at Subject under Requirement
+// (DECISIONS R5-M23). Confined: a conformance's witness (SPEC 8.11.3, at the `Self is C` clause; EffectBound), a virtual function under
+// its slot's bound (virtual-dispatch 6; VirtualEffectBound) or a selected Callable binding (SPEC 8.11.4, at the argument or Type
+// argument; CallableEffectBound). StaticFree: a platform candidate's witness (SPEC 22.4.5, at its declaration; PlatformStatic).
+// Definition: the definition whose body owes, or whose premises judge the Callable (null at a module's top-level statements); without a
+// Callable, null where the premises already decide a failure. A Callable binding is its subject Type called with Receiver; Owner: its
+// owner acquisition also destroys the Closure's remaining environment.
 internal readonly record struct EffectObligation(
     SourceRef Subject, DiagnosticCode Code, DiagnosticRequirement Requirement, BindingSymbol? Definition, BoundType? Callable, SemanticsKind Receiver,
-    bool Owner);
+    bool Owner, EffectRule Rule);
 
 public sealed partial class Binding
 {
-    /// <summary>Lists the <c>confined</c> obligations of the latest pass (DECISIONS R4-M22): each witness of a conformance whose Contract
+    /// <summary>Lists the effect obligations of the latest pass (DECISIONS R4-M22). Confined: each witness of a conformance whose Contract
     /// or an ancestor declares <c>confined</c> for its requirement, each virtual function whose slot declares it, and each selected use of a
-    /// Callable clause declaring it whose premises do not prove it; a holding premise adds none.</summary>
+    /// Callable clause declaring it whose premises do not prove it; a holding premise adds none. StaticFree (SPEC 22.4.5, the Tatara plan's
+    /// decision 45): each witness of every platform candidate whose conformance is verified, from the platform candidates of the latest
+    /// <c>CheckStartup</c>, none before it and none in a test build (<c>CheckTestStartup</c> selects no platform).</summary>
     /// <param name="rows">The caller-owned list to append to.</param>
     internal void EffectObligations(List<EffectObligation> rows)
     {
@@ -49,7 +59,7 @@ public sealed partial class Binding
                     var target = dispatched ? null : witness.Implementation;
                     var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.EffectBound);
                     var code = DiagnosticCode.IncompatibleContractImplementation_Kd;
-                    rows.Add(new(SourceRef.Of(path.Use), code, requirement, target, null, default, Owner: false));
+                    rows.Add(new(SourceRef.Of(path.Use), code, requirement, target, null, default, Owner: false, EffectRule.Confined));
                 }
             }
         }
@@ -62,7 +72,8 @@ public sealed partial class Binding
             if (bounded && function.BoundSymbol is { } symbol && function.BindingFailure == BindingFailure.None)
             {
                 var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.VirtualEffectBound);
-                rows.Add(new(SourceRef.Of(function), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, symbol, null, default, Owner: false));
+                var code = DiagnosticCode.UnsatisfiedEffectBound_Kd;
+                rows.Add(new(SourceRef.Of(function), code, requirement, symbol, null, default, Owner: false, EffectRule.Confined));
             }
         }
 
@@ -75,6 +86,17 @@ public sealed partial class Binding
                 {
                     this.AddCallableObligation(rows, use);
                 }
+            }
+        }
+
+        // The rule reads no startup record: a hosted candidate and each of several owe it; a failed conformance owes nothing (its record).
+        foreach (var (_, path) in this.platformCandidates)
+        {
+            for (var i = 0; path.IsVerified && PlatformWitness(path, i) is { } witness; i++)
+            {
+                var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PlatformStatic);
+                var code = DiagnosticCode.UnsatisfiedEffectBound_Kd;
+                rows.Add(new(SourceRef.Of(witness.Declaration), code, requirement, witness, null, default, Owner: false, EffectRule.StaticFree));
             }
         }
     }
@@ -125,14 +147,15 @@ public sealed partial class Binding
         var type = CallableCore(use.Subject)!;
         var definition = this.ConstraintScope(use.Use).Function?.BoundSymbol;
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.CallableEffectBound);
+        var code = DiagnosticCode.UnsatisfiedEffectBound_Kd;
         if (!type.IsAbstract)
         {
             var owner = use.Receiver == SemanticsKind.Owner && BoundClosure.Of(type) is { Receiver: not SemanticsKind.Owner };
-            rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, definition, type, use.Receiver, owner));
+            rows.Add(new(SourceRef.Of(use.At), code, requirement, definition, type, use.Receiver, owner, EffectRule.Confined));
         }
         else if (!this.AvailableCallableEffects(type, use.Signature, use.Receiver, this.EffectPremises(definition)))
         {
-            rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, null, null, default, Owner: false));
+            rows.Add(new(SourceRef.Of(use.At), code, requirement, null, null, default, Owner: false, EffectRule.Confined));
         }
     }
 }
