@@ -622,7 +622,7 @@ public sealed partial class Binding
         this.ValidateEnumProjections();
     }
 
-    // SPEC 11.6 (PLAN G1220; DECISIONS: G1220): a fact request made while an inferred stored Property's header types its initializer
+    // SPEC 11.6 (PLAN G1220; DECISIONS BU-267): a fact request made while an inferred stored Property's header types its initializer
     // (inferringHeader, which BindHeader sets for that header alone, so a function's or an annotated header's own requests walk nothing)
     // demands the Signature query of every stored Property the request's Type contains: the parts the capability rows read and its
     // declaration's storage in its formals (StoredSyntax; the base through DirectBase), each part the leaf rule does not decide. The parts
@@ -632,7 +632,7 @@ public sealed partial class Binding
     // before. Each Type is visited once per kind per walk (headerParts, this walk's own table), a declaration's storage once per instance
     // and kind; a nested walk, begun by a header a demand binds, can only overwrite entries of headers it completes, so the walks of a pass
     // stay bounded by the headers times the parts.
-    // Temporary (DECISIONS: G1220): deleted with its gate when the proof's stored-Type reads demand the Signature query during the headers (R7-D2
+    // Temporary (DECISIONS BU-267): deleted with its gate when the proof's stored-Type reads demand the Signature query during the headers (R7-D2
     // d2 / C2 b, PLAN G381's removal).
     private void DemandContainedHeaders(BoundType type, IntrinsicKind kind, BindingScope scope) => this.DemandHeaders(type, kind, scope, this.headerParts.Begin(this.storageVersion));
 
