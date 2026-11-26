@@ -13594,6 +13594,10 @@ resumed by R4-M86 (2026-10-20).
     requires `LimitedCount == 0`, so "complete" still means "rejected no part" (BU-38, BU-102, DIAGNOSTICS rule 8 unchanged), and
     rule 4 is unchanged (a limit sets no state). Before G254c a Defect at a node without a failure was published nowhere; it now is,
     and it makes the Bind incomplete.
+  - Amended by R7-M123 (R7-E4 E4e, Q-820, 2026-11-27; F's R7-E4 ruling 50): the kept sides. A kept side is a Type, a length or an
+    Origin (`BindingReport.Keep(BoundOrigin)` and its reader `OriginSide`, beside `Keep(BoundType)` and `Keep(BoundLength)`;
+    references only, as before). An `Actual` fact in an Owned record is the converted value and the inherited member's Type or Origin
+    (R7-E4 E4e), the `CapabilityParts` entry the check read. No `ProblemFactKind` changes.
 - **BU-126 R7-E1c Several problems at one node** (2026-11-08; plan §5.1 E1; design §1 row 3; DIAGNOSTICS rule 4). A node's records beyond its first are problems of `BindingReport`, one channel: `furtherOriginRecords` with its lists, `CountStates`' role issue and `operatorOperands` go. The pass summary's walk (`CollectProblems`) makes each problem of a failed node but its slot's own an issue with its own code and condition, whichever way the slot stands. An Origin record that is not its node's slot problem stays out of `Binding.Issues`, whose one row per relation node the test MIR side compares, and is published by its own key (`OutsideIssues`, temporary until E5, when `Binding.Issues` is the problem list; R7-M95 E4d). `ReportProblem` answers from a problem's facts before any table of the node's first failure can, since those tables explain that failure only. `FailOperator`'s fields are rows: `Operand` and `Terminal` (kept Types) and `Constraint` (a kept interned proposition, written for an Unknown or Refuted proof, the failure telling which), with no second path. An Origin record, a node's first included, is one `OriginRecord` fact, an index in the report's kept Origin record store, numbered from 0 under its own requirement (R7-M95 E4d; the earlier text of this sentence and the `Binding.Issues` one is in dev c56616439). A second report of a linked key must equal the first in code and facts, a Type by identity (DIAGNOSTICS 4.3); a differing one is `InternalInvariant_Kd` at its subject, as `MirReport.Add`'s. An import's records (G155): each Type without a C counterpart is `InvalidImportSignature_Kd` with its ordinal among them as the condition, a Type outside the table the located `Unsupported_Kd` beside them, and the symbol table's conflicts stand beside a failed supply; the dependency module's limit stays a `Fail` (BU-92). A failed destination keeps its route a verdict (G509, `FailRoute`), on the read Type: `OperatorApplicabilityOf`'s failure is the node's other problem. Rejected: a `Detail` fact (boxes per warm pass, measured), two `FailOperator` paths, a dedupe index beside the chain (`Unlink` would have to keep it; the walk costs what the list's `Contains` cost), the route through `CompleteBinary` (its mismatch would need `RecordTypeMismatch`'s guard lifted for one path; E3 lifts it for the family). Superseded in part by R7-M75's E3d line (Q-764): the failed destination's route sentence (`FailRoute`) and the rejected route through `CompleteBinary`, now taken (E3a-2, Q-635, removed the guard).
 - **BU-127 A local region at a fixed longer end is A5's** (2026-11-08; PLAN G572, U1 round 2 and U3's rows; Major; RP17 consent C-131; the owner's O-57 (a), verbatim 「両方とも(a)でお願いします。」, O-59 (a) 「すべて (a)」, O-61 (a) 「O-61 a」, O-63 (a) 「(a) もう 1 回設計」 and O-77 (a) 「a」) SPEC 15.3.6, 15.4.4, 15.6.1, 15.6.5.
   - Cause. A local region is an inference variable, solved over all its bounds (15.3.6). In a Closure's body an enclosing region is fixed
@@ -28190,6 +28194,9 @@ Closure row of `MirCases.Branch`).
     node's first failure ...; a dependent site (B1, or B2 over a node that already failed) keeps `Fail` until R7-E5". E4's B1
     statement is by input: a check that reads none of the node's failed inputs records beside the node's earlier failure (SPEC
     23.1.2), and one that reads a failed input keeps `Fail` with an R7-E5 Transitional naming that input.
+  - Superseded in part by R7-M123 (R7-E4 E4e, Q-820, 2026-11-27): E3b-2's "Exception until R7-E4: FailUnprovenConstraint's Callable
+    branch and FailCallableSelection keep `callableConstraints`". Both record through `RecordConstraint` (RecordCallableConstraint),
+    and `callableConstraints` is deleted.
   - **G1356 (Q-802, D-1305; PLAN G1356; Major; B's rulings 1 (OP1-OP4), 2, 3, 4, 5, 6 and 7).** SPEC 13.3.3, 13.3.4, 13.7.2, 23.1.2: the
     no-provider record of the route table's last row is the operator table's operand verdict at the operation, for the left operand
     and the counterpart alike. `NumericApplicability`'s last row is `IntegerApplicability(.., OperatorNotDefined)`: a Type parameter
@@ -29257,6 +29264,8 @@ Closure row of `MirCases.Branch`).
   - Superseded in part by R7-M119 (R7-E4 E4c, Q-807, 2026-11-26): two E4c checks, TypeOrigins' static-Origin check and
     FailTypeRole's guard over a use that already holds a record (L11's meet), keep a node's first record until PLAN G1442
     (R7-M119's "Departs" line).
+  - **E4e** (Q-820, 2026-11-27): R7-M123, the Owned conversion and Callable Origin-only records through `RecordConstraint`; the
+    ratchet reaches Binding 1 → 0 (R7-N5's exit).
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
@@ -30459,6 +30468,65 @@ Closure row of `MirCases.Branch`).
   - **Tests.** MirOriginsTest's `AnOriginPositionRelatesByItsVariance` rows B0, B1, E0, E1 and E3 carry the rule at A5.
   - **Rejected:** (b), Phantom and invariant as the old Phantom sentence read. A callable wrapper `Callback during b` could not
     then serve where `Callback during a` is wanted, although every input it receives outlives `b`.
+- **R7-M123 E4e (Owned and Callable): the Owned conversion and Callable Origin-only records record through `RecordConstraint`**
+  (Back, 2026-11-26; R7-E4 E4e, Q-820, D-????; Major unit of a Major design, R7 plan §5.1 E4; design
+  `artifacts\units\r7e4e\design.md` Revision 1 with B's ruling 1 and F's R7-E4 rulings 47 and 48; the Front's independent design
+  read ACCEPT WITH CONDITIONS, C1-C4 met in Revision 1) SPEC 7.7.2, 7.7.4, 8.3, 15.2.3, 15.6.1, 23.1.1, 23.1.2. Applies R7-M95's
+  rule (by input) and R7-M75 E3b-2's recorder to the last two family-3 records.
+  - **Rule.** Both records record through the constraint family's recorder (`RecordConstraint`, `ConstraintFailureOf`: Refuted
+    UnsatisfiedConstraint_Kd, Unknown UnprovenConstraint_Kd) with existing fact kinds, and report from ReportProblem rows with the
+    store (`ReportIn`), which closes PLAN G1083's last sites (CallableProofs 50 and 61).
+  - **Owned.** `RecordOwned` is the one builder, for FailOwnedConversion and FailUnformedOwned's two sites. Its facts, at the
+    converted value:
+    - Constraint: the kept, interned `S is Owned`;
+    - Reason: the member row, `kind | ordinal << 8`, its kind a private enum `OwnedMemberKind` (capture, Type argument, inherited Type
+      argument, inherited Origin) and its ordinal the capture's index, the component's ordinal or the CapabilityParts ordinal;
+    - Actual, for an inherited member: the Type or Origin the check read from `CapabilityParts.At` (its Part for a Type argument,
+      its Origin for an Origin), a kept side (`BindingReport.Keep(BoundType)` or `Keep(BoundOrigin)`; F's rulings 49 and 50);
+    - when the member names an Origin, OriginRecord of the relation the erasure judged: OriginRelationFact(At = the record's
+      location, Longer = Supplier = the Origin read at the use, Shorter = static, Equality = false, Destination = null, Refuted =
+      RefutedStatic's Refuted, else the engine's Unknown that it keeps; F's ruling 47 C2);
+    - Related role 3 "origin" at the Borrow that initialized a captured binding (SPEC 15.6.5).
+
+    The adapter forms the member's text from the facts (`ReportOwnedConversion`): a capture's name from the subject, "the nth Type
+    argument", and an inherited member from its Actual fact (`BindingReport.Value` or `OriginSide`); it reads neither
+    CapabilityParts nor InheritedArguments (ruling 49); a capture's name comes from the subject's closure definition (BoundClosure.Of),
+    and the prepared capture from its plan (PreparedCapture), as dev's adapter read them. The capture entry is read from syntax (`CaptureEntryOf`), never kept as a fact (ruling 31 N8). `Ordinal` has one copy, the adapter's (`Binding.Diagnostics.Conversions`), for ContractFact, the Owned member
+    and the Origin diagnostics.
+  - **Callable.** `RecordCallableConstraint` is the one builder, for FailUnprovenConstraint's Callable branch and
+    FailCallableSelection: FailClauseRecord's facts (Related role 0 "constraint" at the clause, Constraint) plus OriginRecord(null,
+    the trial's OriginContractFact), whose At is the record's location. `ReportCallableConstraint` reads them.
+  - **Two departures from the design (B accepted B-3; F ruled the second, rulings 49 and 50).** Each keeps one owner and records
+    typed facts where the check fails.
+    - B-3: `CallableUnknown` carries the proposition its proof judged (`T is Callable<S>`; Binding.Constraints, ConstraintValidation
+      .Proofs) in place of its Subject and Required, which no reader used. `CallableConstraintFact` becomes (Clause, Proposition,
+      Contract), so the record's Constraint fact is the judged proposition, not one formed at record time, and its subject's text is
+      dev's by construction.
+    - The inherited member is kept as the record's Actual fact, the check's own read of `CapabilityParts.At` (above), never the
+      record's own OriginRecord, whose Longer is the Origin at the use (the design's B-2 check, E8). The Origin's name is then dev's
+      `partOrigin` by construction. A kept side is therefore a Type, a length or an Origin (`BindingReport.Keep(BoundOrigin)` and
+      its reader `OriginSide`): a kept-value representation change, not a vocabulary entry (BU-125's amendment).
+  - **ProblemFactKind.OriginRecord** now means an Origin relation the record shows: an Origin record's own, the first included (E4d),
+    an Owned record's judged `Origin outlives static`, or a Callable record's contract. The kind, its value type and BindingReport's
+    kept-record contract are unchanged, so this is not a vocabulary change (F's ruling 47 C2).
+  - **ProblemFactKind.Actual** gains the Owned record's row: the converted value and the inherited member's Type or Origin. No kind changes
+    (F's ruling 50).
+  - **By input (R7-M95).** FailDerived's three inputs keep `Fail` (B1): a held Error cause, a failed operand context, a deferred slot
+    refuted at Final. FailOwnedConversion's failed-use return and JudgeErasedOwned's failed-node return are deleted: they read the
+    use's own slot, which is not an input of the Owned check, so RecordConstraint's Transitional (D-924, until R7-E5) is the one drop
+    (ruling 30 O-B2's form). The independent record it loses is PLAN G1442's, which R7-E5 restores: the Owned record beside an
+    omitted capture's TransferRequired_Kd (g3, j1).
+  - **Deleted:** `ownedConversions`, Binding's last node-keyed table (NodeKeyedTableSites Binding 1 → 0: R7-N5's exit; R7-M75 E3d's
+    hand-over closed); `callableConstraints` (CallableConstraintRows) and its NodeColumns column; OwnedConversionFact; both
+    FailExplained forms, which had no other caller.
+  - **Supersedes** R7-M75 E3b-2's "Exception until R7-E4": its reason, a Callable record with no fact form, no longer holds.
+  - **Moves (Q13):** none: P1-P8, F's 25 twins, j0 and j1 equal by text and JSON (Run B); the whole suite's diagnostic snapshot
+    0 differences against 43417d829 (Run D).
+  - **Rejected.** A new kept-Origin fact kind (a vocabulary entry duplicating E4d's); dropping the Origin (the pinned longer and
+    shorter columns fail); the member's text as a kept fact; the adapter reading `CapabilityParts.At(S, InheritedArguments(S) ??
+    Unit, n)` (a Binding table at render time and an undecided `?? Unit`, ruling 49); a ProblemFactKind `Member` for the inherited
+    member (a vocabulary entry for a fact Actual carries, ruling 50 (B)); forming the Callable proposition at record time (the proof
+    already holds it, B-3).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
