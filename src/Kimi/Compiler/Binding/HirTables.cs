@@ -365,7 +365,6 @@ internal struct NodeColumns
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
-    internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
     internal StampedColumn<int, Binding.PassCounter> MemberSelections; // Work: a member access's published side and lookup selection, as its row's index in the pass's rows plus 1, the running pass's working state, released at the freeze (Binding.MemberLookup.cs).
@@ -389,7 +388,7 @@ internal struct NodeColumns
     internal StampedColumn<Koto?, Binding.PassCounter> SynthesizedCalls; // Work: a call Binding synthesized in the pass, its consumer, the running pass's working state, released at the freeze (Binding.Check.cs).
     internal PagedColumn<List<BindingSymbol>?> GatheredGroups; // Kept: a use's function group gathered at the alias stage, emptied in place at each publication of its head (Binding.Imports.cs).
     internal PagedColumn<(bool Pattern, bool Guard)> IndexedPatterns; // Kept: whether the latest run of a node's pass indexed it as a pattern node or a guard scope, copied to the pass's previous-run lists and emptied at its reset (Binding.Patterns.cs).
-    internal PagedColumn<bool> FormedTypes; // Kept: whether a node forms its Type, written by BindType (a written occurrence, a rooted name's operand), EnumQualifierType, ConstructionTargetType, BindContractReference and the Dictionary literal's binder, emptied at its pass's reset (Binding.Types.cs, FormedTypeRows).
+    internal PagedColumn<FormationFrame> FormedTypes; // Kept: the frame the node formed its Type in, written by BindType (a written occurrence, a rooted name's operand), EnumQualifierType, ConstructionTargetType, BindContractReference and the Dictionary literal's binder, emptied at its pass's reset (Binding.Types.cs, FormedTypeRows).
 
     internal void Resize(int length)
     {
@@ -445,7 +444,6 @@ internal struct NodeColumns
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
         this.ResultContexts.Grow(length);
-        this.CallableConstraints.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
         this.MemberSelections.Grow(length);
@@ -502,7 +500,6 @@ internal struct NodeColumns
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
         this.ResultContexts.Release();
-        this.CallableConstraints.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
         this.MemberSelections.Release();
@@ -582,7 +579,6 @@ internal struct NodeColumns
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
-            CallableConstraints = this.CallableConstraints.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),
             MemberSelections = this.MemberSelections.Renumbered(length),

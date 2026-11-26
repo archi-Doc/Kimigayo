@@ -1800,6 +1800,19 @@ public class ForeignEmissionTest
             """;
     }
 
+    // A program analyzed for `output` on a target row whose project requires codec as a `kind` library.
+    internal static Compilation AnalyzeAs(TargetProfile row, string source, string kind, OutputKind output)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[row.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
+        Assert.True(c.Prepare(row.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(output);
+        c.Analyze();
+        return c;
+    }
+
     private static string Emit(string source, string kind)
     {
         var c = Analyze(source, kind);
@@ -1815,16 +1828,4 @@ public class ForeignEmissionTest
 
     private static Compilation AnalyzeAs(string source, string kind, OutputKind output)
         => AnalyzeAs(TargetProfile.Windows, source, kind, output);
-
-    private static Compilation AnalyzeAs(TargetProfile row, string source, string kind, OutputKind output)
-    {
-        var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeRequirements[row.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
-        Assert.True(c.Prepare(row.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        c.Bind();
-        c.Binding.CheckStartup(output);
-        c.Analyze();
-        return c;
-    }
 }
