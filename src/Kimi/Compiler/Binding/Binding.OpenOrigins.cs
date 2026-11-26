@@ -35,11 +35,6 @@ public sealed partial class Binding
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly OpenOriginRows openOrigins;
 
-    // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
-
-    // The argument whose own per-call Origin alone would satisfy a slot of the selected callee, and that callee's first Type parameter
-    // whose solution holds the argument's open region (-1 when none does, displayed as the Type argument).
-
     // SPEC 10.8: an Origin that the evidence's own binder quantifies, such as a per-call input, never becomes the solution of an Origin
     // inside a slot. The slot keeps the structure and Semantics, and each such Origin is replaced by an open region of the call (SPEC
     // 15.3.6): a local region that holds no Loans, is never displayed, and that other evidence for the slot fills.

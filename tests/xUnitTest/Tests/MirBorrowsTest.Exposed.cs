@@ -3064,6 +3064,626 @@ public sealed partial class MirBorrowsTest
                         let k = e
                         return 0
             """,
+        ["rw0v"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw0v(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                rr@follow = .Err(5)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw0u"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw0u(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                rr@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return 0
+            """,
+        ["rw1"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkO(x: uniq/i32) -> Option<Result<uniq/i32, u64>> => .Some(.Ok(x))
+            func rw1(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mkO(a)
+                let rr = res@uniq
+                rr@follow = .Some(.Err(w))
+                match res@move
+                    .Some(let item)
+                        match item@move
+                            .Ok(_) => return 0
+                            .Err(let e)
+                                kk = 2
+                                return e
+                    .None => return 0
+            """,
+        ["rw1v"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkO(x: uniq/i32) -> Option<Result<uniq/i32, u64>> => .Some(.Ok(x))
+            func rw1v(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mkO(a)
+                let rr = res@uniq
+                rr@follow = .Some(.Err(5))
+                match res@move
+                    .Some(let item)
+                        match item@move
+                            .Ok(_) => return 0
+                            .Err(let e)
+                                kk = 2
+                                return e
+                    .None => return 0
+            """,
+        ["rw2"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkT(x: uniq/i32) -> Result<uniq/i32, (u64, u64)> => .Ok(x)
+            func rw2(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mkT(a)
+                let rr = res@uniq
+                rr@follow = .Err((w, 1))
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let t)
+                        kk = 2
+                        return t.0
+            """,
+        ["rw2v"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkT(x: uniq/i32) -> Result<uniq/i32, (u64, u64)> => .Ok(x)
+            func rw2v(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mkT(a)
+                let rr = res@uniq
+                rr@follow = .Err((5, 1))
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let t)
+                        kk = 2
+                        return t.0
+            """,
+        ["rw3"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            struct Code
+                public let n: u64
+                public init(n: u64)
+                    self.n = n
+            func mkC(x: uniq/i32) -> Result<uniq/i32, Code> => .Ok(x)
+            func rw3(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mkC(a)
+                let rr = res@uniq
+                rr@follow = .Err(Code.init(n: w))
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let c)
+                        kk = 2
+                        return c.n
+            """,
+        ["rw3v"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            struct Code
+                public let n: u64
+                public init(n: u64)
+                    self.n = n
+            func mkC(x: uniq/i32) -> Result<uniq/i32, Code> => .Ok(x)
+            func rw3v(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mkC(a)
+                let rr = res@uniq
+                rr@follow = .Err(Code.init(n: 5))
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let c)
+                        kk = 2
+                        return c.n
+            """,
+        ["rw4"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw4(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                let r2 = rr@follow@uniq
+                r2@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw4v"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw4v(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                let r2 = rr@follow@uniq
+                r2@follow = .Err(5)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw4b"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw4b(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                match res@uniq
+                    .Ok(_) => ()
+                    .Err(let p) => p@follow = w
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw4bv"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw4bv(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                match res@uniq
+                    .Ok(_) => ()
+                    .Err(let p) => p@follow = 5
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw5"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw5(a: uniq/i32, c: bool) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                if c => rr@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw5v"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw5v(a: uniq/i32, c: bool) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                if c => rr@follow = .Err(5)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw6"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw6(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                var n: u64 = 0
+                var i: i32 = 0
+                while i < 2
+                    match res
+                        .Ok(_) => n = 0
+                        .Err(let e) => n = e@follow
+                    let rr = res@uniq
+                    rr@follow = .Err(w)
+                    i = i + 1
+                kk = 2
+                return n
+            """,
+        ["rw6v"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw6v(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                var n: u64 = 0
+                var i: i32 = 0
+                while i < 2
+                    match res
+                        .Ok(_) => n = 0
+                        .Err(let e) => n = e@follow
+                    let rr = res@uniq
+                    rr@follow = .Err(5)
+                    i = i + 1
+                kk = 2
+                return n
+            """,
+        ["rw7"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw7(a: uniq/i32, b: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                rr@follow = .Err(w)
+                res = mk(b)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw8"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw8(a: uniq/i32, b: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                var oth = mk(b)
+                let ro = res@uniq
+                let rt = oth@uniq
+                rt@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rw9"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rw9(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var b: i32 = 0
+                var res = mk(a)
+                let rr = res@uniq
+                rr@follow = mk(b@uniq)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        b = 2
+                        let k = e
+                        return 0
+            """,
+        ["rwl"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rwl() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                let rr = res@uniq
+                rr@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        let k = e
+                        return 0
+            """,
+        ["rwr"] = """
+            func mkRi(x: uniq/i32) -> uniq/i32 => x
+            func rwr(a: uniq/i32) -> i32
+                var x: i32 = 1
+                var h = mkRi(a)
+                let hh = h@uniq
+                hh@follow = x@uniq
+                let n = h@follow
+                x = 5
+                return n
+            """,
+        ["rwry"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkR(x: uniq/u64) -> uniq/u64 => x
+            func rwry(a: uniq/u64) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var h = mkR(a)
+                let hh = h@uniq
+                hh@follow = w@uniq
+                let n = h@follow
+                kk = 2
+                return n
+            """,
+        ["rwryv"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkR(x: uniq/u64) -> uniq/u64 => x
+            func rwryv(a: uniq/u64) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var z: u64 = 5
+                var h = mkR(a)
+                let hh = h@uniq
+                hh@follow = z@uniq
+                let n = h@follow
+                kk = 2
+                return n
+            """,
+        ["itConstStore"] = """
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func itConstStore() -> u64
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                let rr = res@uniq
+                rr@follow = .Err(5)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        return e
+            """,
+        ["itRawStore"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func itRawStore(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let pr = res@raw
+                unsafe => *pr = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["itRawCopy"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func itRawCopy(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let p1 = res@raw
+                let p2 = p1
+                unsafe => *p2 = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["itTupleRef"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func itTupleRef(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                var t = (res@uniq, 7)
+                t.0@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["itTwoDeref"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func itTwoDeref(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                var rr = res@uniq
+                let rrr = rr@uniq
+                rrr@follow@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["vMoveRet"] = """
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func vMoveRet() -> u64
+                var a: i32 = 0
+                var b: i32 = 0
+                var res = mk(a@uniq)
+                var res2 = mk(b@uniq)
+                let rr = res@uniq
+                rr@follow = res2@move
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        b = 2
+                        let k = e
+                        return k
+            """,
+        ["vRefillMove"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func vRefillMove(a: uniq/i32, b: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                var res2 = mk(b)
+                let rr = res@uniq
+                rr@follow = .Err(w)
+                res = res2@move
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["vParamReborrow"] = """
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func vParamReborrow(q: uniq/u64) -> u64
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                let rq = q@follow@uniq
+                rq@follow = 7
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        return e
+            """,
+        ["vRefOwnLoan"] = """
+            func mkRi(x: uniq/i32) -> uniq/i32 => x
+            func vRefOwnLoan() -> i32
+                var a: i32 = 1
+                var z: i32 = 4
+                var h = mkRi(a@uniq)
+                let hh = h@uniq
+                hh@follow = z@uniq
+                let n = h@follow
+                a = 5
+                z = 6
+                return n
+            """,
+        ["rwh"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkP(x: uniq/u64) -> (uniq/u64, i32) => (x, 1)
+            func rwh(a: uniq/u64) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var t = mkP(a)
+                let tt = t@uniq
+                tt@follow = (w@uniq, 2)
+                let n = t.0@follow
+                kk = 2
+                return n
+            """,
+        ["rwhv"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkP(x: uniq/u64) -> (uniq/u64, i32) => (x, 1)
+            func rwhv(a: uniq/u64) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var z: u64 = 5
+                var t = mkP(a)
+                let tt = t@uniq
+                tt@follow = (z@uniq, 2)
+                let n = t.0@follow
+                kk = 2
+                return n
+            """,
     };
 
     // The coverage table's rows (a5v-u6-state.md), by exposure.
@@ -3243,12 +3863,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvCaseFieldResBad", "rvCaseFieldResBad: var a: i32 = 0")] // I (O-364 (a)'s Field rule before the Case): a Case payload of a Field of a call's result carries what the holder carries
     [InlineData("rvCasePayloadFieldBad", "rvCasePayloadFieldBad: var a: i32 = 0")] // I (O-364 (a)): the same Field rule inside a payload, a Case payload of a Field of the Ok payload
     [InlineData("rvCaseUniqOk", "")] // V (O-383 (b)): an exclusive borrow of the call's result passed to a call does not unbound it (15.6.4: touchR retains nothing)
-    [InlineData("rvCaseRawOk", "")] // V (O-383 (b)): the result's address formed; raw writes stay under 15.6 Addresses
+    [InlineData("rvCaseRawOk", "")] // V (O-383 (b)): the result's address formed and never stored through (a store through it is the body's own, itRawStore, R4-M250)
     [InlineData("rvCaseRefCodeOk", "")] // V (O-383 (b)): a Copy out of the payload through the shared match Subject is bounded like a Move
     [InlineData("rvCaseRefHoldsBad", "rvCaseRefHoldsBad: a = 2")] // I (O-364 (a) within the Case): through the shared Subject, a Scalar beside the reference in the payload
     [InlineData("rvCaseRefBuiltBad", "rvCaseRefBuiltBad: var a: i32 = 0")] // I (O-364 (a)): the shared read of a value the body built is not bounded
     [InlineData("rvCaseAssignBad", "rvCaseAssignBad: kk = 2")] // I (O-364 (a)): a value the body built assigned into the call's result holder; e carries what the holder carries
-    [InlineData("rvCaseRefWriteBad", "")] // I (O-364 (a)); kk = 2 once A5 reads a store through a reference into a call's result holder as the body's own value (a known limit; accepted on every build before H)
+    [InlineData("rvCaseRefWriteBad", "rvCaseRefWriteBad: kk = 2")] // I (15.6 l. 547-548, O-364 (a)); kk = 2 since G1093 (R4-M250): a store of the body through a reference into a call's result holder is the body's own value from that point on (accepted on every build before)
     [InlineData("rvCaseLoopOk", "")] // V (O-383 (b)): two calls' results in one local
     [InlineData("rvCaseSharedOk", "")] // V (O-383 (b)): a shared borrow of the result writes nothing (5.2.1 condition 3)
     [InlineData("rvMatchBuiltBad", "rvMatchBuiltBad: a = 2")] // I (O-364 (a)): a body-built Result's Copy-type Err payload copied out while its Ok Case may hold a shared Loan on a
@@ -3275,11 +3895,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("caseWriteOtherOk", "")] // V: put writes into oth, not res; res's exclusive reference ro is never written through
     [InlineData("caseWriteOkCaseOk", "")] // V (O-383 (b)): put2 may store y only in the Ok Case, and a value of a Type that holds a Loan reaches no Loan-free payload
     [InlineData("caseWriteR2LenderOk", "caseWriteR2LenderOk: var kk: u8 = 1")] // I (the Middle's relabel, 08:2x; SPEC 15.6): e carries r's Loan on kk and is returned past kk's end; var kk: u8 = 1 since C-370's landing (G935's rule R), a = 2 no longer (the write slot)
-    [InlineData("caseWriteR2LenderUseOk", "")] // V (O-383 (b), the Middle's phase-6 decision 2): put's write reaches only the Err payload, so e carries r's Loan and not a's; a = 2 with G935's rule R while the write mixed res
+    [InlineData("caseWriteR2LenderUseOk", "")] // V by O-383 (b), the cost the owner's O-383 (b) accepted (R4-M220 approximation (1); rwl is the body's store, R4-M250): put's write reaches only the Err payload, so e carries r's Loan and not a's; a = 2 with G935's rule R while the write mixed res
     [InlineData("caseWriteR2KeptUseOk", "")] // V: the same through a kept exclusive reference
     [InlineData("caseWriteR2LaterBad", "caseWriteR2LaterBad: kk = 2")] // I (O-364 (a)); kk = 2 since C-370's landing (G935's rule R): the write slot keeps the value written, though w is overwritten after the call
     [InlineData("caseWriteR2ExposedBad", "caseWriteR2ExposedBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R): put writes through an exposed reference local, so every exposed local is written (Written's lost argument)
-    [InlineData("caseWriteR2ExposedUseOk", "")] // V: the same with e used after a = 2; the lost argument's targets keep their bound
+    [InlineData("caseWriteR2ExposedUseOk", "")] // V by O-383 (b), the cost the owner's O-383 (b) accepted (R4-M220 approximation (1)): the same with e used after a = 2; the lost argument's targets keep their bound
     [InlineData("caseWriteR2BindUseOk", "")] // V: e's address taken, so no store of Flowing reads the bounded payload; Mixing runs before the slots are numbered where a call writes (MirBorrows.Holders' WriteSourced), so res keeps its write slot (a = 2 with G935's rule R while a later Mixing mixed res)
     [InlineData("rvResPartBad", "")] // V by O-383 (b), the cost the owner's O-383 (b) accepted: a Loan-free Case payload is bounded by its Case's Type, though it may hold a Loan-free part of an argument whose Type holds a Loan (15.6.4); accepted on every build
     [InlineData("rvResPartMixedBad", "rvResPartMixedBad: kk = 2")] // I (O-364 (a): the holder is also stored by the body, so no call's result only); kk = 2 since C-370's landing (G935's retention), the control of rvResPartBad
@@ -3303,6 +3923,43 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvwRefillOk", "")] // V (15.6 Holders: a holder completely replaced no longer carries its old value's Loans): res refilled by a new call's result after put's write clears its write slot (MirBorrows.Holders' Rewrite; the review's B2)
     [InlineData("rvwRefillBad", "rvwRefillBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R): put writes the refilled res again
     [InlineData("caseWriteR2BindBad", "caseWriteR2BindBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R), through the same path
+    // A store of the body through a borrow or raw Deref (G1093, R4-M250; SPEC 15.6 l. 547-548): a write through a reference adds
+    // the written value's Loans to every holder it may reach and ends none, so the call's result holder it reaches no longer holds
+    // only calls' results from that point on. rvCaseRefWriteBad is rw0; labels from SPEC before any run (G1093 design.md).
+    [InlineData("rw0v", "")] // V (15.6 l. 547-548): the body's own .Err(5) stored through rr; e then carries res's Loans, none of them on kk
+    [InlineData("rw0u", "")] // V (15.6.6): .Err(w) stored through rr, but e is not used after kk = 2
+    [InlineData("rw1", "rw1: kk = 2")] // I (15.6 l. 548, then 547 through item): .Some(.Err(w)) stored through rr into an Option of a call's result
+    [InlineData("rw1v", "")] // V: the same with 5
+    [InlineData("rw2", "rw2: kk = 2")] // I (15.6 l. 548, 547): a Tuple payload .Err((w, 1)) stored through rr; t.0 returned after kk = 2
+    [InlineData("rw2v", "")] // V: the same with 5
+    [InlineData("rw3", "rw3: kk = 2")] // I (15.6.4, 15.6 l. 548, 547): .Err(Code.init(n: w)), whose result keeps w by value, stored through rr; c.n returned after kk = 2
+    [InlineData("rw3v", "")] // V: the same with 5
+    [InlineData("rw4", "rw4: kk = 2")] // I (15.6 l. 548): the store through r2, a Reborrow through rr, reaches res
+    [InlineData("rw4v", "")] // V: the same with 5
+    [InlineData("rw4b", "rw4b: kk = 2")] // I (15.6 l. 548): w stored through p, the Err payload's exclusive reference through the match Subject
+    [InlineData("rw4bv", "")] // V: the same with 5
+    [InlineData("rw5", "rw5: kk = 2")] // I (15.6 l. 548, on one path): the store under `if c`
+    [InlineData("rw5v", "")] // V: the same with 5
+    [InlineData("rw6", "rw6: kk = 2")] // I (15.6 l. 548, then 548's read through e in the second iteration): the store at the loop's bottom, read at its top
+    [InlineData("rw6v", "")] // V: the same with 5
+    [InlineData("rw7", "")] // V (15.6 l. 547, completely replaced): res refilled by mk(b) after the store
+    [InlineData("rw8", "")] // V (15.6 l. 548): the store through rt reaches only oth; res's exclusive reference ro is never written through
+    [InlineData("rw9", "")] // V (O-383 (b)): a call's result stored through rr (the builder holds it in a temporary first); e comes from mk(b)'s Err payload
+    [InlineData("rwl", "rwl: a = 2")] // I (15.6 l. 547-548; R4-M250, a body's store, not approximation (1)'s call write): .Err(w) stored through rr; res still carries a's Loan
+    [InlineData("rwr", "")] // V (15.6 l. 548, 15.6.3): a reference stored through hh into h; n reads x's content, which carries no Loan
+    [InlineData("rwry", "rwry: kk = 2")] // I (15.6 l. 548, a reference the body forms is read by the rule above): n reads through w@uniq, w carrying kk's Loan
+    [InlineData("rwryv", "")] // V: the same through a Loan-free z
+    [InlineData("itConstStore", "itConstStore: a = 2")] // I (15.6 l. 547; 548, "ends none"): a constant .Err(5) stored through rr; res still carries a's Loan, so e does
+    [InlineData("itRawStore", "itRawStore: kk = 2")] // I (15.6 l. 546 addresses, 548): .Err(w) stored through res's raw address
+    [InlineData("itRawCopy", "itRawCopy: kk = 2")] // I (15.6 l. 546, an address carried by Copies): the same through a Copy of the pointer
+    [InlineData("itTupleRef", "itTupleRef: kk = 2")] // I (15.6 l. 548): the store through a reference held in a Tuple's element
+    [InlineData("itTwoDeref", "itTwoDeref: kk = 2")] // I (15.6 l. 548, through the reference a reference was Reborrowed through): two Derefs
+    [InlineData("vMoveRet", "")] // V (O-383 (b)): another call's result Moved through rr; e comes from mk(b)'s Err payload
+    [InlineData("vRefillMove", "")] // V (15.6 l. 547, completely replaced): res refilled by res2@move after the store
+    [InlineData("vParamReborrow", "")] // V (O-383 (b)): the store through a Reborrow of q reaches only q's referent; res stays bounded
+    [InlineData("vRefOwnLoan", "")] // V (15.6 l. 548, 15.6.3): n reads a's and z's contents through h, which carry no Loan
+    [InlineData("rwh", "rwh: kk = 2")] // I (15.6 l. 548, a reference the body forms): the body's Tuple (w@uniq, 2) stored through tt replaces the call's reference part
+    [InlineData("rwhv", "")] // V: the same with a Loan-free z
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
@@ -3355,6 +4012,22 @@ public sealed partial class MirBorrowsTest
             "    match res\n        .Ok(_) => return 0\n        .Err(let code)\n            var s: u64 = 0\n«N:            if c => p = code\n»" +
             "«N:            s = p@follow\n»            return 0\npublic func main() => ()\n";
         long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Expand(Head, n, 0)).Work)];
+        output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
+    }
+
+    // A store of the body through a reference into a call's result holder (MirBorrows.Holders' StoredThrough, R4-M250) is followed in
+    // work linear in the body: N stores through one exclusive reference into a call's result holder, then N whole Moves of it, each
+    // into a local that takes a write slot (a written local's Moves spread it), then the last one's Err payload Moved out, which carries
+    // a's Loan and is not used after (N = 16, 32, 64; valid at every N, which Measured asserts).
+    [Fact]
+    public void AStoreThroughAReferenceIntoACallsResultIsFollowedInLinearWork()
+    {
+        const string Head = "func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)\nfunc shape() -> u64\n    var a: i32 = 0\n" +
+            "    var r0 = mk(a@uniq)\n    let q = r0@uniq\n«N:    q@follow = .Err(5)\n»«N:    var r{1} = r{0}@move\n»";
+        const string Tail = "@move\n        .Ok(_) => return 0\n        .Err(let e)\n            let k = e\n            return 0\n" +
+            "public func main() => ()\n";
+        long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Expand(Head, n, 0) + $"    match r{n}" + Tail).Work)];
         output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
     }

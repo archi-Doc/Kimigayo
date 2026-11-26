@@ -38,7 +38,7 @@ public sealed partial class Binding
             return this.FailOrigin(use);
         }
 
-        var origin = annotation.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(name!, use, scope);
+        var origin = this.WrittenOrigin(annotation, use, scope);
         return origin?.Kind == OriginKind.Intersection ? this.FailOrigin(use) : origin;
 
         static bool InlineStorage(Koto node)
@@ -60,7 +60,7 @@ public sealed partial class Binding
     {
         instance = null;
         if (annotation.OriginExpression is not MemberAccessKoto { Left: IdentifierNameKoto input, Right: IdentifierNameKoto target } ||
-            !this.OriginCandidate(input.IdentifierName, use, scope, out _, out instance, out _))
+            this.OriginCandidate(input.IdentifierName, use, scope, out _, out instance, out _) is not true)
         {
             return null;
         }
