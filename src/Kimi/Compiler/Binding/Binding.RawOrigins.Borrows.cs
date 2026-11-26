@@ -220,7 +220,7 @@ public sealed partial class Binding
     {
         if (this.BorrowReferent(bound, out var outer, out var exclusive) is { } referent && outer is not null)
         {
-            var own = ReferenceEquals(outer.Binder, declaration) && !IsMutableDeclaration(declaration);
+            var own = ReferenceEquals(outer.Binder, declaration);
             this.RecordEntry(rows, own && this.Region(outer) is { Value: { } reach } ? reach : outer, referent, exclusive);
         }
     }
