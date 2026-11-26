@@ -196,14 +196,16 @@
 //   read ends. A Kept entry serves a read as it is.
 // - Retained memory is the pool's high water: an entry keeps the largest buckets and lists any view gave it, flat across warm
 //   rebinds. Temporary: the readings go when R7-C2c3 removes Reading's binding completion. A view whose identity table is not
-//   Final has its entry formed per request: a derived identity fact whose sources are not all final in the publication (W6).
+//   Final has its entry formed per request: an identity premise read Provisional (W6: a derived fact not found available, even
+//   when every source it read was final; a failed or unresolved source context), or a class W7's finality rule leaves open (an
+//   Origin "no" while a declaration it read is not complete or the premise environment cannot be rented).
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)), a column of the view's Kept entry in Closure(view) (R7-C2e2 e2-3a).
 // - What and key: the rows of each link an outermost request walked, in the entry of its (view scope, requirement Contract) at the
 //   entry's serial, per link, with whether that walk recorded an identity row or deferred a mate (c2-2, PLAN G881b: such rows answer
-//   only a refinement among them) and the first proof limit the walk wrote (W6, Not replayed below); and, in a table of their own, a
-//   Contract's head depth. Rows are kept only in a Kept entry (both need final keys and every reading
-//   kept), so a row lives no longer than its entry.
+//   only a refinement among them) and the first proof limit the walk wrote (W6, Not replayed below; a walk that wrote one keeps
+//   its request's subject and key links alone); and, in a table of their own, a Contract's head depth. Rows are kept only in a
+//   Kept entry (both need final keys and every reading kept), so a row lives no longer than its entry.
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading asks and both keepers, PremiseRefines and FirstRows, ask
 //   through RowsRequest), an outermost request, a preparation that formed no reading, final keys (no identity premise, or a Final
 //   identity table), and a Complete walk: every availability read it made was Complete (W6, W8). Nested demands never read or fill
@@ -241,12 +243,14 @@
 //   table kept for the publication (readings, entries, identity tables).
 // - Not replayed: a kept answer skips the walk's per-check effects, which a capability result replays from its payload. A Complete
 //   walk read only Proven or Refuted states and valid contexts, and its one other effect, the proof's limit (W6: a failed premise
-//   or a Refuted source read, each published and final), is replayed: each link's kept rows hold the first limit their walk wrote,
-//   and a read of them joins it as the walk did (ScopeReads.Limit ??= it), as a read of a memoized identity table joins its build's
-//   (ClassesOf, W7; R7-C2c2 c2-5b2's b1-r2-failed: a capability work that read rows another reader kept lost the limit its cause
-//   rests on). The limit is the walk's, so a link the walk kept but reached no failure through carries it too, which a fresh walk
-//   of that link alone would not write (only in a view with a failed premise, whose record rejects the program; Q13). So two are
-//   left, both records only (Q13): a read outside every proof scope opens and closes its own frame (ReadSourceState at
+//   or a Refuted source read, each published and final), is replayed (DECISIONS R7-M122): each link's kept rows hold the first
+//   limit their walk wrote (SetAsideLimit), and a read of them joins it as the walk did (ScopeReads.Limit ??= it), as a read of a
+//   memoized identity table joins its build's (ClassesOf, W7; R7-C2c2 c2-5b2's b1-r2-failed: a capability work that read rows
+//   another reader kept lost the limit its cause rests on). The limit is the walk's, so a walk that wrote one keeps its request's
+//   subject and key links alone (KeepRows): the subject's own request reads that walk, and the key's walks the key's class, which
+//   covers it, so at most its first cause differs (record selection, Q13). A prefix or mate link is formed again by its own
+//   request: kept with the walk's limit, it would rest an independent record on another link's failure (F's CC-66 B1; P-res1).
+//   So two are left, both records only (Q13): a read outside every proof scope opens and closes its own frame (ReadSourceState at
 //   proofNesting 0), and a context failed after the walk would have been consulted (SPEC 23.1.2), the dependent record of (i) above.
 
 using Kimi.Compiler.Parsing;

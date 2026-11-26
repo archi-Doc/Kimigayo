@@ -161,7 +161,7 @@ public sealed partial class Binding
 
                 if (keep && this.enumerateCompletion == Completion.Complete)
                 {
-                    this.KeepRows(index, view, serial, limit);
+                    this.KeepRows(index, view, serial, subject, key, limit);
                 }
 
                 return refines;
@@ -248,13 +248,11 @@ public sealed partial class Binding
     // that deferred none is exact, so a request through no cycle walks once. Each round visits the same links in the same order and
     // each link's rows are monotone in what it reads, so a link's rows only grow from round to round and the last round is the least
     // fixpoint of the links' equations: its rows are a function of (link, view) and are kept as a single walk's (KeepRows). Bound:
-    // the (link, row) pairs of the request plus one. Also returns the first proof limit the walk wrote (W6, the class header's Not
-    // replayed), which KeepRows keeps with the rows: the proof's earlier limit is set aside for the walk and joined after it, so the
-    // proof ends with the limit the walk's own writes would leave.
+    // the (link, row) pairs of the request plus one. Also returns the walk's own first proof limit (W6, SetAsideLimit; the class
+    // header's Not replayed), which KeepRows keeps with the rows.
     private (List<PremiseRow>? Rows, List<PremiseRow>? KeyRows, ICheckCause? Limit) EnumerateClosed(BoundType subject, BoundType key, EvidenceView view, ViewIndex index)
     {
-        var outer = this.ScopeReads.Limit;
-        this.ScopeReads.Limit = null;
+        var outer = this.SetAsideLimit();
         while (true)
         {
             this.enumerateMoved = false;
@@ -276,9 +274,7 @@ public sealed partial class Binding
             if (this.enumerateDeferred.Count == 0 || !this.enumerateMoved)
             {
                 this.enumerateSeed.Clear();
-                var limit = this.ScopeReads.Limit;
-                this.ScopeReads.Limit = outer ?? limit;
-                return (rows, keyRows, limit);
+                return (rows, keyRows, this.TakeOwnLimit(outer));
             }
 
             (this.enumerateSeed, this.enumerateMemo) = (this.enumerateMemo, this.enumerateSeed);
@@ -354,7 +350,7 @@ public sealed partial class Binding
                 var (rows, keyRows, limit) = this.EnumerateClosed(subject, key, view, index);
                 if (keep && this.enumerateCompletion == Completion.Complete)
                 {
-                    this.KeepRows(index, view, serial, limit);
+                    this.KeepRows(index, view, serial, subject, key, limit);
                 }
 
                 Append(into, start, rows);
@@ -510,12 +506,13 @@ public sealed partial class Binding
     // The outermost walk's rows of the view, kept in its Kept entry (pooled copies), each marked with whether the walk recorded an
     // identity row: a link's own walk records a subset of its request's. A request that deferred a mate (PLAN G881b) marks them too: a
     // deferred walk records none, so a link only it walked may record one in its own request. Each carries the first proof limit the
-    // walk wrote (W6, the class header's Not replayed), which a read of it joins.
-    private void KeepRows(ViewIndex index, EvidenceView view, int serial, ICheckCause? limit)
+    // walk wrote (W6, the class header's Not replayed), which a read of it joins; a walk that wrote one keeps its request's subject
+    // and key links alone, since another link's own walk may write none (F's CC-66 B1).
+    private void KeepRows(ViewIndex index, EvidenceView view, int serial, BoundType subject, BoundType key, ICheckCause? limit)
     {
         foreach (var ((link, linkView, linkSerial), rows) in this.enumerateMemo)
         {
-            if (rows is not null && linkView == view && linkSerial == serial)
+            if (rows is not null && linkView == view && linkSerial == serial && (limit is null || ReferenceEquals(link, subject) || ReferenceEquals(link, key)))
             {
                 index.KeepRow(link, rows, this.enumerateIdentities.Count != 0 || this.enumerateDeferred.Count != 0, limit);
             }

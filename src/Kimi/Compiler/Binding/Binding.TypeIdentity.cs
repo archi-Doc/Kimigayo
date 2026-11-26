@@ -141,14 +141,11 @@ public sealed partial class Binding
                 this.identityLent.Add(classes);
             }
 
-            // The proof's earlier limit is set aside for the build and joined after it, so the build's own first limit is the table's.
-            var outer = this.ScopeReads.Limit;
-            this.ScopeReads.Limit = null;
+            var outer = this.SetAsideLimit(); // The build's own first limit is the table's (W6).
             classes.Open(scope);
             this.ApplyIdentityPremises(classes, scope);
             classes.Close();
-            var limit = this.ScopeReads.Limit;
-            this.ScopeReads.Limit = outer ?? limit;
+            var limit = this.TakeOwnLimit(outer);
             this.IdentityClassWork += classes.Work;
             completion = classes.Completion;
             this.identityClasses[scope] = (classes.Final && SerialOf(scope) == serial ? serial : -1, classes, limit); // -1: kept, not memoized
