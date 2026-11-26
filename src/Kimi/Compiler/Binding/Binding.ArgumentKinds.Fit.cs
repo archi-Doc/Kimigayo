@@ -293,12 +293,15 @@ public sealed partial class Binding
         var end = this.positionParts.Count;
         var kind = this.PositionKind(start, end, out var common);
         ArgumentAdaptation? positionClass = null;
+        var held = false;
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
             var fits = (kind, KotoHelper.UnwrapParentheses(part)) switch
             {
                 _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
+                (_, var node) when type.ContainsOpenSlot && this.PlacedAtOpenSlot(node, this.KindOf(node), type, this.ConstraintScope(part)) =>
+                    held = true, // SPEC 10.5.1, 10.8 (the place rule; PLAN G814 R): a part placed at a bare atom holds whole, walked no further.
                 _ when this.IsWaiting(part) => this.FitArgumentPart(part, type, this.ConstraintScope(part), part, out _) != CandidateApplicability.Inapplicable,
                 (PartKind.Aggregate, TupleLiteralKoto tuple) => this.ShapeFits(TupleShapeAt(tuple, type)),
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ShapeFits(this.ArrayShapeAt(array, type)),
@@ -311,6 +314,11 @@ public sealed partial class Binding
             {
                 return false;
             }
+        }
+
+        if (held)
+        {
+            return true;
         }
 
         if (common is not null && kind == PartKind.Typed)
@@ -384,9 +392,15 @@ public sealed partial class Binding
             this.WaitingWithin(met, 0); // The literal is the layer's target, the owner temporary of U at `ref/U` (Materialization).
         }
 
+        if (result != CandidateApplicability.Applicable || (type.ContainsOpenSlot && this.KindOf(node) == PartKind.Join))
+        {
+            // Open issue G814-J (staged until the closed path ranks a value join as one value): a join whose expected Type holds an atom
+            // keeps no positions, ranked by its own class, since a join's Aggregate position records no operation (BU-203).
+            this.positionOperations.RemoveRange(first, this.positionOperations.Count - first);
+        }
+
         if (result != CandidateApplicability.Applicable)
         {
-            this.positionOperations.RemoveRange(first, this.positionOperations.Count - first);
             this.argumentMisfit = temporary is not null ? this.argumentMisfit.Within(0) : this.argumentMisfit; // The literal is the layer's target.
         }
 
