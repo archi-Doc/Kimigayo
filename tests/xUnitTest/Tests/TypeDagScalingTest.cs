@@ -107,7 +107,7 @@ public partial class TypeDagScalingTest
         Assert.True(counts[0].Steps == counts[2].Steps, text);
     }
 
-    // SPEC 11.6 (DECISIONS: G1220; G1220-1 C11): the header walk visits each Type once per request, so its visits per
+    // SPEC 11.6 (DECISIONS BU-267; G1220-1 C11): the header walk visits each Type once per request, so its visits per
     // added declaration stay flat: an inferred Property requesting Owned and Copy of a chain of N stored declarations (chain), N
     // Properties each requesting one 32-deep chain (fan), and N inferred Properties each typed through the next's header (nested, SPEC
     // 11.6's demand of another header, f2's twin). Each program is valid: no request's Type contains its Property.
