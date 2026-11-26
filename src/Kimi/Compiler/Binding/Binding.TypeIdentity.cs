@@ -452,14 +452,38 @@ public sealed partial class Binding
     // R7-C2c2 c2-2, e2-7 R3.4: a closure's round table, the declaration's classes with the identity rows its walks recorded (SPEC 8.2.3's
     // grounds include the Constraints `T is C` supplies at every depth): ClassesOver those rows. A round with rows builds one reused
     // request-local table, never memoized; its rows are Provisional (a derived availability), so nothing keyed by it is kept, and at
-    // R7-C2e2 e2-1's merge what it keys stays the request's. The first round, with no rows, reads T(G), kept per view scope and
-    // `serial` (Keeps), so a closure builds no table of the grounds alone. Its keys follow the table's rule: a constructed member keys
-    // to itself (Representative). R7-C2c2 c2-4b (DECISIONS R4.13, R7-M44): its premises are the declaration's grounds alone
-    // (ClassesOver's, ConstraintEnvironment.DeclaredIdentityFacts), never a use's supply, so a closure is a function of the declaration's
-    // premises and its own rows (SPEC 8.3.3 Limits).
+    // R7-C2e2 e2-1's merge what it keys stays the request's. The first round, with no rows, reads T(G) (GroundsOf). Its keys follow the
+    // table's rule: a constructed member keys to itself (Representative). R7-C2c2 c2-4b (DECISIONS R4.13, R7-M44): its premises are the
+    // declaration's grounds alone (ClassesOver's, ConstraintEnvironment.DeclaredIdentityFacts), never a use's supply, so a closure is a
+    // function of the declaration's premises and its own rows (SPEC 8.3.3 Limits).
     private IdentityClasses? ExtendedClassesOf(BindingScope scope, int serial, List<IdentityRow> rows)
     {
-        var kept = rows.Count == 0 ? this.identityGrounds.GetValueOrDefault(scope) : default;
+        if (rows.Count == 0)
+        {
+            return this.GroundsOf(scope, serial);
+        }
+
+        if (!this.identityBuilding.Add(scope))
+        {
+            return null;
+        }
+
+        try
+        {
+            return this.ClassesOver(this.identityExtended ??= new IdentityClasses(this), scope, rows, 0);
+        }
+        finally
+        {
+            this.identityBuilding.Remove(scope);
+        }
+    }
+
+    // e2-7 R3.4: T(G), the table of the declaration's grounds alone (ClassesOver with no row), kept per view scope and `serial` (Keeps)
+    // with the first proof limit its build wrote, which each read joins (W6), so a closure builds no table of the grounds alone. A
+    // re-entered build answers nothing.
+    private IdentityClasses? GroundsOf(BindingScope scope, int serial)
+    {
+        var kept = this.identityGrounds.GetValueOrDefault(scope);
         if (kept.Classes is { } held && kept.Serial == serial)
         {
             this.ScopeReads.Limit ??= kept.Limit;
@@ -473,13 +497,8 @@ public sealed partial class Binding
 
         try
         {
-            if (rows.Count != 0)
-            {
-                return this.ClassesOver(this.identityExtended ??= new IdentityClasses(this), scope, rows, 0);
-            }
-
             var outer = this.SetAsideLimit();
-            var classes = this.ClassesOver(kept.Classes is { } reused && this.identityBuilding.Count == 1 ? reused : this.RentClasses(), scope, rows, 0);
+            var classes = this.ClassesOver(kept.Classes is { } reused && this.identityBuilding.Count == 1 ? reused : this.RentClasses(), scope, this.identityRows, this.identityRows.Count);
             var limit = this.TakeOwnLimit(outer);
             this.identityGrounds[scope] = (classes.Final && Keeps(scope, serial) ? serial : -1, classes, limit);
             return classes;
