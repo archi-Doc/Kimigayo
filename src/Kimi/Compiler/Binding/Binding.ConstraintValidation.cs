@@ -829,9 +829,10 @@ public sealed partial class Binding
         }
         else
         {
-            // Transitional, R7-E5 (E4c, N1; PLAN's second independent failure at an occupied Origin key): at L11's meet the
-            // occurrence's own Origin row recorded first, and the formation cause, independent of it, is not recorded (a Record would
-            // add a record under the other code and be a Defect under the same one), until RecordNumbered per failure.
+            // Transitional, R7-E5 (E4c, N1; PLAN's second independent failure at an occupied Origin key): the use already holds a
+            // record, so the formation cause is not recorded (a Record would add a record under the other code and be a Defect under
+            // the same one), until RecordNumbered per failure. The guard takes every earlier failure at the use: L11's meet (the
+            // occurrence's own Origin row recorded first), CheckBound's recheck (F14: the first check's record stands) and any other.
             this.Fail(obligation.Use, failure);
         }
 

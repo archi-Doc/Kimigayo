@@ -74,7 +74,7 @@ internal enum ProblemFactKind : byte
     Table, // A storage limit's body: the arena (Value, a MirStorageTable), its table.
     Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value, -1 Binding's); facts' tail.
     Actual, // Binding: the syntax that shows a mismatch, the side found (Value, an index in BindingReport's kept sides, a Type or length; SPEC 23.3).
-    Expected, // Binding: the syntax that shows a mismatch, the side required (Value, the same).
+    Expected, // Binding: the syntax that shows a mismatch, the side required (Value, the same); a per-call slot's S, the call signature required (R7-E4 E4c).
     Span, // Binding: the part of its subject the record is located at (Value, start << 32 | length; SPEC 23.1.1).
     ActualForm, // Binding: as Actual, for a side with no kept value, a form (Value, a MismatchForm row and its count).
     ExpectedForm, // Binding: as Expected, the same.

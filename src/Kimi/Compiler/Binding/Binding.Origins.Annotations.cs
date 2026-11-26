@@ -187,7 +187,12 @@ public sealed partial class Binding
             return BoundOrigin.Static;
         }
 
-        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier, out var repeated))
+        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier, out var repeated) is not { } candidate)
+        {
+            return null; // SPEC 15.3.4, 23.1.2: the lookup failed the use (its DuplicateBinding_Kd); the Origin reads that failed input.
+        }
+
+        if (candidate)
         {
             if (repeated is not null)
             {
@@ -252,7 +257,7 @@ public sealed partial class Binding
         }
         else if (syntax is MemberAccessKoto member && member.Left is IdentifierNameKoto input && member.Right is IdentifierNameKoto target)
         {
-            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated))
+            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated) is true)
             {
                 result = SelectedOrigin(syntax, ref type, out var slot);
                 var schema = type?.Symbol?.Schema;
@@ -296,6 +301,8 @@ public sealed partial class Binding
         Koto? FailedOperand(Koto operand) => this.IsUnresolvedPrerequisite(operand) ? operand : null;
     }
 
+    // True when the name has an Origin-context candidate (its Origin, carrier or set in the outputs), false when it has none, and null when
+    // the lookup itself failed the use: a same-scope conflict among value, Origin and set roles (SPEC 15.3.4), its DuplicateBinding_Kd.
     // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
     // SPEC 15.3.4, 15.4.4 (PLAN G230-H, rule D): a name of a local, its value or its set, outside that local's own declaration reads the
     // local's declared Type, so it demands the declaration as a value use does (QueryValueType); the local forms in its declaring body
@@ -306,7 +313,7 @@ public sealed partial class Binding
     // (AheadOfEnvironment), rests. The name selects nothing, so the header fails there and is bound again at the function's statement
     // (BindFunction); a clause keeps that failure (Q-B's class). A formed written entry selects its environment binding, whose Type its
     // entry fixes (SPEC 7.7.2, C-1), and a name of a named function's scope is selected normally (SPEC 9.3, 15.3.4).
-    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
+    private bool? OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
         carrier = null;
@@ -339,7 +346,7 @@ public sealed partial class Binding
             if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);
-                return true;
+                return null;
             }
 
             if (set is not null)
