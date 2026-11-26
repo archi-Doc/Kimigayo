@@ -8,7 +8,8 @@ namespace Kimi.Compiler.Backend;
 // an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine
 // through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes and transferBytes, whose routines the module
 // defines on request (Requested; DECISIONS R5-M145), Raw.allocate with its element stride, a creation's factory with its control value and a clone's
-// retain, FunctionCodegen.Objects), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort
+// retain, FunctionCodegen.Objects, and a machine instruction's routine by its member, InstructionRows, which the module defines on
+// request), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort
 // reason, Raw.initialize's copy, Raw.slice's record, Raw.readVolatile's and Raw.writeVolatile's volatile access, a staticEnsure's state test
 // (FunctionCodegen.Statics), a runtime Type test (FunctionCodegen.Objects), a reserve witness's code address (FunctionCodegen.Formatting) and a
 // verification's compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes its operands at its
@@ -21,7 +22,7 @@ internal sealed partial class FunctionCodegen
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
         var target = row.Target == IntrinsicTarget.None ? -1 : this.Target(new(this.at, this.body.Blocks[this.at].Count));
-        if (this.Routine(row, this.InstanceType(call.Place), call.Callee.Subst, target, out var given) is { } routine)
+        if (this.Routine(row, call.Callee.Symbol?.Definition.Member, this.InstanceType(call.Place), call.Callee.Subst, target, out var given) is { } routine)
         {
             this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), given);
             return;
@@ -62,6 +63,9 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.VolatileWrite:
                 this.VolatileWrite(call);
                 return;
+            case IntrinsicWriter.Instruction:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // A member without an InstructionRows row: a library defect.
+                return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone:
                 return; // A broken contract, recorded by Routine.
             default:
@@ -76,18 +80,19 @@ internal sealed partial class FunctionCodegen
     private FunctionAbi? Routine(BoundType item, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
-        return item.Symbol?.Definition is { Kind: DispositionKind.Intrinsic, Id: var id }
-            ? this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given) : null;
+        return item.Symbol?.Definition is { Kind: DispositionKind.Intrinsic, Id: var id, Member: var member }
+            ? this.Routine(IntrinsicRows.Of(id), member, result, this.typeContext.SubstOfItem(item), target, out given) : null;
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in
-    // order into `given`, from the call's result Type, its substitution (the call's or an Item's own) where the row needs its Type
-    // argument's layout and the target it carries (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is
+    // order into `given`, from the member its declaration names, the call's result Type, its substitution (the call's or an Item's own)
+    // where the row needs its Type argument's layout and the target it carries (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is
     // __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no
     // Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A creation is its target descriptor's factory and a
-    // clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and after a broken contract's record. A T without its
+    // clone its handle's retain (FunctionCodegen.Objects), a machine instruction its member's routine (InstructionRows), which the module
+    // defines on request, or null for a member without a row. Null for any other writer, and after a broken contract's record. A T without its
     // layout (the row's TypeArguments need, Needed) is a broken contract, recorded by Laid (its stride 0, in a module then not written).
-    private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, Subst? subst, int target, out ReadOnlySpan<Value> given)
+    private FunctionAbi? Routine(IntrinsicRow row, string? member, BoundType? result, Subst? subst, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
         switch (row.Writer)
@@ -105,6 +110,8 @@ internal sealed partial class FunctionCodegen
                 return this.Create(result, target, out given);
             case IntrinsicWriter.Clone:
                 return this.Retain(result);
+            case IntrinsicWriter.Instruction:
+                return this.module.Instruction(member);
             default:
                 return null;
         }

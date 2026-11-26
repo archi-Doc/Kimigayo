@@ -4,7 +4,6 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
-using Kimi.Compiler.Target;
 using Xunit;
 
 namespace XunitTest;
@@ -67,10 +66,18 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.RawReadVolatile, "public unsafe func readVolatile<T>(storage: raw/T) -> T\nT is PrimitiveInteger"),
     ];
 
+    // The rows whose library holds a Condition (SPEC 19.2.1): `windows` does not hold (linux-x64's and none-x64's), `os == "none"`.
+    private static readonly string[] NotWindows = [TargetProfile.Linux.Target, TargetProfile.None.Target];
+    private static readonly string[] OsNone = [TargetProfile.None.Target];
+
+    // The Instruction members that read storage through a raw parameter (IMPL 21.6): none in OSF1a.
+    private static readonly string[] ReadOnlyInstructions = [];
+
     // The bodiless compiler functions without a lang item (R8-G1 G1-6: no C# reader names them), by their library path, each with the
-    // value of the Condition `windows` under which the library declares it (null: on every target; the Tatara plan's B7b6:
-    // Time.monotonicNanoseconds where `windows` does not hold, linux-x64's and none-x64's library).
-    private static readonly (string Path, string Shape, bool? Windows)[] UnnamedCompilerFunctionShapes =
+    // rows whose library declares it under its Conditions (null: every row's, read in the library without a target; the Tatara plan's
+    // B7b6: Time.monotonicNanoseconds where `windows` does not hold; OSF1a: Kimi.X86's pause and readTimestamp on every x86-64 row, its
+    // other members where `os == "none"`).
+    private static readonly (string Path, string Shape, string[]? Targets)[] UnnamedCompilerFunctionShapes =
     [
         ("Console.writeStdout", "internal unsafe func writeStdout(data: raw/u8, length: isize)", null),
         ("Storage.missingDictionaryKey", "internal func missingDictionaryKey() -> Never", null),
@@ -88,7 +95,18 @@ public partial class KimiLibraryShapeTest
         ("Raw.writeVolatile", "public unsafe func writeVolatile<T>(storage: raw/T, value: T)\nT is PrimitiveInteger", null),
         ("Storage.argumentOutOfRange", "internal func argumentOutOfRange() -> Never", null),
         ("Storage.indexBounds", "internal func indexBounds() -> Never", null),
-        ("Time.monotonicNanoseconds", "func monotonicNanoseconds() -> i64", false),
+        ("Time.monotonicNanoseconds", "func monotonicNanoseconds() -> i64", NotWindows),
+        ("X86.pause", "public func pause()", null),
+        ("X86.readTimestamp", "public func readTimestamp() -> u64", null),
+        ("X86.halt", "public func halt()", OsNone),
+        ("X86.disableInterrupts", "public func disableInterrupts()", OsNone),
+        ("X86.enableInterrupts", "public func enableInterrupts()", OsNone),
+        ("X86.readPort8", "public unsafe func readPort8(port: u16) -> u8", OsNone),
+        ("X86.writePort8", "public unsafe func writePort8(port: u16, value: u8)", OsNone),
+        ("X86.readPort16", "public unsafe func readPort16(port: u16) -> u16", OsNone),
+        ("X86.writePort16", "public unsafe func writePort16(port: u16, value: u16)", OsNone),
+        ("X86.readPort32", "public unsafe func readPort32(port: u16) -> u32", OsNone),
+        ("X86.writePort32", "public unsafe func writePort32(port: u16, value: u32)", OsNone),
     ];
 
     public static TheoryData<KimiDeclarationId> CatalogEntries
@@ -124,9 +142,9 @@ public partial class KimiLibraryShapeTest
         get
         {
             var data = new TheoryData<string, string, string>();
-            foreach (var (path, shape, windows) in UnnamedCompilerFunctionShapes)
+            foreach (var (path, shape, targets) in UnnamedCompilerFunctionShapes)
             {
-                foreach (var target in windows is null ? [string.Empty] : Libraries.Keys.Where(x => WindowsHolds(x) == windows))
+                foreach (var target in targets ?? [string.Empty])
                 {
                     data.Add(path, shape, target);
                 }
@@ -137,9 +155,9 @@ public partial class KimiLibraryShapeTest
     }
 
     [Theory]
-    [InlineData("", 84)]
-    [InlineData("x86_64-unknown-linux-musl", 85)]
-    [InlineData("x86_64-unknown-none", 85)]
+    [InlineData("", 86)]
+    [InlineData("x86_64-unknown-linux-musl", 87)]
+    [InlineData("x86_64-unknown-none", 96)]
     public void LibraryBindsCompletely(string target, int unnamed)
     {
         var c = LibraryOf(target);
@@ -154,7 +172,8 @@ public partial class KimiLibraryShapeTest
         // `Storage.clockFailure` and `Time.readCounterFrequency`; O-412 (1)'s Array.sort(by:), which destroys `by` inside the operation;
         // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970; OSF2's Raw.writeVolatile,
         // whose pair Raw.readVolatile is cataloged for its NoStore row); the library where `windows` does not hold (linux-x64's,
-        // none-x64's) adds Time.monotonicNanoseconds (B7b6).
+        // none-x64's) adds Time.monotonicNanoseconds (B7b6); OSF1a's Kimi.X86 adds pause and readTimestamp on every x86-64 row and its
+        // nine other members where `os == "none"` (none-x64's).
         // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`. Platform (SPEC 22.4.5) is cataloged on every target.
         Assert.Equal(123, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
@@ -247,7 +266,7 @@ public partial class KimiLibraryShapeTest
     {
         var c = Library.Value;
         var unnamed = c.Library.RegisteredSymbols.ToArray().Where(static x => x.LibraryDeclaration is null).ToArray();
-        Assert.Equal(84, unnamed.Length);
+        Assert.Equal(86, unnamed.Length);
         foreach (var symbol in unnamed)
         {
             var function = Assert.IsType<FunctionKoto>(symbol.Declaration);
@@ -327,9 +346,9 @@ public partial class KimiLibraryShapeTest
     }
 
     [Theory]
-    [InlineData("", 29)]
-    [InlineData("x86_64-unknown-linux-musl", 30)]
-    [InlineData("x86_64-unknown-none", 30)]
+    [InlineData("", 31)]
+    [InlineData("x86_64-unknown-linux-musl", 32)]
+    [InlineData("x86_64-unknown-none", 41)]
     public void EveryCompilerFunctionHasAShape(string target, int count)
     {
         // Every registered intrinsic, Form function (L2) or linked constructor, named or not (R8-G1 G1-6), and no other declaration, has
@@ -347,15 +366,17 @@ public partial class KimiLibraryShapeTest
         Koto[] shaped =
         [
             .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
-            .. UnnamedCompilerFunctionShapes.Where(x => x.Windows is null || x.Windows == WindowsHolds(target)).Select(x => LibrarySource.Declaration(library, x.Path)),
+            .. UnnamedCompilerFunctionShapes.Where(x => x.Targets is null || x.Targets.Contains(target)).Select(x => LibrarySource.Declaration(library, x.Path)),
         ];
         Assert.Equal((count, count), (expected.Count, shaped.Length));
         Assert.True(expected.SetEquals(shaped));
     }
 
     // Plan 5.8: every library function and $abort has one disposition, its symbol's Definition: an intrinsic serves at most one of them,
-    // except Fail, which carries a fixed SPEC 22.5.2 code; a symbol of no compiler function has its Body; there are at most 30
-    // intrinsics (OSF2's volatile pair, the owner's O-489; MonotonicClock, the Tatara plan's decision 25, the owner's O-478 (i)), the temporary ones of the owner's approvals of 2026-10-11 gone (FormatBuffer
+    // except a family (IntrinsicDisposition.TakesMember), whose declarations each name their member: Fail's a fixed SPEC 22.5.2 code,
+    // Instruction's a row of InstructionRows (OSF1a, design C2; the Tatara plan's decisions 36-43); a symbol of no compiler function has
+    // its Body; there are at most 31 intrinsics (OSF2's volatile pair and OSF1a's Instruction, the owner's O-489; MonotonicClock, the
+    // Tatara plan's decision 25, the owner's O-478 (i)), the temporary ones of the owner's approvals of 2026-10-11 gone (FormatBuffer
     // at R8-W2 c3b, FormatFinish at c3a, FormatSegment, R5-M133's rename of FormatHint, at c2b). A built-in target's Shim is MirBuildTest's
     // census key.
     [Fact]
@@ -367,15 +388,43 @@ public partial class KimiLibraryShapeTest
         foreach (var symbol in symbols)
         {
             var row = symbol.Definition;
-            var coded = row.Member is null ? row.Id != IntrinsicId.Fail
-                : row.Id == IntrinsicId.Fail && (spec.Contains($"{row.Member} (", StringComparison.Ordinal) || spec.Contains($"`{row.Member}: ", StringComparison.Ordinal));
+            var coded = row.Member is null ? !IntrinsicDisposition.TakesMember(row.Id) : row.Id switch
+            {
+                IntrinsicId.Fail => spec.Contains($"{row.Member} (", StringComparison.Ordinal) || spec.Contains($"`{row.Member}: ", StringComparison.Ordinal),
+                IntrinsicId.Instruction => InstructionRows.Find(row.Member) >= 0,
+                _ => false,
+            };
             Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && row.Kind != DispositionKind.Shim && coded, symbol.Name);
         }
 
-        var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
+        var served = symbols.Select(static x => x.Definition.Id).Where(static x => x != IntrinsicId.None && !IntrinsicDisposition.TakesMember(x)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
-        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 30);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 31);
+    }
+
+    // IMPL 21.3.4, 21.6 (the Tatara plan's decisions 36-43; design C-457 4.3, B N2): each `#Intrinsic("Instruction", m)` declaration of a
+    // row's library names a row of InstructionRows whose routine has the declaration's lowered signature (its result's and parameters'
+    // Types in order, under the internal convention and the inline attribute), and no member takes a pointer outside the read-only ones.
+    [Theory]
+    [InlineData("", 2)]
+    [InlineData("x86_64-unknown-linux-musl", 2)]
+    [InlineData("x86_64-unknown-none", 11)]
+    public void EveryInstructionMemberHasItsRow(string target, int count)
+    {
+        var c = LibraryOf(target);
+        var members = c.Library.RegisteredSymbols.ToArray().Where(static x => x.Definition.Id == IntrinsicId.Instruction).ToArray();
+        Assert.Equal(count, members.Length);
+        foreach (var symbol in members)
+        {
+            var index = InstructionRows.Find(symbol.Definition.Member);
+            Assert.True(index >= 0, symbol.Name);
+            var routine = InstructionRows.Row(index).Routine;
+            var result = c.Types.Signature(symbol, null, -1, out var arity)!;
+            BoundType[] parameters = [.. Enumerable.Range(0, arity).Select(x => c.Types.Signature(symbol, null, x, out _)!)];
+            Assert.True(Abi.Matches(routine, c.Layout, Abi.Convention.Internal, Abi.Flags.Inline, result, parameters), symbol.Name);
+            Assert.True(ReadOnlyInstructions.Contains(symbol.Definition.Member!) || routine.Parameters.All(static x => x.Type != "ptr"), symbol.Name);
+        }
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the
@@ -819,11 +868,6 @@ public partial class KimiLibraryShapeTest
     // The class's bound library of a target: "" the one without a target (windows-x64's selection), else the row's.
     private static Compilation LibraryOf(string target)
         => Libraries[target].Value;
-
-    // Whether the Condition `windows` holds in the class's library of a target (SPEC 19.2.1): the one without a target is windows-x64's
-    // selection.
-    private static bool WindowsHolds(string target)
-        => target.Length == 0 || TargetTriple.Parse(target).OsFamily == "windows";
 
     private static bool HasBody(Koto declaration)
         => declaration is FunctionKoto function && (function.Body is not null || function.ExpressionBody is not null);

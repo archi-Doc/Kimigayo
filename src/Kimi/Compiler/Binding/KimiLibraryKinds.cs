@@ -99,6 +99,7 @@ internal enum IntrinsicId : byte
     VolatileRead, // Volatile access (SPEC 5.6).
     VolatileWrite,
     MonotonicClock, // SPEC 22.8.2, IMPL 21.5.5 (the Tatara plan's decision 25): the platform layer's monotonic clock.
+    Instruction, // A machine instruction, its member a row of the Backend's InstructionRows (IMPL 21.6).
 }
 
 /// <summary>What a function without a MIR body is (SPEC 8.11.2, 22.1, 22.6; TyCtxt.Bodyless), Binding's one category of it, which A4
@@ -149,7 +150,7 @@ internal enum DispositionKind : byte
 internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Member = null)
 {
     // IMPL 21.3.4's family form `#Intrinsic("Family", "Member")`: whether an id is a family, whose declarations each name its member.
-    internal static bool TakesMember(IntrinsicId id) => id is IntrinsicId.Fail;
+    internal static bool TakesMember(IntrinsicId id) => id is IntrinsicId.Fail or IntrinsicId.Instruction;
 
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether an intrinsic's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source

@@ -1,0 +1,66 @@
+#if arch == "x86_64"
+    /// x86-64 processor instructions (IMPL 21.6). Each member executes its instruction once, in program order with every memory
+    /// access and every other member (a compiler barrier).
+    public group X86
+        /// Hints to the processor that the caller spins in a wait loop (`pause`).
+        #Intrinsic("Instruction", "pause")
+        public func pause()
+
+        /// Reads the processor's time-stamp counter (`rdtsc`).
+        #Intrinsic("Instruction", "rdtsc")
+        public func readTimestamp() -> u64
+
+        #if os == "none"
+            /// Stops the processor until the next interrupt (`hlt`).
+            #Intrinsic("Instruction", "hlt")
+            public func halt()
+
+            /// Clears the interrupt flag (`cli`).
+            #Intrinsic("Instruction", "cli")
+            public func disableInterrupts()
+
+            /// Sets the interrupt flag (`sti`).
+            #Intrinsic("Instruction", "sti")
+            public func enableInterrupts()
+
+            /// Reads one byte from an I/O port (`in al, dx`).
+            ///
+            /// - safety: The device at `port` may change any storage it can reach; the caller keeps that storage within the
+            ///   program's platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "inb")
+            public unsafe func readPort8(port: u16) -> u8
+
+            /// Writes one byte to an I/O port (`out dx, al`).
+            ///
+            /// - safety: The device at `port` may change any storage it can reach; the caller keeps that storage within the
+            ///   program's platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "outb")
+            public unsafe func writePort8(port: u16, value: u8)
+
+            /// Reads two bytes from an I/O port (`in ax, dx`).
+            ///
+            /// - safety: The device at `port` may change any storage it can reach; the caller keeps that storage within the
+            ///   program's platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "inw")
+            public unsafe func readPort16(port: u16) -> u16
+
+            /// Writes two bytes to an I/O port (`out dx, ax`).
+            ///
+            /// - safety: The device at `port` may change any storage it can reach; the caller keeps that storage within the
+            ///   program's platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "outw")
+            public unsafe func writePort16(port: u16, value: u16)
+
+            /// Reads four bytes from an I/O port (`in eax, dx`).
+            ///
+            /// - safety: The device at `port` may change any storage it can reach; the caller keeps that storage within the
+            ///   program's platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "inl")
+            public unsafe func readPort32(port: u16) -> u32
+
+            /// Writes four bytes to an I/O port (`out dx, eax`).
+            ///
+            /// - safety: The device at `port` may change any storage it can reach; the caller keeps that storage within the
+            ///   program's platform contract (IMPL 21.6).
+            #Intrinsic("Instruction", "outl")
+            public unsafe func writePort32(port: u16, value: u32)
