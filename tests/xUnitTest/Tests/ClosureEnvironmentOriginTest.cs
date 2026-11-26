@@ -116,10 +116,38 @@ public class ClosureEnvironmentOriginTest
 
     private const string OtherStore = "    var other: Array<ref/i32> = []\n    put(other@uniq, a)\n    return 0\npublic func main() => ()\n";
 
+    // The root form's top-level local `r` (SPEC 6.1.1) and a getter's local `r` (SPEC 11.3), which the functions declared there name.
+    private const string RootLocal = "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r: ref/i32 = arr[0]\n";
+
+    private const string GetterLocal = "struct M\n    var n: i32 = 0\n    public computed v: i32\n        get() -> i32\n            let y: i32 = 1\n" +
+        "            let r = y@ref\n";
+
+    // T1's and T2's reborrow of a `during r` input passed to `read`.
+    private const string Peek = "func peek(v: ref/i32 during r) -> i32 => read(v@follow@ref)\nlet k = peek(r)\n";
+
+    private const string ReadInGetter = "            func h(x: ref/i32 during r) -> i32 => read(x@follow@ref)\n            return h(r)\npublic func main() => ()\n";
+
+    private const string Read = "func read(x: ref/i32) -> i32 => x@follow\n";
+
+    // PLAN G1369's rows: a `let` local whose clause equates its set's slot with f's input (the Cursor: LocalOriginClauseTest.CursorType).
+    private const string CursorLocal = LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n";
+
+    // PLAN G230-H's G1369 twins: a nested header naming c's slot before f's statements, beside the comparison of a Closure naming it.
+    private const string HeaderLift = "    func lift(v: ref/i32 during k.at) -> i32 => 0\n    let h = func [] (v: ref/i32 during k.at) -> i32 => 0\n" +
+        "    let g: (ref/i32 during q) -> i32 = h@move\n    return lift(c.item)\npublic func main() => ()\n";
+
     // C-537's t7 family: a nested `pass` naming the `let` local r, called in r's own body; the block's `inner` kept past its end.
     private const string LetPass = "func f(p: ref/i32) -> i32\n    let r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n";
 
     private const string PassBlock = "    if true\n        let inner: i32 = 41\n        keep = pass(inner@ref)\n    return keep@follow\npublic func main() => ()\n";
+
+    // F's G230H-10 C1 twins: a Closure in a `for` body capturing the `for` binding, whose body's nested header the header loop binds first.
+    private const string ForItems = "func f() -> i32\n    let xs: Array<i32> = [1, 2]\n    var total: i32 = 0\n    for item in xs\n        let c = func [item] () -> i32\n";
+
+    private const string ForTotal = "        total = total + c()\n    return total\npublic func main() => ()\n";
+
+    // F's G230H-12 C-c: a fixed expected call signature that erases nothing (SPEC 10.5.2, 8.10; 7.7.4: a Callable is no erasure), then f.
+    private const string ApplyHead = "func apply<F>(g: F) -> i32\n    F is Callable<(i32) -> i32>\n    return g(1)\nfunc f(p: ref/i32) -> i32\n";
 
     // G6's two forms of a function whose Closure stores through a captured `q` into an Origin of the enclosing body (2c-D design B's g6).
     private const string G6Single = "func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n";
@@ -556,9 +584,15 @@ public class ClosureEnvironmentOriginTest
     // SPEC 15.3.4, 15.6.5 (PLAN G230 (A), R7-O3 O3-A; BU-56's interim removed, Q13): a named nested function's signature that names an
     // enclosing body local's set or annotated value names that local's region, a fixed Origin of the nested function with no premise. d6
     // (put stores its own input into `x.s`), the `w.s` and `r` forms: the relation's record at `v` in put; d6c (`v` during `x.s`): the
-    // call's store of the block's `inner` is the leak's Loan record; d6v and the reading `first` are valid. The root form (a top-level
-    // function naming a top-level statement's local, no nested function: F's O3-16 (1)) keeps the located limit at `v`, beside the leak's
-    // own Loan record (SPEC 23.1.2). dev accepted d6 and the root form (`leak 41`). The default template's edge (SPEC 7.2.3; F's O3-21
+    // call's store of the block's `inner` is the leak's Loan record; d6v and the reading `first` are valid. A function the walk declares in a
+    // module's top-level statements or an accessor body has that body as its declaring body (SPEC 6.1.1, 11.3; PLAN G230-R), so the root
+    // form (a top-level function naming a top-level statement's local: F's O3-16 (1)), a function nested in one (rf_nest) and one in a
+    // getter naming the getter's local (acc_inv) are d6's: the relation's record at the input alone, the root form's call storing no
+    // borrow of `inner` since put's signature relates `v` to nothing (SPEC 15.4, 15.6.4). A root function passing its own input to one
+    // that needs it `during r` (rv2_relay_inv) and one returning its own input as `during r` of a top-level `var` r (rv8_var_bound: no
+    // record in the module body, the relation bounding no top-level region there) are the relation's record at the input alone. A
+    // Reborrow through such an input passed on is valid (T1, T2b; SPEC 15.6.3, 15.6.4) and an independent error beside it is its own
+    // record alone (T1x; T2, whose getter sees no document-local `read`, SPEC 6.1.1). The default template's edge (SPEC 7.2.3; F's O3-21
     // (4)): g, declared in a capture-free Closure literal that is f's default for `action`, has the Closure as its declaring body, whose
     // evaluating body is (f, 1): g's `during r` and `during q` name the Closure's local regions, fixed in g with no premise, so returning
     // x as `during q` is the relation's record (dt_lift4) and the pass-through twin is valid (dt_ok4); dev gave both the located limit.
@@ -586,11 +620,25 @@ public class ClosureEnvironmentOriginTest
         NestedHead + "    func first(slot: ref/Array<ref/i32 during x.s>) -> i32 => slot[0]@follow\n    let got = first(w.items@ref)\n" +
             "    let items = w.items@move\n    return got + items[0]@follow\npublic func main() => ()\n")]
     [InlineData(
-        "var arr: Array<ref/i32> = []\nlet z: i32 = 0\narr.append(z@ref)\nlet r: ref/i32 = arr[0]\n" +
-            "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\nif true\n    let inner: i32 = 41\n" +
+        RootLocal + "func put(slot: uniq/Array<ref/i32 during r>, v: ref/i32) => slot@follow.append(v)\nif true\n    let inner: i32 = 41\n" +
             "    put(arr@uniq, inner@ref)\nlet old: i32 = arr[1]@follow\nConsole.writeLine(\"leak \\(old)\")\n",
-        "Unsupported_Kd v)",
-        "ComparisonLoanConflict_Kd let inner")]
+        "UnprovenOriginRelation_Kd v)")] // rf_d6
+    [InlineData(
+        RootLocal + "func put(n: i32) -> i32\n    func g(s: uniq/Array<ref/i32 during r>, w: ref/i32) => s@follow.append(w)\n    return n\nlet k = put(1)\n",
+        "UnprovenOriginRelation_Kd w)")] // rf_nest
+    [InlineData(
+        GetterLocal + "            func h(x: ref/i32 during r, q: ref/i32) -> ref/i32 during q => x\n            return 0\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd x\n")] // acc_inv
+    [InlineData(RootLocal + Read + Peek)] // T1_rf_reborrow
+    [InlineData(RootLocal + Read + Peek + "let bad: bool = 1\n", "TypeMismatch_Kd 1\n")] // T1x
+    [InlineData(GetterLocal + "            " + Read + ReadInGetter)] // T2b_acc_reborrow
+    [InlineData(Read + GetterLocal + ReadInGetter, "UnresolvedBinding_Kd read(x@follow@ref)")] // T2_acc_reborrow
+    [InlineData(
+        RootLocal + "func peek(v: ref/i32 during r) -> i32 => v@follow\nfunc relay(w: ref/i32) -> i32 => peek(w)\nlet k = relay(r)\n",
+        "UnprovenOriginRelation_Kd w)")] // rv2_relay_inv
+    [InlineData(
+        "let y: i32 = 1\nvar r = y@ref\nfunc f(v: ref/i32 during r, w: ref/i32) -> ref/i32 during r => w\nlet k = f(r, y@ref)@follow\nr = y@ref\n",
+        "UnprovenOriginRelation_Kd w\n")] // rv8_var_bound
     [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during r => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n")] // a_nf_nest2
     [InlineData("func f(p: ref/i32) -> i32\n    let r = p\n    func outer(v: ref/i32 during r) -> i32\n        func inner(w: ref/i32 during r) -> ref/i32 during p => w\n        return inner(v)@follow\n    return outer(r)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd w\n")] // a_nf_lift_nest2
     [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r: ref/i32 = p\n    func pick(v: ref/i32 during r) -> ref/i32 during r => v\n    let w = pick(r)\n    return w@follow\n")] // a_ann_res
@@ -610,6 +658,160 @@ public class ClosureEnvironmentOriginTest
     [InlineData("func pass(v: ref/i32) -> ref/i32 during v => v\nfunc f(p: ref/i32) -> i32\n    var keep = p\n" + PassBlock, "ComparisonLoanConflict_Kd let inner")] // t7c_top
     [InlineData("func f(p: ref/i32) -> i32\n    var r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n    let inner: i32 = 41\n    let k = pass(inner@ref)\n    return k@follow\npublic func main() => ()\n")] // t7v_fn
     [InlineData("func f(p: ref/i32) -> i32\n    var r = p\n    func pass(v: ref/i32 during r) -> ref/i32 during r => v\n    var keep = r\n" + PassBlock, "ComparisonLoanConflict_Kd let inner")] // t7v_leak
+    // PLAN G1369 (SPEC 15.3.3's Local row, 15.6.1, 15.6.5): a local's clause assumes nothing, so its equality is no premise of a nested
+    // signature that names the slot: k.at is c's region, fixed in lift (t4_clause, accepted before G1369). lift's own clause is its
+    // contract (15.3.3's function row): a premise of lift's body (t4_sig). A nested clause naming a local's omitted set slot demands the
+    // local (PLAN G230-H's rule D), so k.at is c's region with the initializer's value: lift's requirement `k.at outlives p` holds at the
+    // call for c of p (t4_fwd_ok, valid) and is Unknown there for c of q (t4_fwd, one record at the call; SPEC 15.3.3, 15.6.5).
+    [InlineData(CursorLocal + "    func lift(v: ref/i32 during k.at) -> ref/i32 during p => v\n    return lift(c.item)\npublic func main() => ()\n", "UnprovenOriginRelation_Kd v\n")] // t4_clause
+    [InlineData(CursorLocal + "    func lift(v: ref/i32 during k.at) -> ref/i32 during p\n        origin k.at outlives p\n        return v\n    return lift(c.item)\npublic func main() => ()\n")] // t4_sig
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(q)\n    let w = lift(c.item)\n" +
+            "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd c.item)")] // t4_fwd
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let c: Cursor{k} = Cursor.init(p)\n    let w = lift(c.item)\n" +
+            "    func lift(v: ref/i32 during s) -> ref/i32 during p\n        origin s == k.at\n        origin k.at outlives p\n        return v\n    return w\npublic func main() => ()\n")] // t4_fwd_ok
+    // PLAN G1369 rule 4 (SPEC 15.3.6, 15.4.4; DECISIONS R8-M56 as amended): a `var` slot an equality fixes is its region as a `let`
+    // slot is, so lift reads it fixed there with no premise (t4_clause_var). A clause equating the slot with a `let` local of the body
+    // (t4_q) is valid: lift's header demands c, whose clause demands q (PLAN G230-H's rule D), so k.at's value is q's, p, in f's body.
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    var c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n" +
+            "    func lift(v: ref/i32 during k.at) -> ref/i32 during p => v\n    return lift(c.item)\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n")] // t4_clause_var
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    let q = p\n    let c: Cursor{k} = Cursor.init(q)\n        origin k.at == q\n" +
+            "    func lift(v: ref/i32 during k.at) -> ref/i32 during k.at => v\n    return lift(c.item)\npublic func main() => ()\n")] // t4_q
+    // Other forms of the same rule (SPEC 15.3.3's Local row, 15.6.1, 15.6.5): a Closure's signature (t4_clo_sig); an equality of two
+    // unfixed slots, which fixes neither, so lift reads two regions with no premise (t4_two); an equality with another local's
+    // equality-fixed slot (rv_chain_x: m.at is k.at's region, read in lift with no premise); a top-level local that a Closure literal's
+    // signature names, no environment binding of it carrying c (rv_root_clo; lift's own `=> v` needs no relation). A Closure carrying a
+    // slot an equality fixes to a `var` local's region reads it at its candidate (SPEC 15.6.5's Closure sentence; DECISIONS R8-M56 (ii)
+    // fact (a): the value holds that `var` region, read through its bounds), so rvi_var_carry is valid and accepted.
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> i32\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n" +
+            "    let g = func [] (v: ref/i32 during k.at) -> ref/i32 during p => v\n    return g(c.item)@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n")] // t4_clo_sig
+    [InlineData(
+        LocalOriginClauseTest.TwoType + "func f(p: ref/i32) -> i32\n    let t: Two{s} = Two.init(p, p)\n        origin s.a == s.b\n" +
+            "    func lift(v: ref/i32 during s.a) -> ref/i32 during s.b => v\n    return lift(t.x)@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n")] // t4_two
+    [InlineData(
+        CursorLocal + "    let b: Cursor{m} = Cursor.init(c.item)\n        origin m.at == k.at\n" +
+            "    func lift(v: ref/i32 during m.at) -> ref/i32 during p => v\n    return lift(b.item)\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n")] // rv_chain_x
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func make() -> ref/i32 during static => $abort(\"unused\")\nlet c: Cursor{k} = Cursor.init(make())\n    origin k.at == static\n" +
+            "func lift(v: ref/i32 during k.at) -> ref/i32 during k.at => v\nlet g = func [] (v: ref/i32 during k.at) -> ref/i32 during static => v\n" +
+            "Console.writeLine(\"\\(g(c.item)@follow)\")\n",
+        "UnprovenOriginRelation_Kd v\n")] // rv_root_clo
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "func f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    let c: Cursor{k} = Cursor.init(r)\n        origin k.at == r\n" +
+            "    r = c.item\n    let h = func [c@move] () -> ref/i32 during p => c.item\n    return h()\npublic func main() => ()\n")] // rvi_var_carry
+    // PLAN G230-H's rule D (SPEC 15.3.4 "Resolution does not depend on declaration order", 15.4.4, 9.3): a header bound before its
+    // declaring body reaches a local its written Origins name demands the local, so it names the local's region as a header bound after
+    // it does. A call before the declaration is valid (a_fwd_par, a_two_par, nest2_fwd; the root form rf_fwd, SPEC 6.1.1; a getter's
+    // local, acc_fwd, and one borrowing the receiver, acc_self, SPEC 11.3), an unrelated argument is the relation's record (a_fwd_inv).
+    // A function clause naming the local is its requirement at the call (a_clause; a_clause_inv, the call's record; SPEC 15.3.3); a
+    // local's clause is no premise of a root function naming its slot (t4_root, 15.3.3's Local row). Two equal overloads naming the
+    // local are a duplicate (dup_let, SPEC 9.1). A named function in a Closure body naming a local that borrows a capture is valid
+    // (clo_cap, SPEC 7.7.2; an omitted list's, clo_cap_om), as is one naming a local of a parameter the literal writes (clo_par,
+    // SPEC 7.7.1): the local demands its literal's environment (PLAN G230-H (i)); a parameter the literal omits is given by its expected
+    // Function Type (SPEC 7.7.1), so the demand rests and the local binds at its statement (clo_par_inf, F's G230H-6). An entry whose
+    // source the pass has not bound (a `for` binding) is not ready either, so a header bound first waits for it (clo_for_own; its
+    // control clo_for_ctrl names no Origin; F's G230H-10 C1); a name past the not-ready literal, an enclosing parameter, is selected
+    // normally (clo_inf_outer_cl, SPEC 9.3; C2), as is a name of an enclosing named function between (clo_inf_mid_cl; G230H-11 C-2);
+    // an entry's record and the early header's own are both reported (clo_bad_entry_hdr, SPEC 7.7.2, 15.3.4, 23.1.2). A written
+    // entry's name in the literal's body selects its environment binding, with the Type its entry fixes, whether or not the literal
+    // omits a parameter Type (clo_ref_inf_cal, a `@ref` entry, and its control clo_ref_ctrl_cal; a clause naming a value entry,
+    // clo_val_cl_cal; C-1). Each literal is an argument under a Callable (SPEC 10.5.2, 8.10), which erases nothing, so no Owned
+    // environment is asked (7.7.4; G230H-12 C-c). The literal's own header never selects an environment binding, in either order
+    // (SPEC 15.8.2; G230H-12 C-a): a result Type naming the entry's source is the enclosing p's, so returning the binding is the
+    // relation's record whether or not a body header formed the entries first (hdr_res_early, hdr_res_late), and a parameter Type
+    // naming it is p's too (hdr_par_early; its control hdr_par_late). That is a visibility row, not a scope (F's G230H-13): the
+    // parameters share the body's one space, so a body local repeating one is a duplicate (hdr_dup_par, SPEC 9.3), and an inner
+    // literal in the body captures the environment binding (env_inner, SPEC 7.7.2), and an inner literal's own header names it
+    // (hdr_outer_env, SPEC 7.7.2, 15.8.2; F's G230H-14 (ii)): returning the inner parameter's own Origin against it is Unknown
+    // (hdr_outer_env_inv, SPEC 15.6.5). An entry's record that a body header's demand
+    // makes first and the literal's header mismatch are independent, so both are reported (thdr_inf, SPEC 23.1.2, 10.5, 7.7.2;
+    // G230H-12 C-b). A nested header that completes c before f's statements
+    // gives the comparison's located limit at h@move, as its header-free twins do (rvd_hdr_let, rvd_hdr_set; R7 O-400 (b)).
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r = p\n    let w = pick(r)\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    return w\n")] // a_fwd_par
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32, q: ref/i32) -> i32\n    let r = p\n    let w = pick(q)\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    return w\n", "UnprovenOriginRelation_Kd q)")] // a_fwd_inv
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r = p\n    func b(v: ref/i32 during r) -> i32 => a(v)\n    func a(v: ref/i32 during r) -> i32 => v@follow\n    return b(r)\n")] // a_two_par
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during p) -> i32\n        origin p outlives r\n        return v@follow\n    return pick(p)\n")] // a_clause
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32, q: ref/i32) -> i32\n    let r = q\n    func pick(v: ref/i32 during p) -> i32\n        origin p outlives r\n        return v@follow\n    return pick(p)\n", "UnprovenOriginRelation_Kd p)")] // a_clause_inv
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    func outer(q: ref/i32) -> i32\n        let s = q\n        let w = inner(s)\n        func inner(v: ref/i32 during s) -> i32 => v@follow\n        return w\n    return outer(p)\n")] // nest2_fwd
+    [InlineData("let y: i32 = 1\nlet r = y@ref\nlet k = peek(r)\nfunc peek(v: ref/i32 during r) -> i32 => v@follow\nConsole.writeLine(\"\\(k)\")\n")] // rf_fwd
+    [InlineData(GetterLocal + "            let k = h(r)\n            func h(x: ref/i32 during r) -> i32 => x@follow\n            return k\npublic func main() => ()\n")] // acc_fwd
+    [InlineData("struct M\n    var n: i32 = 0\n    public computed v: i32\n        get() -> i32\n            let r = self.n@ref\n            let k = h(r)\n            func h(x: ref/i32 during r) -> i32 => x@follow\n            return k\npublic func main() => ()\n")] // acc_self
+    [InlineData(
+        LocalOriginClauseTest.CursorType + "let y: i32 = 1\nlet q = y@ref\nlet c: Cursor{k} = Cursor.init(q)\n    origin k.at == q\n" +
+            "func lift(v: ref/i32 during k.at) -> ref/i32 during q => v\nConsole.writeLine(\"\\(lift(c.item)@follow)\")\n",
+        "UnprovenOriginRelation_Kd v\n")] // t4_root
+    [InlineData("public func main() => ()\nfunc f(p: ref/i32) -> i32\n    let r = p\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    func pick(v: ref/i32 during r) -> i32 => v@follow\n    return pick(r)\n", "DuplicateBinding_Kd pick(v")] // dup_let
+    [InlineData("func f(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func [n] () -> i32\n        let r = n@ref\n        let w = h(r)\n        func h(v: ref/i32 during r) -> i32 => v@follow\n        return w\n    return c()\npublic func main() => ()\n")] // clo_cap
+    [InlineData("func f(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func () -> i32\n        let r = n@ref\n        let w = h(r)\n        func h(v: ref/i32 during r) -> i32 => v@follow\n        return w\n    return c()\npublic func main() => ()\n")] // clo_cap_om
+    [InlineData("func f(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> i32\n        let r = x\n        let w = h(r)\n        func h(v: ref/i32 during r) -> i32 => v@follow\n        return w\n    return c(p)\npublic func main() => ()\n")] // clo_par
+    [InlineData("func f(p: ref/i32) -> i32\n    let c: (ref/i32) -> i32 = func [] (x) -> i32\n        let r = x\n        func h(v: ref/i32 during r) -> i32 => v@follow\n        return h(r)\n    return c(p)\npublic func main() => ()\n")] // clo_par_inf
+    [InlineData(ForItems + "            func h(v: ref/i32) -> ref/i32 during v => v\n            return h(item)@follow\n" + ForTotal)] // clo_for_own
+    [InlineData(ForItems + "            func h(v: ref/i32) -> i32 => v@follow\n            return h(item)\n" + ForTotal)] // clo_for_ctrl
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c: (ref/i32) -> i32 = func [] (x) -> i32\n        func h(v: ref/i32 during q) -> i32\n            origin p outlives q\n" +
+            "            return v@follow\n        return x@follow\n    return c(p)\npublic func main() => ()\n")] // clo_inf_outer_cl
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [zz] () -> i32\n        func h(v: ref/i32) -> i32\n            origin qq outlives v\n            return v@follow\n" +
+            "        return 0\n    return c()\npublic func main() => ()\n",
+        "InvalidCaptureBinding_Kd func [zz]",
+        "MissingOriginBinding_Kd qq outlives")] // clo_bad_entry_hdr
+    [InlineData(
+        ApplyHead + "    return apply(func [p@ref] (k) -> i32\n        func h(v: ref/(ref/i32 during p) during p) -> i32 => 0\n" +
+            "        return h(p) + k\n    )\npublic func main() => ()\n")] // clo_ref_inf_cal
+    [InlineData(
+        ApplyHead + "    return apply(func [p@ref] (k: i32) -> i32\n        func h(v: ref/(ref/i32 during p) during p) -> i32 => 0\n" +
+            "        return h(p) + k\n    )\npublic func main() => ()\n")] // clo_ref_ctrl_cal
+    [InlineData(
+        ApplyHead + "    return apply(func [p] (k) -> i32\n        func h(v: ref/i32 during q) -> i32\n            origin p outlives q\n" +
+            "            return v@follow\n        return h(p) + k\n    )\npublic func main() => ()\n")] // clo_val_cl_cal
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> ref/(ref/i32 during p) during p\n        func h(v: ref/i32 during p) -> i32 => 0\n" +
+            "        return p\n    return c()@follow@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd p\n    return c()")] // hdr_res_early
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> ref/(ref/i32 during p) during p\n        func h(v: ref/i32) -> i32 => 0\n" +
+            "        return p\n    return c()@follow@follow\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd p\n    return c()")] // hdr_res_late
+    [InlineData(
+        "func f(p: ref/i32) -> ref/i32 during p\n    let c = func [p@ref] (v: ref/i32 during p) -> ref/i32 during v\n" +
+            "        func h(w: ref/i32 during p) -> i32 => 0\n        return v\n    return c(p)\npublic func main() => ()\n")] // hdr_par_early
+    [InlineData(
+        "func f(p: ref/i32) -> ref/i32 during p\n    let c = func [p@ref] (v: ref/i32 during p) -> ref/i32 during v\n" +
+            "        return v\n    return c(p)\npublic func main() => ()\n")] // hdr_par_late
+    [InlineData(
+        "func f() -> i32\n    let c = func (v: i32) -> i32\n        let v = 2\n        return v\n    return c(1)\npublic func main() => ()\n",
+        "DuplicateBinding_Kd v = 2")] // hdr_dup_par
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p] () -> i32\n        let d = func [p] () -> i32 => p@follow\n        return d()\n" +
+            "    return c()\npublic func main() => ()\n")] // env_inner
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> i32\n" +
+            "        let d = func (v: ref/(ref/i32 during p) during p) -> ref/(ref/i32 during p) during p\n" +
+            "            return v\n        return d(p)@follow@follow\n    return c()\npublic func main() => ()\n")] // hdr_outer_env
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c = func [p@ref] () -> i32\n" +
+            "        let d = func (v: ref/(ref/i32 during p)) -> ref/(ref/i32 during p) during p\n" +
+            "            return v\n        return d(p)@follow@follow\n    return c()\npublic func main() => ()\n",
+        "UnprovenOriginRelation_Kd v\n        return d(p)")] // hdr_outer_env_inv
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let g: i32 = func [p, p] (k) -> i32\n        func h(v: ref/i32 during p) -> i32 => 0\n        return 0\n" +
+            "    return g\npublic func main() => ()\n",
+        "TypeMismatch_Kd func [p, p]",
+        "DuplicateBinding_Kd p] (k)")] // thdr_inf
+    [InlineData(
+        "func f(p: ref/i32) -> i32\n    let c: (ref/i32) -> i32 = func [] (x) -> i32\n        func g(w: ref/i32) -> i32\n            func h(v: ref/i32 during q) -> i32\n" +
+            "                origin w outlives q\n                return v@follow\n            return h(w)\n        return g(x)\n    return c(p)\npublic func main() => ()\n")] // clo_inf_mid_cl
+    [InlineData(LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> i32\n    let r: ref/i32 = p\n    let c: Cursor{k} = Cursor.init(r)\n        origin k.at == r\n" + HeaderLift, "Unsupported_Kd h@move")] // rvd_hdr_let
+    [InlineData(LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> i32\n    let a: Cursor{m} = Cursor.init(p)\n    let c: Cursor{k} = Cursor.init(a.item)\n        origin k.at == m.at\n" + HeaderLift, "Unsupported_Kd h@move")] // rvd_hdr_set
     public void ANestedSignatureNamingABodyLocalNamesItsRegion(string source, params string[] records)
     {
         var errors = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error)
@@ -623,16 +825,16 @@ public class ClosureEnvironmentOriginTest
         }
     }
 
-    // An Unsupported clause naming a body local fails only itself (SPEC 15.3.3, 23.1.2; H11b-0 B1), so `put` is checked: the store of the
-    // block's `inner` through it is the leak's own record, which the clause-free twin reports too.
+    // A function clause naming a body local's set slot is its contract (SPEC 15.3.3, 15.3.4; PLAN G230-H's rule D demands w), so `put` is
+    // checked: the store of the block's `inner` through it is the leak's own record, which the clause-free twin reports too.
     [Fact]
-    public void AnUnsupportedClauseLeavesTheLeaksOwnRecord()
+    public void AClauseNamingABodyLocalsSlotLeavesTheLeaksOwnRecord()
     {
         const string Clause = "        origin q == x.s\n";
         var source = NestedHead + "    func put(slot: uniq/Array<ref/i32 during q>, v: ref/i32 during q)\n" + Clause + "        slot@follow.append(v)\n" + NestedStore;
         var twin = source.Replace(Clause, string.Empty, StringComparison.Ordinal);
         Assert.Equal(
-            [$"{nameof(DiagnosticCode.Unsupported_Kd)} x.s", $"{nameof(DiagnosticCode.ComparisonLoanConflict_Kd)} let inner: i32 = 41"],
+            [$"{nameof(DiagnosticCode.ComparisonLoanConflict_Kd)} let inner: i32 = 41"],
             ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span.Start)
                 .Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}"));
         Assert.Equal(
@@ -645,7 +847,7 @@ public class ClosureEnvironmentOriginTest
     // omitted slot is the local's own region, PLAN G492-a (ii), and a nested signature naming it at a fixed end is the located
     // `Unsupported_Kd` its `var` twin has, a1p's limit; the store's relation reads `slot`'s Type from that signature, a resting input,
     // so its Unknown at `v`, d6b's, is not reported beside it), an enclosing contract's (SPEC 15.3.4's `pass`),
-    // an unannotated local's value, whose Type the body gives it before it binds the header again (d6u; LocalRegionCompletionTest's
+    // an unannotated local's value, whose declaration the header demands (d6u, PLAN G230-H's rule D; LocalRegionCompletionTest's
     // NestedNamedFinite; its input row is the signature's premise, DECISIONS BU-89, and a call that cannot prove it keeps the call's
     // record, `put(rr)`), a name that selects no Origin (a non-borrow local, an absent slot: InvalidOriginBinding_Kd, SPEC 15.2.1,
     // 15.3.1) and a Closure header naming the same local set, bound in its evaluating body (BU-28's EnclosingAtom: storing the call's own

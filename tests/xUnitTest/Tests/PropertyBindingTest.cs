@@ -473,8 +473,9 @@ public partial class PropertyBindingTest
     // the read Type; its standard `get` reads and its standard `set` writes the Field's Place as the body reads it (MemberRead), as a
     // plain `h.x` does: `x: S` of `HY<i32>`, closed or under `T is PrimitiveInteger`, `x: S.Output` likewise, and a custom `get` with
     // the standard `set`, also of `S.Output` (before, TypeMismatch_Kd "expected S" or "expected S.Output"). Twins: both accessors
-    // custom, a non-generic Field of a generic struct, a bool operand, which stays TypeMismatch_Kd, and `++` of a bool Field, which
-    // gets its own NonNumericOperand_Kd (before, TypeMismatch_Kd "expected S").
+    // custom, a non-generic Field of a generic struct, a bool operand, which has no provider for `+=` (NonNumericOperand_Kd; PLAN G1356,
+    // Q13: before, TypeMismatch_Kd) and stays TypeMismatch_Kd for `|=`, and `++` of a bool Field, which gets its own NonNumericOperand_Kd
+    // (before, TypeMismatch_Kd "expected S").
     [Theory]
     [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += 4", "")]
     [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x |= 4\n    h.x++\n    ++h.x", "")]
@@ -486,9 +487,9 @@ public partial class PropertyBindingTest
     [InlineData(OutputGetter + "func f<T>(h: uniq/HQ<T>, a: T) -> T\n    T is PrimitiveInteger\n    h.x += a\n    h.x |= a\n    --h.x\n    return h.x\n", "var h = HQ<i32>.init(x: 3)\n    let v = f(h@uniq, 4)\n    h.x++", "")]
     [InlineData("", "var h = HB<i32>.init(x: 3)\n    h.x += 4\n    h.x |= 4\n    h.x++", "")]
     [InlineData("", "var h = HN<bool>.init(x: 3, s: true)\n    h.x += 4\n    h.x |= 4", "")]
-    [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += true", "TypeMismatch_Kd h.x += true")]
+    [InlineData("", "var h = HY<i32>.init(x: 3)\n    h.x += true", "NonNumericOperand_Kd h.x += true")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData("func f<T>(h: uniq/HS<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x |= true\n    return\n", "var h = HS<i32>.init(x: 3)\n    f(h@uniq, 4)", "TypeMismatch_Kd h.x |= true")]
-    [InlineData("", "var h = HG<i32>.init(x: 3)\n    h.x += true", "TypeMismatch_Kd h.x += true")]
+    [InlineData("", "var h = HG<i32>.init(x: 3)\n    h.x += true", "NonNumericOperand_Kd h.x += true")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData("", "var h = HY<bool>.init(x: true)\n    h.x++", "NonNumericOperand_Kd h.x++")]
     public void AnUpdateReadsItsStandardSideAsTheBodyReadsTheField(string declarations, string use, string record)
     {
@@ -573,7 +574,7 @@ public partial class PropertyBindingTest
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    h.x = true", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd h.x = true")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += 1.5", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd 1.5")]
-    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let b: bool = true\n    h.x += b", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += b")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let b: bool = true\n    h.x += b", "TypeMismatch_Kd get() -> i64;NonNumericOperand_Kd h.x += b")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let s: string = h.x", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd let s: string = h.x")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    let n = h.x.nope", "TypeMismatch_Kd get() -> i64;UnresolvedBinding_Kd h.x.nope")]
     [InlineData(WrongGetter + "public func takesBool(b: bool) -> () => ()\n", "var h = HW.init(x: 3)\n    takesBool(h.x)", "TypeMismatch_Kd get() -> i64;NoApplicableOverload_Kd takesBool(h.x)")]
@@ -585,7 +586,7 @@ public partial class PropertyBindingTest
     [InlineData(AddableWrongGetter, "var h = HW.init(x: 3)\n    h.x += Counter.init(2)", "TypeMismatch_Kd get() -> Counter;ArithmeticSelection_Kd h.x += Counter.init(2)")]
     [InlineData(BareCountUpdate, "Config.bump()", "TypeMismatch_Kd get() -> i64;Unsupported_Kd count")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += missing", "TypeMismatch_Kd get() -> i64;UnresolvedBinding_Kd missing")]
-    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += \"a\"", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x += \"a\"")]
+    [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x += \"a\"", "TypeMismatch_Kd get() -> i64;NonNumericOperand_Kd h.x += \"a\"")] // PLAN G1356, Q13: was TypeMismatch_Kd
     [InlineData(WrongSetter, "var h = HW.init(x: 3)\n    let v: bool = h.x", "TypeMismatch_Kd set(value: i64) -> ();TypeMismatch_Kd let v: bool = h.x")]
     [InlineData(WrongGetter, "var h = HW.init(x: 3)\n    h.x = true", "TypeMismatch_Kd get() -> i64;TypeMismatch_Kd h.x = true")]
     [InlineData(MissingReceiverGetter, "var h = HW.init(x: 3)\n    let w: i32 = h.x\n    h.x += 1", "UnresolvedBinding_Kd Missing")]

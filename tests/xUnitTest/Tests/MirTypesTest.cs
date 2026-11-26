@@ -53,7 +53,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
                 ("borrow", true), ("borrows", true), ("tuple", true), ("fixed", true), ("table", true), ("option", true),
                 ("holder", true), ("handle", true), ("slice", true), ("view", true), ("loan", true), ("iterator", true), ("action", true),
                 ("layer", true), ("nest", true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], [], out _))).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], []).Loan)).ToArray());
     }
 
     // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4, 15.3.5; DECISIONS R4-M73, R4-M147, R4-M170): a call may write past a value that may hold, past no
@@ -97,9 +97,55 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], [], out var writes);
-            return writes;
+            var holding = MirTypes.HoldsLoans(type, c.Types, seen, [], []);
+            Assert.True(holding.Writes == MirWrites.None || holding.Writable, $"{type}"); // Every guard but None keeps the value writable.
+            return holding.Writes;
         }
+    }
+
+    // SPEC 15.6.4 item 1, 5.2.1 condition 3, 15.3.5 (G415-N3 P1): whether a value reaches storage past its own writable
+    // (MirHolding.Writable, A5's mode where a parameter forms its reach). Not where every step past its own storage is a shared
+    // dereference: what a shared borrow reaches, an exclusive layer below it included, it reaches for reads only (sharedShared, sharedValue,
+    // fields, sharedUniq); nor through a Type argument alone, which has no address (loan). Where a step is no shared dereference (uniqShared,
+    // scalar, rawByte), at an abstract part (value), a Function value (action) and a part past the walk's bound (deep40).
+    [Fact]
+    public void TheHoldingWalkSaysWhetherAValueReachesPastItsOwnWritable()
+    {
+        var (body, c) = Probe(
+            "struct Fields {a}\n    var x: ref/i32 during a\n    var y: ref/(ref/i32 during a) during a\n" +
+            "func probe<T>(sharedShared: ref/(ref/i32 during a), sharedValue: ref/T, fields: Fields, " +
+            "sharedUniq: ref/(uniq/i32 during a), loan: Loan<uniq/(ref/i32 during a) during a>, uniqShared: uniq/(ref/i32 during a), " +
+            $"scalar: uniq/i32, rawByte: raw/u8, value: T, action: () -> (), deep40: {Nested(40)})\n    return\n");
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
+        Assert.Equal(
+            [("sharedShared", false), ("sharedValue", false), ("fields", false), ("sharedUniq", false), ("loan", false),
+                ("uniqShared", true), ("scalar", true), ("rawByte", true), ("value", true), ("action", true), ("deep40", true)],
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], []).Writable)).ToArray());
+
+        static string Nested(int levels) => new string('(', levels) + "i32" + string.Concat(Enumerable.Repeat(", i32)", levels));
+    }
+
+    // SPEC 15.6.4, 5.7 Calls (the owner's O-13 Q3 (a); DECISIONS BU-46, BU-225): whether a value's own storage holds storage its Type
+    // does not state (MirHolding.Unstated, A5's E past such a holder): a `during self` layer's values of the holder's Origins (selfOrigin),
+    // also after a part that gives the write fact first (uniqFirst), a layer a declaration wrote without an Origin (declared) and a
+    // Function value's environment (action); not a `during self` layer of a holder with no Origin argument (selfNoOrigin), a holder past a
+    // shared (sharedHolder) or an exclusive reference (uniqHolder), a raw layer the parameter's Type expression writes (rawByte) or an
+    // abstract part (value).
+    [Fact]
+    public void TheHoldingWalkSaysWhetherAValueHoldsStorageItsTypeDoesNotState()
+    {
+        var (body, c) = Probe(
+            "struct HS {a}\n    var data: raw/i32 during self\n    var peer: ref/i32 during a\n" +
+            "struct HN\n    var data: raw/i32 during self\n" +
+            "struct HD\n    var data: raw/i32\n" +
+            "struct HU {a}\n    var u: uniq/(uniq/i32 during a) during a\n    var data: raw/i32 during self\n" +
+            "func probe<T>(selfOrigin: HS during a, uniqFirst: HU during a, declared: HD, action: () -> (), selfNoOrigin: HN, " +
+            "sharedHolder: ref/(HS during a), uniqHolder: uniq/(HS during a), rawByte: raw/u8, value: T)\n    return\n");
+        var seen = new Dictionary<MirHoldingKey, MirModeDepths>();
+        Assert.Equal(
+            [("selfOrigin", true), ("uniqFirst", true), ("declared", true), ("action", true), ("selfNoOrigin", false),
+                ("sharedHolder", false), ("uniqHolder", false), ("rawByte", false), ("value", false)],
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, seen, [], []).Unstated)).ToArray());
     }
 
     // SPEC 23.1.1, IMPL 21.3.2 (DECISIONS R4-M153): a part past the walk's bound where the write fact would be read is the guard's own
@@ -131,8 +177,9 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, [], [], out var writes);
-            return writes;
+            var holding = MirTypes.HoldsLoans(type, c.Types, seen, [], []);
+            Assert.True(holding.Writes == MirWrites.None || holding.Writable, $"{type}"); // Every guard but None keeps the value writable.
+            return holding.Writes;
         }
 
         static string Nested(int levels) => new string('(', levels) + "i32" + string.Concat(Enumerable.Repeat(", i32)", levels));
@@ -151,7 +198,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         var walked = new Dictionary<MirHoldingKey, MirModeDepths>();
         Assert.Equal(
             [("x", MirWrites.Through), ("deepFirst", MirWrites.Through), ("shallowFirst", MirWrites.Through)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, walked, [], [], out var writes) ? writes : MirWrites.None)).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, c.Types, walked, [], []).Writes)).ToArray());
 
         static string Nested(string inner, int levels) => new string('(', levels) + inner + string.Concat(Enumerable.Repeat(", i32)", levels));
     }
@@ -186,7 +233,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
         string Guard(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, walked, [], [], out var writes);
+            var writes = MirTypes.HoldsLoans(type, c.Types, walked, [], []).Writes;
             return writes.ToString();
         }
 
@@ -235,7 +282,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         Assert.Equal(
             ["Through", "None", "None", "no Loan", "Named", "Through", "Through", "Limit"],
             KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Where(static x => x.IsAnonymous)
-                .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], [], out var writes) ? $"{writes}" : "no Loan").ToArray());
+                .Select(x => MirTypes.HoldsLoans(BoundClosure.Of(x)!.EnvironmentType, c.Types, seen, [], []) is { Loan: true, Writes: var writes } ? $"{writes}" : "no Loan").ToArray());
     }
 
     // SPEC 5.7 Calls, 15.6.4 (DECISIONS R4-M147, BU-41): a raw layer a holder stores at any depth below it is read on the instance holding it,
@@ -278,7 +325,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, [], out var writes);
+            var writes = MirTypes.HoldsLoans(type, c.Types, seen, members, []).Writes;
             return writes;
         }
     }
@@ -328,7 +375,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
 
         MirWrites Writes(BoundType type)
         {
-            _ = MirTypes.HoldsLoans(type, c.Types, seen, members, [], out var writes);
+            var writes = MirTypes.HoldsLoans(type, c.Types, seen, members, []).Writes;
             return writes;
         }
     }
@@ -417,7 +464,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(c.Types, pairs, seen));
         Assert.True(MirTypes.Observation(pairs, c.Types, body.Key.Decl, new(ReferenceEqualityComparer.Instance)).IsNone);
-        Assert.False(MirTypes.HoldsRaw(c.Types, pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(), [], [], out _));
+        Assert.False(MirTypes.HoldsRaw(c.Types, pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(), [], []).Loan);
     }
 
     // V16 (DECISIONS R4-M153's revision 3): an outcome walk enters a Type again only where it meets it shallower than before (MirDepths),
@@ -479,7 +526,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         {
             foreach (var local in body.Locals.ToArray())
             {
-                var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], [], out _);
+                var holds = MirTypes.HoldsLoans(local.Type, c.Types, walked, [], []).Loan;
                 var raw = local.Type!.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(holds || !(raw || MirTypes.IsReference(local.Type)), $"{body.Key.Decl?.Name}: {local.Name}");
                 var observation = MirTypes.Observation(local.Type, c.Types, body.Key.Decl, entered);

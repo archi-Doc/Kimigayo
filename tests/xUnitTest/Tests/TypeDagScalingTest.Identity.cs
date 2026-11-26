@@ -35,6 +35,22 @@ public partial class TypeDagScalingTest
     public void AnIdentityCycleIsFoundWithoutADepthBound(string shape)
         => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(IdentitySource(shape, 70)));
 
+    // G563-C (SPEC 8.3.3 Expanding recursion; F's G563C-1): a ring of n Contracts `Ci<A>: Tree` with `Self.(Tree).Child is Ci+1<A>` is
+    // flat and valid; closed by `C0<Option<A>>` instead, its one expanding pass puts every Contract on a growing set, each with its
+    // record. The pass graph has n nodes and n passes, walked with no depth bound (n past every closure limit); the rows assert the
+    // record profile at n and 2n, as the identity cycle's row above does, and time nothing.
+    [Theory]
+    [InlineData("flat", 70)]
+    [InlineData("flat", 140)]
+    [InlineData("expanding", 70)]
+    [InlineData("expanding", 140)]
+    public void AContractRingIsDecidedWithoutADepthBound(string shape, int n)
+    {
+        var last = shape == "expanding" ? "C0<Option<A>>" : "C0<A>";
+        var ring = string.Concat(Enumerable.Range(0, n).Select(i => $"contract C{i}<A>: Tree\n    Self.(Tree).Child is " + (i + 1 < n ? $"C{i + 1}<A>" : last) + "\n"));
+        Assert.Equal(shape == "expanding" ? $"{n}*InvalidConstraint_Kd" : "clean", DiagnosticCorpus.RecordProfile("contract Tree\n    associate Child is Tree\n" + ring));
+    }
+
     // R7-C3 (F's C2 rulings 250 (1), 252, 255; SPEC 8.2.3): the premise fixpoint fails a chain of n premises before the bodies, one more
     // each round (written last premise first, the worst order: n rounds), so each premise's projection reads its failed side when its
     // record is made: the premise error at the declaration and one record at each projection, never an Unknown judged before its premise
@@ -161,6 +177,37 @@ public partial class TypeDagScalingTest
         static int Closure(string source)
         {
             var c = MinimalEmissionTest.Analyze(source + "public func main() -> ()\n    return\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
+    // R7-C2c2 c2-5c (F's CC-36 C1, the review's probe): a view with no identity premise files the reading of each of m Contract facts
+    // over a completed projection (`Ai is P<SrcI.(HasItem).Item>`) for n uses `x.size(1)`, its entry outside a Kept region formed again
+    // at each request: Θ(m·(n+m)), the identity domain's shape (the twin adds `W is i32`) and never above it; PLAN G1408 is its staged
+    // reduction. Measured on 2c at 8, 16, 32: uses 2,538, 3,546, 5,562 (twin 2,926, 4,142, 6,574); facts 2,538, 7,242, 23,562 (twin
+    // 2,926, 7,910, 24,790). The programs are valid (SPEC 8.2.3, 8.6.1: one candidate).
+    [Theory]
+    [InlineData("uses", 2)]
+    [InlineData("facts", 4)]
+    public void AViewWithoutAnIdentityPremiseFilesReadingsAsTheIdentityDomain(string grown, int factor)
+    {
+        var plain = new[] { 8, 16, 32 }.Select(n => Work(grown, n, string.Empty)).ToArray();
+        var twin = new[] { 8, 16, 32 }.Select(n => Work(grown, n, "    W is i32\n")).ToArray();
+        Assert.True(
+            plain[1] <= factor * plain[0] && plain[2] <= factor * plain[1] && plain.Zip(twin).All(static p => p.First <= p.Second),
+            $"{grown}: {string.Join(", ", plain)} (twin {string.Join(", ", twin)}) at 8, 16, 32");
+
+        static int Work(string grown, int n, string identity)
+        {
+            var (uses, facts) = grown == "uses" ? (n, 8) : (8, n);
+            var parameters = string.Concat(Enumerable.Range(0, facts).Select(static i => $", A{i}"));
+            var premises = string.Concat(Enumerable.Range(0, facts).Select(static i => $"    A{i} is P<SrcI.(HasItem).Item>\n"));
+            var body = string.Concat(Enumerable.Range(0, uses).Select(static i => $"    let r{i} = x.size(1)\n"));
+            var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n" +
+                "    public init() => ()\ncontract P<T>\n    func size(self: ref/Self, v: T) -> i32\n" +
+                $"func g<T, W{parameters}>(x: ref/T) -> i32\n{premises}    T is P<SrcI.(HasItem).Item>\n{identity}{body}    return 0\n" +
+                "public func main() -> ()\n    return\n");
             Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
             return c.Binding.ClosureIndexWork;
         }

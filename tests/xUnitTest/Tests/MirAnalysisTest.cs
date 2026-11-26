@@ -266,8 +266,8 @@ public sealed class MirAnalysisTest
 
     // Z20 (MirProblem's invariant; R4-M71, R4-M118, R6-check H3-1): a problem no body describes is formed only by MirProblem.WithoutBody and a
     // record only by MirProgram.Report, both with NoBodyViews, which names no body's cases: A4's obligation rows of a one-view owner (P) and
-    // of a two-view owner (Q, whose two owning views Owe composes, so the views were 0b11 before Z20), G215's located layer limit (Pair)
-    // and the default expansion limit's construction records (f16).
+    // of a two-view owner (Q, whose two owning views Owe composes, so the views were 0b11 before Z20) and the default expansion limit's
+    // construction records (f16).
     [Fact]
     public void EveryNoBodyProblemAndRecordCarriesNoBodyViews()
     {
@@ -279,14 +279,13 @@ public sealed class MirAnalysisTest
         }
 
         var c = MirBuildTest.Compile("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\nstruct P\n    Self is Work\n" + Run +
-            "struct Q<s/T>\n    s is owner or uniq\n    Self is Work\n    public var n: i32 = 0\n" + Run + "struct Pair {a, b}\n" +
-            "    public let p: ref/i32 during a\n    public var n: i32 = if true\n        let t: Option<ref/(ref/i32 during b) during a> = Option.None\n" +
-            "        yield 0\n    else => 0\n" + expansion + "let value = f16()\npublic func main() => ()\n");
+            "struct Q<s/T>\n    s is owner or uniq\n    Self is Work\n    public var n: i32 = 0\n" + Run + expansion +
+            "let value = f16()\npublic func main() => ()\n");
         var found = c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && (x.Body == MirProblem.NoBody || x.IsRecord)).ToArray();
         Assert.Equal(
             [
                 "ExpansionLimit_Kd Construction", "ExpansionLimit_Kd Construction", "ExpansionLimit_Kd Construction",
-                "IncompatibleContractImplementation_Kd NoBody", "IncompatibleContractImplementation_Kd NoBody", "Unsupported_Kd NoBody",
+                "IncompatibleContractImplementation_Kd NoBody", "IncompatibleContractImplementation_Kd NoBody",
             ],
             found.Select(static x => $"{x.Code} {x.RecordClass?.ToString() ?? "NoBody"}").Order(StringComparer.Ordinal));
         Assert.All(found, static x => Assert.Equal(MirProblem.NoBodyViews, x.Views));

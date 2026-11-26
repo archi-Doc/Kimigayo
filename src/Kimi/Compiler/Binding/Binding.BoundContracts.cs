@@ -16,7 +16,7 @@ namespace Kimi.Compiler;
 // - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax; a reference the library layer's
 //   part holds is complete (State 2) from the library's seal and never rebuilt (PLAN G949 Stage 2 U4: the internal-invariant form). Its callers: that path, internal
 //   Type substitution, a compiler-made reference of a library Contract (arithmetic operators), and readers of a formed reference
-//   (ContractReferenceOf).
+//   (ContractReferenceOf). ContractReferenceType is its inverse: a symbol's reference Type, a declaration's own reference its SelfType.
 // - Prohibitions: no other member forms a Contract's Constructed Type from Type-argument syntax. The path reads no subject, substitutes
 //   nothing and answers no declaration query; queries by declaration (SatisfiesDeclaration, SelectConformance, IsRefinement over a
 //   library Contract) take symbols the compiler holds, never a written Contract.
@@ -169,6 +169,15 @@ public sealed partial class Binding
         Complete(syntax, reference);
         return this.BoundContractReference(reference);
     }
+
+    // SPEC 8.4.1, 8.6.1: BoundContractReference's inverse, the reference Type a Contract symbol stands for: a bound reference's Type, or a
+    // declaration symbol's SelfType, the declaration applied to its own parameters (`R<A>` written in R, which BoundContractReference
+    // collapses to the symbol). Every reader that instantiates or substitutes a symbol's reference reads it, so the own reference is bound
+    // like any other (InstantiatedContract, SubstituteConstraint, ProjectionContract). Precondition: `contract` is a bound reference (its
+    // Type set) or a declaration symbol with a schema, which SelfType reads; a caller that may hold another symbol tests it first
+    // (SubstituteConstraint and InstantiatedContract test its Type, the expansion walk its nodes).
+    private BoundType ContractReferenceType(BindingSymbol contract)
+        => IsBoundContractReference(contract) ? contract.Type! : this.SelfType(contract);
 
     private BindingSymbol BoundContractReference(BoundType reference)
     {

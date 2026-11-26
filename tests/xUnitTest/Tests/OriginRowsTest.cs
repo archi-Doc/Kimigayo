@@ -236,23 +236,24 @@ public sealed partial class OriginRowsTest
         TheViewBuilds(c);
     }
 
-    // G215's boundary, A5's located limit (DECISIONS R4-M168; removal condition: a body of the layer's own): a layer whose struct has no
-    // constructor (its omitted base clause selects none) keeps its Field-initializer rows, which no body's slice includes; the view lists
-    // it among the layers with rows (OriginLayers), as it lists FieldInit's, whose constructors include it.
+    // G215 (DECISIONS R7-M115, superseding R4-M168's located limit): a layer whose struct has no Published constructor (its omitted base
+    // clause selects none) has a MIR body of its own, keyed by the struct, and that body's slice is the layer's Field-initializer rows as
+    // its own part, the one source of the slice; FieldInit's S, whose constructors' slices include its layer's rows, has no layer body.
     [Fact]
-    public void AConstructorlessLayersRowsLieInNoBodysSlice()
+    public void AConstructorlessLayersBodysSliceIsTheLayersRows()
     {
         var c = MirBuildTest.Compile(Util + "open struct Base\n    protected init(a: i32 = 1) => ()\n    protected init(b: string = \"x\") => ()\n" +
             "struct Leaf: Base\n    public var n: i32 = Util.pick(3@ref, 4@ref)\n" + Main);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var leaf = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Leaf").SymbolOf()!;
-        Assert.Equal(2, c.Types.OriginRows(new ExecutableBody(leaf)).Rows.Count);
         Assert.DoesNotContain(Bodies(c), x => AdtDef.IsConstructor(x.Key.Decl) && ReferenceEquals(x.Key.Decl!.Scope.Owner.SymbolOf(), leaf));
-        Assert.Contains(new ExecutableBody(leaf), c.Types.OriginLayers);
+        var layer = Assert.Single(Bodies(c), static x => x.Key.Kind == MirBodyKind.Layer);
+        Assert.Equal(new ExecutableBody(leaf), layer.Key.Body);
+        var slice = c.Types.OriginRows(layer.Key.Body);
+        Assert.Equal((2, 2), (slice.Rows.Count, slice.LayerStart));
 
         c = MirBuildTest.Compile(FieldInit + Main);
-        var s = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "S").SymbolOf()!;
-        Assert.Contains(new ExecutableBody(s), c.Types.OriginLayers);
+        Assert.DoesNotContain(Bodies(c), static x => x.Key.Kind == MirBodyKind.Layer);
     }
 
     // 2a0-D D2: a row's CaseMask numbers the body's pair binders (MirBody.Binders), renumbered from those in scope of its Use.
