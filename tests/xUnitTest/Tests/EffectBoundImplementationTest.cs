@@ -13,6 +13,11 @@ namespace XunitTest;
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
 public partial class EffectBoundImplementationTest
 {
+    // Row 33's Board (SPEC 22.4.5, the Tatara plan's decision 45): the Kernel's complete Board whose `write` reads the immutable static
+    // Screen.width; MirAnalysisTest.Requirements records the rule with it.
+    internal static readonly string ScreenBoard = StartupBindingTest.Derive(
+        KernelSources.Board + KernelSources.BoardTerminate, (Cells, "(self.cell / Screen.width + 1) * Screen.width")) + "group Screen\n    public let width: isize = 80\n";
+
     private const string StableSources = "contract Source\n    func take(self: uniq/Self) -> i32\ncontract StableSource: Source\n    effect Source.take confined\n";
 
     private const string TakingCursor = "struct Cursor<T>\n    T is C\n    Self is Step\n    var inner: T\n    public func step(self: uniq/Self)\n        var item = self.inner.get()\n        _ = item.take()\n";
@@ -32,6 +37,18 @@ public partial class EffectBoundImplementationTest
 
     private const string Main = "public func main() => ()\n";
 
+    // Rows 31-36 and C-586's twins: the Kernel (KernelSources' Hello and complete Board in one source), the texts they replace in it
+    // (Hello's line, `write`'s first line, `clock`'s body and the line feed's cell) and A4's records at the Board's members.
+    private const string Kernel = KernelSources.Hello + KernelSources.Board + KernelSources.BoardTerminate;
+    private const string HelloLine = "Console.writeLine(\"Hello\")\n";
+    private const string Bytes = "        let bytes = text.bytes()\n";
+    private const string Ticks = "        self.ticks += 1\n        return self.ticks\n";
+    private const string Cells = "(self.cell / 80 + 1) * 80";
+    private const string Write = "Ownership.PlatformStatic UnsatisfiedEffectBound_Kd public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64";
+    private const string Clock = "Ownership.PlatformStatic UnsatisfiedEffectBound_Kd public func clock(self: uniq/Self) -> i64";
+    private const string Start = "Ownership.PlatformStatic UnsatisfiedEffectBound_Kd public func start(boot: Boot) -> Self";
+    private const string CountedRecords = "Binding Unsupported_Kd Metrics.writes@ref | Collection Unsupported_Kd public var writes: i64 = 0";
+
     // ASuppliedContractsBoundIsReadAtEveryDepth's conformances: the call's conforming Type is a requirement's result, or a Type an
     // identity premise makes one with a projection at depth 2.
     private const string DeepMeter = "struct Meter<T>\n    T is Node\n    Self is Report\n    var reading: T\n    public func report(self: ref/Self) -> i32\n        return self.reading.deep().ping()\n";
@@ -43,6 +60,9 @@ public partial class EffectBoundImplementationTest
     // program with Sink.
     private static readonly (DiagnosticCode Code, SyntaxLocation At) PutsStorage =
         (DiagnosticCode.Unsupported_Kd, MirTargetSide.At(Sink, "var puts: isize = 0"));
+
+    // The freestanding row, whose program supplies the platform (TargetProfile.ProgramPlatform).
+    private static readonly TargetProfile Freestanding = TargetProfile.Find("x86_64-unknown-none")!;
 
     [Theory]
     [InlineData("struct CountingSink\n    Self is Sink\n    var count: isize = 0\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        self.count += 1\n        return .Ok(())\n", true)]
@@ -115,8 +135,6 @@ public partial class EffectBoundImplementationTest
             return [.. c.Binding.Issues.Select(static x => $"{x.Code} @ {First(x.Node)}"),
                 .. c.Problems.Select(x => $"{x.Code} @ {First(c.SyntaxOf(x.Subject))}")];
         }
-
-        static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
     }
 
     // R7-T1 (B's ruling 14, labelled V: SPEC 8.11.2, 8.13.3; IMPL 21.3.1; the Middle's RP17): the deepArgument form, Box^65<i32> as a
@@ -335,8 +353,57 @@ public partial class EffectBoundImplementationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(expected, string.Join("; ", c.Binding.Issues.Select(static x => $"{x.Code} @ {First(x.Node)}")
             .Concat(c.Problems.Select(x => $"{x.Code} @ {First(c.SyntaxOf(x.Subject))}"))));
+    }
 
-        static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
+    // Rows 31-36 and C-586's twins (SPEC 22.4.5 ¶2, the Tatara plan's decision 45: a platform member whose effect summary, SPEC 15.6.4,
+    // lists a static Field, a first-access initialization included, or has unknown effects is an error at the member), checked as a
+    // build checks them (CheckStartup before Analyze) on the freestanding row unless named: A4's UnsatisfiedEffectBound_Kd under
+    // Ownership.PlatformStatic at each failing member, each judged alone (SPEC 23.1.2), beside the program's other records (P42's
+    // StaticStorage record at a settable static, DECISIONS R5-M82, and Binding's located Unsupported_Kd at a static's Borrow; STATUS
+    // Static members). The rule reads no startup record, so a hosted row's Unsupported_Kd stands beside it (35); a failed conformance
+    // owes nothing (36, SPEC 8.6.3); an environment effect alone accesses no static storage (the Console twin, SPEC 22.4.5 ¶3); a
+    // callee's static access and a destruction's are the member's (34, E2, E3). A requirement call that takes its effects from a
+    // `confined` bound may read an immutable static, so it fails as an unbounded one does (C-591's R4c and R4d, R4, and R4cf through a
+    // Callable input; T's rulings 134 and 136), and a closed Contract's `tryResolve` reads none (R4p, SPEC 8.7.5).
+    [Theory]
+    [InlineData("31", CountedRecords + " | " + Write)]
+    [InlineData("32", "")]
+    [InlineData("33", Write)]
+    [InlineData("33v", "")]
+    [InlineData("34", "Collection Unsupported_Kd public var count: i64 = 0 | " + Clock)]
+    [InlineData("35", CountedRecords + " | " + Write + " | Startup Unsupported_Kd Self is Platform")]
+    [InlineData("36", "Binding MissingContractImplementation_Kd Self is Platform | " + CountedRecords)]
+    [InlineData("console", "")]
+    [InlineData("E1", Write)]
+    [InlineData("E1v", "")]
+    [InlineData("E2", "Collection Unsupported_Kd public var ticks: i64 = 0 | " + Clock + " | " + Write)]
+    [InlineData("E2v", "")]
+    [InlineData("E3", "Collection Unsupported_Kd public var count: i64 = 0 | " + Write)]
+    [InlineData("E3v", "")]
+    [InlineData("E4", Start)]
+    [InlineData("E4v", "")]
+    [InlineData("R4c", Write)]
+    [InlineData("R4d", Write)]
+    [InlineData("R4", Write)]
+    [InlineData("R4p", "")]
+    [InlineData("R4cf", Write)]
+    public void APlatformMemberAccessesNoStaticStorage(string row, string records)
+    {
+        var (target, source) = PlatformProgram(row);
+        Assert.Equal(records, PlatformRecords(MinimalEmissionTest.Check(target, source, "Hello.kimi", OutputKind.Application)));
+    }
+
+    // Row 19 (SPEC 15.6.4: a summary includes every function its body calls): the forwarding root struct's `write` calls the Library
+    // Board's, which writes a static, so it fails at its own declaration; the Library's struct is no platform and owes nothing.
+    [Fact]
+    public void AForwardedStaticAccessFailsAtThePlatformsMember()
+    {
+        var c = ModuleBindingTest.Create(StartupBindingTest.Forwarding, StartupBindingTest.ForwardedLibrary, row: Freestanding);
+        c.Check();
+        Assert.Equal(
+            "Collection Unsupported_Kd public var writes: i64 = 0 | Ownership.PlatformStatic UnsatisfiedEffectBound_Kd " +
+            "public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64 => self.inner.write(stream, text)",
+            PlatformRecords(c));
     }
 
     // R6-check H3b T40: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges an effect bound where Binding did. Binding
@@ -380,4 +447,67 @@ public partial class EffectBoundImplementationTest
             $"struct Holder\n    Self is Reset\n    var item: {item}\n" + (form == "pair" ? $"    var big: {RetentionTest.Box65}\n" : string.Empty) +
             $"    public func reset(self: uniq/Self)\n        {call}\ngroup U\n" + helpers + Main;
     }
+
+    // Rows 31-36 and C-586's twins: each row's target and program, the Kernel derived by exact replacements (ruling 121 N7). Row 31 is
+    // C-458's: Hello reads a settable static through a Borrow and `write` writes it.
+    private static (TargetProfile Row, string Source) PlatformProgram(string row)
+    {
+        const string layout = "group Layout\n    public let pageBase: usize = 0x0100_0000\n";
+        const string field = "    var ticks: i64\n"; // The Board's last field and its init's last line.
+        const string set = "        self.ticks = 0\n";
+        return row switch
+        {
+            "31" => (Freestanding, CountedProgram(Kernel)),
+            "32" => (Freestanding, StartupBindingTest.Derive(Kernel, (field, field + "    var writes: i64\n"), (set, set + "        self.writes = 0\n"), (Bytes, "        self.writes += 1\n" + Bytes))),
+            "33" => (Freestanding, KernelSources.Hello + ScreenBoard),
+            "33v" => (Freestanding, StartupBindingTest.Derive(Kernel, (field, field + "    var width: isize\n"), (set, set + "        self.width = 80\n"), (Cells, "(self.cell / self.width + 1) * self.width"))),
+            "34" => (Freestanding, StartupBindingTest.Derive(Kernel, (Ticks, "        Log.note()\n" + Ticks)) + "group Log\n    public var count: i64 = 0\n    public func note() => Log.count += 1\n"),
+            "35" => (TargetProfile.Windows, CountedProgram(Kernel)),
+            "36" => (Freestanding, CountedProgram(KernelSources.Hello + KernelSources.Board)),
+            "console" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        Console.writeLine(\"write\")\n" + Bytes))),
+            "E1" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        var watch = Time.Stopwatch.init()\n        watch.start()\n" + Bytes))),
+            "E1v" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        let now = self.clock()\n" + Bytes))),
+            "E2" => (Freestanding, StartupBindingTest.Derive(Kernel, (Ticks, "        Metrics.ticks += 1\n        return Metrics.ticks\n"), (Bytes, "        _ = self.clock()\n" + Bytes)) +
+                "group Metrics\n    public var ticks: i64 = 0\n"),
+            "E2v" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        _ = self.clock()\n" + Bytes))),
+            "E3" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        let mark = Mark.init()\n" + Bytes)) +
+                "group Log\n    public var count: i64 = 0\nstruct Mark\n    public init() => ()\n    drop => Log.count += 1\n"),
+            "E3v" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        let mark = Mark.init()\n" + Bytes)) + "struct Mark\n    public init() => ()\n    drop => ()\n"),
+            "E4" => (Freestanding, StartupBindingTest.Derive(Kernel, ("window + 0x0100_0000", "window + Layout.pageBase")) + layout),
+            "E4v" => (Freestanding, Kernel + layout),
+            "R4c" => (Freestanding, WideProgram("        effect confined\n", "Screen.width")),
+            "R4d" => (Freestanding, WideProgram("        effect confined\n", "80")),
+            "R4" => (Freestanding, WideProgram(string.Empty, "80")),
+            "R4p" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, Bytes + "        let first: isize = 0\n        _ = bytes.tryGet(first)\n"))),
+            "R4cf" => (Freestanding, StartupBindingTest.Derive(Kernel, (Bytes, "        let read = func () => Tables.scale\n        _ = Apply.run(read@ref)\n" + Bytes)) +
+                "group Tables\n    public let scale: i64 = 3\ngroup Apply\n    public func run<F>(f: ref/F) -> i64\n        F is Callable<() -> i64>\n            effect confined\n        return f()\n"),
+            _ => throw new ArgumentOutOfRangeException(nameof(row)),
+        };
+
+        // R4c, R4d and R4: `write` divides by Util.wide<Eighty>(), whose requirement call on the abstract T takes its effects from Wide's
+        // bound, if any; Eighty's witness returns `width`.
+        static string WideProgram(string bound, string width) => StartupBindingTest.Derive(Kernel, (Cells, "(self.cell / Util.wide<Eighty>() + 1) * 80")) +
+            "group Screen\n    public let width: isize = 80\ncontract Wide\n    func width() -> isize\n" + bound +
+            $"struct Eighty\n    Self is Wide\n    public func width() -> isize => {width}\ngroup Util\n    public func wide<T>() -> isize\n        T is Wide\n        return T.width()\n";
+
+        static string CountedProgram(string kernel) => StartupBindingTest.Derive(
+            kernel,
+            (HelloLine, "let seen = Metrics.writes@ref\nConsole.writeLine(\"tick\")\nlet after = seen@follow\n"),
+            (Bytes, "        Metrics.writes += 1\n" + Bytes)) + "group Metrics\n    public var writes: i64 = 0\n";
+    }
+
+    // A checked program's records (SPEC 23.1.2: each independent failure's own), in ordinal order and " | "-joined, each its source, its
+    // code and the first line of its subject: the startup check's ("Startup"), Binding's ("Binding") and the MIR's, a problem under its
+    // requirement and a construction or collection record under its class.
+    private static string PlatformRecords(Compilation c)
+    {
+        var problems = c.BuildMir().Problems.All.ToArray();
+        return string.Join(" | ", c.Binding.StartupIssues.Select(static x => $"Startup {x.Code} {First(x.Node)}")
+            .Concat(c.Binding.Issues.Select(static x => $"Binding {x.Code} {First(x.Node)}"))
+            .Concat(problems.Select(x => $"{x.RecordClass?.ToString() ?? x.Requirement.ToString()} {x.Code} {First(c.SyntaxOf(x.Subject))}"))
+            .Order(StringComparer.Ordinal));
+    }
+
+    // A node's first line.
+    private static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
 }

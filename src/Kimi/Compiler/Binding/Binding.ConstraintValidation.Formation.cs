@@ -275,6 +275,9 @@ public sealed partial class Binding
 
     private ConstraintProof FormSignature(FunctionKoto function, QuerySite site)
     {
+        // The callee's own declaration check, not part of typing a header that calls it (SPEC 11.6, 15.3.5): its requests walk nothing.
+        var inferring = this.inferringHeader;
+        this.inferringHeader = false;
         var scope = this.scopes[function];
         var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope, site) : ConstraintProof.Unknown;
         for (var i = 0; i < function.Parameters.Count; i++)
@@ -285,6 +288,7 @@ public sealed partial class Binding
                 true);
         }
 
+        this.inferringHeader = inferring;
         return proof;
     }
 

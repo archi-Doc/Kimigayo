@@ -157,6 +157,8 @@ public sealed partial class Binding
 
         // A header is its declaration's, never the body that binds it lazily (SPEC 15.6.1; DECISIONS R4-M101 E3).
         var saved = this.EnterBody(default);
+        var inferring = this.inferringHeader;
+        this.inferringHeader = symbol.Property is { IsStored: true, Declaration.TypeKoto: null }; // SPEC 11.6's walk (DemandContainedHeaders)
         try
         {
             if (symbol.Declaration is FunctionKoto function)
@@ -181,6 +183,7 @@ public sealed partial class Binding
         finally
         {
             this.formingBody = saved;
+            this.inferringHeader = inferring;
         }
     }
 

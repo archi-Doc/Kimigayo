@@ -2,7 +2,7 @@
 
 [Implementation specification index](../IMPL.md)
 
-This chapter defines the windows-x64 and linux-x64 target profiles: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. Everything else about generated code is implementation-defined.
+This chapter defines the windows-x64, linux-x64 and x86_64-unknown-none target profiles: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. Everything else about generated code is implementation-defined.
 
 ## 21.1. Storage layout
 
@@ -147,7 +147,7 @@ func half(value: i128) -> i128 => value >> 1    // Supported.
 func third(value: i128) -> i128 => value / 3    // Unsupported on windows-x64.
 ```
 
-Floating-point operations use IEEE semantics without fast-math, reassociation or fusion. Stack exhaustion is detected with stack probes ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)).
+Floating-point operations use IEEE semantics without fast-math, reassociation or fusion. Stack exhaustion is detected with stack probes ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)), except on x86_64-unknown-none ([§21.6.1](#2161-target)).
 
 ### 21.3.4. Kimi implementation Attributes
 
@@ -254,3 +254,15 @@ Allocation follows [§21.4.3](#2143-memory) over anonymous private pages that `m
 ### 21.5.6. Native imports and backend support
 
 The runtime defines `memcmp`, `memcpy`, `memmove` and `memset` as on windows-x64: a member of a supplied library that the link loads and that gives a non-weak definition of one of them is an error at the link, and a weak one yields to the module's ([§21.4.7](#2147-native-imports-and-backend-support)). linux-x64 has no backend support archive: generated functions probe the stack inline ([§21.5.1](#2151-target)), and a module defines no `_fltused`. `c` is defined in [§20.4](20-compilation-configuration.md#204-native-libraries); a program that links it starts through its startup files ([§21.5.2](#2152-process-entry-and-exit)).
+
+## 21.6. x86_64-unknown-none runtime
+
+An x86_64-unknown-none Application is a static ELF executable for `x86_64-unknown-none`, which a boot loader starts without an operating system; storage is laid out as on windows-x64 ([§21.1](#211-storage-layout)). Its program supplies its platform ([§22.4.5](../spec/22-core-execution-and-foreign-functions.md#2245-platform)). No host runs its executables, so `run` and running its tests are Unsupported ([§20.3](20-compilation-configuration.md#203-commands)). This section describes the runtime of the modules the compiler generates for it.
+
+### 21.6.1. Target
+
+The x86_64-unknown-none runtime targets `x86_64-unknown-none` with the baseline x86-64 CPU without MMX or SSE; `f32` and `f64` operations call the backend support archive's routines (soft float). Code is generated for the kernel code model and a static ELF executable linked at 0xFFFFFFFF80000000. Generated functions use no red zone and no stack check or probe: stack exhaustion is undefined behavior ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)'s freestanding exception). Unwind tables are as on linux-x64 ([§21.5.1](#2151-target)).
+
+### 21.6.6. Integer addresses
+
+On x86_64-unknown-none, a raw pointer converted from an integer address reaches the memory or device at that address, with the provenance and authority the program's platform documents ([§5.5](../spec/05-raw-pointers-and-unsafe-memory.md#55-integer-addresses)). Every value a read of a device location of an integer Type gives is an initialized value of that Type, within that provenance. The guarantee names the storage an access reaches and the values placed within it; it does not fix the number or order of accesses ([§5.6](../spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations)'s volatile accesses do).
