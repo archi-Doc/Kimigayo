@@ -90,6 +90,13 @@ public partial class LocalOriginClauseTest
     [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> ref/i32 during b\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s == b\n    return h.item\n", "h0@move", "outlives", "requires a outlives b, which is not proven")]
     // A contravariant slot reverses the relation.
     [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s == b\n    return 0\n", "h0@move", "outlives", "requires b outlives a, which is not proven")]
+    // So does a slot that a nested Type's contravariant slot binds: the chain reaches it in a stored signature (SPEC 15.3.5; PLAN G1456).
+    [InlineData(
+        Callback + "struct Re {r}\n    public let inner: C during r\n    public init(inner: C during r) => self.inner = inner@move\n\n" +
+        "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = Re.init(C.init(g@move))\n    let h: Re{x} = h0@move\n        origin x.r == b\n    return 0\n",
+        "h0@move",
+        "outlives",
+        "requires b outlives a, which is not proven")]
     // An invariant slot is one `==` relation. `b outlives slot` proves U's own clause for the local's Type, U<b, slot>, which is an
     // independent problem otherwise (ATypeClauseAndASlotFitAreIndependentProblems).
     [InlineData(Exclusive + "func f(a: ref/i32, b: ref/i32, slot: uniq/(ref/i32 during a)) -> i32\n    origin b outlives slot\n    let h0 = U.init(slot)\n    let h: U{x} = h0@move\n        origin x.s == b\n    return 0\n", "h0@move", "==", "requires a == b, which is not proven")]
