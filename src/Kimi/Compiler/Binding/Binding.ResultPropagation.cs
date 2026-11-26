@@ -26,7 +26,8 @@ namespace Kimi.Compiler;
 //   outcome (ResultContext.Outcome, DECISIONS BU-43), written once where it becomes true: Waiting, with what it awaits (Awaiting, by
 //   its one writer Wait, published again when its call takes its parts: PublishAwaiting; DECISIONS BU-87); Conflict, its own record;
 //   Dependent, resting on its first failed part or on the join it waited for (Cause), with no record (SPEC 23.1.2), written only at the
-//   join's verdict (DecideRest; U1.6h: a recorded cause decides nothing before, so a failed source takes no part in its join's kind);
+//   join's verdict (DecideRest; U1.6h: a recorded cause decides nothing before, so a failed source takes no part in its join's kind),
+//   typed by the Type it formed where a source supplied a candidate (DecideResult; its consumers' checks read it);
 //   Decided. A part's
 //   failure is read from who decides it (PartFailed). A join tree (a join holding nested joins through its sources, the forms that
 //   deliver them and Tuple, array and Dictionary literals, none supplying a candidate) is judged once, at its root, each conflict
@@ -298,16 +299,17 @@ public sealed partial class Binding
         return holds;
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form's operand; a
-    // result target by its published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary
-    // literal by its own failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its
-    // call (IsCheckedCall), with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part
-    // bound with a Type that failed with its own BindingFailure, recorded or derived (Invalid), is failed.
+    // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form by its own recorded
+    // failure (a delivery's misfit, which FailMismatch writes at the form) and only without one through its operand; a result target by
+    // its published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary literal by its own
+    // failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its call (IsCheckedCall),
+    // with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part bound with a Type that
+    // failed with its own BindingFailure, recorded or derived (Invalid), is failed.
     private bool PartFailed(Koto part)
     {
         if (DeliveredOperand(part) is { } operand)
         {
-            return this.PartFailed(operand);
+            return part.BindingFailure != BindingFailure.None || this.PartFailed(operand);
         }
 
         if (this.resultContexts.TryGetValue(part, out var context))
@@ -508,10 +510,13 @@ public sealed partial class Binding
             {
                 var deferred = context.SourceNodes[i] is { } node && this.Deferred(node);
                 awaiting |= deferred;
-                context.Pending |= !deferred;
                 if (!deferred && context.SourceNodes[i] is { } failed && this.PartFailed(failed))
                 {
                     context.RestOn(failed);
+                }
+                else
+                {
+                    context.Pending |= !deferred;
                 }
             }
             else if (!ReferenceEquals(source, BoundType.Never))
@@ -645,10 +650,13 @@ public sealed partial class Binding
             }
 
             context.Sources[i] = this.SuppliedType(source);
-            context.Pending |= context.Sources[i] is null;
-            if (waited && context.Sources[i] is null && this.PartFailed(source))
+            if (context.Sources[i] is null && this.PartFailed(source))
             {
-                context.RestOn(source); // U1.6h site 6: a waited source that fails when its join decides is the join's cause.
+                context.RestOn(source); // U1.6h site 6: a source, waited or bound, that fails when its join decides is its cause, not pending.
+            }
+            else
+            {
+                context.Pending |= context.Sources[i] is null;
             }
 
             failed ??= fits ? null : context.Sources[i];

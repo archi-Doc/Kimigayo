@@ -12270,10 +12270,11 @@ resumed by R4-M86 (2026-10-20).
   (2026-11-01; PLAN G216 (a) Part 1 U1.6h-1): superseded by BU-79 (2026-11-02); full text: 4fb6fcdb1.
 
 - **BU-78 A failed source takes no part in its join: its join rests on it at its verdict, and a failed part makes its position wait**
-  (superseded in part by BU-79: B4 / fix (a) and the FailedFit readers) (2026-11-01; PLAN G216 (a) Part 1 U1.6h-3' (3 + 3'); design
-  revision 4; the owner's 「改訂 4でGO！」 and 「(1) 3′ で進める」) Amends U1.6d: a failed source of a join that waits for its position fits every
-  candidate as a source, not as its whole join (SPEC 23.1.2, 10.4, 10.5.1, 14.9.2). It covers joins their call classifies; a typed join
-  that decides by itself is not covered (PLAN).
+  (superseded in part by BU-79: B4 / fix (a) and the FailedFit readers; and by option C, PLAN G103 R1: site 1 and the G368 (1)
+  amendment's nested-join line, for a join with a candidate) (2026-11-01; PLAN G216 (a) Part 1 U1.6h-3' (3 + 3'); design revision 4;
+  the owner's 「改訂 4でGO！」 and 「(1) 3′ で進める」) Amends U1.6d: a failed source of a join that waits for its position fits every candidate as
+  a source, not as its whole join (SPEC 23.1.2, 10.4, 10.5.1, 14.9.2). It covers joins their call classifies; a typed join that decides
+  by itself is not covered (PLAN).
   - Site 1, the verdict: RestOn records the cause during classification and decides nothing. `DecideRest`, the one writer of
     Dependent, writes the verdict when the join decides (DecideResult; DecideWaiting under a failed position). Conflict prevails.
   - Sites 2 and 6 (U1.6h-4): a failed source takes no part in whether its join's sources await (SourcesAwait, BoundSince), and a
@@ -12315,6 +12316,15 @@ resumed by R4-M86 (2026-10-20).
     reads). Nothing is bound and no default is taken.
   - Rejected: a call resting on its taken argument's cause at Calls.cs:391 (h2 never reaches selection); a shared join-rests
     completion for DecideResult (it changed no probe).
+  - Superseded in part by the owner's option C (2026-11-26, PLAN G103 R1, census question (7) (b); the Front's unit G103c): site 1's
+    "its join rests on it at its verdict" and the G368 (1) amendment's "A typed join nested in it still rests at its verdict" no
+    longer hold for a join some source supplied a candidate to. Such a join keeps its Dependent outcome and has no record; DecideResult
+    completes it with the Type it formed (SPEC 14.9.2 step 2), through the same Complete as a decided join, unless that Type holds an
+    open mark (BU-240), would make it a Never value (IsNeverValue), or a source pends. Its consumers' checks read that Type (rule W,
+    BU-79): `let v = if c => undefinedName else => x` with x: bool, then `return v` at i32, gives TypeMismatch_Kd at `return v` (P10).
+    A join that no source supplied a candidate to still rests on its cause (CompleteDependent), at its verdict and nested alike (T1).
+    A delivery form's misfit is the form's own recorded failure, which PartFailed reads before the form's operand (FailMismatch
+    writes it at the form).
 
 - **BU-79 Rule W: a failed part is a wildcard; only a node's own verdict over a failed child is suppressed** (2026-11-02, the owner's
   「了解しました。5件とも推奨どおり進めてください。」; the done-when, DECISIONS Q13) Supersedes BU-77 (FailedFit, its readers C15 and C16, B1, B2, and step 1's
