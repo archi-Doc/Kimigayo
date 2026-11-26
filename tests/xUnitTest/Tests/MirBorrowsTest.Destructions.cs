@@ -934,8 +934,9 @@ public sealed partial class MirBorrowsTest
     // drop whose Binding retention passes the walk's depth bound (DQ40's Field, a Writer 40 levels down a Tuple, so the retention is
     // Limit) is the located resource limit where the destruction is composed, as its method twin `x.flush()` is on dev: at x's
     // reassignment and at its storage end, in the valid dq40Ok and beside dq40Bad's own `y@follow = 5` (w's Loan, which wr's slot keeps).
-    // Each DQ40.init call's own contract is the Limit too, recorded at the call (G408B-17): its input d stores a Writer past the bound,
-    // whose raw p can carry an address, so the finding left there may retain (a Q13 class 4 move from dev's two records).
+    // Each DQ40.init call's own contract is Deep, recorded at the call (G408B-17; the Middle's G408-B A5 ruling C4): its input d stores a
+    // Writer past the bound, whose raw p can carry an address, so the finding left there may retain (a Q13 class 4 move from dev's two
+    // records).
     // The initializer moves its non-Copy `d` with `d@move` (SPEC 3.5 row 3; R6-check H1-tests (t), da41db914's form).
     [Theory]
     [InlineData("dq40Ok")]

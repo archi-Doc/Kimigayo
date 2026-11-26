@@ -50,9 +50,9 @@ public sealed partial class Binding
     // where the walk asks there (its own test at the meeting, or a step below it), the walk is undecided, so unless its answer is a decided
     // yes its top question adds the missing finding's subject to retentionPast where Past(table) holds (the argument for the input fold and
     // HiddenKind, `position` for WrittenThrough, and the unentered parts themselves, which TyCtxt.HandedCallables publishes, for
-    // Handed; G408B-17): the contract's Limit after its rows where a holder they name and a subject can
-    // carry a Loan (HolderCarries, AnyCarries, G408B-16; G408, R4-M153's Join; A5 records it as OwnershipDepthLimit_Kd at the call,
-    // R4-M51), elsewhere no verdict reads the undecided answer (G408B-6 (3)).
+    // Handed; G408B-17): the contract's Deep beside its rows (CallRetention.IsDeep) where a holder they name and a subject can carry a
+    // Loan (HolderCarries, AnyCarries, G408B-16; G408, R4-M153's Join; A5 records it as OwnershipDepthLimit_Kd at the call, R4-M51),
+    // elsewhere no verdict reads the undecided answer (G408B-6 (3)).
     // `shallowest` is the state's entry in its walk's own table (`met`: it had one; on return, it was entered within the bound), a
     // reference the caller reads no more once its walk may insert (a resize moves the entry). Each walk keys its own state, all that
     // decides what lies below it: the handed-callable walk's Type (TyCtxt.Handed, handedSeen), and the storage walk's StorageAt, which

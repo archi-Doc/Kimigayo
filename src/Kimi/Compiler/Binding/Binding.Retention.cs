@@ -81,10 +81,10 @@ public sealed partial class Binding
     // (DeclareSignature) to its rows: where a walk met a state past its bound where it asks and never entered it within the bound (Enters,
     // the walks' Past reads), the Type of the value the missing finding concerns: the argument for the input fold and HiddenKind,
     // `position` for Writes, the declared Type for ViewedDeclared, and each part TyCtxt.HandedCallables left unentered past HandedBound.
-    // The contract is the Limit only where a holder the rows name and one of these subjects can carry a Loan or an address (HolderCarries,
-    // AnyCarries, after RetentionRows): a finding about a value that carries neither retains nothing, whatever the walk would have found,
-    // and elsewhere no verdict reads it (G408B-6 (3)). Cleared when the computation ends (EndRetention), so it holds DeclareSignature's
-    // reading, which comes before BeginRetention.
+    // The contract is Deep (its rows, CallRetention.IsDeep) only where a holder the rows name and one of these subjects can carry a Loan or
+    // an address (HolderCarries, AnyCarries, after RetentionRows): a finding about a value that carries neither retains nothing, whatever
+    // the walk would have found, and elsewhere no verdict reads it (G408B-6 (3)). Cleared when the computation ends (EndRetention), so it
+    // holds DeclareSignature's reading, which comes before BeginRetention.
     private readonly List<BoundType?> retentionPast = new();
     private List<BoundType> retentionScope = new();
     private int retentionInputs;

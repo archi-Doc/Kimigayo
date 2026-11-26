@@ -179,7 +179,7 @@ public sealed partial class Binding
     // node with its incoming premises once, and the walks; the identity key is read once per contract, and for a callee it does not name
     // the Iterator key once, at the first output that meets a written unstated layer, under `premises`, the scope TyCtxt read an instance
     // with an abstract part under (null: none, or an erased callable's, which has no callee). CallRetention.Limit where a walk meets
-    // storage past its limits.
+    // storage past its limits; the rows with CallRetention.IsDeep where a finding a walk left past its bound can carry (G408B-17).
     private CallRetention RetentionRows(
         OriginPremiseEnvironment environment,
         int[] nodes,
@@ -299,8 +299,10 @@ public sealed partial class Binding
             }
         }
 
-        return this.retentionLimit || (this.retentionPast.Count > 0 && this.HolderCarries(result) && this.AnyCarries(this.retentionPast)) ? CallRetention.Limit
-            : new(resultRecord, resultWrites, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs), composes: !this.StatesWrites(callee));
+        // Deep is read first: its CanCarryLoan walks may leave a carrier walk incomplete (MayCarry), which is the Limit.
+        var deep = !this.retentionLimit && this.retentionPast.Count > 0 && this.HolderCarries(result) && this.AnyCarries(this.retentionPast);
+        return this.retentionLimit ? CallRetention.Limit
+            : new(resultRecord, resultWrites, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs), composes: !this.StatesWrites(callee), deep);
     }
 
     // The result read as an output (CallRetention.ResultWrites; G841's H2, PLAN G935): the walk an input's output takes, from the result's

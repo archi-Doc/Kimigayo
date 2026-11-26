@@ -473,19 +473,41 @@ public sealed partial class RetentionTest
     }
 
     // SPEC 15.6.4 (G408B-17): zz's result can hold an i64, and d holds one by value 34 entries down, so the result may retain d's own value,
-    // x's Loan included: a use of r after `x = 3` conflicts (zzIn33Bad, accepted by dev: class 1); the valid twin uses r first (zzIn33Ok).
-    // The input fold meets that i64 only past StorageBound, so its finding's subject is d, which carries `ref/i32`, never the i64: the
-    // call's contract is the Limit, recorded at the call in both (zzIn33Ok: an R4-M181 Resource row for the Middle's RP17).
+    // x's Loan included: a use of r after `x = 3` conflicts (zzIn33Bad, invalid, accepted by dev: class 1); the valid twin uses r first
+    // (zzIn33Ok). The input fold meets that i64 only past StorageBound, so its finding's subject is d, which carries `ref/i32`, never the
+    // i64: the call's contract is Deep, its rows beside the part past the bound (the Middle's A5 ruling C1), recorded at the call alone
+    // (C4) in both: twin (b), zzIn33Bad, rejected by the Deep record alone, as its violation lies only in that part; twin (a), zzIn33Ok,
+    // valid, with no decided failure: exactly the call's record and no Language record (an R4-M181 Resource row for the Middle's RP17).
     [Theory]
     [InlineData("    x = 3\n    let k = r.0\n")]
     [InlineData("    let k = r.0\n    x = 3\n")]
     public void AnInputsPartPastTheBoundIsDecidedForTheWholeInput(string tail)
     {
         var nest = string.Concat(Enumerable.Repeat("(i32, ", 33)) + "i64" + new string(')', 33);
-        Assert.Equal("OwnershipDepthLimit_Kd zz(d@move)", MirBorrowsTest.Records(
-            $"func make(x: ref/i32 during q) -> (ref/i32 during q, {nest}) => $abort(\"x\")\n" +
+        var source = $"func make(x: ref/i32 during q) -> (ref/i32 during q, {nest}) => $abort(\"x\")\n" +
             $"func zz(d: (ref/i32 during q, {nest})) -> (ref/i16 during q, i64) => $abort(\"x\")\n" +
-            "func g()\n    var x = 1\n    var d = make(x@ref)\n    var r = zz(d@move)\n" + tail + "public func main() => ()\n"));
+            "func g()\n    var x = 1\n    var d = make(x@ref)\n    var r = zz(d@move)\n" + tail + "public func main() => ()\n";
+        Assert.StartsWith("deep", Declared(Bind(source), "zz"), StringComparison.Ordinal);
+        Assert.Equal("OwnershipDepthLimit_Kd zz(d@move)", MirBorrowsTest.Records(source));
+    }
+
+    // SPEC 15.6.4, 23.1.2 (the Middle's A5 ruling C5, twin (c)): zz's result `ref/i32 during q` may retain e's own value, x's Loan, a
+    // row decided within the bound, while d's `ref/bool` fits no part of the result within it and its i64 lies 34 entries down, past
+    // StorageBound: the contract is Deep with that row beside the part. Invalid (zzDecidedBad): `x = 3` while r, which holds x's Loan,
+    // lives conflicts, and the call's Deep part is recorded too, two independent records; valid (zzDecidedOk): r is used first, so only
+    // the call's record remains.
+    [Theory]
+    [InlineData("    x = 3\n    let k = r.0\n", "OwnershipDepthLimit_Kd zz(d@move, x@ref); ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("    let k = r.0\n    x = 3\n", "OwnershipDepthLimit_Kd zz(d@move, x@ref)")]
+    public void ADecidedRowBesideADeepPartKeepsItsOwnRecord(string tail, string records)
+    {
+        var nest = string.Concat(Enumerable.Repeat("(i32, ", 33)) + "i64" + new string(')', 33);
+        var source = $"func make(y: ref/bool during q) -> (ref/bool during q, {nest}) => $abort(\"x\")\n" +
+            $"func zz(d: (ref/bool during q, {nest}), e: ref/i32 during q) -> (ref/i32 during q, i64) => $abort(\"x\")\n" +
+            "func g()\n    var x = 1\n    var y = false\n    var d = make(y@ref)\n    var r = zz(d@move, x@ref)\n" + tail +
+            "public func main() => ()\n";
+        Assert.StartsWith("deep", Declared(Bind(source), "zz"), StringComparison.Ordinal);
+        Assert.Equal(records, MirBorrowsTest.Records(source));
     }
 
     // SPEC 15.3.5, 15.6.4, 15.6.6, 23.1.1 (G408B-10, G408B-11): a fit over a growing family, each level a new instance (D0<Box<T>> under
@@ -2534,12 +2556,12 @@ public sealed partial class RetentionTest
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
             .Select(x => c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(c.Binding, x.Node))).ToArray();
 
-    // A retention as the records spell it (DECISIONS R4-M154): the result's kinds and whether it is untied, then per output it writes its
+    // A retention as the records spell it (DECISIONS R4-M154): `deep` for a Deep contract, the result's kinds and whether it is untied, then per output it writes its
     // root's kinds (own) and those past it (reached, every Reached entry joined), each with its pairs (`if {i Value: longer > shorter}`),
     // whether it is untied, and the referent stores; each input with its kinds.
     private static string Show(CallRetention retention)
     {
-        return retention.IsLimit ? "limit" : string.Join(", ", new[] { Kinds(retention.Result.Kinds) is { Length: > 0 } result ? $"result {{{result}}}{Pairs(retention.Result)}" : null, retention.Result.Untied ? "untied" : null }
+        return retention.IsLimit ? "limit" : string.Join(", ", new[] { retention.IsDeep ? "deep" : null, Kinds(retention.Result.Kinds) is { Length: > 0 } result ? $"result {{{result}}}{Pairs(retention.Result)}" : null, retention.Result.Untied ? "untied" : null }
             .Concat(retention.Writes.ToArray().Select(static x => $"store {x.Output}: own {{{Kinds(x.Own.Kinds)}}}{Pairs(x.Own)}, reached {{{Kinds(x.All.Kinds)}}}{Pairs(x.All)}" +
                 (x.Own.Untied ? " untied" : string.Empty)))
             .Concat(retention.ReferentStores.ToArray().Select(static x => $"referent store {x}")).OfType<string>());
