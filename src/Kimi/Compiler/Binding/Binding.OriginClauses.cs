@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 //   an Unbound end (Binding.OriginClauses.Chains.cs; DECISIONS BU-62).
 // - Inputs: the completed Origin declarations, the pass's obligations, and the proof and relation judge (Binding.OriginProof.cs,
 //   JudgeDeclarationPosition).
-// - Outputs: Origin relation records (originRelations; a declaration row's and a chain's through PublishCallRelations), the derived
+// - Outputs: Origin relation records (RecordOrigin; a declaration row's and a chain's through PublishCallRelations), the derived
 //   Unsupported failure of a row with an Unbound end (UnboundCause), obligations for the clauses the judge leaves to region inference,
 //   and a local clause's row and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
 // - Invariants: a clause is judged by its owner's part only, and FailedDeclaredRelation takes no steering flag; a clause's rows are its
@@ -307,7 +307,7 @@ public sealed partial class Binding
     {
         if (this.FailedDeclaredRelation(relation) is { } failed)
         {
-            this.FailExplained(ref this.originRelations, relation.Syntax, BindingFailure.OriginRelation, failed);
+            this.RecordOrigin(relation.Syntax, new(failed, null));
         }
     }
 

@@ -561,7 +561,7 @@ public sealed partial class Binding
             {
                 if (origins[i] is null)
                 {
-                    return this.Fail(use, BindingFailure.MissingOrigin, true);
+                    return this.Record(use, BindingFailure.MissingOrigin, [], unresolved: true);
                 }
             }
 

@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
-    private readonly InvalidStaticOriginSlotRows invalidStaticOriginSlots;
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
@@ -94,6 +93,11 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // SPEC 3.3.2, 15.3.1, 8.5.1: whether a slot binding has a target in the denoted Type: an unbound Slice, or an owner Type whose schema has
+    // one Origin, not yet bound. No other Type (a borrow, raw, pair or object layer, a Type parameter, a Tuple, a Function) has one.
+    private static bool HasOpenSlot(BoundType type) => type.Kind == BoundTypeKind.Slice ? type.Origin is null
+        : type is { Semantics: SemanticsKind.Owner, Symbol.Schema.Origins.Count: 1 } && (type.OriginArguments.Count == 0 || type.OriginArguments[0] is null);
+
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)!
             : this.types.Rebuild(type, (BoundType[])type.Components, origin, arguments);
@@ -106,31 +110,30 @@ public sealed partial class Binding
         {
             if (type.Symbol?.Schema is not { Origins.Count: > 0 })
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             annotation!.OriginExpression!.BindingState = BindingState.Resolved;
             context = context with { SuppressOuter = false };
         }
 
-        if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
+        // SPEC 3.3.2, 15.3.1, 8.5.1: a slot binding targets the one open schema slot of the Type its name denotes; any other Type gives it no
+        // target. Its written atom is bound first, its failure being its own (SPEC 23.1.2).
+        if (written && annotation!.IsSlotBinding && !HasOpenSlot(type))
         {
-            return this.Fail(use, BindingFailure.InvalidOrigin);
+            _ = this.WrittenOrigin(annotation, use, scope);
+            return this.Record(use, BindingFailure.InvalidOrigin, []);
         }
 
+        // A written Type parameter here is a pair binder's layer or carries Origin arguments: a slot binding's target is decided above.
         if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
-            var origin = written ? annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope) : type.Origin;
-            if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
-            {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
-            }
-
+            var origin = written ? this.WrittenOrigin(annotation!, use, scope) : type.Origin;
             if (written && type.Kind == BoundTypeKind.Parameter)
             {
                 this.AddObligation(new(BindingObligationKind.TypeFormation, use, BindingDeadline.Definition, type));
@@ -161,7 +164,7 @@ public sealed partial class Binding
 
             if (origin?.Kind == OriginKind.Static && IsExclusive(type.Semantics))
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             var supplied = !ReferenceEquals(origin, type.Origin);
@@ -217,12 +220,11 @@ public sealed partial class Binding
             var schema = target.Symbol?.Schema;
             var count = schema?.Origins.Count ?? 0;
 
-            // SPEC 15.3.1: a trailing during binds the only slot of a one-slot schema. It adds no borrow layer and never
-            // rebinds a complete Type; several slots need a binding set and relations.
-            if (written && (objectLayer || count != 1 || annotation!.OriginArguments is not null ||
-                (target.OriginArguments.Count == 1 && target.OriginArguments[0] is not null)))
+            // SPEC 15.3.1: braces never apply Origins. A trailing during binds the only slot of a one-slot schema (the target decided
+            // above); it adds no borrow layer.
+            if (written && annotation!.OriginArguments is not null)
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             if (count != 0 && (written || (!context.SuppressOuter && (target.OriginArguments.Count != count || target.OriginArguments.Contains(null!)))))
@@ -238,7 +240,7 @@ public sealed partial class Binding
 
                     if (written)
                     {
-                        var slot = annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
+                        var slot = this.WrittenOrigin(annotation!, use, scope);
                         if (slot is null)
                         {
                             return null;
@@ -282,6 +284,10 @@ public sealed partial class Binding
 
         return type;
     }
+
+    // The one binding of a written Origin atom: its expression, or the name it was written as. Null when the atom failed (its own record).
+    private BoundOrigin? WrittenOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope)
+        => annotation.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
 
     // SPEC 15.6.1: each relation is the well-formedness of the Type occurrence `use` (WellFormed), never a fit of a value: every Origin
     // of OwnedOrigins(inner) (SPEC 15.2.3) outlives `outer`. A held Function Type's part is its call signature with its own per-call
@@ -472,7 +478,7 @@ public sealed partial class Binding
             // unrelated slot is a hidden Origin, judged once every declaration completed.
             if (node is TypeSemanticsKoto { OriginExpression: { } expression, BoundType.Origin.Kind: OriginKind.ConstraintSet } && StorageType(node) is not null)
             {
-                this.Fail(expression, BindingFailure.InvalidOrigin);
+                this.Record(expression, BindingFailure.InvalidOrigin, []);
             }
 
             var invalid = false;
@@ -487,15 +493,17 @@ public sealed partial class Binding
                         // annotation owns formation; its declaration and names only repeat the already invalid Type.
                         // SPEC 15.3.5: uniq in some case the Type selects, the record naming those cases (DECISIONS BU-44).
                         var site = OriginFormationSite(node, type);
-                        var slot = schema.Origins[i];
-                        var cases = this.FailingCase(slot, type, LoanRequirement.Uniq);
-                        this.FailExplained(InvalidStaticOriginSlotRows.Family, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
+                        this.RecordFailingCase(site, schema.Origins[i], type, LoanRequirement.Uniq);
                         if (!ReferenceEquals(site, node))
                         {
                             this.CompleteDependent(node, site);
                         }
 
+                        // Transitional, R7-E5 (E4c, N1; PLAN's second independent failure at an occupied Origin key): a site's first
+                        // failing uniq slot only. A further slot reads the same Type at the same site, not a failed input, but its
+                        // record would be a second InvalidOrigin under the site's key (a Defect), until RecordNumbered per failure.
                         invalid = true;
+                        break;
                     }
                 }
             }
@@ -579,17 +587,5 @@ public sealed partial class Binding
         }
 
         return false;
-    }
-
-    /// <summary>The `invalidStaticOriginSlots` family's one accessor (DECISIONS BU-220): a pass family, a static Origin bound to a slot
-    /// that requires uniq with its failing cases, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
-    /// present row always has its Slot). Its members keep the names its readers use.</summary>
-    private readonly struct InvalidStaticOriginSlotRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), PassCounter> Family(ref NodeColumns columns) => ref columns.InvalidStaticOriginSlots;
-
-        internal bool TryGetValue(Koto node, out (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases) invalid)
-            => (invalid = binding.RecordedFact(node, Family)).Slot is not null;
     }
 }
