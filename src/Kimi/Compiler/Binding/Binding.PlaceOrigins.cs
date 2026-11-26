@@ -94,7 +94,7 @@ public sealed partial class Binding
     // SPEC 15.6.5: the atom of a Borrow that dereferences nothing, named by its Place's binder and Projection slot (PlaceOriginBinder,
     // PlaceOriginSlot; a capture entry's, Binding.Captures). The one form of such an atom. A Borrow whose root occurrence `root` is a local
     // or a parameter (a constructor's or destructor's `self` among them) has its own finite Origin, so that occurrence is also its atom's
-    // identity (BorrowRoot); any other root, and a capture entry, which has no root occurrence, names the Place's one atom.
+    // identity (BorrowRoot); any other root names the Place's one atom, and so does a capture entry, whose root stays unsited (PLAN G922).
     private BoundOrigin PlaceAtom(Koto binder, int slot, Koto? root)
         => this.OriginAtom(binder, OriginKind.Projection, slot, borrowRoot: root?.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter ? root : null);
 
