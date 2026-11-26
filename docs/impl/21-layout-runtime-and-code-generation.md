@@ -2,7 +2,7 @@
 
 [Implementation specification index](../IMPL.md)
 
-This chapter defines the windows-x64 and linux-x64 target profiles: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. Everything else about generated code is implementation-defined.
+This chapter defines the windows-x64, linux-x64 and x86_64-unknown-none target profiles: the layout and foreign-function guarantees that programs may rely on, the code generation policy and the observable runtime behavior. Everything else about generated code is implementation-defined.
 
 ## 21.1. Storage layout
 
@@ -147,7 +147,7 @@ func half(value: i128) -> i128 => value >> 1    // Supported.
 func third(value: i128) -> i128 => value / 3    // Unsupported on windows-x64.
 ```
 
-Floating-point operations use IEEE semantics without fast-math, reassociation or fusion. Stack exhaustion is detected with stack probes ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)).
+Floating-point operations use IEEE semantics without fast-math, reassociation or fusion. Stack exhaustion is detected with stack probes ([§17.4.3](../spec/17-failure-handling.md#1743-termination-and-cleanup)), except on x86_64-unknown-none ([§21.6.1](#2161-target)).
 
 ### 21.3.4. Kimi implementation Attributes
 
