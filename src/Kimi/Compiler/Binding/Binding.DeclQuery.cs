@@ -28,7 +28,9 @@ namespace Kimi.Compiler;
 // - Kinds (one row each): Signature. Re-entry: a Property's whose Type is not yet formed is CyclicBinding_Kd at the declaration and
 //   Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. The header frame binds
 //   only what typing the declaration needs (a literal whose Type the header fixes without its body publishes no body, TypedByHeader,
-//   through HeaderRunningOrFailed), so a re-entry is a SPEC 11.6 cycle for every literal it covers. Error's readers: a use of a Property left without a Type rests on the
+//   through HeaderRunningOrFailed), so a re-entry is a SPEC 11.6 cycle for every literal it covers; a fact request an inferred stored
+//   Property's header makes demands the headers of the stored Properties its Type contains (DemandContainedHeaders, temporary until
+//   R7-D2 d2), so a fact about a Type containing the Property re-enters it too. Error's readers: a use of a Property left without a Type rests on the
 //   declaration's record (BindReference); the declaration's own variable binding records nothing more, even where the interrupted
 //   computation formed the Type, and still binds its parts (BindVariableCore); DeclaredValueType (SPEC 9.6), the conformance proof
 //   (VerifyPropertyRequirement) and a use of a Property whose Type was formed read the Type only, not yet the record (PLAN G1181's
