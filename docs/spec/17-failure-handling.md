@@ -110,7 +110,7 @@ func process()
     $abort("Fatal condition") // Neither close(resource) nor the destruction of resource runs.
 ```
 
-Stack exhaustion is not undefined behavior. It terminates the process, and no Scope Exit runs. Whether it is detected and reported as an Abort, its diagnostics and the exit status are unspecified.
+Stack exhaustion is not undefined behavior. It terminates the process, and no Scope Exit runs. Whether it is detected and reported as an Abort, its diagnostics and the exit status are unspecified. On a freestanding profile, whose program supplies its platform ([§22](22-core-execution-and-foreign-functions.md)), stack exhaustion is undefined behavior instead.
 
 Abort ends the process with an unsuccessful exit status. The runtime attempts to report the reason and source location (the failed operation, or the `$abort` call; see [§22.5.1](22-core-execution-and-foreign-functions.md#2251-abort-location)); a failure to report never prevents termination. The diagnostic format, output stream and exit code are implementation-defined.
 

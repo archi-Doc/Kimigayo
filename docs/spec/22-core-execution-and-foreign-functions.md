@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-This revision defines two executable target profiles: windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)) and linux-x64 ([§21.5](../impl/21-layout-runtime-and-code-generation.md#215-linux-x64-runtime)); running or testing a linux-x64 program on a windows-x64 host is Unsupported. Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)), including the Kimi Kotonoha's ([§22.1](#221-required-kimi-declarations)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
+This revision defines three executable target profiles: windows-x64 ([§21.4](../impl/21-layout-runtime-and-code-generation.md#214-windows-x64-runtime)), linux-x64 ([§21.5](../impl/21-layout-runtime-and-code-generation.md#215-linux-x64-runtime)) and the freestanding profile x86_64-unknown-none ([§21.6](../impl/21-layout-runtime-and-code-generation.md#216-x86_64-unknown-none-runtime)), whose program supplies its platform ([§22.4.5](#2245-platform)); running or testing a linux-x64 program on a windows-x64 host is Unsupported. Whether a program is valid does not depend on the target except through Conditions ([§19.2](19-compile-time-directives.md#192-conditions)), including the Kimi Kotonoha's ([§22.1](#221-required-kimi-declarations)); an Unsupported report may depend on it. For every target, validity reads `isize` and `usize` at windows-x64's pointer width, 64 bits, and measures every concrete layout's size, stride, alignment and Field offsets as windows-x64 lays it out ([§21.1](../impl/21-layout-runtime-and-code-generation.md#211-storage-layout)); the layout obligations of [§8.15.3](08-generics-constraints-and-contracts.md#8153-concrete-layout-and-representation), among them [§4.1](04-arrays-indexing-and-slices.md#41-fixed-arrays)'s size limit, are checked on that layout. Building, running or testing a program for any other target is Unsupported.
 
 ## 22.1. Required Kimi declarations
 
@@ -47,6 +47,8 @@ This table is the only list of required Kimi declarations (names relative to `Ki
 | `Windows` group | `queryPerformanceCounter`, `queryPerformanceFrequency`, declared only where the Condition `windows` holds ([§22.8.3](#2283-windows-counter-functions)) |
 | UTF-8 formatting | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull`, `Text` group ([§22.9](#229-utf-8-text-and-buffers)) |
 | `Test` group | `tempDirectory() -> string`, only in test-only bodies ([§17.6.1](17-failure-handling.md#1761-forms-and-placement); [§20.6.3](../impl/20-compilation-configuration.md#2063-case-execution)) |
+| `Platform` | static Contract, `Self is Copy`: `func start(boot: Boot) -> Self`, `func mapPages(self: uniq/Self, bytes: isize) -> raw/u8`, `func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64`, `func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64`, `func clock(self: uniq/Self) -> i64`, `func terminate(self: uniq/Self, status: i32) -> Never`, in that order ([§22.4.5](#2245-platform)) |
+| `Boot` | C-layout Copy struct created only by the runtime: `directMapOffset: usize`, `regions: raw/raw/Boot.Region`, `regionCount: isize`; `Boot.Region`, a C-layout Copy struct `address: u64`, `length: u64`, `kind: u64` ([§22.4.5](#2245-platform)) |
 
 The iteration and indexing Contracts are static; their associated Types are complete and may take Origin parameters ([§8.5.4](08-generics-constraints-and-contracts.md#854-origin-parameters)). `Array`, `Dictionary`, `Slice`, `UniqSlice`, `Wrapping`, `Loan`, `Weak` and `Never` have exactly the constructors their Kimi declarations declare, such as `Array<T>.init(capacity:)` (`Weak`, `Wrapping` and `Never` declare none); none is synthesized ([§6.3.6](06-declarations-and-containers.md#636-implicit-constructor)).
 
@@ -380,6 +382,32 @@ struct Cache<T>
         public var count: i32 = 0
 // Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate slots.
 // Cache<ref/i32 during a> and Cache<ref/i32 during b> share one slot.
+```
+
+### 22.4.5. Platform
+
+On a freestanding profile the program supplies its platform. A **platform** is a root-level struct of the current project that declares conformance to `Platform` ([§8.6.1](08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity)), directly or through a Contract refining it ([§8.4.3](08-generics-constraints-and-contracts.md#843-refinement)), judged on the root items after Condition selection and source generation, as the startup form is ([§22.4.1](#2241-startup-selection)). Whether the conformance holds does not decide it: a failed conformance is that conformance's own error, and the struct is still a platform. Several platforms in an Application are an error, and so is a generic platform or one with Origin parameters. A Library's conforming structs and those of its dependencies are ordinary structs. An Application for a freestanding profile without a platform is Unsupported, and so is a platform on a profile whose platform is the operating system.
+
+The members to which the conformance maps `Platform`'s requirements ([§8.6.1](08-generics-constraints-and-contracts.md#861-conformance-declarations-and-identity)), and every function they call, access no static storage: such a member whose effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)) lists a static Field, or has unknown environment effects, is an error at the member. For this rule, a call that takes its effects from a `confined` bound ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)) may read an immutable static. A platform keeps its state in its value.
+
+Before the startup body, the runtime calls `start` once with the `Boot` the loader described, and keeps the result in storage of its own, which is not a static slot and is never destroyed. Memory pages, console output, the Stopwatch's clock and the end of the program call those members with `uniq` access to that value (IMPL §21.6). After the startup body and shutdown ([§22.4.3](#2243-static-initialization-and-shutdown)) the runtime calls `terminate(0)`, and after an Abort's report `terminate(1)`: on a freestanding profile the exit status of [§17.4.3](17-failure-handling.md#1743-termination-and-cleanup) is the status passed to `terminate`. A member that allocates, writes to `Console` or reads the clock, and an Abort raised while a member runs, end the program without a report and without an exit status.
+
+```kimi
+#if os == "none"
+    group Metrics
+        public var writes: i64 = 0
+
+    struct Board
+        Self is Copy
+        Self is Platform
+        var writes: i64                 // the platform's state, in its value
+        ...                             // the other members
+        public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64
+            self.writes += 1            // Valid: state in self.
+            // Metrics.writes += 1      // Error: a platform member accesses static storage.
+            ...
+            return 0
+// A second root struct declaring Self is Platform: several platforms, an error on every target.
 ```
 
 ## 22.5. Abort locations and codes
