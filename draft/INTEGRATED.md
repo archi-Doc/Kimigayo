@@ -1495,6 +1495,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   (`shapeJudgments` is a pass memo keyed by `SourceRef`s; DECISIONS BU-220's R7-N5 B7 line); §5.1's N5 row's exit reads
   ArchitectureRulesTest's `NodeKeyedTablesStayAtTheirSites`, which replaced the line regex, at 0 for Binding's types. No SPEC or
   IMPL text. Nothing frozen.
+- Revision 121 (2026-11-26, plan §14; the Middle's D row, R7-P5's census on dev 0ed650c96): §5.1's P5 row splits into P5a (A4
+  reads `TyCtxt.Witness`; the legacy comparison composition, E7 and A4's Limit class with Z7's M5 and M6) and P5b (the materializer
+  and the standard Property witness bridges), both before P3; P6 and P11 need P5b; §4.2's chain and gate, §4.3, §5.6's hold row and
+  the Z7 row follow. P5's "after H11b" (R5-M182, R4-13: A-12 does not land before H11) is read as §4.2's gate, R7-E1 and H11b-0,
+  both landed, with H11b's remainder (O1 H1-H2). No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
