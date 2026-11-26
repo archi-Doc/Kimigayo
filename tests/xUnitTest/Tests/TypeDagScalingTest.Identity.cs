@@ -330,7 +330,8 @@ public partial class TypeDagScalingTest
     // quadratic, about k^2 / 2 readings compared per pass (every reading of the pass is scanned, ForgetClosures clears them per pass
     // and publication only), about 16 times per factor 4 of k, so the linear bound fails. Predicted on 5e (keyed by scope first,
     // identityReadingHeads): linear, c * k + d, c the comparisons of one function's reads against its own scope's readings (about one
-    // per read after its first) and d >= 0 the readings outside the k functions, so w32 <= 4 * w8 and w128 <= 4 * w32 hold.
+    // per read after its first) and d >= 0 the readings outside the k functions, so w32 <= 4 * w8 and w128 <= 4 * w32 hold. The
+    // functions are g0, g1, ...: `f32` and `f64` name Types.
     [Fact]
     public void ReadingKeysAreScannedPerScope()
     {
@@ -339,7 +340,7 @@ public partial class TypeDagScalingTest
 
         static long Work(int k)
         {
-            var functions = string.Concat(Enumerable.Range(0, k).Select(static i => $"func f{i}<T, U>(x: ref/T.(K).A) -> ref/T.(K).B\n    T is K\n    U is i32\n    return x\n"));
+            var functions = string.Concat(Enumerable.Range(0, k).Select(static i => $"func g{i}<T, U>(x: ref/T.(K).A) -> ref/T.(K).B\n    T is K\n    U is i32\n    return x\n"));
             var c = MinimalEmissionTest.Analyze("contract K\n    associate A\n    associate B\n    Self.(K).A is Self.(K).B\n" + functions + "public func main() => ()\n");
             Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
             return c.Binding.IdentityReadingWork;
