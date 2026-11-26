@@ -112,7 +112,7 @@ public class ArchitectureRulesTest
     private const string DeletedByR8InSources =
         @"\bBodylessWitnes[s]\b|\bLegacyRo[w]\b|\bBuiltinForma[t]\b|\bFormattin[g]Rows\b|\bForma[t](?:Buffer|Finish|Segment)\b";
 
-    // R7-O1 c (RP6; DECISIONS R7-M51, R7-M66, R7-M95, <R7-O1 c+f>): the body judge's members R7-O1 deleted, its pending list and its
+    // R7-O1 c (RP6; DECISIONS R7-M51, R7-M66, R7-M95, R7-M120): the body judge's members R7-O1 deleted, its pending list and its
     // Origin relation slot, and the two names c replaced (FormCallRelation, ConstrainsRegions); no source or test names one, comments
     // included. A letter in brackets keeps the pattern from matching its source.
     private const string DeletedByO1 =
@@ -711,7 +711,7 @@ public class ArchitectureRulesTest
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
     // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
     [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
-    // R7-O1 c (RP6; DECISIONS R7-M66, <R7-O1 c+f>): Binding judges no body relation, so the relation judge is read only by OJ1, the
+    // R7-O1 c (RP6; DECISIONS R7-M66, R7-M120): Binding judges no body relation, so the relation judge is read only by OJ1, the
     // declaration frame (JudgeDeclarationPosition's two directions, JudgeOriginObligation's two), OJ3, Owned's static check
     // (RefutedStatic), and OJ4, a Callable comparison (the walk's OriginFailure, ComparedRegionLimit, LeavesBodyRows), besides its
     // declaration and its meet recursion; and Binding constructs an Origin relation record only at V5 (the declaration judge's two), V6

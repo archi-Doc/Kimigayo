@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The Origin proof and the relation judge (SPEC 15.3.3, 15.3.6, 15.4.4, 15.6.1, 15.6.5; PLAN G74; DECISIONS R7-M66, <R7-O1 c+f>).
+// The Origin proof and the relation judge (SPEC 15.3.3, 15.3.6, 15.4.4, 15.6.1, 15.6.5; PLAN G74; DECISIONS R7-M66, R7-M120).
 // - Responsibility: the pure proof (ProvesOriginOutlives; Final's IsVerifiedOriginObligation) and an Origin's one resolution at its
 //   use (OriginAtUse); a fit's Origin part (FitOrigin, FitConjunct) and the bounds it gives an open initializer's omitted Origins
 //   (FitOriginOutlives, CollectInitializerBound); a Type's clauses, proven (CheckTypeOriginRelations) or obligations at an occurrence
@@ -30,7 +30,7 @@ public sealed partial class Binding
     // The one version of the Origin state that premise environments are built from: Origin declarations' formation and replacements,
     // local initializer inference, inherited declarations and the obligations whose region bounds R5 and J1 read. A reused environment (a
     // premise session's, a Callable comparison's, a body's oracle) is valid only at the version it was built at, and a proof request
-    // leaves it unchanged (PLAN G74). It stays while a session's judge changes that state between its requests (DECISIONS <R7-O1 c+f>).
+    // leaves it unchanged (PLAN G74). It stays while a session's judge changes that state between its requests (DECISIONS R7-M120).
     private int originStateVersion;
 
     // The candidate evaluations in progress (EvaluateCallCandidates): the Origin part of a fit there is the pure answer, since only the
