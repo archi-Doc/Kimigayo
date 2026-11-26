@@ -38,7 +38,7 @@ public sealed partial class Binding
             return this.FailOrigin(use);
         }
 
-        var origin = annotation.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(name!, use, scope);
+        var origin = this.WrittenOrigin(annotation, use, scope);
         return origin?.Kind == OriginKind.Intersection ? this.FailOrigin(use) : origin;
 
         static bool InlineStorage(Koto node)

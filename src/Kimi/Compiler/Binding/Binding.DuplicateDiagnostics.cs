@@ -18,7 +18,7 @@ public sealed partial class Binding
     // RecordDuplicateGroups walks, so the records keep dev's order (its Dictionary enumerated its rows so) and a library declaration
     // whose row is the pass's foreign entry's is walked too. Precedent: PassPart.Nodes (the pass's nodes in binding order, which
     // CountStates walks while reading each node's columns) and PassPart.ForeignFailures (in first-failure order); its reset is the
-    // ResetPrerequisites lists' (prerequisiteStore).
+    // ResetPrerequisites lists' (prerequisiteStore, consulted).
     // - Owner: DuplicateDiagnostics.
     // - Reset: ResetPrerequisites' Clear, its capacity kept, so a warm rebind allocates nothing; the rows read absent by the pass stamp,
     //   so both are empty at a pass's start.

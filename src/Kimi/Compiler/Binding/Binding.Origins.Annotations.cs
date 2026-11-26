@@ -290,9 +290,10 @@ public sealed partial class Binding
 
         if (result is null || !OriginVisible(result, syntax))
         {
-            // Transitional, R7-E5 (E4c, B1): a null result reads BindOriginName's or the absent slot's record at this node, or the
-            // operand's (OriginCandidate's InvalidOrigin, its MissingOrigin, an absent slot's), so it keeps `Fail`, which adds no record
-            // there, until R7-E5's per-problem inputs; only an invisible Origin is its own failure.
+            // Transitional, R7-E5 (E4c, B1): a null result reads BindOriginName's, OriginCandidate's DuplicateBinding_Kd or the absent
+            // slot's record at this node, or the operand's (OriginCandidate's InvalidOrigin or DuplicateBinding_Kd, its MissingOrigin, an
+            // absent slot's), so it keeps `Fail`, which adds no record there, until R7-E5's per-problem inputs; only an invisible Origin is
+            // its own failure.
             _ = failedOperand is null ? this.Fail(syntax, BindingFailure.InvalidOrigin) : this.CompleteDependent(syntax, failedOperand);
         }
 
