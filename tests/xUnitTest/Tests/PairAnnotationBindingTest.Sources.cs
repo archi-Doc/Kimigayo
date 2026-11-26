@@ -397,7 +397,9 @@ public partial class PairAnnotationBindingTest
     // argument, Tv2's expected result) or every source agrees (To1v, To1p), the call stays accepted. A literal at a bare slot `s/V`
     // that only it reaches is such a source too (Ra1). Another pair's target alone (`s/U` over `t/U`) or a target with components
     // (`s/(i64, i32)`) is none (IsExactSource): a part there gives `s` no evidence and fits once the nested call fixes it (Va3b, Va3r,
-    // Va3m, Va1).
+    // Va3m, Va1). A typed value there is none either and fits the layer the other evidence forms (SPEC 10.2): `big2` borrowed at
+    // `ref/i64` under `r` (X1), a `ref/i64` read at `i64` under `n`'s owner (X4, C2); a typed value that layer does not take still
+    // fails it (D4: `ref/(i64, i32)` at the owner `(i64, i32)`).
     [Theory]
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pin<T>(anchor: ref/i32 during a, value: T) -> ref/T during a\n    return stop()\nfunc k<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 0\nfunc use(r: ref/i32) -> i32\n    return k(pin(r, 1), 6)\n", "1*NoApplicableOverload_Kd")] // Dn1
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pin<T>(anchor: ref/i32 during a, value: T) -> ref/T during a\n    return stop()\nfunc k<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 0\nfunc use(r: ref/i32) -> i32\n    return k(y: 6, m: pin(r, 1))\n", "1*NoApplicableOverload_Kd")] // Dn1s
@@ -432,6 +434,10 @@ public partial class PairAnnotationBindingTest
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pin<T>(anchor: ref/i32 during a, value: T) -> ref/T during a\n    return stop()\nfunc kt2<s/W, t/U>(y: s/U, m: s/W, z: t/U) -> i32\n    s is ref\n    t is owner\n    return 0\nfunc use(r: ref/i32, big: i64) -> i32\n    return kt2(6, pin(r, 1), big)\n", "clean")] // Va3r
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pin<T>(anchor: ref/i32 during a, value: T) -> ref/T during a\n    return stop()\nfunc mk64() -> i64 => 1\nfunc kt<s/W, t/U>(m: s/W, y: s/U, z: t/U) -> i32\n    s is ref\n    t is owner\n    return 0\nfunc use(r: ref/i32, big: i64) -> i32\n    return kt(pin(r, 1), mk64(), big)\n", "clean")] // Va3m
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pin<T>(anchor: ref/i32 during a, value: T) -> ref/T during a\n    return stop()\nfunc kp<s/W>(m: s/W, y: s/(i64, i32)) -> i32\n    s is ref\n    return 0\nfunc use(r: ref/i32) -> i32\n    return kp(pin(r, 1), (6, 7))\n", "clean")] // Va1
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pin<T>(anchor: ref/i32 during a, value: T) -> ref/T during a\n    return stop()\nfunc kt<s/W, t/U>(m: s/W, y: s/U, z: t/U) -> i32\n    s is ref\n    t is owner\n    return 0\nfunc use(r: ref/i32, big: i64, big2: i64) -> i32\n    return kt(r, big2, big)\n", "clean")] // X1
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pin<T>(anchor: ref/i32 during a, value: T) -> ref/T during a\n    return stop()\nfunc kt<s/W, t/U>(m: s/W, y: s/U, z: t/U) -> i32\n    s is owner or ref\n    t is owner\n    return 0\nfunc use(n: i32, q: ref/i64, big: i64) -> i32\n    return kt(n, q, big)\n", "clean")] // X4
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc kt<s/W, t/U>(m: s/W, y: s/U, z: t/U) -> i32\n    s is owner\n    t is owner\n    return 0\nfunc use(n: i32, q: ref/i64, big: i64) -> i32\n    return kt(n, q, big)\n", "clean")] // C2
+    [InlineData("func kt<s/W, t/U>(m: s/W, y: s/U, z: t/U) -> i32\n    s is owner\n    t is owner\n    return 0\nfunc use(n: i32, rt: ref/(i64, i32), tup: (i64, i32)) -> i32\n    return kt(n, rt, tup)\n", "1*NoApplicableOverload_Kd")] // D4
     public void ALiteralAtAnExactSourceIsOwnerEvidenceBeforeTheCallStep(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
