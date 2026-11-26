@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Binding's own judgment of declared Origin relations (SPEC 15.3.3, 15.3.6, 15.6.1, 15.6.5; DECISIONS BU-26, R4-M101, R4-M108): once
+// Binding's own judgment of declared Origin relations (SPEC 15.3.3, 15.3.6, 15.6.1, 15.6.5; DECISIONS BU-26, R4-M101, R7-M66): once
 // per pass, after the bodies, the clauses of each completed declaration that proof alone does not establish, then the declaration rows.
 // - Responsibility: ValidateOriginRelations judges a clause by its owner's part, a local's (JudgeLocalClause) or a Field's, Case's,
 //   alias's or associated formation's (JudgeDeclaredRelation), both over FailedDeclaredRelation; JudgeDeclarationRows is the one judge
@@ -12,9 +12,9 @@ namespace Kimi.Compiler;
 //   an Unbound end (Binding.OriginClauses.Chains.cs; DECISIONS BU-62).
 // - Inputs: the completed Origin declarations, the pass's obligations, and the proof and relation judge (Binding.OriginProof.cs,
 //   JudgeDeclarationPosition).
-// - Outputs: Origin relation records (originRelations; a declaration row's and a chain's through PublishCallRelations), the derived
+// - Outputs: Origin relation records (RecordOrigin; a declaration row's and a chain's through PublishCallRelations), the derived
 //   Unsupported failure of a row with an Unbound end (UnboundCause), obligations for the clauses the judge leaves to region inference,
-//   and a local clause's row and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
+//   and a local clause's row (JudgeLocalClause; a body relation, which A5 judges, DECISIONS R7-M66).
 // - Invariants: a clause is judged by its owner's part only, and FailedDeclaredRelation takes no steering flag; a clause's rows are its
 //   owner's body's (a local's, or none for a declaration's); the declaration judge judges in its own frame (ExecutableBody.Declarations,
 //   DECISIONS BU-89), a judged declaration row leaves the obligations, and a row whose ends are not declaration atoms stays for the
@@ -114,7 +114,7 @@ public sealed partial class Binding
 
         var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
         var backwardProven = !equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
-        if (BodyChain(longer, shorter, this.formingBody))
+        if (ConstrainsRegions(longer, shorter, this.formingBody))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, Equality: equality, WellFormed: wellFormed, Condition: condition));
             return;
@@ -307,7 +307,7 @@ public sealed partial class Binding
     {
         if (this.FailedDeclaredRelation(relation) is { } failed)
         {
-            this.FailExplained(ref this.originRelations, relation.Syntax, BindingFailure.OriginRelation, failed);
+            this.RecordOrigin(relation.Syntax, new(failed, null));
         }
     }
 

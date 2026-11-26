@@ -369,7 +369,7 @@ public partial class Project
         /// <summary>Several targets are selected.</summary>
         Several,
 
-        /// <summary>The one selected target has no row.</summary>
+        /// <summary>The one selected target has no row, or a staged row (TargetProfile.Staged, until the Tatara plan's B9g).</summary>
         NoRow,
     }
 
@@ -382,7 +382,9 @@ public partial class Project
     {
         var (targets, failure) = this.SelectedTargets();
         reason = failure is not null ? NoArtifactTarget.Selection : targets.Length > 1 ? NoArtifactTarget.Several : NoArtifactTarget.NoRow;
-        return reason == NoArtifactTarget.NoRow ? TargetProfile.Find(targets[0]) : null;
+
+        // A staged row is not selectable: the membership test is the temporary of TargetProfile.Staged, which B9g deletes with it.
+        return reason == NoArtifactTarget.NoRow && TargetProfile.Find(targets[0]) is { } row && Array.IndexOf(TargetProfile.Rows, row) >= 0 ? row : null;
     }
 
     /// <summary>The host rule of run and test (IMPL 20.3, 20.6.1; SPEC 22 ¶1: running or testing a program for a target whose executables

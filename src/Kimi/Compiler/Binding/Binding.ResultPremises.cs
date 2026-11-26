@@ -248,7 +248,7 @@ public sealed partial class Binding
     {
         if (CallRowRelation(longer, shorter))
         {
-            this.JudgeCallPosition(use, longer, shorter, equality, null, clause, declared: true);
+            this.FormCallRelation(use, longer, shorter, equality, null, clause);
         }
     }
 
@@ -363,11 +363,11 @@ public sealed partial class Binding
     // 7.2.3). The enumeration walks the parameter's pattern `pattern` beside `parameter`: at a position that supplies no evidence it stops at a
     // slot of the pattern, whose solution its contributor proves, and at an Evidence position it goes on over the solution, judged where
     // the fit replaced an Origin (SPEC 10.3, 15.6.1; DECISIONS BU-99); a layer around the slot is this call's. Each premise is a row of
-    // the body (JudgeCallPosition, FormBodyRelation), which A5 judges beside the input's fit rows: a call position's Origin relations never
+    // the body (FormCallRelation, FormBodyRelation), which A5 judges beside the input's fit rows: a call position's Origin relations never
     // fail the input, and its instantiated well-formedness is a requirement of its own (SPEC 15.6.4 step 3). As for the fit, an argument
     // that carries no Origin, such as one that transfers control, supplies none; and an input Binding already failed (its fit's
     // structure, SPEC 5.7's raw-layer rules, a located limit, or its conversion's contract: a Function value's, ConvertFunctionValue,
-    // whose relations are published with it, FollowsContract) is no instance of its parameter, so its well-formedness, read from its
+    // whose relations are records beside it, RecordOrigin) is no instance of its parameter, so its well-formedness, read from its
     // supplied Type, would rest on that failure (SPEC 23.1.2), as a premise over a variable `solved`, the call's solve, marked does
     // (OriginInference.Marked).
     private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution, OriginInference? solved)
@@ -384,11 +384,11 @@ public sealed partial class Binding
 
                 if (premise.Clause is { } clause)
                 {
-                    this.JudgeCallPosition(at, premise.Longer, premise.Outer, premise.Equality, null, clause, declared: true);
+                    this.FormCallRelation(at, premise.Longer, premise.Outer, premise.Equality, null, clause);
                 }
                 else
                 {
-                    this.JudgeCallPosition(at, premise.Value, premise.Substituted, equality: false, variable: null, clause: null, wellFormed: true, condition: premise.Condition);
+                    this.FormCallRelation(at, premise.Value, premise.Substituted, equality: false, variable: null, clause: null, wellFormed: true, condition: premise.Condition);
                 }
             }
         }

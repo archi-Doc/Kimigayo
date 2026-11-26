@@ -30,6 +30,13 @@ public partial class OriginRelationDiagnosticTest
     private const string CallPositions = "func store(slot: uniq/(ref/i32 during a), pair: (ref/i32 during a, ref/i32 during a)) => ()\n" +
         "func caller(s: uniq/(ref/i32 during x), y: ref/i32)\n    let local = 1\n    let t = (y, local@ref)\n    store(s, t)\n";
 
+    // A Type whose one Field borrows under its slot, for the omitted-result returns.
+    private const string OmittedBox = "struct Box {s}\n    public var r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n";
+
+    // A shared layer over that Type, and a return that moves through it.
+    private const string OmittedWrap = OmittedBox + "struct Wrap {w}\n    public let box: ref/(Box during w) during w\n" +
+        "    public init(box: ref/(Box during w) during w) => self.box = box\nfunc f(x: ref/i32? during a, b: Wrap during a) -> ref/i32\n    return b.box.r@move\n";
+
     // R7-O1 H: no body relation is Binding's record (R4-M111's twins were every record of a fit, a local's clause's body-chain record and
     // a Closure result over call-local storage; the all-fixed-fixed records stayed Binding's until R7): each is a row A5 judges, the
     // fixed-fixed ones included, and the MIR side holds each relation's one record. A call position's relation was a row since R7-O1 b1
@@ -41,6 +48,10 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(TwinClauses, "UnprovenOriginRelation_Kd h0@move|UnsatisfiedOriginRelation_Kd H.init(local@ref)")]
     [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "UnsatisfiedOriginRelation_Kd x@ref")]
     [InlineData(CallPositions, "UnprovenOriginRelation_Kd t|UnsatisfiedOriginRelation_Kd t")]
+    // R7-M95 E4d (ruling 45): a return under an omitted result that SPEC 15.4.3 rule 2 makes `static`, whose Origin is an Option input's,
+    // is A5's row, so no Binding record carries the elision Note (P5o); a Move through a shared layer there is its take record alone (P6o).
+    [InlineData(OmittedBox + "func f(x: ref/i32? during a, b: Box during a) -> ref/i32\n    return b.r\n", "UnprovenOriginRelation_Kd b.r")]
+    [InlineData(OmittedWrap, "")]
     public void NoBodyRelationIsBindingsRecord(string source, string records)
     {
         var c = MirBuildTest.Compile(source);

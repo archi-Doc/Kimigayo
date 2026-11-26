@@ -470,6 +470,8 @@ public partial class OriginRelationDiagnosticTest
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    public let", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("struct Pair {a, b, c}\n    public let x: ref/(ref/i32 during (b and c)) during a\n    public init(x: ref/(ref/i32 during (b and c)) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    origin c outlives a\n    public let", "ref/(ref/i32 during (b and c)) during a", "self.b outlives self.a", "self.c outlives self.a")]
+    // Two layers that form one equal relation at the occurrence are one record (R7-M95 E4d, ruling 45's T2: BindingReport.Condition).
+    [InlineData("struct Host {a, b}\n    public let item: ref/(ref/(ref/i32 during a) during a) during b\n    public init(item: ref/(ref/(ref/i32 during a) during a) during b) => self.item = item\n", "    public let", "    origin a outlives b\n    public let", "ref/(ref/(ref/i32 during a) during a) during b", "self.a outlives self.b")]
     [InlineData("enum E {a, b}\n    One(ref/(ref/i32 during b) during a)\n    Two\n", "    One", "    origin b outlives a\n    One", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("open struct B<T>\n    public init() => ()\nstruct D {a, b} : B<ref/(ref/i32 during b) during a>\n    public init() : base() => ()\n", "    public init() :", "    origin b outlives a\n    public init() :", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
     [InlineData("open struct Base<T>\n    public init() => ()\nstruct Holder {a, b}\n    public let item: objref/Base<ref/i32 during a> during b\n", "    public let", "    origin a outlives b\n    public let", "objref/Base<ref/i32 during a> during b", "self.a outlives self.b")]
@@ -503,6 +505,22 @@ public partial class OriginRelationDiagnosticTest
         var unbound = "struct V<T> {source}\n    public let item: ref/T during source\nstruct S {a}\n    public let item: V<i32>{v}\n        origin v.source outlives a\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(unbound).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.MissingOriginBinding_Kd), "V<i32>{v}"), (error.Code, Text(unbound, error.Span)));
+    }
+
+    // SPEC 15.6.1, 23.1.2 (R7-M95 E4d, ruling 45's C1 and P7): a failure copied onto another node is that node's own, never the Origin
+    // relation's, which stays one record at its occurrence: a signature-less setter's input (Binding.Properties) and an invalid
+    // conformance's Type (Binding.ConstraintValidation). A base's clause is judged once, at the clause, for every derived Type (SPEC 15.3.3).
+    [Theory]
+    [InlineData("struct Host {a, b}\n    public var item: (Missing, ref/(ref/i32 during a) during b)\n        get\n        set => storage = value\n    public init() => ()\n", "MissingSyntax_Kd UninitializedPlace_Kd UnprovenOriginRelation_Kd UnresolvedBinding_Kd UnresolvedBinding_Kd", "ref/(ref/i32 during a) during b")]
+    [InlineData("contract Keep : Missing\n    func size(self: ref/Self) -> i32\nstruct Host {a, b}\n    Self is Keep\n    public let item: ref/(ref/i32 during a) during b\n    public init(item: ref/(ref/i32 during a) during b) => self.item = item\n", "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd UnprovenOriginRelation_Kd UnresolvedBinding_Kd", "ref/(ref/i32 during a) during b")]
+    [InlineData("open struct B {a, b}\n    public let x: ref/i32 during a\n        origin a outlives b\n    public init(x: ref/i32 during a) => self.x = x\nstruct D {c, d} : B{v}\n    origin v.a == c\n    origin v.b == d\n    public init(x: ref/i32 during c) : base(x) => ()\n", "UnprovenOriginRelation_Kd", "origin a outlives b")]
+    public void ADeclarationsRelationIsOneRecordBesideACopiedFailure(string body, string codes, string occurrence)
+    {
+        var source = body + Main;
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(codes, string.Join(" ", errors.Select(static x => x.Code).Order(StringComparer.Ordinal)));
+        var relation = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.UnprovenOriginRelation_Kd));
+        Assert.Equal(occurrence, Text(source, relation.Span));
     }
 
     // Finite region bounds keep the actual Loan through annotations, scope exits and shared views of exclusive inputs.

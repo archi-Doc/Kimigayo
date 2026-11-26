@@ -85,7 +85,7 @@ Condition Names resolve case-sensitively ([§2.5](02-source-and-lexical-structur
 
 | Name | Type | Value |
 | --- | --- | --- |
-| `os` | `string` | The target OS family: `"windows"`, `"linux"`, `"macos"` or `"unknown"` |
+| `os` | `string` | The target OS family: `"windows"`, `"linux"`, `"macos"`, `"none"` (a freestanding target) or `"unknown"` |
 | `arch` | `string` | The target architecture family: `"x86_64"`, `"x86"`, `"aarch64"`, `"riscv64"` or `"unknown"` |
 | `windows`, `linux`, `macos` | `bool` | `os == "windows"`, `os == "linux"`, `os == "macos"` |
 | `debug`, `release` | `bool` | The build mode; `release == not debug` |
