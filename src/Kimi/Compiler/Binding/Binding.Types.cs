@@ -522,19 +522,21 @@ public sealed partial class Binding
 
     /// <summary>The `formedTypes` family's one accessor (DECISIONS BU-220, R7-M80; PLAN G1278, SPEC 9.7, 9.7.1, 12.4): a kept family, the
     /// frame a node formed its Type in. A FormationFrame row (None: no row) in the node's module's NodeColumns at its SyntaxId, written by
-    /// each producer where it completes the node's Type, from the frame it forms the node in (formingBody): BindType's completion of a written occurrence (a `Self`, an alias and a Type parameter included) and of a rooted
-    /// name's operand; EnumQualifierType, for a Case or construction qualifier that writes its own list or is its declaration's `Self`;
-    /// ConstructionTargetType, for a qualifier with no own parameters, whose path forms the whole Type; BindContractReference, at each
-    /// node of a written Contract reference it completes; and the Dictionary literal's binder. A pass's reset empties its modules' rows
-    /// (Empty), which its binders write again, so a row is its node's in the latest pass over its module: a writer's decision reads the
-    /// resolved declaration (ConstructionTargetType's own parameters, the binder a qualifier's symbol selects), which an edit can change
-    /// under an unchanged node. A node of another pass's module (the frozen library's) keeps its row, and a renumbering moves it; read
-    /// only with the node's Type. A node that takes its Type from an expected Type, an inference or another node never has one. Read by
-    /// ValidateConstraintUses' site test (ConstrainedType, presence only): a constructed Type with clauses is judged at the node that
-    /// forms it, and every other node carries it. The frame is read by ValidateOriginRelations' root walk (a written Type formed in a
-    /// declaration frame is the declaration judge's) and by FormNestedResult (it forms the rows of every other written nested result).
-    /// Invariant: a body's node is first formed by its body's binder, so its row is Body, as its BoundOrigin.Body is that body; a producer
-    /// reached first from a pass-level validator is a broken contract.</summary>
+    /// each producer where it completes the node's Type, from the frame it forms the node in (formingBody): BindType's completion of a
+    /// written occurrence (a `Self`, an alias and a Type parameter included) and of a rooted name's operand; EnumQualifierType, for a Case
+    /// or construction qualifier that writes its own list or is its declaration's `Self`; ConstructionTargetType, for a qualifier with no
+    /// own parameters, whose path forms the whole Type; BindContractReference, at each node of a written Contract reference it completes;
+    /// and the Dictionary literal's binder. A pass's reset empties its modules' rows (Empty), which its binders write again, so a row is
+    /// its node's in the latest pass over its module: a writer's decision reads the resolved declaration (ConstructionTargetType's own
+    /// parameters, the binder a qualifier's symbol selects), which an edit can change under an unchanged node. A node of another pass's
+    /// module (the frozen library's) keeps its row, and a renumbering moves it; read only with the node's Type. A node that takes its Type
+    /// from an expected Type, an inference or another node never has one. Read by ValidateConstraintUses' site test (ConstrainedType,
+    /// presence only): a constructed Type with clauses is judged at the node that forms it, and every other node carries it. The frame is
+    /// read by ValidateOriginRelations' root walk (a written Type formed in a declaration frame is the declaration judge's) and by
+    /// FormNestedResult (it forms the rows of a written nested result with a Body row; a result with no row is neither's). Invariant (not
+    /// checked): a body's node is first formed by its body's binder, so its row is Body, as its BoundOrigin.Body is that body; a producer
+    /// reached first from a pass-level validator is a broken contract, under which the root walk would take that body's node as a root and
+    /// FormNestedResult would skip it.</summary>
     private static class FormedTypeRows
     {
         internal static void Add(Koto node, ExecutableBody frame)
