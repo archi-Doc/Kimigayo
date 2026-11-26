@@ -116,12 +116,13 @@ public sealed class CommandExecutionTest : IDisposable
     // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1, ruling 85; design row 19's run half): run of a target whose executables this host
     // does not run is refused before any build or record write, with or without --no-build: the location-only Unsupported_Kd at the
     // project, exit 1, no bin\ directory. Several selected targets are run's input error. Every host: no host runs linux-x64's
-    // executables until B8, nor a staged row's (none-x64). Fail-before: the build's "Artifact production currently requires exactly one
+    // executables until B8, nor none-x64's. Fail-before: the build's "Artifact production currently requires exactly one
     // configured Windows x64 target." (a record under bin\x86_64-pc-windows-msvc\), or with --no-build "Run requires the Windows x64
     // target.".
     [Theory]
     [InlineData("\"x86_64-unknown-linux-musl\"", false, null)]
     [InlineData("\"x86_64-unknown-none\"", false, null)]
+    [InlineData("\"x86_64-unknown-none\"", true, null)]
     [InlineData("\"x86_64-unknown-linux-musl\"", true, null)]
     [InlineData("\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-musl\"", true, "Run requires one selected target; select one with --Target.")]
     public async Task RunRefusesATargetThisHostDoesNotRunBeforeAnyBuild(string targets, bool noBuild, string? message)
@@ -168,6 +169,52 @@ public sealed class CommandExecutionTest : IDisposable
         {
             Assert.True(File.Exists(built));
         }
+    }
+
+    // The Tatara plan's B9g (SPEC 22 ¶1, IMPL 20.3.2; design §5 rows 1 and 3): a Kernel project (Hello.kimi and its platform, Board.kimi)
+    // selecting x86_64-unknown-none builds the kernel image, bin\x86_64-unknown-none\Kernel.O0 or Kernel.O2 (the row's ELF format, no
+    // extension): ET_EXEC for EM_X86_64 entered at __kimi_start, at or above 0xFFFFFFFF80000000, and three PT_LOADs alone (no PT_INTERP or
+    // PT_DYNAMIC), its record linked. Hello alone has no platform: B9c1's located Unsupported_Kd at its startup form, exit 1, no image.
+    // Fail-before (B9b's membership line, removed with TargetProfile.Staged as planned): each build was the location-only Unsupported_Kd
+    // at the project, exit 1, no record.
+    [Theory]
+    [InlineData("O0", true)]
+    [InlineData("O2", true)]
+    [InlineData("O2", false)]
+    public async Task AKernelProjectBuildsTheFreestandingImage(string level, bool platform)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native build runs on Windows.");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        var kimigayo = new Kimigayo(console);
+        var project = Path.Combine(this.directory, "Kernel.kimiproj");
+        File.WriteAllText(project, $"Targets={{\"{TargetProfile.None.Target}\"}} Optimization=\"{level}\"");
+        File.WriteAllText(Path.Combine(this.directory, "Hello.kimi"), KernelSources.Hello);
+        if (platform)
+        {
+            File.WriteAllText(Path.Combine(this.directory, "Board.kimi"), KernelSources.Board + KernelSources.BoardTerminate);
+        }
+
+        Environment.ExitCode = 0;
+        await new BuildCommand(null!, kimigayo, new Solution(kimigayo)).Execute([project], TestContext.Current.CancellationToken);
+        var exit = Environment.ExitCode;
+        Environment.ExitCode = 0;
+        var folder = Path.Combine(this.directory, "bin", TargetProfile.None.Target);
+        if (!platform)
+        {
+            Assert.Equal(1, exit);
+            Assert.Contains($" : {nameof(DiagnosticCode.Unsupported_Kd)}\n --> Hello.kimi:1:1", console.Text, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(folder, "Kernel." + level)));
+            return;
+        }
+
+        Assert.True(exit == 0, console.Text);
+        var elf = ElfFile.Read(Path.Combine(folder, "Kernel." + level));
+        Assert.Equal((2, 62), (elf.Type, elf.Machine));
+        Assert.Equal(elf.Symbols[TargetProfile.None.EntrySymbol], elf.Entry);
+        Assert.True(elf.Entry >= 0xFFFFFFFF80000000, $"0x{elf.Entry:x}");
+        Assert.Equal([1u, 1u, 1u], elf.Segments.Select(static x => x.Type));
+        using var record = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "Kernel.link.build.json")));
+        Assert.Equal("linked", record.RootElement.GetProperty("status").GetString());
     }
 
     private async Task<int> Execute(string origin, Kimigayo kimigayo, string project)
@@ -593,14 +640,17 @@ public sealed class CommandExecutionTest : IDisposable
         // not run is listed (nothing runs), and its run is refused after preparation, before the run directory and any generation or
         // native build: the location-only Unsupported_Kd at the project, one errors entry naming the project, exit 2, no bin\ directory.
         // Fail-before: both rows are preparation's "Testing requires a configured Windows x64 target.", exit 2; the errors entry, commit 2's
-        // empty errors (C-575 N2).
+        // empty errors (C-575 N2). x86_64-unknown-none alike (the Tatara plan's B9g, design row 13; every host): fail-before (B9b's
+        // membership line), both rows stopped at preparation, the location-only Unsupported_Kd at the project, nothing listed, exit 2.
         [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public async Task TestRefusesATargetThisHostDoesNotRunAfterListing(bool list)
+        [InlineData("x86_64-unknown-linux-musl", true)]
+        [InlineData("x86_64-unknown-linux-musl", false)]
+        [InlineData("x86_64-unknown-none", true)]
+        [InlineData("x86_64-unknown-none", false)]
+        public async Task TestRefusesATargetThisHostDoesNotRunAfterListing(string target, bool list)
         {
             var input = WriteTests(Path.Combine(this.directory, "A", "A.kimiproj"), string.Empty);
-            File.WriteAllText(input, File.ReadAllText(input).Replace(TargetProfile.Windows.Target, TargetProfile.Linux.Target, StringComparison.Ordinal));
+            File.WriteAllText(input, File.ReadAllText(input).Replace(TargetProfile.Windows.Target, target, StringComparison.Ordinal));
             var console = new DiagnosticContractTest.DiagnosticConsole();
             var kimigayo = new Kimigayo(console);
             var (output, error) = (Console.Out, Console.Error);

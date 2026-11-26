@@ -476,15 +476,16 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Executable));
     }
 
-    // IMPL 20.3: a build records its one selected target's output; several selected targets or one without a row (the Tatara plan's
-    // B7b8: Unsupported), a staged row (none-x64) included, fail before the output's paths, so no record is written under any bin\
-    // directory. Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete")
-    // whatever target was selected.
+    // IMPL 20.3: a build records its one selected target's output, under bin\<target>\; several selected targets or one without a row
+    // (the Tatara plan's B7b8: Unsupported) fail before the output's paths, so no record is written under any bin\ directory.
+    // Fail-before (B7b8, the design's fact 9): the record under bin\x86_64-pc-windows-msvc\ was invalidated ("incomplete") whatever
+    // target was selected; the x86_64-unknown-none row (the Tatara plan's B9g; B9b's membership line, removed with TargetProfile.Staged
+    // as planned) wrote no record.
     [Theory]
     [InlineData("", false)]
     [InlineData("aarch64-pc-windows-msvc", false)]
     [InlineData("x86_64-unknown-linux-gnu", false)]
-    [InlineData("x86_64-unknown-none", false)]
+    [InlineData("x86_64-unknown-none", true)]
     [InlineData("x86_64-pc-windows-msvc", true)]
     public async Task LibraryBuildRequiresOneSelectedSupportedTarget(string selected, bool accepted)
     {
@@ -500,7 +501,7 @@ public sealed class NativeToolchainTest : IDisposable
             return;
         }
 
-        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project, TargetProfile.Windows).Record));
+        using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project, TargetProfile.Find(selected)!).Record));
         Assert.Equal("checked", record.RootElement.GetProperty("status").GetString());
         Assert.Equal(selected, record.RootElement.GetProperty("target").GetString());
     }

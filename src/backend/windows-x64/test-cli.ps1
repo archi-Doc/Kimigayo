@@ -442,5 +442,66 @@ Assert-Elf $linuxFfiDirectory 'Ffi'
 $linuxRecord = Get-Content -LiteralPath (Join-Path $linuxFfiDirectory 'bin/x86_64-unknown-linux-musl/Ffi.link.build.json') -Raw | ConvertFrom-Json
 if (($linuxRecord.libraries | Where-Object name -ceq 'codec').sha256 -cne (Get-FileHash (Join-Path $linuxNative 'codec.a')).Hash.ToLowerInvariant()) { throw 'The Linux foreign supply was not linked from codec.a' }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler', 'removed options', 'project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions', 'linux-x64 project builds a static ELF', 'run refuses a target this host does not run', 'linux-x64 foreign static supply') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+# An x86_64-unknown-none project, a Kernel (Hello.kimi and its platform, Board.kimi; the SPEC 22.4.5 example's two files, as the
+# compiler's tests write them), builds the kernel image, a static ELF, and run refuses it as a target this host does not run
+# (Unsupported_Kd, exit 1, before any build; the Tatara plan's B9g, design rows 1 and 13).
+$kernelDirectory = Join-Path $work 'none x64'
+New-Item -ItemType Directory -Path $kernelDirectory -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $kernelDirectory 'Kernel.kimiproj') -Value 'Targets={"x86_64-unknown-none"}' -Encoding utf8NoBOM
+Set-Content -LiteralPath (Join-Path $kernelDirectory 'Hello.kimi') -Value 'Console.writeLine("Hello")' -Encoding utf8NoBOM
+Set-Content -LiteralPath (Join-Path $kernelDirectory 'Board.kimi') -Encoding utf8NoBOM -Value @'
+struct Board
+    Self is Copy
+    Self is Platform
+    var next: usize
+    var end: usize
+    var screen: raw/u16
+    var cell: isize
+    var ticks: i64
+
+    init(next: usize, end: usize, screen: raw/u16)
+        self.next = next
+        self.end = end
+        self.screen = screen
+        self.cell = 0
+        self.ticks = 0
+
+    public func start(boot: Boot) -> Self
+        let window = boot.directMapOffset
+        return Board.init(window + 0x0100_0000, window + 0x0300_0000, (window + 0xB_8000)@raw/u16)
+
+    public func mapPages(self: uniq/Self, bytes: isize) -> raw/u8
+        if self.end - self.next < bytes@usize
+            return null
+        let run = self.next
+        self.next += bytes@usize
+        return run@raw/u8
+
+    public func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64 => 0
+
+    public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64
+        let bytes = text.bytes()
+        var i: isize = 0
+        while i < bytes.length
+            if bytes[i] == 10
+                self.cell = (self.cell / 80 + 1) * 80
+            else
+                unsafe => self.screen[self.cell] = bytes[i]@u16 + 0x0700
+                self.cell += 1
+            i += 1
+        return 0
+
+    public func clock(self: uniq/Self) -> i64
+        self.ticks += 1
+        return self.ticks
+    public func terminate(self: uniq/Self, status: i32) -> Never
+        loop => ()
+'@
+$output = Invoke-Kimi @('build', (Join-Path $kernelDirectory 'Kernel.kimiproj'))
+$kernelImage = Join-Path $kernelDirectory 'bin/x86_64-unknown-none/Kernel.O2'
+if ((([IO.File]::ReadAllBytes($kernelImage)[0..3]) -join ',') -cne '127,69,76,70') { throw 'Kernel.O2 is not an ELF image' }
+$output = Invoke-Kimi @('run', (Join-Path $kernelDirectory 'Kernel.kimiproj')) 1
+if (-not $output.Contains('This form is outside the implemented subset')) { throw "Run did not refuse the x86_64-unknown-none target: $output" }
+
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler', 'removed options', 'project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions', 'linux-x64 project builds a static ELF', 'run refuses a target this host does not run', 'linux-x64 foreign static supply', 'x86_64-unknown-none project builds a kernel image', 'run refuses x86_64-unknown-none') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"
