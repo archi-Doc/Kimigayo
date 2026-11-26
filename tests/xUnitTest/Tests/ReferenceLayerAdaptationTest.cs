@@ -23,6 +23,8 @@ public class ReferenceLayerAdaptationTest
     private const string Bound = "func f(values: uniq/Array<uniq/(uniq/Meter during a) during b>)";
     private const string LentBound = Lent + "func f(values: uniq/Array<uniq/(uniq/Lent during a) during b>)";
     private const string LentOne = Lent + "func f(values: uniq/Array<uniq/Lent during a>)";
+    private const string Places = "struct Point\n    public var name: string = \"\"\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.name = \"m\"\n" +
+        "struct Holder\n    public var p: Point = Point.init()\n    public var arr: [2 of Point] = [Point.init(), Point.init()]\n    public init() => ()\n";
 
     [Theory]
     [InlineData("SharedThroughExclusive", Node + "var first = Node.init(1)\nvar second = Node.init(2)\nlet nodes: [2 of uniq/Node] = [first@uniq, second@uniq]\nvar total: i32 = 0\nfor node in nodes\n    total += validate(node)\nrequire total == 3 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n")]
@@ -90,6 +92,28 @@ public class ReferenceLayerAdaptationTest
     [InlineData(LentBound + " -> i32\n    let k = values[0].me()\n    k.bump()\n    return values[1].peek()", null)]
     public void AnExclusiveReceiverThroughLayersHasItsOneLayerVerdict(string body, string? code)
         => Assert.Equal(code is null ? Array.Empty<string>() : [code], DiagnosticCorpus.Check(Meter + body + "\npublic func main() => ()\n").Diagnostics.Select(static x => x.Code).Distinct());
+
+    // PLAN G1221 (labels from SPEC 3.4.3, 4.7.1, 13.4, 13.5.5, 15.1.5, 15.6.2): a receiver's in-place read is its selection's, written once,
+    // and each use decides its own capability. An Array element storing two layers below a `var` root is the Receiver Expression of the
+    // exclusive reference they reach (4.7.1: `indexUniq` with the capability the path has), which a live shared Loan through it conflicts
+    // with; a compared member's receiver below two pair layers admitting only `owner` at a runtime index is read once (13.5.5, 8.1.1). The
+    // shared element read below a borrowed receiver grants no write or exclusive call: a `let` root (15.1.5), a `ref` layer (3.4.3) and an
+    // object handle's view (3.4.3, 13.5.5: payload Read only) keep their one record at the statement, a `var` root and a `uniq` layer
+    // their acceptance, and the view's member is still read. Records are "Code line:column".
+    [Theory]
+    [InlineData("func ox9(value: uniq/(uniq/Point during a) during b)\n    var entries: Array<uniq/(uniq/Point during a) during b> = [value@move]\n    entries[0].mutate()", "")]
+    [InlineData("func ox9i(value: uniq/(uniq/Point during a) during b) -> bool\n    var entries: Array<uniq/(uniq/Point during a) during b> = [value@move]\n    let n = entries[0].name@ref\n    entries[0].mutate()\n    return n == \"b\"", "CallActivationConflict_Kd 12:5")]
+    [InlineData("func gf1<s/T>(w: s/T, value: [1 of s/(s/Point)], i: isize) -> bool\n    s is owner\n    var arr = value@move\n    return arr[i].name == \"b\"", "")]
+    [InlineData("func x3let()\n    let entries: Array<Point> = [Point.init()]\n    entries[0].name = \"z\"", "InvalidAssignment_Kd 11:5")]
+    [InlineData("func x3var()\n    var entries: Array<Point> = [Point.init()]\n    entries[0].name = \"z\"", "")]
+    [InlineData("func x1ref(x: ref/Holder)\n    x.p.name = \"z\"", "InvalidAssignment_Kd 10:5")]
+    [InlineData("func x1uniq(x: uniq/Holder)\n    x.p.name = \"z\"", "")]
+    [InlineData("func xarrlet(j: isize)\n    let entries: Array<Holder> = [Holder.init()]\n    entries[0].arr[j] = Point.init()", "InvalidAssignment_Kd 11:5")]
+    [InlineData("func xarrvar(j: isize)\n    var entries: Array<Holder> = [Holder.init()]\n    entries[0].arr[j] = Point.init()", "")]
+    [InlineData("func objMutate(value: uniq/(objref/Point during a) during b)\n    var entries: Array<uniq/(objref/Point during a) during b> = [value@move]\n    entries[0].mutate()", "NoApplicableOverload_Kd 11:5")]
+    [InlineData("func objCompared(value: uniq/(objref/Point during a) during b) -> bool\n    var entries: Array<uniq/(objref/Point during a) during b> = [value@move]\n    return entries[0].name == \"b\"", "")]
+    public void AReceiversReadIsItsSelections(string body, string records)
+        => Assert.Equal(records, string.Join(" | ", DiagnosticCorpus.LocatedRecords(Places + body + "\npublic func main() => ()\n").Select(static x => string.Join(' ', x.Split(' ', 3).Take(2)))));
 
     // SPEC 10.2, 15.6.4: a bare exclusive reference at an identical fixed expected uniq Type is Reborrowed, never moved out
     // of its Place, so the original reference stays usable afterwards, for a local as for a stored field.

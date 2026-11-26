@@ -747,7 +747,10 @@ public sealed partial class HirFormsTest
     // SPEC 3.4.3, 4.7.1, 7.3, 15.1.6 (PLAN G147 (2b)): a part below an element storing reference layers is a Place reached through those
     // layers, as below a local of the element's Type: a receiver borrows it in place in the receiver's mode, and a Subject or a compared
     // operand (SPEC 13.4) in place. A compared element storing two or more layers above `string` (an Array's, a Dictionary's) is read
-    // once, through its layers (G147 ruling 60: its element read and its layers' read were both formed).
+    // once, through its layers (G147 ruling 60: its element read and its layers' read were both formed). PLAN G1221: a receiver's read is
+    // its selection's, written once and never by its use, so a compared member's receiver below several layers (a Tuple element, a
+    // fixed-array element at a runtime index, through two pair layers) and an Array element's exclusive receiver are read through the
+    // reference their layers reach (cp1, ow1, gf1: no comparison's shared read replaces it; ox9).
     [Fact]
     public void APartBelowAStoredReferenceIsAPlace()
     {
@@ -793,13 +796,27 @@ public sealed partial class HirFormsTest
             func keyed(value: uniq/(uniq/string during a) during b) -> bool
                 var named: Dictionary<i32, uniq/(uniq/string during a) during b> = [1: value@move]
                 return named[1] == "b"
+            func cp1(value: uniq/(uniq/Point during a) during b) -> bool
+                var pair = (value@move, 1)
+                let t = pair@uniq
+                return t.0.name == "b"
+            func ow1(value: uniq/(uniq/Point during a) during b, i: isize) -> bool
+                var arr: [1 of uniq/(uniq/Point during a) during b] = [value@move]
+                return arr[i].name == "b"
+            func ox9(value: uniq/(uniq/Point during a) during b)
+                var entries: Array<uniq/(uniq/Point during a) during b> = [value@move]
+                entries[0].bump()
+            func gf1<s/T>(w: s/T, value: [1 of s/(s/Point)], i: isize) -> bool
+                s is owner
+                var arr = value@move
+                return arr[i].name == "b"
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c, c.Kotonoha));
-        string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner", "entries[1].name", "entries[1].inner.name", "rows[0]", "named[1]"];
+        string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner", "entries[1].name", "entries[1].inner.name", "rows[0]", "named[1]", "t.0", "arr[i]", "entries[0]"];
         var adjusted = Reachable(c.Kotonoha).Where(x => x.Span.Start >= Source.IndexOf("func parts", StringComparison.Ordinal) && parts.Contains(Text(x)))
             .Select(x => $"{Line(x.Span.Start)}: {Text(x)} {HirTables.AdjustOf(x).Acquire}/{HirTables.AdjustOf(x).Adaptation}");
         string[] expected =
@@ -812,6 +829,8 @@ public sealed partial class HirFormsTest
             "return entries[1].name == \"a\" and entries[1].inner.name == \"b\": entries[1].inner None/SharedBorrow",
             "return entries[1].0 == \"a\": entries[1].0 None/SharedBorrow", "return entries[1].name == \"a\": entries[1].name None/SharedBorrow",
             "return rows[0] == \"b\": rows[0] None/ReferenceRead", "return named[1] == \"b\": named[1] None/ReferenceRead",
+            "return t.0.name == \"b\": t.0 None/ReferenceRead", "return arr[i].name == \"b\": arr[i] None/ReferenceRead",
+            "entries[0].bump(): entries[0] None/ReferenceRead", "return arr[i].name == \"b\": arr[i] None/ReferenceRead",
         ];
         Assert.Equal(expected, adjusted);
         var element = Reachable(c.Kotonoha).Single(x => Text(x) == "entries[1]" && Line(x.Span.Start) == "entries[1].bump()");

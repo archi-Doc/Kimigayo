@@ -308,6 +308,33 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 3.4.3, 13.4 (PLAN G1221): a receiver's in-place read is written once, at its selection, and a compared operand's read never
+    // writes its receivers, so a Non-Copy member chain of length n below a borrowed receiver, a call's receiver `p.s...s.mutate()` through
+    // `uniq` and a compared operand `p.s...s.name == "b"` through `ref`, judges each selection once (InPlaceSelection): work linear in n.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnInPlaceReadIsJudgedOncePerSelection(bool compared)
+    {
+        long[] work = [.. new[] { 50, 100, 200 }.Select(Work)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), string.Join(' ', work));
+
+        long Work(int n)
+        {
+            var source = new System.Text.StringBuilder("struct S0\n    public var name: string = \"\"\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.name = \"m\"\n");
+            for (var i = 1; i <= n; i++)
+            {
+                source.Append($"struct S{i}\n    public var s: S{i - 1} = S{i - 1}.init()\n    public init() => ()\n");
+            }
+
+            var path = "p" + string.Concat(Enumerable.Repeat(".s", n));
+            source.Append(compared ? $"func f(p: ref/S{n}) -> bool => {path}.name == \"b\"\n" : $"func f(p: uniq/S{n}) => {path}.mutate()\n");
+            var c = CompilationTestHelper.Parse(source.ToString());
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.InPlaceSelectionWork;
+        }
+    }
+
     // SPEC 8.3.2, 8.5.2 (R7-N1 c-b, F's N1c ruling 28: K3; Q20 B1): a member access's left through a projection chain
     // `T.(C1).X.(C2).X...(CN).X`, each level's Contract supplying the next level's requirement and the last one's clause the normal form M,
     // is evaluated under its use scope's one kept layer (BindingScope.EvaluatedPremises), so the identity classes binding 10 uses of M's
