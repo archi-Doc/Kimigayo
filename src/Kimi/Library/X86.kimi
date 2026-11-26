@@ -1,6 +1,6 @@
 #if arch == "x86_64"
     /// x86-64 processor instructions (IMPL 21.6). Each member executes its instruction once, in program order with every memory
-    /// access and every other member (a compiler barrier).
+    /// access and every other member (a compiler barrier), and every member is an environment effect (SPEC 8.11.2).
     public group X86
         /// Hints to the processor that the caller spins in a wait loop (`pause`).
         #Intrinsic("Instruction", "pause")

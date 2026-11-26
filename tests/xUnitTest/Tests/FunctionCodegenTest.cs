@@ -1967,11 +1967,13 @@ public sealed partial class FunctionCodegenTest
         var text = Instructions(TargetProfile.None, Source);
         string[] routines =
         [
-            "define internal void @__kimi_x86_pause() alwaysinline #0 {\n  call void asm sideeffect \"pause\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
-            "define internal void @__kimi_x86_hlt() alwaysinline #0 {\n  call void asm sideeffect \"hlt\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
-            "define internal i8 @__kimi_x86_inb(i16 %port) alwaysinline #0 {\n" +
+            "define internal void @__kimi_x86_pause() alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"pause\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
+            "define internal void @__kimi_x86_hlt() alwaysinline #0 {\nentry:\n" +
+                "  call void asm sideeffect \"hlt\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  ret void\n}\n",
+            "define internal i8 @__kimi_x86_inb(i16 %port) alwaysinline #0 {\nentry:\n" +
                 "  %r = call i8 asm sideeffect \"inb %dx, %al\", \"={ax},{dx},~{memory},~{dirflag},~{fpsr},~{flags}\"(i16 %port)\n  ret i8 %r\n}\n",
-            "define internal void @__kimi_x86_outb(i16 %port, i8 %value) alwaysinline #0 {\n" +
+            "define internal void @__kimi_x86_outb(i16 %port, i8 %value) alwaysinline #0 {\nentry:\n" +
                 "  call void asm sideeffect \"outb %al, %dx\", \"{dx},{ax},~{memory},~{dirflag},~{fpsr},~{flags}\"(i16 %port, i8 %value)\n  ret void\n}\n",
         ];
         Assert.All(routines, x => Assert.Single(Regex.Matches(text, Regex.Escape(x))));

@@ -146,7 +146,7 @@ internal enum DispositionKind : byte
 /// <param name="Kind">How the call is served.</param>
 /// <param name="Id">The intrinsic of an Intrinsic disposition.</param>
 /// <param name="Member">A family's member, the case its second `#Intrinsic` argument names: <see cref="IntrinsicId.Fail"/>'s SPEC 22.5.2
-/// code.</param>
+/// code, <see cref="IntrinsicId.Instruction"/>'s row of the Backend's InstructionRows.</param>
 internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Member = null)
 {
     // IMPL 21.3.4's family form `#Intrinsic("Family", "Member")`: whether an id is a family, whose declarations each name its member.

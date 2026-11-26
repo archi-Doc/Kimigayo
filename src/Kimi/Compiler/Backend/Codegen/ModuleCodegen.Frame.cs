@@ -166,7 +166,8 @@ internal sealed partial class ModuleCodegen
     }
 
     // The requested machine instruction routines (InstructionRows), each once in row order: its routine's definition (`alwaysinline`,
-    // Abi.Flags.Inline) calling its template under its constraints and the one suffix (InstructionRows.Clobbers) over its parameters.
+    // Abi.Flags.Inline), whose entry block calls its template under its constraints and the one suffix (InstructionRows.Clobbers) over its
+    // parameters.
     private void WriteInstructions(TextWriter output)
     {
         for (var set = this.instructions; set != 0; set &= set - 1)
@@ -175,13 +176,15 @@ internal sealed partial class ModuleCodegen
             var routine = row.Routine;
             var value = routine.Result != "void";
             output.Write(routine.GetDefinition(exported: false));
+            output.Write("entry:\n");
             output.Write(value ? "  %r = call " : "  call ");
             output.Write(routine.Result);
             output.Write(" asm sideeffect \"");
             output.Write(row.Template);
             output.Write("\", \"");
             output.Write(row.Constraints);
-            output.Write(row.Constraints.Length == 0 ? InstructionRows.Clobbers : "," + InstructionRows.Clobbers);
+            output.Write(row.Constraints.Length == 0 ? string.Empty : ",");
+            output.Write(InstructionRows.Clobbers);
             output.Write("\"(");
             for (var i = 0; i < routine.Parameters.Length; i++)
             {
