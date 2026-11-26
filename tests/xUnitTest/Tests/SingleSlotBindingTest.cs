@@ -26,6 +26,10 @@ public class SingleSlotBindingTest
     [InlineData("struct Outer {s}\n    struct Inner\n        let value: V<i32> during s")]
     [InlineData("func f(x: ref/i32)\n    let v: V<i32> during x = V<i32>.init(x)")]
     [InlineData("func nested(x: ref/(V<i32> during b) during a) -> ref/V<i32> during a => x@follow@ref")]
+    [InlineData("func f(x: ref/i32) -> i32\n    let g = func [] (v: Slice<i32> during x) -> Slice<i32> during x => v@move\n    return 0")]
+    [InlineData(Cursor + "func f(x: ref/i32) -> i32\n    let g = func [] (c: Cursor during x) -> Cursor during x => c@move\n    return 0")]
+    [InlineData("struct Holder<s/T> {a}\n    s is owner or uniq\n    let item: s/T during a\nfunc cached(h: Holder<i32> during static) => ()")]
+    [InlineData(Cursor + "func g(y: ref/i32) -> (Cursor during y).Item => $abort(\"u\")")]
     public void BindsTheOnlySlot(string source)
     {
         var c = MinimalEmissionTest.Analyze(View + source);
@@ -50,11 +54,49 @@ public class SingleSlotBindingTest
     [InlineData("func f<T>(x: T during a) => ()")]
     [InlineData("func f<T>(x: Option<ref/T during b> during a) => ()")]
     [InlineData("struct S {source}\n    let value: ref/i32 during source\n    func f(self: Self) -> Self during source => self")]
+    [InlineData(Projection + "func f(x: ref/i32) -> Pack.Item during static => $abort(\"u\")")]
+    [InlineData(Projection + "func f(x: ref/i32) -> Option<Pack.Item during static> => .None")]
+    [InlineData(Cursor + "func g(y: ref/i32) -> (Cursor during y).Item during y => $abort(\"u\")")]
+    [InlineData(PackOf + "raw/i32\nfunc f(x: ref/i32) -> Pack.Item during x => $abort(\"u\")")]
+    [InlineData(PackOf + "Slice<i32> during static\nfunc f(x: ref/i32) -> Pack.Item during static => $abort(\"u\")")]
     public void RejectsOtherSchemas(string source)
     {
         var c = MinimalEmissionTest.Analyze(View + source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
+    }
+
+    private const string PackOf = "contract Holder\n    associate Item\nstruct Pack\n    Self is Holder\n    associate Item is ";
+    private const string Projection = PackOf + "ref/i32 during static\n";
+    private const string Cursor = "contract Holder\n    associate Item\nstruct Cursor {at}\n    Self is Holder\n    associate Item is ref/i32 during at\n" +
+        "    public let item: ref/i32 during at\n    public init(item: ref/i32 during at) => self.item = item\n";
+
+    // SPEC 3.3.2, 15.3.4, 23.1.2: a slot binding with no target records InvalidOriginBinding_Kd at the annotated Type, beside its atom's
+    // own failure at the atom: a body annotation's `q` is no introduced name, and `self` names nothing outside a raw layer (SPEC 5.7).
+    [Theory]
+    [InlineData("func g<T>(v: T)\n    let z: T during q = $abort(\"u\")\n", "T during q", "q")]
+    [InlineData(Pair + "func h(x: ref/i32)\n    let z: P during q = $abort(\"u\")\n", "P during q", "q")]
+    [InlineData(PackOf + "raw/i32\nstruct Buf\n    let p: Pack.Item during self\n", "Pack.Item during self", "self")]
+    public void ANoTargetBindingRecordsBesideItsAtom(string declarations, string use, string atom)
+    {
+        var source = declarations + "public func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}: {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}");
+        Assert.Equal([$"{nameof(DiagnosticCode.InvalidOriginBinding_Kd)}: {use}", $"{nameof(DiagnosticCode.MissingOriginBinding_Kd)}: {atom}"], records);
+    }
+
+    // SPEC 3.3.2, 8.5.1 (R7-E4 E4c, TypeOrigins' written Origin over a Type that carries its own): an associated-Type projection keeps
+    // its Origin and declares no slot, so a written `during` has no target: one InvalidOriginBinding_Kd at the use, a fact-less record.
+    // An unbound `q` in the signature introduces a universally quantified Origin, also when it appears only in the result (15.3.4), so
+    // `during q` has the same one failure. The projection written alone is valid.
+    [Theory]
+    [InlineData("-> Pack.Item during x", "Pack.Item during x")]
+    [InlineData("-> Pack.Item during q", "Pack.Item during q")]
+    [InlineData("-> Pack.Item", null)]
+    public void AProjectionThatCarriesItsOwnOriginGivesDuringNoTarget(string result, string? use)
+    {
+        var source = Projection + "func f(x: ref/i32) " + result + " => $abort(\"u\")\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}: {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}");
+        Assert.Equal(use is null ? [] : [$"{nameof(DiagnosticCode.InvalidOriginBinding_Kd)}: {use}"], records);
     }
 
     private const string ExecutionSource =

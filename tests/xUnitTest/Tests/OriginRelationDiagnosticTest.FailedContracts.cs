@@ -389,4 +389,19 @@ public partial class OriginRelationDiagnosticTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
+
+    // R7-M95 E4d (F's ruling 39's owed rows; SPEC 10.7, 15.6.1): a whole-contract comparison's first record is its node's problem, at
+    // the slot's key, so the node's one Binding.Issues row has the record's code and its one record is published: a Function-typed value
+    // converted at a let (RecordComparisonFacts; p2a) and a Function Item erased at a call argument (RecordCondition or the reference's
+    // comparison; p2bv).
+    [Theory]
+    [InlineData("p2a", "func k(a: ref/i32, b: ref/i32, f: (ref/i32 during a) -> ref/i32 during a) -> i32\n    let g: (ref/i32 during a) -> ref/i32 during b = f\n    return 0\n", "UnprovenOriginContract_Kd f")]
+    [InlineData("p2bv", "func h(y: ref/i32, z: ref/i32) -> ref/i32 during y => y\nfunc apply(f: (ref/i32 during a, ref/i32 during b) -> ref/i32 during b, a: ref/i32, b: ref/i32) -> i32 => 0\nfunc k(a: ref/i32, b: ref/i32) -> i32\n    return apply(h, a, b)\n", "UnprovenOriginContract_Kd h")]
+    public void AContractsFirstRecordIsItsNodesSlotProblem(string form, string body, string records)
+    {
+        AssertRecords(form, body, records, null);
+        var issue = Assert.Single(MirBuildTest.Compile(body + Main).Binding.Issues, static x => x.Failure == BindingFailure.OriginContract);
+        Assert.Equal(DiagnosticCode.UnprovenOriginContract_Kd, issue.Code);
+        Assert.True(issue.Problem >= 0);
+    }
 }
