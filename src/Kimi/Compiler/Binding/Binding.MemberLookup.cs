@@ -237,7 +237,7 @@ public sealed partial class Binding
     // qualifier forms, or a nested declaration. Null when the qualifier's formation failed (its record).
     private SideSelection? TypeSideMember(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? expected)
     {
-        if (qualifier is null || qualifier.Declaration is ContractKoto || !this.scopes.ContainsKey(qualifier.Declaration))
+        if (qualifier is null || !this.FormsOwnType(qualifier))
         {
             return this.QualifierSelection(member, qualifier, name, scope, null);
         }

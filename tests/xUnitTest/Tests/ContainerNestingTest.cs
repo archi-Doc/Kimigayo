@@ -13,6 +13,12 @@ public class ContainerNestingTest
     private const string NestedEnum = "struct Outer<O>\n    public enum E<T>\n        A(O, T)\n        N\n        public func make() -> i32 => 0\n    public enum E2<T>\n        P(T, T)\n" +
         "    public enum R<T> {src}\n        B(O, ref/T during src)\n    public struct Mid<Y>\n        public enum K<T>\n            C(O, Y, T)\n";
 
+    // PLAN G1156's declarations: a Contract `Reader` with an instance function and a Property, `Sized` with the same Property, and
+    // `Gauge`, which has both as nominal members, beside `Plain`, which has neither.
+    private const string ReaderPlain = "contract Reader\n    func read(self: ref/Self) -> i32\n    property size: i32 has get\ncontract Sized\n    property size: i32 has get\n" +
+        "struct Gauge\n    Self is Reader\n    Self is Sized\n    public computed size: i32\n        get() -> i32 => 7\n    public func read(self: ref/Self) -> i32 => 3\n" +
+        "    public init() => ()\nstruct Plain\n    public init() => ()\n";
+
     [Theory]
     [InlineData("struct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move\nfunc f() -> i32\n    let result = (Outer<i32>.Helpers{h}).identity(42)\n        origin h.source == static\n    return result")]
     [InlineData("alias H => (Outer<i32>.Helpers{h})\n    origin h.source == static\nstruct Outer<T> {source}\n    public group Helpers\n        public func identity(value: T) -> T => value@move\nlet x = H.identity(42)")]
@@ -332,7 +338,8 @@ public class ContainerNestingTest
     }
 
     // SPEC 9.6 (PLAN G488, R7-N1 c-b): a Name qualifier naming both a Type and a parameter or local has both namespaces' complete paths
-    // evaluated before either publishes, and the sole successful one is selected: the Type path alone (`group T`, `T.n`; `T.one()`), the
+    // evaluated before either publishes, and the sole successful one is selected: the Type path alone (`group T`, `T.n`; `T.one()`; a
+    // Type parameter's requirement `T.read(x)`, its receiver an argument (7.3.4), where the value `T: ref/Plain` has no `read`), the
     // value path alone (`T: T`, `T.n`: an instance Field through the Type fails its static use; a private group fails on access), both
     // (AmbiguousBinding_Kd at the access) or a record of the form's own (moving `T.G` out of a parameter, TransferRequired_Kd). A
     // member-access qualifier of both readings (`T.G` with a public group `G` and V's Field `G`) stays the located Unsupported_Kd at it:
@@ -347,6 +354,7 @@ public class ContainerNestingTest
     [InlineData("group T\n    public let n: i32 = 1\n", "func f(T: V) -> i32 => T.n\n", "")]
     [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "")]
     [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n", "func f(T: T) -> i32 => T.n\n", "")]
+    [InlineData(ReaderPlain, "func f<T>(T: ref/Plain, x: ref/T) -> i32\n    T is Reader\n    return T.read(x)\n", "")]
     [InlineData("", "func f(T: V) -> i32 => T.G.n\n", "")]
     public void AQualifierOfBothNamespacesSelectsItsSolePath(string type, string use, string records)
     {
