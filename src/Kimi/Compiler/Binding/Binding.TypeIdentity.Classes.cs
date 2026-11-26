@@ -284,9 +284,9 @@ public sealed partial class Binding
             return null;
         }
 
-        // The worst final error class this table holds that the parent's table does not hold with the same state for the same member (the
-        // premises that first form it are this scope's), whether an own error class is still waiting for its Origin declarations, and
-        // whether an own final class is at the closure limit, which a worse class hides from Worst; each own final error group with its
+        // The worst final error class this table holds that the parent's table does not hold with the same state for any of its members
+        // (the premises that first form it are this scope's: FormedInParent), whether an own error class is still waiting for its Origin
+        // declarations, and whether an own final class is at the closure limit, which a worse class hides from Worst; each own final error group with its
         // worst state, appended to `groups` past its entry count (R7-C3 C3d: the recorder's one record per group, PLAN G830), so a
         // recorder nested in another's reads (a closure's, e2-7 C1) appends its own range.
         internal (byte Worst, bool Waiting, bool Limited) OwnError(IdentityClasses? parent, List<(int Group, byte State)> groups)
@@ -300,8 +300,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (parent is not null && parent.node.TryGetValue(this.types[this.head[root]], out var p) && parent.state.Count > p &&
-                    parent.state[parent.Find(p)] == this.state[root] && !parent.incompleteClass[parent.Find(p)])
+                if (parent is not null && FormedInParent(parent, root))
                 {
                     continue; // The parent's premises formed it first.
                 }
@@ -329,6 +328,23 @@ public sealed partial class Binding
                 }
 
                 groups.Add((group, state));
+            }
+
+            // G1406-47: whether the parent's premises formed a class first: the parent's class of one of its members is final (complete)
+            // and holds the same state. A set test over the members, linear in the class: a class's head is its first-formed member, the
+            // walk's schedule, which no answer reads.
+            bool FormedInParent(IdentityClasses outer, int at)
+            {
+                for (var m = this.head[at]; m >= 0; m = this.next[m])
+                {
+                    if (outer.node.TryGetValue(this.types[m], out var p) && outer.state.Count > p && outer.state[outer.Find(p)] == this.state[at] &&
+                        !outer.incompleteClass[outer.Find(p)])
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
         }
 

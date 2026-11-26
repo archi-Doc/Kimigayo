@@ -396,7 +396,6 @@ public class ArchitectureRulesTest
         "Binding.ResultPropagation.cs:ResultCandidates=1 kind",
         "Binding.ResultPropagation.cs:SourcesAwait=1 kind",
         "Binding.ResultSurvey.cs:SourceEvidence=1 kind",
-        "Binding.Retention.Declared.cs:View=1 unchanged",
         "Binding.Retention.Declared.cs:Viewed=1 unchanged",
         "Binding.Retention.Rows.cs:Hands=1 key",
         "Binding.Retention.Rows.cs:Takes=1 kind",

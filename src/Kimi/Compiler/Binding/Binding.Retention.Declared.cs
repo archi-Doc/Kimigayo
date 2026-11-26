@@ -71,7 +71,8 @@ public sealed partial class Binding
     // replacement inside any Type, so an abstract Type of the function's own declaration takes the form its identity class in the
     // function's view fixes (Binding.TypeIdentity, the one judge): a constructed member (then paired as any declared Type: `S.Item is
     // raw/u8` shows the layer), else a member that is no abstract Type of the function (an enclosing Type's parameter: shown), else itself.
-    // Any other Type is itself. A class's constructed members are one Type, so the first in index order is taken.
+    // Any other Type is itself. Each is the least such member by Order (Representative's rule, G1406-47), never the first in the class's
+    // index order, which is the walk's schedule: a class's constructed members are one Type, and so are the members it shows.
     private BoundType? View(BoundType? signature)
     {
         if (OwnAbstract(signature) is not { } function)
@@ -81,19 +82,22 @@ public sealed partial class Binding
 
         this.viewMembers.Clear();
         this.IdentityMembers(signature!, this.ConstraintScope(function), this.viewMembers);
-        var shown = signature;
+        BoundType? constructed = null;
+        BoundType? shown = null;
         for (var i = 0; i < this.viewMembers.Count; i++)
         {
             var member = this.viewMembers[i];
             if (member.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection))
             {
-                return member;
+                constructed = constructed is null || Order(member, constructed) < 0 ? member : constructed;
             }
-
-            shown = ReferenceEquals(shown, signature) && OwnAbstract(member) is null ? member : shown;
+            else if (OwnAbstract(member) is null)
+            {
+                shown = shown is null || Order(member, shown) < 0 ? member : shown;
+            }
         }
 
-        return shown;
+        return constructed ?? shown ?? signature;
     }
 
     // SPEC 8.2.3 ("identity is closed under replacement inside any Type"; PLAN G935 c3-2): a declared Type as its declaring function's
