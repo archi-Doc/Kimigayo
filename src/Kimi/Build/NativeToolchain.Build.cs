@@ -142,12 +142,11 @@ internal static partial class NativeToolchain
     // starts at the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). A row's linker script
     // (TargetProfile.LinkerScript, staged: script) is -T's argument, and a section it does not place is a link error
     // (--orphan-handling=error, never the linker's silent placement; the Tatara plan's B9f); a row without one links in the linker's
-    // layout. The start path is one
-    // fact read three ways: the module frame decides it (a module requiring a library starts through the row's CRuntime, entry main),
-    // ValidateManifest holds the manifest to it (the entry is main exactly when the CRuntime is listed), and the line reads it as a file
-    // placed Start (only the CRuntime's files are). The line is order-free for the dependency check, which runs before it
-    // (LinkAmbiguity); the object's definition of the entry is Inspect's. ld.lld reads no LINK variable and detects no toolchain; it
-    // still reads LLD_REPRODUCE (LC3 §10).
+    // layout. The start path is one fact read three ways: the module frame decides it (a module requiring a library starts through the
+    // row's CRuntime, entry main), ValidateManifest holds the manifest to it (the entry is main exactly when the CRuntime is listed), and
+    // the line reads it as a file placed Start (only the CRuntime's files are). The line is order-free for the dependency check, which
+    // runs before it (LinkAmbiguity); the object's definition of the entry is Inspect's. ld.lld reads no LINK variable and detects no
+    // toolchain; it still reads LLD_REPRODUCE (LC3 §10).
     internal static string[] ElfLine(string entry, string? script, string obj, List<StagedLibrary> libraries, string executable)
     {
         List<string> link = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", executable];

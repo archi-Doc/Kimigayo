@@ -85,6 +85,11 @@ public sealed class TataraExecutorTest : IDisposable
         { "Stopwatch", TimeLibraryTest.Measured },
     };
 
+    // Design §5 row 10: Kernel writing a measured Stopwatch's seconds (TimeLibraryTest.Measured reads the platform's clock, so O2 folds
+    // neither the conversion nor the division); its object here, its ELF in NativeToolchainTest (Tatara B9f).
+    internal static string KernelSeconds =>
+        KernelSources.Hello + TimeLibraryTest.Measured + "\nConsole.writeLine(Text.toString(duration.seconds))\n" + KernelSources.Board + KernelSources.BoardTerminate;
+
     private static string Root => Path.Combine(Repository.Root, "toolchain");
 
     private static string? Corpus => Environment.GetEnvironmentVariable("KIMI_TATARA_CORPUS");
@@ -98,11 +103,6 @@ public sealed class TataraExecutorTest : IDisposable
 
     // Both, in ToolchainIdentity.Supplies' order: a link manifest's libraries when the program names none of its own.
     private static string[] CompilerLibraries => [Kernel32, Backend];
-
-    // Design §5 row 10: Kernel writing a measured Stopwatch's seconds (TimeLibraryTest.Measured reads the platform's clock, so O2 folds
-    // neither the conversion nor the division).
-    private static string KernelSeconds =>
-        KernelSources.Hello + TimeLibraryTest.Measured + "\nConsole.writeLine(Text.toString(duration.seconds))\n" + KernelSources.Board + KernelSources.BoardTerminate;
 
     // Probe P0b's module (design §11): a Library group with every floating operation the generator writes, for f32 and f64: the
     // arithmetic and comparison rows (FunctionCodegen.Arithmetic: fadd fsub fmul fdiv fneg; oeq une olt ole ogt oge), the floating

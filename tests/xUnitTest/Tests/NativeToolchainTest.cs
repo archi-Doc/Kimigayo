@@ -1645,7 +1645,7 @@ public sealed class NativeToolchainTest : IDisposable
     {
         // Guard (Tatara B9f): a hosted record has no linkerScript member.
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var paths = await this.LinuxProgram(program, level);
+        var paths = await this.ElfProgram(program, level);
         await LinuxPair.Build(paths);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         string[] names = [.. LinkManifest.Items(manifest.RootElement, "libraries").Select(static x => LinkManifest.Text(x, "libraries.name"))];
@@ -1663,15 +1663,17 @@ public sealed class NativeToolchainTest : IDisposable
     // --Manifest through the row's linker script, is the kernel image: ET_EXEC for EM_X86_64 entered at __kimi_start, at or above
     // 0xFFFFFFFF80000000; exactly three PT_LOADs (so no PT_INTERP, PT_DYNAMIC or PT_GNU_STACK), R+X, R and R+W in that order, each
     // aligned 0x1000; Limine's five requests in the R+W segment in the order start marker, base revision, HHDM, memory map, end marker
-    // (row 17), the start marker's and the base revision's first words at their symbols' file offsets (Limine's tag present); the record
-    // names no undefined object symbol (Kernel uses no float) and the script's catalog hash.
+    // (row 17), the start marker's and the base revision's first words at their symbols' file offsets (Limine's tag present). The record
+    // (design §5 row 21's valid half): a hosted record's members with linkerScript after libraries, staged before the link; it names no
+    // undefined object symbol (Kernel uses no float), and linkerScript the staged copy (<hash>.ld beside the libraries', its path redacted
+    // as theirs are) with the catalog's hash.
     [Theory]
     [InlineData("O0")]
     [InlineData("O2")]
     public async Task AKernelPairBuildsTheScriptsImage(string level)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var paths = LinuxPair.Publish(TargetProfile.None, this.directory, KernelSources.Hello + KernelSources.Board + KernelSources.BoardTerminate, level);
+        var paths = await this.ElfProgram("Kernel", level);
         await LinuxPair.Build(paths);
         var elf = ElfFile.Read(paths.Executable);
         Assert.Equal((2, 62), (elf.Type, elf.Machine));
@@ -1687,33 +1689,70 @@ public sealed class NativeToolchainTest : IDisposable
             [0xf6b8f4b39de7d1aeUL, 0xf9562b2d5c95a6c8UL],
             requests[..2].Select(x => BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan((int)(data.Offset + (x - data.Address))))));
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal(
+            "status,compilerVersion,llvmVersion,input,tools,irSha256,optimization,libraries,linkerScript,executable,executableSha256,objectUndefinedSymbols",
+            string.Join(',', record.RootElement.EnumerateObject().Select(static x => x.Name)));
         Assert.Equal("linked", record.RootElement.GetProperty("status").GetString());
         Assert.Equal(string.Empty, record.RootElement.GetProperty("objectUndefinedSymbols").GetString());
-        Assert.Equal(ToolchainIdentity.Script(TargetProfile.None)!.Sha256, record.RootElement.GetProperty("linkerScript").GetProperty("sha256").GetString());
+        var sha256 = ToolchainIdentity.Script(TargetProfile.None)!.Sha256;
+        var staged = Path.Combine(paths.Native, sha256 + ".ld");
+        Assert.Equal(
+            NativeToolchain.Redact(staged, Path.GetDirectoryName(paths.Manifest)!) + " " + sha256,
+            $"{record.RootElement.GetProperty("linkerScript").GetProperty("path").GetString()} {record.RootElement.GetProperty("linkerScript").GetProperty("sha256").GetString()}");
+        Assert.Equal(sha256, ArtifactFiles.Hash(staged));
+    }
+
+    // Design §5 row 10's ELF half (the Tatara plan's decision 33, IMPL 21.6.7; valid): Kernel writing a measured Stopwatch's seconds
+    // (TataraExecutorTest.KernelSeconds, whose object leaves the u64 conversion and __divdf3 undefined: __floatundidf at O0, __floatdidf at
+    // O2, T's ruling 150 (4)) links both from the row's kimi_backend, last on the line: the record's undefined object symbols are those
+    // two, the ELF defines each in its text segment, and the archive's members are linked by need: __addsf3, which nothing references,
+    // is absent.
+    [Theory]
+    [InlineData("O0", "__floatundidf")]
+    [InlineData("O2", "__floatdidf")]
+    public async Task AKernelPairLinksTheBackendsMembersByNeed(string level, string conversion)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var paths = await this.ElfProgram("Seconds", level);
+        await LinuxPair.Build(paths);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("linked", record.RootElement.GetProperty("status").GetString());
+        Assert.Equal(
+            ["__divdf3 U 0 0", conversion + " U 0 0"],
+            record.RootElement.GetProperty("objectUndefinedSymbols").GetString()!.Split('\n').Order(StringComparer.Ordinal));
+        var elf = ElfFile.Read(paths.Executable);
+        Assert.All(new[] { "__divdf3", conversion }, x => Assert.InRange(elf.Symbols[x], elf.Segments[0].Address, elf.Segments[0].Address + elf.Segments[0].MemorySize - 1));
+        Assert.False(elf.Symbols.ContainsKey("__addsf3"));
     }
 
     // The Tatara plan's B7b7 (design §3.11, §6.1): Linux pairs whose head, entry or object the row does not take fail before any link:
     // another relocation model (the fixed-field text), Ffi's entry edited to main with c removed and Hello's __kimi_start with c listed
     // (the profile text, per row; O8), an object calling bcmp, which no declaration names (the IR edited, its hash rewritten), and Ffi's c
     // removed with its entry edited to the row's __kimi_start, which its object does not define (Inspect's entry check, T's ruling 79;
-    // ld.lld only warns of an undefined -e entry: on 0e7a59618 it built, artifacts\tatara\b7b7\b7b7c\probe-twin-0e7a59618.txt). Two
-    // builds of each pair in two folders give equal executables.
+    // ld.lld only warns of an undefined -e entry: on 0e7a59618 it built, artifacts\tatara\b7b7\b7b7c\probe-twin-0e7a59618.txt). Design
+    // §5 row 21 (the Tatara plan's B9f; IMPL 20.3.2; invalid): Kernel's none pair with another code model fails at the none row's fixed
+    // head in the same text. Each leaves no executable and the record incomplete (no success record; the CLI's exit 1 for a failed
+    // build --Manifest is CommandExecutionTest's manifest row).
     [Theory]
-    [InlineData("relocation", "'codegen.relocationModel' is not this compiler's")]
-    [InlineData("main", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
-    [InlineData("start", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
-    [InlineData("bcmp", "Unsupported actual object dependency: bcmp U 0 0")]
-    [InlineData("entry", "The object does not define the manifest's entry '__kimi_start' as an external function.")]
-    public async Task ALinuxPairTheRowDoesNotTakeFails(string edit, string failure)
+    [InlineData("Ffi", "relocation", "'codegen.relocationModel' is not this compiler's")]
+    [InlineData("Ffi", "main", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
+    [InlineData("Hello", "start", "Manifest does not describe the supported x86_64-unknown-linux-musl Application profile.")]
+    [InlineData("Ffi", "bcmp", "Unsupported actual object dependency: bcmp U 0 0")]
+    [InlineData("Ffi", "entry", "The object does not define the manifest's entry '__kimi_start' as an external function.")]
+    [InlineData("Kernel", "code model", "The link manifest's 'codegen.codeModel' is not this compiler's. Re-emit the manifest.")]
+    public async Task AnElfPairTheRowDoesNotTakeFails(string program, string edit, string failure)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var paths = await this.LinuxProgram(edit == "start" ? "Hello" : "Ffi", "O2");
+        var paths = await this.ElfProgram(program, "O2");
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
         var libraries = manifest["libraries"]!.AsArray();
         switch (edit)
         {
             case "relocation":
                 manifest["codegen"]!["relocationModel"] = "pic";
+                break;
+            case "code model":
+                manifest["codegen"]!["codeModel"] = "small";
                 break;
             case "main" or "entry":
                 libraries.Remove(libraries.Single(static x => x!["name"]!.GetValue<string>() == "c"));
@@ -1738,24 +1777,29 @@ public sealed class NativeToolchainTest : IDisposable
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => LinuxPair.Build(paths));
         Assert.Contains(failure, error.Message, StringComparison.Ordinal);
         Assert.False(File.Exists(paths.Executable));
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
     }
 
-    // §6.1: two builds of Hello's and Ffi's Linux pairs, each emitted and built in its own folder, give equal ELF bytes, at O0 and O2 (the
-    // Tatara plan's B7b8, C-560 N8: an ELF STT_FILE symbol is the source's base name, so no folder enters the bytes at O0 either).
+    // §6.1: two builds of Hello's and Ffi's Linux pairs and of Kernel's none pair (the Tatara plan's B9f, design §3.7: the script's image),
+    // each emitted and built in its own folder, give equal ELF bytes, at O0 and O2 (B7b8, C-560 N8: an ELF STT_FILE symbol is the source's
+    // base name, so no folder enters the bytes at O0 either; T-M8).
     [Theory]
     [InlineData("Hello", "O0")]
     [InlineData("Hello", "O2")]
     [InlineData("Ffi", "O0")]
     [InlineData("Ffi", "O2")]
-    public async Task LinuxBuildsInTwoFoldersAreEqual(string program, string level)
+    [InlineData("Kernel", "O0")]
+    [InlineData("Kernel", "O2")]
+    public async Task ElfBuildsInTwoFoldersAreEqual(string program, string level)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
-        var first = await this.LinuxProgram(program, level);
+        var first = await this.ElfProgram(program, level);
         await LinuxPair.Build(first);
         var other = new NativeToolchainTest();
         try
         {
-            var second = await other.LinuxProgram(program, level);
+            var second = await other.ElfProgram(program, level);
             await LinuxPair.Build(second);
             Assert.Equal(File.ReadAllBytes(first.Executable), File.ReadAllBytes(second.Executable));
         }
@@ -2445,18 +2489,24 @@ public sealed class NativeToolchainTest : IDisposable
         }
     }
 
-    // Design §5 row 21's Linux programs as pairs at the level, from their committed sources (tests/linux-elf, B7b9): Hello (libc-free)
-    // and Ffi, whose static codec.a's one member defines codec_add(int, short) and codec_pid, which calls musl's getpid (the C path;
-    // Kind's row 21).
-    private async Task<ArtifactPaths> LinuxProgram(string program, string level)
+    // The ELF rows' programs as pairs at the level. B7b's design §5 row 21's Linux programs, from their committed sources (tests/linux-elf,
+    // B7b9): Hello (libc-free) and Ffi, whose static codec.a's one member defines codec_add(int, short) and codec_pid, which calls musl's
+    // getpid (the C path; Kind's row 21). The none row's (the Tatara plan's B9f): Kernel, the owner question's Hello.kimi and Board.kimi,
+    // and Seconds, Kernel writing a measured Stopwatch's seconds (B9's design §5 row 10).
+    private async Task<ArtifactPaths> ElfProgram(string program, string level)
     {
-        if (program == "Hello")
+        switch (program)
         {
-            return LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxPair.Program("Hello", "Hello.kimi"), level);
+            case "Hello":
+                return LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxPair.Program("Hello", "Hello.kimi"), level);
+            case "Kernel":
+                return LinuxPair.Publish(TargetProfile.None, this.directory, KernelSources.Hello + KernelSources.Board + KernelSources.BoardTerminate, level);
+            case "Seconds":
+                return LinuxPair.Publish(TargetProfile.None, this.directory, TataraExecutorTest.KernelSeconds, level);
+            default:
+                await LinuxPair.Archive(this.directory, "codec", "rcs", ("m1", LinuxPair.Program("Ffi", "native", "codec.c")));
+                return LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxPair.Program("Ffi", "Ffi.kimi"), level, ("codec", "static", "codec.a"));
         }
-
-        await LinuxPair.Archive(this.directory, "codec", "rcs", ("m1", LinuxPair.Program("Ffi", "native", "codec.c")));
-        return LinuxPair.Publish(TargetProfile.Linux, this.directory, LinuxPair.Program("Ffi", "Ffi.kimi"), level, ("codec", "static", "codec.a"));
     }
 
     // LinkAmbiguity's and Kind's L rows (Dependency's Linux counterpart; labels copied from the designs) as pairs at O2: name is the row's
