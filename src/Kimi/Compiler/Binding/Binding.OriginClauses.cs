@@ -91,32 +91,36 @@ public sealed partial class Binding
         this.JudgeDeclarationRows();
     }
 
-    // SPEC 15.3.3, 15.6.5 (OJ1): the declaration judge's position, `longer outlives shorter` (`==` when `equality`) at `at` in the
-    // declaration frame: a meet at the longer end decomposes, each failing operand its own record (SPEC 15.3.6); a premise-proven
-    // relation holds; a body chain is an obligation; a Refuted or Unknown one is the Origin relation record PublishCallRelations
-    // publishes; an Unrepresentable one is an obligation. Body relations are never judged here (FormBodyRelation, R7-O1).
-    private void JudgeDeclarationPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, bool wellFormed, ulong condition)
+    // SPEC 15.3.3, 15.6.5 (OJ1): the declaration judge's position for `row`, `longer outlives shorter` (`==` when the row's Equality) at
+    // the row's use in the declaration frame: a meet at the longer end decomposes, each failing operand its own record (SPEC 15.3.6); a
+    // premise-proven relation holds; a body chain is an obligation; a Refuted or Unknown one is the Origin relation record
+    // PublishCallRelations publishes, a clause row's (a Type's own clause substituted at an occurrence, AddTypeClauseObligations) with
+    // the source `declared` and its clause related (SPEC 23.1); an Unrepresentable one is an obligation. The row gives the position's
+    // facts (Use, Equality, WellFormed, Clause); the ends and the condition are the operands judged, a meet's or a chain pair's. Body
+    // relations are never judged here (FormBodyRelation, R7-O1).
+    private void JudgeDeclarationPosition(in BindingObligation row, BoundOrigin longer, BoundOrigin shorter, ulong condition)
     {
         if (ReferenceEquals(longer, shorter))
         {
             return;
         }
 
-        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
+        var at = row.Use;
+        if (!row.Equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                this.JudgeDeclarationPosition(at, longer.Operands[i], shorter, false, wellFormed, condition);
+                this.JudgeDeclarationPosition(row, longer.Operands[i], shorter, condition);
             }
 
             return;
         }
 
         var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
-        var backwardProven = !equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
+        var backwardProven = !row.Equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
         if (BodyChain(longer, shorter, this.formingBody))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, Equality: equality, WellFormed: wellFormed, Condition: condition));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, Equality: row.Equality, WellFormed: row.WellFormed, Condition: condition));
             return;
         }
 
@@ -125,19 +129,19 @@ public sealed partial class Binding
         if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
         {
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
-            var fact = new OriginRelationFact(at, longer, this.SuppliedAtUse(longer, at), shorter, equality, null, refuted, WellFormed: wellFormed);
+            var fact = new OriginRelationFact(at, longer, this.SuppliedAtUse(longer, at), shorter, row.Equality, null, refuted, row.Clause, WellFormed: row.WellFormed);
             this.callRelationScratch.Add((at, fact));
             return;
         }
 
         if (forward == OriginJudgment.Unrepresentable)
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, WellFormed: wellFormed, Condition: condition));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, longer, shorter, WellFormed: row.WellFormed, Condition: condition));
         }
 
         if (backward == OriginJudgment.Unrepresentable)
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, shorter, longer, WellFormed: wellFormed, Condition: condition));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, null, shorter, longer, WellFormed: row.WellFormed, Condition: condition));
         }
     }
 
@@ -162,7 +166,7 @@ public sealed partial class Binding
         {
             foreach (var (row, longer, shorter) in this.fixedRows)
             {
-                this.JudgeDeclarationPosition(row.Use, longer, shorter, row.Equality, row.WellFormed, row.Condition);
+                this.JudgeDeclarationPosition(row, longer, shorter, row.Condition);
             }
 
             this.JudgeChains();

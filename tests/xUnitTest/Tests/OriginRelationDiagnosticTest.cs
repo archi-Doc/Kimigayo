@@ -489,6 +489,27 @@ public partial class OriginRelationDiagnosticTest
         Assert.True(DiagnosticCorpus.Check(twin).Accepted, twin);
     }
 
+    // SPEC 15.3.4, 15.6.1, 23.1 (DECISIONS R4-M162): a nested signature's result in a declaration, a Field's Function Type's and the init
+    // input's (hold-b's twin H19), is judged where it occurs, so Hold's own clause substituted there is a declared relation: each record
+    // is at its result with the source `declared` and the clause related, and names no destination. The Field's names Host's slot as
+    // written there (TypeLevelClause), the init input's as its body does.
+    [Fact]
+    public void ADeclarationsNestedResultRecordsItsTypesClause()
+    {
+        var source = "struct Hold {s}\n    origin s outlives static\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
+            "struct Host {a}\n    public let make: () -> Hold during a\n    public init(make: () -> Hold during a) => self.make = make@move\n" + Main;
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.All(errors, static x => Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), DiagnosticCategory.Proof), (x.Code, x.Category)));
+        Assert.Equal(
+            [
+                "Hold during a: requires a outlives static, which is not proven; outlives a static declared; relation origin s outlives static",
+                "Hold during a: requires self.a outlives static, which is not proven; outlives self.a static declared; relation origin s outlives static",
+            ],
+            errors.Select(x => $"{Text(source, x.Span)}: {x.Label}; {string.Join(' ', x.Reason!.Select(static y => y.Value))}; " +
+                (x.Related is null ? "none" : string.Join(", ", x.Related.Select(y => $"{y.Role} {Text(source, y.Span)}")))));
+        Assert.Equal([source.IndexOf("() -> Hold", StringComparison.Ordinal) + 6, source.LastIndexOf("() -> Hold", StringComparison.Ordinal) + 6], errors.Select(static x => x.Span!.Value.Start));
+    }
+
     // SPEC 23.1.2 (DECISIONS BU-26): a declaration's failed relation is an independent record beside a body's failed fit, and a declared
     // relation whose end its declaration left unbound rests on that end's MissingOriginBinding_Kd alone. The body's fit is A5's one record
     // at `r` (R7-O1 H; its twin at `return r`, R6-check H5, R4-M108, H3b T50, went with Binding's record there).
