@@ -300,24 +300,19 @@ public sealed partial class Binding
 
     // E27-BOUND (P): a publication starts: the readings are forgotten, and every filing but a Complete one whose scope still denotes
     // the view it was filed in (SerialOf unchanged, as Keeps for tables): such a closure is a function of (root, G) for an unchanged G,
-    // so the publication cannot change it. A kept filing's rows stay in identityClosed.
+    // so the publication cannot change it. A kept filing's rows stay in identityClosed. Each other filing is removed as it is met
+    // (Dictionary.Remove keeps the enumeration valid), so the step allocates nothing.
     private void ForgetUnkeptClosures()
     {
         this.identityReadingHeads.Clear();
         this.identityReadings.Clear();
         this.identityReadingClosures.Clear();
-        var forget = new List<(BindingScope Scope, BoundType Key)>();
         foreach (var (key, closure) in this.identityRoots)
         {
             if (this.identityClosures[closure] is not { Completion: Completion.Complete } filed || filed.Serial != SerialOf(key.Scope))
             {
-                forget.Add(key);
+                this.identityRoots.Remove(key);
             }
-        }
-
-        foreach (var key in forget)
-        {
-            this.identityRoots.Remove(key);
         }
     }
 
