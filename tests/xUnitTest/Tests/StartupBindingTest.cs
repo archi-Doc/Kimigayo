@@ -21,10 +21,12 @@ public class StartupBindingTest
     // A startup form whose first item is a runtime `is` test (SPEC 14.10.1, in a Discard context, 12.1), then Hello.
     private const string TypeTestHello = "open struct Animal\nstruct Dog: Animal\ngroup Zoo\n    public func pet() -> objref/Animal => $abort(\"pet\")\nZoo.pet() is Dog\n" + KernelSources.Hello;
 
-    // The Kernel's Board as a second platform, as a generic one, through a Contract refining Platform, through a refining and a direct
-    // clause, through a Contract whose parent is an unknown name, selected on `os == "none"` only, and nested in a group.
+    // The Kernel's Board as a second platform, as a generic one, with an Origin parameter, through a Contract refining Platform, through
+    // a refining and a direct clause, through a Contract whose parent is an unknown name, selected on `os == "none"` only, and nested in
+    // a group.
     private static readonly string SecondBoard = CompleteBoard.Replace("Board", "Board2", StringComparison.Ordinal);
     private static readonly string GenericBoard = CompleteBoard.Replace("Board", "Board<T>", StringComparison.Ordinal);
+    private static readonly string OriginBoard = CompleteBoard.Replace("struct Board", "struct Board {o}", StringComparison.Ordinal);
     private static readonly string RefiningBoard = "contract Mine: Platform\n" + CompleteBoard.Replace("Self is Platform", "Self is Mine", StringComparison.Ordinal);
     private static readonly string RedundantBoard = "contract Machine: Platform\n" + CompleteBoard.Replace("Self is Platform", "Self is Machine\n    Self is Platform", StringComparison.Ordinal);
     private static readonly string UnresolvedParentBoard = "contract Machine: Platfrom\n" + CompleteBoard.Replace("Self is Platform", "Self is Machine", StringComparison.Ordinal);
@@ -32,9 +34,10 @@ public class StartupBindingTest
     private static readonly string NestedBoard = "group Boards\n" + Indent(CompleteBoard);
 
     // SPEC 22.4.5 with 22 ¶1 and 23.1.2: the platform records of the startup check per target, as its startup issues (code and node)
-    // and the published records (code and the first line of the located text). Several platforms and a generic platform are errors on
-    // every target; a platform on a hosted row, and an Application without one on the freestanding row, are each a located
-    // Unsupported_Kd; a target without a row has neither. None reads the conformance's verdict, so each stands beside its record.
+    // and the published records (code and the first line of the located text). Several platforms, a generic platform and one with Origin
+    // parameters are errors on every target; a platform on a hosted row, and an Application without one on the freestanding row, are
+    // each a located Unsupported_Kd; a target without a row has neither. None reads the conformance's verdict, so each stands beside its
+    // record.
     public static TheoryData<string, OutputKind, string[], string, string> PlatformRows => new()
     {
         // A second platform.
@@ -98,7 +101,7 @@ public class StartupBindingTest
             "MissingContractImplementation_Kd Self is Platform | Unsupported_Kd Self is Platform"
         },
 
-        // A generic platform.
+        // A generic platform, and one with an Origin parameter (a Phantom Origin, SPEC 15.3.2).
         { Freestanding, OutputKind.Application, [KernelSources.Hello, GenericBoard], "InvalidPlatform_Kd struct Board", "InvalidPlatform_Kd struct" },
         {
             WindowsX64, OutputKind.Application, [KernelSources.Hello, GenericBoard], "InvalidPlatform_Kd struct Board | Unsupported_Kd Self is Platform",
@@ -106,6 +109,15 @@ public class StartupBindingTest
         },
         {
             LinuxX64, OutputKind.Application, [KernelSources.Hello, GenericBoard], "InvalidPlatform_Kd struct Board | Unsupported_Kd Self is Platform",
+            "InvalidPlatform_Kd struct | Unsupported_Kd Self is Platform"
+        },
+        { Freestanding, OutputKind.Application, [KernelSources.Hello, OriginBoard], "InvalidPlatform_Kd struct Board", "InvalidPlatform_Kd struct" },
+        {
+            WindowsX64, OutputKind.Application, [KernelSources.Hello, OriginBoard], "InvalidPlatform_Kd struct Board | Unsupported_Kd Self is Platform",
+            "InvalidPlatform_Kd struct | Unsupported_Kd Self is Platform"
+        },
+        {
+            LinuxX64, OutputKind.Application, [KernelSources.Hello, OriginBoard], "InvalidPlatform_Kd struct Board | Unsupported_Kd Self is Platform",
             "InvalidPlatform_Kd struct | Unsupported_Kd Self is Platform"
         },
 
@@ -423,10 +435,12 @@ public class StartupBindingTest
 
     // SPEC 23.1.2 (AGENTS "Diagnostics"): whether a freestanding Application has a platform rests on its whole root member set, so the
     // no-platform record is derived from a declaration the parser skipped and from a root struct's Self clause that did not bind: each
-    // failure's own record is the one published, also where the startup form is a runtime `is` test (SPEC 14.10.1). A hosted row has no
-    // such record.
+    // failure's own record is the one published, also where the startup form is a runtime `is` test (SPEC 14.10.1). Without a startup
+    // form the missing startup body rests on the same skipped declaration, so both records at the root are derived and neither gives a
+    // record of its own. A hosted row has no such record.
     [Theory]
     [InlineData(Freestanding, KernelSources.Hello, "extension Board\n    func f() => ()\n", "Unsupported_Kd Console.writeLine(\"Hello\")", "MisplacedSyntax_Kd extension")]
+    [InlineData(Freestanding, "", "extension Board\n    func f() => ()\n", "MissingStartupBody_Kd Root | Unsupported_Kd Root", "MisplacedSyntax_Kd extension")]
     [InlineData(WindowsX64, KernelSources.Hello, "extension Board\n    func f() => ()\n", "", "MisplacedSyntax_Kd extension")]
     [InlineData(Freestanding, KernelSources.Hello, "struct Board\n    Self is Platfrom\n", "Unsupported_Kd Console.writeLine(\"Hello\")", "UnresolvedBinding_Kd Platfrom")]
     [InlineData(WindowsX64, KernelSources.Hello, "struct Board\n    Self is Platfrom\n", "", "UnresolvedBinding_Kd Platfrom")]

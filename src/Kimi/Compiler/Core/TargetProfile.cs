@@ -2,8 +2,9 @@
 
 // Owns the target table (IMPL 21.4, 21.5, 21.6, SPEC 22; Tatara r3 §4; DECISIONS R5-M174): one row per executable target profile,
 // windows-x64 (Windows), linux-x64 (Linux, the Tatara plan's B7b2a: static, without a C library, its layer over system calls) and
-// none-x64 (None, the Tatara plan's B9: freestanding, its program supplying its platform), which Binding's native resolution, the
-// Backend's module frame and runtime ABI, target selection (Project, Solution, LSP), project configuration and the native build read.
+// none-x64 (None, the Tatara plan's B9: freestanding, its program supplying its platform), which Binding's native resolution and its
+// startup check (ProgramPlatform), the Backend's module frame and runtime ABI, target selection (Project, Solution, LSP), project
+// configuration and the native build read.
 // None is staged until its link exists (Staged; removal B9g): Find and the reads over every row (AllRows: Rows, then Staged) reach it,
 // selection (Host, Project.ArtifactTarget) and the readers of the selectable rows (Rows) do not.
 // Input: this process's operating system and architecture (HostName, read once). Output: the selectable rows (Rows), the staged rows

@@ -30,9 +30,11 @@ public sealed partial class Binding
     private readonly List<BindingIssue> startupIssues = new();
     private readonly List<Koto> startupItems = new();
 
-    // SPEC 22.4.5 (DECISIONS <T-M?>): the Application's platform candidates in the root walk's order, each with its own path to Platform
-    // (the first in registration order, never an inherited one), and the clauses whether a platform exists rests on: each root Self
-    // clause that did not bind.
+    // SPEC 22.4.5 (DECISIONS T-M52): the Application's platform candidates in the order of the root's NestedContainers, each with its own
+    // path to Platform (the first in registration order, never an inherited one), and the clauses whether a platform exists rests on: each
+    // root Self clause that did not bind. Only CheckStartup for an Application fills them, with every candidate on every target, whether
+    // or not a record sits at it; ResetStartup clears them at each Bind's pass start, at an edit's revocation, in CheckTestStartup and
+    // before CheckStartup fills them.
     private readonly List<(StructKoto Candidate, BoundConformancePath Path)> platformCandidates = new();
     private readonly List<IsKoto> platformUnresolved = new();
 
@@ -46,9 +48,11 @@ public sealed partial class Binding
     public IReadOnlyList<BindingIssue> StartupIssues => this.startupIssues;
 
     /// <summary>Selects startup after final Binding. Library functions do not receive Application signature restrictions. An Application's
-    /// platform (SPEC 22.4.5) is judged in the same root walk: several platforms and a generic one are errors on every target, a platform
-    /// on a row whose program supplies none and no platform on a row whose program supplies it are each the located Unsupported_Kd, and a
-    /// target without a row records neither.</summary>
+    /// platform (SPEC 22.4.5) is judged over the root's NestedContainers (its root-level structs): several platforms, a generic one and
+    /// one with Origin parameters are errors on every target, a platform on a row whose program supplies none and no platform on a row
+    /// whose program supplies it are each the located Unsupported_Kd, and a target without a row records neither. The no-platform record
+    /// is derived from the parse Errors of the declarations the parser omitted and from the root Self clauses that did not bind, where any
+    /// exist, and is direct otherwise.</summary>
     /// <param name="outputKind">The requested output kind.</param>
     /// <returns>The selection and front-end startup validity, independently of later execution checks.</returns>
     public StartupResult CheckStartup(OutputKind outputKind)
