@@ -333,6 +333,7 @@ other cell); an edit of them lands in a window, whose Session runs them, and one
 | `Ownership.EffectBound` | `IncompatibleContractImplementation_Kd` | A4 (a conformance's witness) | none |
 | `Ownership.VirtualEffectBound` | `UnsatisfiedEffectBound_Kd` | A4 (a virtual function) | none |
 | `Ownership.CallableEffectBound` | `UnsatisfiedEffectBound_Kd` | A4 (a selected Callable binding) | none |
+| `Ownership.PlatformStatic` | `UnsatisfiedEffectBound_Kd` | A4 (a platform member) | none |
 | `Ownership.ComparisonLoanConflict` | `ComparisonLoanConflict_Kd` | A5 | `Anchor`, `Use`, `Store`, `Reservation`, `EffectWrite`, `EffectUnknown`, `EffectRead`, `Evaluated`, `Cause` |
 | `Ownership.ComparisonLoanConflict` | `CallReservationConflict_Kd` | A5 | `Anchor`, `Use`, `Store`, `Reservation`, `EffectWrite`, `EffectUnknown`, `EffectRead`, `Evaluated`, `Cause` |
 | `Ownership.ComparisonLoanConflict` | `CallActivationConflict_Kd` | A5 | `Anchor`, `Use`, `Store`, `Reservation`, `Evaluated`, `Cause` |
