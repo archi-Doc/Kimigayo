@@ -117,11 +117,11 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, four owners: Binding
-    // is R7-N5's (B7c's left in W-359, ImplTable's in B8a, TyCtxt's in B8b), MirBody and MirBuilder the Middle's, DiagnosticOwner the
-    // Diagnostics owner's, HoverBuilder and CodeContext PLAN G1069's; each lowering edits its own count, so whichever of two units lands
-    // second takes the merged counts.
-    private const string NodeKeyedTableSites = "Binding=1;CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
+    // R7-N5 (NodeKeyedTablesStayAtTheirSites): the node-keyed tables outside Syntax, by top-level type. One string, three owners: MirBody
+    // and MirBuilder the Middle's, DiagnosticOwner the Diagnostics owner's, HoverBuilder and CodeContext PLAN G1069's; Binding's count,
+    // R7-N5's, reached 0 in R7-E4 E4e (its last table, `ownedConversions`), so Binding has no row. Each lowering edits its own count, so
+    // whichever of two units lands second takes the merged counts.
+    private const string NodeKeyedTableSites = "CodeContext=1;DiagnosticOwner=3;HoverBuilder=5;MirBody=1;MirBuilder=1";
 
     // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -268,7 +268,6 @@ public class ArchitectureRulesTest
         "Binding.Conversions.cs:IsNeverValue=1 kind",
         "Binding.Conversions.cs:IsRuntimeRecordType=3 kind",
         "Binding.Conversions.cs:ResultNeverEvidence=2 kind",
-        "Binding.Diagnostics.Conversions.cs:ReportOwnedConversion=1 record",
         "Binding.Diagnostics.Operators.cs:ReportOperatorOperand=1 kind",
         "Binding.Diagnostics.cs:FailedCallableClause=1 record",
         "Binding.Diagnostics.cs:SharedObjectAuthorityMismatch=1 record",
@@ -868,7 +867,7 @@ public class ArchitectureRulesTest
     // a constructed Kimi generic type is read through its fields. A class with reference equality (BindingSymbol, BoundType) is its own
     // identity and a SourceRef key a node's value identity, no node; a BCL struct's internals never count. Not seen: a node in a BCL key's
     // generic arguments (KeyValuePair, Tuple) or a node-keyed collection held as a value or an element; review reads those. Counted by
-    // top-level type (NodeKeyedTableSites); each batch lowers its type's count, and R7-N5's exit is Binding's types at 0.
+    // top-level type (NodeKeyedTableSites); each batch lowers its type's count, and R7-N5's exit, Binding's types at 0, was reached by R7-E4 E4e.
     [Theory]
     [InlineData("Kimi", NodeKeyedTableSites)]
     public void NodeKeyedTablesStayAtTheirSites(string prefix, string sites)
