@@ -648,9 +648,9 @@ public sealed partial class Binding
             }
 
             context.Sources[i] = this.SuppliedType(source);
-            if (waited && context.Sources[i] is null && this.PartFailed(source))
+            if (context.Sources[i] is null && this.PartFailed(source))
             {
-                context.RestOn(source); // U1.6h site 6: a waited source that fails when its join decides is the join's cause, not pending.
+                context.RestOn(source); // U1.6h site 6: a source, waited or bound, that fails when its join decides is its cause, not pending.
             }
             else
             {
