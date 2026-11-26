@@ -222,6 +222,8 @@ public partial class OriginRelationDiagnosticTest
     // not fit is its own record (sc_h, and both of s2's), and a source of a join resting on a failed part keeps its own record (w1,
     // BU-79); w1's `1` misfits the Type the outer join takes from `b`, a failure caused by `b`'s reported one, which SPEC 23.1.2's second
     // sentence leaves implementation-defined and which is reported, as on dev (DECISIONS Q13: rule W reads no failed input there).
+    // A misfit is its delivery's, so sc_h's join is typed i64 and a double move on its other path is its own record (sc_h_mv, G103 C;
+    // fail-before: `b` only).
     [Theory]
     [InlineData("U1.6g", "sc_ov", FScalars + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
     [InlineData("U1.6g", "sc_fi", FI64 + KXB + "    return f(if c => x else => b)\n", "NoApplicableOverload_Kd f(if c => x else => b)")]
@@ -229,6 +231,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6g", "sc_h", FI64 + KXB + "    let h = f\n    return h(if c => x else => b)\n", "TypeMismatch_Kd b")]
     [InlineData("G844", "s2", FI64 + "func k(c: bool, b: bool, s: string) -> i32\n    let h = f\n    return h(if c => b else => s)\n", "TypeMismatch_Kd b; TypeMismatch_Kd s")]
     [InlineData("G844", "w1", FI64 + "func k(c: bool, d: bool, b: bool) -> i32\n    let h = f\n    return h(if c => (if d => missing else => b) else => 1)\n", "TypeMismatch_Kd 1; TypeMismatch_Kd b; UnresolvedBinding_Kd missing")]
+    [InlineData("U1.6g", "sc_h_mv", "func take(v: string) -> i64 => 0\n" + FI64 + "func k(c: bool, s: string, b: bool) -> i32\n    let h = f\n    return h(if c => take(s@move) + take(s@move) else => b)\n", "MovedPlace_Kd s; TypeMismatch_Kd b")]
     [InlineData("U1.6g", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_len", FTuple + KXB + "    return f(if c => (x, 1) else => (x, 2, 3))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (x, 2, 3))")]
