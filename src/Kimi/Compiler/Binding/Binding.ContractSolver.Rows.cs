@@ -29,6 +29,7 @@ public sealed partial class Binding
     private readonly List<List<PremiseRow>> enumeratePool = new();
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<IdentityRow> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows, each with its source
+    private readonly HashSet<(BoundType, BoundType, BindingSymbol)> enumerateIdentityKeys = new(); // their (pair, source), emptied with them
     private readonly List<BoundType> enumerateDeferred = new(); // PLAN G881b: the round's mates row (5) did not walk (a cycle)
     private readonly List<BoundType> extendRoots = new(); // c2-4b: a closure's roots (CloseRoot, ExtendRound), a request table (LeaveRows)
     private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
@@ -181,6 +182,7 @@ public sealed partial class Binding
             if (first)
             {
                 this.enumerateIdentities.Clear(); // the closure starts (again) from its roots with no rows
+                this.enumerateIdentityKeys.Clear();
             }
             else if (this.enumerateIdentities.Count == closure.Applied)
             {
@@ -488,6 +490,7 @@ public sealed partial class Binding
 
         this.enumerateWalking++;
         this.enumerateIdentities.Clear();
+        this.enumerateIdentityKeys.Clear();
         this.enumerateCompletion = Completion.Complete;
         return (index, prepared, enclosing);
     }

@@ -785,8 +785,9 @@ public sealed partial class Binding
                 AddConjuncts(this.conjuncts, item);
                 for (var c = start; c < this.conjuncts.Count; c++)
                 {
+                    // A row the walk has not recorded (its pair and source; interned Types, by reference).
                     if (this.conjuncts[c] is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } premise &&
-                        !Recorded(this.enumerateIdentities, left, right, shape.Symbol))
+                        this.enumerateIdentityKeys.Add((left, right, shape.Symbol)))
                     {
                         this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional));
                     }
@@ -794,20 +795,6 @@ public sealed partial class Binding
 
                 this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
             }
-        }
-
-        // Whether the walk recorded the identity row `a is b` from `supplier` (interned Types: by reference).
-        static bool Recorded(List<IdentityRow> rows, BoundType a, BoundType b, BindingSymbol supplier)
-        {
-            for (var i = 0; i < rows.Count; i++)
-            {
-                if (ReferenceEquals(rows[i].Fact.Subject, a) && ReferenceEquals(rows[i].Fact.RequiredType, b) && ReferenceEquals(rows[i].Source, supplier))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
     }
 
