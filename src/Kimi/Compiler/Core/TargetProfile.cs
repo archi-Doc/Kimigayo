@@ -23,8 +23,8 @@
 // row (B7b5): a reserved supply of a name (ReservedSupply; its name is reserved under every target key, IMPL 20.4), whether a supply
 // of that name provides a symbol (Provides), and a symbol's runtime declaration with its providing supply (TryGetRuntimeDeclaration).
 // Invariants: constants and arrays only, but HostName, this process's, read once; triples distinct; no two rows run on one host
-// (ExecutionHost); each selectable row's Layer names exactly one of the Backend's RuntimeLayer records (Core names no Backend type, so
-// CoreModelTest pins it; the staged row's record is B9d1's); each row's supplies distinct, in Ordinal name order (publication
+// (ExecutionHost); each row's Layer names exactly one of the Backend's RuntimeLayer records (Core names no Backend type, so
+// CoreModelTest pins it); each row's supplies distinct, in Ordinal name order (publication
 // interleaves a program's supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2), each
 // one's kind among its row's Kinds and one kind for every row's supply of its name (a reserved supply's kind is fixed, IMPL 20.4); a
 // row's CRuntime names one of its supplies; every row declaring a runtime symbol declares it alike (one physical signature, provided

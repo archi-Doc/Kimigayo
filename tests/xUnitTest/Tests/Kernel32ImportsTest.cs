@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -75,14 +76,15 @@ public sealed class Kernel32ImportsTest
         => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], []));
 
     // A row's constant markers take the row's constants, which only the row's runtime expansion is given (the Tatara plan's B7b2a, N2):
-    // the Windows row's unmapped bound (G371) and its layer's OS-error prefix with its length; a target-free template naming one fails
-    // (BrokenRuntimeTemplateFails).
+    // the Windows row's unmapped bound (G371) and its layer's OS-error prefix with its length, and the none layer's prefix (IMPL 21.6); a
+    // target-free template naming one fails (BrokenRuntimeTemplateFails).
     [Theory]
-    [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
-    [InlineData("{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[8 x i8] c\" (win32=\"\n")]
-    public void ARowsRuntimeTemplateTakesTheRowsConstants(string template, string body) => Assert.Equal(
+    [InlineData("x86_64-pc-windows-msvc", "{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
+    [InlineData("x86_64-pc-windows-msvc", "{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[8 x i8] c\" (win32=\"\n")]
+    [InlineData("x86_64-unknown-none", "{{__kimi_exit}}\n[{{os_prefix_length}} x i8] c\"{{os_prefix}}\"\n", "[11 x i8] c\" (platform=\"\n")]
+    public void ARowsRuntimeTemplateTakesTheRowsConstants(string row, string template, string body) => Assert.Equal(
         RuntimeAbi.Exit.GetDefinition(exported: false) + body,
-        LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], RuntimeAbi.RowConstants(TargetProfile.Windows)));
+        LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit], RuntimeAbi.RowConstants(TargetProfile.Find(row)!)));
 
     // IMPL 21.4.7 (the Tatara plan's decision 24, B7r4): the memory part defines exactly TargetProfile.MemorySymbols, in order, each
     // external under #1, and declares only an LLVM intrinsic; the footer's #1 is #0 plus "no-builtins".
@@ -105,16 +107,17 @@ public sealed class Kernel32ImportsTest
     public void TheRuntimeTemplatesUnmarkedFactsHold()
     {
         Assert.Equal((0, 1), (RuntimeAbi.StaticReleaseKind, RuntimeAbi.HeapReleaseKind));
-        Assert.All(TargetProfile.Rows, static row => Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, row.UnmappedBound - 1));
+        Assert.All(TargetProfile.AllRows, static row => Assert.InRange(RuntimeAbi.ZeroSizedBuffer, 1, row.UnmappedBound - 1));
     }
 
     // PLAN G358, G366, G371: the one ordered scan writes what replacing each marker of a real runtime template, a row's runtime (its
     // platform layer, the common part and the allocator, with the layer's definitions and the row's constants; the Windows and Linux
-    // rows') or the test runtime's (the definitions, the reason indices, the reason table and its count, the ABI constants), by its text
-    // throughout the whole text wrote.
+    // rows' and the none row's, IMPL 21.6) or the test runtime's (the definitions, the reason indices, the reason table and its count, the
+    // ABI constants), by its text throughout the whole text wrote.
     [Theory]
     [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("x86_64-unknown-linux-musl")]
+    [InlineData("x86_64-unknown-none")]
     [InlineData("TestRuntime")]
     public void RuntimeTemplateExpandsAsEachMarkersReplacement(string runtime)
     {
@@ -151,6 +154,92 @@ public sealed class Kernel32ImportsTest
         Assert.Contains(marker, template, StringComparison.Ordinal);
         Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(
             template.Replace(marker, replacement, StringComparison.Ordinal), layer.Definitions, RuntimeAbi.RowConstants(TargetProfile.Windows)));
+    }
+
+    // IMPL 21.6: the none row's runtime holds Limine's requests of base revision 6, each an internal 8-byte-aligned global in its
+    // section and in the runtime's compiler-used list: the start marker, the base-revision tag, the higher-half direct map and memory
+    // map requests (the common magic, the request's id, revision 0, no response) and the end marker.
+    [Theory]
+    [InlineData("start", "[4 x i64] [i64 u0xf6b8f4b39de7d1ae, i64 u0xfab91a6940fcb9cf, i64 u0x785c6ed015d3e316, i64 u0x181e920a7852b9d9]", "_start")]
+    [InlineData("base_revision", "[3 x i64] [i64 u0xf9562b2d5c95a6c8, i64 u0x6a7b384944536bdc, i64 6]", "")]
+    [InlineData("hhdm", "{ [4 x i64], i64, ptr } { [4 x i64] [i64 u0xc7b1dd30df4c8b88, i64 u0x0a82e883a194f07b, i64 u0x48dcf1cb8ad2b852, i64 u0x63984e959a98244b], i64 0, ptr null }", "")]
+    [InlineData("memmap", "{ [4 x i64], i64, ptr } { [4 x i64] [i64 u0xc7b1dd30df4c8b88, i64 u0x0a82e883a194f07b, i64 u0x67cf3d9d378a806f, i64 u0xe304acdfc50c3c62], i64 0, ptr null }", "")]
+    [InlineData("end", "[2 x i64] [i64 u0xadc0e0531bb10d03, i64 u0x9572709f31764c62]", "_end")]
+    public void TheNoneRuntimeKeepsEachLimineRequestInItsSection(string request, string value, string section)
+    {
+        var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
+        Assert.Contains($"\n@__kimi_limine_{request} = internal global {value}, section \".limine_requests{section}\", align 8\n", runtime, StringComparison.Ordinal);
+        var kept = Regex.Match(runtime, @"\n@llvm\.compiler\.used = appending global \[(\d+) x ptr\] \[([^\]]*)\], section ""llvm\.metadata""\n");
+        Assert.Contains("ptr @__kimi_limine_" + request, kept.Groups[2].Value.Split(", "));
+        Assert.Equal(5, int.Parse(kept.Groups[1].Value, CultureInfo.InvariantCulture));
+    }
+
+    // IMPL 21.6: the none row's boot reads the loader's three answers volatile (the tag's third word, each request's response), halts the
+    // processor with interrupts disabled when the loader did not accept the revision or left a request unanswered, and runs before the
+    // program's platform start, which takes the Boot it filled.
+    [Fact]
+    public void TheNoneBootReadsTheLoadersAnswersBeforeThePlatformStart()
+    {
+        var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
+        var boot = Definition(runtime, "define internal void @__kimi_boot(ptr %boot) #0 {\n");
+        Assert.Equal(3, Regex.Matches(boot, " = load volatile ").Count);
+        Assert.Contains("  %accepted_slot = getelementptr i8, ptr @__kimi_limine_base_revision, i64 16\n  %accepted = load volatile i64, ptr %accepted_slot, align 8\n", boot, StringComparison.Ordinal);
+        Assert.Contains("  %hhdm_slot = getelementptr i8, ptr @__kimi_limine_hhdm, i64 40\n  %hhdm = load volatile ptr, ptr %hhdm_slot, align 8\n", boot, StringComparison.Ordinal);
+        Assert.Contains("  %memmap_slot = getelementptr i8, ptr @__kimi_limine_memmap, i64 40\n  %memmap = load volatile ptr, ptr %memmap_slot, align 8\n", boot, StringComparison.Ordinal);
+        Assert.Contains(
+            "  %refused = icmp ne i64 %accepted, 0\n  %no_hhdm = icmp eq ptr %hhdm, null\n  %no_memmap = icmp eq ptr %memmap, null\n" +
+            "  %unanswered = or i1 %no_hhdm, %no_memmap\n  %failed = or i1 %refused, %unanswered\n  br i1 %failed, label %halt, label %answered\n" +
+            "halt:\n  call void @__kimi_halt()\n  unreachable\n",
+            boot,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\ndefine internal void @__kimi_halt() noreturn #0 {\nentry:\n  br label %halt\nhalt:\n" +
+            "  call void asm sideeffect \"cli\\0Ahlt\", \"~{memory},~{dirflag},~{fpsr},~{flags}\"()\n  br label %halt\n}\n",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "  call void @__kimi_boot(ptr %boot)\n  call void @" + RuntimeAbi.PlatformMemberStart.Name + "(ptr %boot)\n",
+            Definition(runtime, RuntimeAbi.PlatformStart.GetDefinition(exported: false)),
+            StringComparison.Ordinal);
+    }
+
+    // IMPL 21.6: each platform routine of the none row tests the busy flag (set: the processor halts), sets it, calls its adapter as the
+    // adapter's record spells its result and parameter types, clears it after but in the exit, which never returns, and maps the
+    // adapter's result: a write's and a release's 0 is success (-1), their -1 a failure without an OS error, any other result the error;
+    // a run below the unmapped bound or not 4,096-aligned is refused as null; the clock's result is returned as it is.
+    [Fact]
+    public void EachNoneRoutineCallsItsAdapterUnderTheBusyFlagAndMapsItsResult()
+    {
+        var runtime = LlvmModuleText.Frame(TargetProfile.None).Runtime;
+        const string Clear = "  store i8 0, ptr @__kimi_platform_busy, align 1\n";
+        var outcome = Clear + "  %succeeded = icmp eq i64 %result, 0\n  %unexplained = icmp eq i64 %result, -1\n  %failure = select i1 %unexplained, i64 " +
+            RuntimeAbi.NoOsError.ToString(CultureInfo.InvariantCulture) + ", i64 %result\n  %error = select i1 %succeeded, i64 -1, i64 %failure\n" +
+            "  ret i64 %error\n}\n";
+        (FunctionAbi Routine, FunctionAbi Adapter, string Mapping)[] routines =
+        [
+            (RuntimeAbi.PlatformStart, RuntimeAbi.PlatformMemberStart, Clear + "  ret void\n}\n"),
+            (RuntimeAbi.Pages, RuntimeAbi.PlatformMemberMapPages, Clear + "  %address = ptrtoint ptr %run to i64\n" +
+                $"  %low = icmp ult i64 %address, {TargetProfile.None.UnmappedBound}\n  %offset = and i64 %address, 4095\n" +
+                "  %misaligned = icmp ne i64 %offset, 0\n  %refused = or i1 %low, %misaligned\n  %result = select i1 %refused, ptr null, ptr %run\n" +
+                "  ret ptr %result\n}\n"),
+            (RuntimeAbi.ReleasePages, RuntimeAbi.PlatformMemberReleasePages, outcome),
+            (RuntimeAbi.Write, RuntimeAbi.PlatformMemberWrite, outcome),
+            (RuntimeAbi.Clock, RuntimeAbi.PlatformMemberClock, Clear + "  ret i64 %result\n}\n"),
+            (RuntimeAbi.Exit, RuntimeAbi.PlatformMemberTerminate, "  unreachable\n}\n"),
+        ];
+        foreach (var (routine, adapter, mapping) in routines)
+        {
+            var body = Definition(runtime, routine.GetDefinition(exported: false));
+            var guard = body.IndexOf(
+                "  %busy = load i8, ptr @__kimi_platform_busy, align 1\n  %reentered = icmp ne i8 %busy, 0\n  br i1 %reentered, label %halt, label %call\n" +
+                "halt:\n  call void @__kimi_halt()\n  unreachable\ncall:\n  store i8 1, ptr @__kimi_platform_busy, align 1\n",
+                StringComparison.Ordinal);
+            var arguments = string.Join(", ", adapter.Parameters.Select(static x => Regex.Escape(x.Type) + @" %\w+"));
+            var call = Regex.Match(body, $@"\n  (?:%\w+ = )?call {Regex.Escape(adapter.Result)} @{adapter.Name}\({arguments}\)\n");
+            Assert.True(guard >= 0 && call.Success && guard < call.Index, routine.Name);
+            Assert.Equal(mapping, body[(call.Index + call.Length)..]);
+            Assert.Equal(adapter.NoReturn ? 0 : 1, body.Split(Clear).Length - 1);
+        }
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,
@@ -294,5 +383,14 @@ public sealed class Kernel32ImportsTest
         }
 
         return text.Append(TestRuntime.Text).ToString();
+    }
+
+    // The one definition of a runtime text whose define line is head, from the line after it through its closing "}\n".
+    private static string Definition(string runtime, string head)
+    {
+        var start = runtime.IndexOf("\n" + head, StringComparison.Ordinal);
+        Assert.True(start >= 0 && runtime.IndexOf("\n" + head, start + 1, StringComparison.Ordinal) < 0, head);
+        start += head.Length + 1;
+        return runtime[start..(runtime.IndexOf("\n}\n", start, StringComparison.Ordinal) + 3)];
     }
 }

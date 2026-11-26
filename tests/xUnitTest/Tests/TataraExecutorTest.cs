@@ -441,6 +441,51 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
+    // IMPL 21.6: the none row's layer, with its start form, a start body calling the platform's start and the exit, an adapter for each
+    // Platform requirement, the memory part and the footer, optimized by Tatara at O2 and emitted at O0 and O2 for the row's target, is
+    // one object with no undefined symbol that keeps each of Limine's requests in its section.
+    [Fact]
+    public async Task TheNoneLayerKeepsLimineRequestsInItsObject()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var row = TargetProfile.None;
+        var context = new TataraContext((_, _) => { }, CancellationToken.None, row.Target, row.Cpu, row.Features, row.RelocationModel, row.CodeModel);
+        var (frame, layer) = (LlvmModuleText.Frame(row), RuntimeAbi.Layer(row));
+        var text = new StringBuilder(frame.Header).Append(frame.Runtime).Append(layer.StartAssembly).Append(layer.Start.GetDefinition(exported: false))
+            .Append("entry:\n  call void @").Append(RuntimeAbi.PlatformStart.Name).Append("()\n  call void @").Append(RuntimeAbi.Exit.Name)
+            .Append("(i32 0)\n  unreachable\n}\n");
+        FunctionAbi[] adapters = [RuntimeAbi.PlatformMemberStart, RuntimeAbi.PlatformMemberMapPages, RuntimeAbi.PlatformMemberReleasePages,
+            RuntimeAbi.PlatformMemberWrite, RuntimeAbi.PlatformMemberClock, RuntimeAbi.PlatformMemberTerminate];
+        foreach (var adapter in adapters)
+        {
+            text.Append(adapter.GetDefinition(exported: false)).Append("entry:\n  ")
+                .Append(adapter.NoReturn ? "unreachable" : adapter.Result == "void" ? "ret void" : "ret " + adapter.Result + " zeroinitializer").Append("\n}\n");
+        }
+
+        var module = Path.Combine(this.directory, "none.ll");
+        File.WriteAllText(module, text.Append(LlvmModuleText.MemoryRuntime).Append(frame.Footer).ToString());
+        (string Symbol, string Section)[] requests =
+            [("start", "_start"), ("base_revision", string.Empty), ("hhdm", string.Empty), ("memmap", string.Empty), ("end", "_end")];
+        foreach (var level in Levels)
+        {
+            var ir = level == "O2" ? Path.Combine(this.directory, "none.O2.ll") : module;
+            if (level == "O2")
+            {
+                File.WriteAllText(ir, Tatara.Instance.Optimize(context, module));
+            }
+
+            var obj = Path.Combine(this.directory, $"none.{level}.o");
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(context, ir, obj, level[1] - '0'));
+            Assert.Empty(Assert.Single(Tatara.Instance.Inspect(context, obj).Members).Undefined);
+            var (failure, listing) = await Launch("llvm-readobj", this.directory, "--sections", "--symbols", obj);
+            Assert.Equal(string.Empty, failure);
+            foreach (var (symbol, section) in requests)
+            {
+                Assert.Matches($@"Name: __kimi_limine_{symbol} \(\d+\)\r?\n(?:[^\r\n}}]*\r?\n)*?\s*Section: \.limine_requests{section} \(", listing);
+            }
+        }
+    }
+
     // Tatara takes no signal or exception-filter state (C-424 R1): after an optimize, an emit, a failed emit, an inspect and a link,
     // the process's unhandled-exception filter is still in the module that owned it before (the host's, never tatara.dll). LLVM's
     // Windows signal registration sets this filter and its console handler together, so an unchanged filter also means no console
