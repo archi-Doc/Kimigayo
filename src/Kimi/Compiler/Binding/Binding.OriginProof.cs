@@ -4,13 +4,33 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// The Origin proof and the relation judge (SPEC 15.3.3, 15.3.6, 15.4.4, 15.6.1, 15.6.5; PLAN G74; DECISIONS R7-M66, <R7-O1 c+f>).
+// - Responsibility: the pure proof (ProvesOriginOutlives; Final's IsVerifiedOriginObligation) and an Origin's one resolution at its
+//   use (OriginAtUse); a fit's Origin part (FitOrigin, FitConjunct) and the bounds it gives an open initializer's omitted Origins
+//   (FitOriginOutlives, CollectInitializerBound); a Type's clauses, proven (CheckTypeOriginRelations) or obligations at an occurrence
+//   (AddTypeClauseObligations), a callee's in a comparison (CheckCallOriginRelations) and Type declarations' Origin contracts
+//   (BindTypeOriginContracts); a comparison's region rows (LeavesBodyRows, ComparedRegionLimit); and the relation judge
+//   (JudgeOriginRelation, JudgeOriginObligation) for OJ1, OJ3 and OJ4 alone: the declaration frame (JudgeDeclarationPosition,
+//   FailedDeclaredRelation), Owned's static check (RefutedStatic) and a Callable comparison (OriginFailure, ComparedRegionLimit,
+//   LeavesBodyRows).
+// - Inputs: the premises at a use (EntailsOrigin, Binding.OriginPremises.cs), the Origin declarations and local initializers, the
+//   classes (Binding.OriginClasses.cs) and the region graph.
+// - Outputs: a proof's answer, a judgment (OriginJudgment), the obligations a fit or a Type's clauses form (AddObligation) and a
+//   comparison's rows in its query's row sink (comparisonRows).
+// - Invariants: a proof request leaves originStateVersion unchanged (PLAN G74's throw); between fixed Origins the judge reads premises
+//   alone, so a relation they do not prove is Unknown.
+// - Prohibitions: no body relation is judged here (FormBodyRelation forms its row and A5 judges it); no record (its callers record);
+//   no message text.
 public sealed partial class Binding
 {
     // The row sink of every reader of a comparison's region conjuncts (CallableInstance.Rows; LeavesBodyRows): one reused list (warm
     // 0 B), each reader's segment from the end it found when it built its query, formed or dropped and truncated when it returns.
     private readonly List<BindingObligation> comparisonRows = new();
 
-    // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
+    // The one version of the Origin state that premise environments are built from: Origin declarations' formation and replacements,
+    // local initializer inference, inherited declarations and the obligations whose region bounds R5 and J1 read. A reused environment (a
+    // premise session's, a Callable comparison's, a body's oracle) is valid only at the version it was built at, and a proof request
+    // leaves it unchanged (PLAN G74). It stays while a session's judge changes that state between its requests (DECISIONS <R7-O1 c+f>).
     private int originStateVersion;
 
     // The candidate evaluations in progress (EvaluateCallCandidates): the Origin part of a fit there is the pure answer, since only the
@@ -158,7 +178,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1: the judge reads premises alone, so a relation between two fixed Origins it does not prove is Unknown, a region at a fixed
-    // end included, whose value is no premise: no reader takes it as holding. A caller that leaves a row asks BodyChain first.
+    // end included, whose value is no premise: no reader takes it as holding. A caller that leaves a row asks ConstrainsRegions first.
     private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
     {
         if (UnstatedRelation(longer, shorter) is { } holds)
@@ -603,7 +623,7 @@ public sealed partial class Binding
                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax);
                 if (!ReferenceEquals(a, b) &&
-                    (BodyChain(this.OriginAtUse(a, occurrence), this.OriginAtUse(b, occurrence), this.formingBody) || !this.PublishedPremise(obligation, a, b)))
+                    (ConstrainsRegions(this.OriginAtUse(a, occurrence), this.OriginAtUse(b, occurrence), this.formingBody) || !this.PublishedPremise(obligation, a, b)))
                 {
                     this.AddObligation(obligation);
                 }

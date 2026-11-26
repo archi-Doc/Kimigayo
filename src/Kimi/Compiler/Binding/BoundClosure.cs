@@ -60,7 +60,7 @@ public sealed class BoundClosure
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
 
     // Whether this binding published the definition (Binding.PublishClosure, on both of its paths; cleared where BindClosure clears the
-    // Signature): the one gate of Of. Not Classified, which is set before JudgePendingRelations and PublishedResult, where the
+    // Signature): the one gate of Of. Not Classified, which is set before PublishedResult, where the
     // EnvironmentType is still the preliminary one that TyCtxt.ClosureEnvironment would read (DECISIONS R5-M63 (1) as amended).
     internal bool Published { get; set; }
 

@@ -6,8 +6,8 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // Origin records (SPEC 15.6.1: every failed chain; SPEC 23.1.2: independent problems). A body's relations are rows A5 judges
-// (FormBodyRelation, R7-O1: calls, fits, local clauses and pending relations); Binding judges in the declaration frame
-// (JudgeDeclarationPosition, Binding.OriginClauses.cs) and keeps SPEC 5.7's Unstated and holder-place rules.
+// (FormBodyRelation, DECISIONS R7-M66: calls, fits, local clauses and relations naming a pending atom); Binding judges in the
+// declaration frame (JudgeDeclarationPosition, Binding.OriginClauses.cs) and keeps SPEC 5.7's Unstated and holder-place rules.
 // - Responsibility: every Origin relation or Origin contract record, a node's first included, as a problem of its node with one
 //   OriginRecord fact, numbered from 0 under its own requirement (DECISIONS R7-M95 E4d): one that fails its node (RecordOrigin, its first
 //   failure only) or one that leaves it Resolved (RecordResolvedOrigin; SPEC 5.7's two rules, R7-O1 B4); the relations the declaration
@@ -19,8 +19,8 @@ namespace Kimi.Compiler;
 // - Invariants: callRelationScratch is empty after PublishCallRelations; a record's code is its own (a relation's Refuted or Unknown, a
 //   contract's), so its requirement selects its row; an equal record at a node is the one kept (BindingReport.Condition); each record keeps
 //   its kind, subject and location and is published once; no record is dropped, merged or reordered because of another (SPEC 23.1.2).
-// - Prohibitions: no judgment of a relation or a comparison (OriginClauses, OriginFits and the Type relation judge decide; CallRelations
-//   forms rows); no message text.
+// - Prohibitions: no judgment of a relation or a comparison (OriginClauses, OriginProof and the Type relation judge decide;
+//   FormBodyRelation forms rows); no message text.
 public sealed partial class Binding
 {
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
