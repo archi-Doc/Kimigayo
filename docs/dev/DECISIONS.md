@@ -26310,6 +26310,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   the RP8 row's `check` times are the measure.
   - Extended by R7-M98 (PLAN G1082, Q-730): the invalidation-key rest above covers a Callable comparison's premise
     environments too.
+  - Closed in part by R7-M120 (R7-O1 f): the invalidation key stays `originStateVersion`; the per-request closure stays R7-O1 e's
+    rest (PLAN G778's trigger).
 - **R7-M40 A candidate's trial owns its frame, and a solve's invariant marks are its frame's** (Front, 2026-11-18; R7-I2 c, plan
   §5.0's I2 part c, revision 95; design `front\notes\I2\design-c.md` phases 1-2: design review REVISE (B1-B3), the re-check REVISE
   (R1), the delta check ACCEPT; implementation review ACCEPT WITH CONDITIONS, C1 met; F's I2 ruling-c 1-9; Major: commit 1
@@ -29375,6 +29377,7 @@ Closure row of `MirCases.Branch`).
   makes no request on dev since Q-640); it is closed by `CallableRegionScalingTest.ALiteralsComparisonOverManyInputsScales` and
   `NestedComparisonsOverManyInputsScale` (inputs alternating `ref/U` and a Function Type, nested once or twice): written edges +
   insertions + activations at most 2.25x per doubling, environments constant.
+  - Superseded in part by R7-M120 (R7-O1 f): `originStateVersion` is not deleted, so it stays the comparison environments' key.
 - **R7-M99 After Binding's run a height refusal and every read of one go to the innermost after-run owner; R5-M171's limit table is
   MirReport's (PLAN G651 U2b)** (Back, 2026-11-25; Q-734, D-1255; Major: design `back\notes\g651-u2b\design.md` Revision 2 with B's
   rulings 1-34; design reviews C-495 (the Front, the Middle); implementation reviews and delta reads C-510 (the Front's Binding hunks,
@@ -30416,6 +30419,32 @@ Closure row of `MirCases.Branch`).
     per Reason (a new packing whose continuation needs a presence rule); Count rows as parameter ordinals (a second meaning of
     Count, R7-M62); a requirement role per case (no row needs it); a cap on binders or a continuation Reason (one Reason per
     binder needs neither); a Record at L11's meet (an added record or a Defect); showing role 2 (a message change).
+- **R7-M120 R7-O1's close: the relation judge's readers, its names and ratchets, and the Origin state version** (Middle, 2026-11-27;
+  R7-O1 c and f, Q-818; Major, behaviour-preserving: diagnostic snapshot 0, semantic HIR+MIR 0, generated gate 0; design
+  `artifacts/units/r7o1-cf/design.md`) SPEC 15.6.1, 15.6.5.
+  - **The judge** (`JudgeOriginRelation`, `JudgeOriginObligation`; `Binding.OriginProof.cs`, its contract at the file's head) is read
+    in the declaration frame (OJ1: `JudgeDeclarationPosition`, `FailedDeclaredRelation`), by `Owned`'s static check (OJ3:
+    `RefutedStatic`) and by a Callable comparison (OJ4: `OriginFailure`, `ComparedRegionLimit`, `LeavesBodyRows`); a body relation is
+    a row (R7-M66).
+  - **Names.** `JudgeCallPosition` is `FormCallRelation`, a selected call's row with its `FixedBy`, without the `declared` flag (a
+    clause's presence at every caller); `BodyChain` is `ConstrainsRegions` (SPEC 15.6.5: an end not fixed in the body or a region at
+    either end, a row whatever the premises answer).
+  - **Ratchets** (`ArchitectureRulesTest`): no source in `src/Kimi` or test names the body judge's deleted members;
+    `JudgeOriginRelation`'s calls in `src/Kimi/Compiler/Binding` and the explicit `new OriginRelationFact(` constructions (V5's two,
+    V6, V7) stay at their sites. Their known limits: the records row does not count a target-typed `new(` (the A5 adapter's two at
+    `Compilation.Publication.cs:272, 287`; the house form at record sites), and the judge row scans Binding only (PLAN G1457).
+  - **`originStateVersion` stays** (f): the one version of the Origin state premise environments are built from; a premise
+    session's and a Callable comparison's environment are reused only at it, the body's oracle is read only at it, and a proof
+    request leaves it unchanged (PLAN G74). Why: the well-formedness enumeration's session changes that state between its requests
+    (rows whose region bounds R5 and J1 read; an open initializer's bound and declaration).
+  - **Unchecked precondition (F-1).** Three region-graph writes move only `regionVersion`: `PublishRegionValue` and `RecordOpening`
+    with J2's solved bounds, through `RecordRegionBound` (`Binding.LocalRegions.cs`). Premise environments read the bounds they write
+    (R5 and J1 through `LocalRegionBound`), so f's contract holds only while none of these writes runs inside an open premise
+    session. The whole suite under an uncommitted assertion showed none (48,464 tests, on 0ed650c96); no check remains, unlike G74's
+    and the oracle's throws.
+  - **Rejected:** deleting it with openers only over settled state (false for that session; its stage is R7-O1 e's per-body
+    closure); a version per state kind (a second reading of one state); keeping `JudgeCallPosition` (it judges nothing since R7-M51)
+    and `BodyChain` (its contrast with Binding's judgment ended with R7-M66).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
