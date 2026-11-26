@@ -84,7 +84,7 @@ public sealed partial class Binding
         _ => true,
     };
 
-    // SPEC 15.6.1, 15.6.5 (R7-O1; DECISIONS draft "A body's Origin relations are judged by A5 alone"): the one rule for a relation formed
+    // SPEC 15.6.1, 15.6.5 (R7-O1; DECISIONS R7-M66): the one rule for a relation formed
     // in an executable body: Binding judges none; it is a row of the body's C1-F4 view, which A5 judges, unless it is a fixed-fixed
     // relation the fit's answer proves both ways. In order: (1) a meet at the longer end of a relation that is no body chain (every operand
     // fixed) and does not fit as a whole decomposes, each operand its own relation (SPEC 15.3.6); a body chain's meet stays one row, whose
@@ -103,7 +103,7 @@ public sealed partial class Binding
             return;
         }
 
-        var chain = BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), this.formingBody);
+        var chain = ConstrainsRegions(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), this.formingBody);
         if (!chain && !equality && longer.Kind == OriginKind.Intersection && !this.FitConjunct(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)

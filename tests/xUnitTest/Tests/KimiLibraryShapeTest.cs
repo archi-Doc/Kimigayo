@@ -596,6 +596,18 @@ public partial class KimiLibraryShapeTest
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
+    // IMPL 21.6: PlatformRows' rows are Platform's requirements in declaration order, each row's receiver whether its requirement takes
+    // `self`, and each adapter's record is named by its requirement.
+    [Fact]
+    public void PlatformRowsArePlatformsRequirements()
+    {
+        var shape = Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(KimiDeclarationId.Platform)!.Declaration));
+        var requirements = shape.Split('\n').Where(static x => x.StartsWith("func ", StringComparison.Ordinal))
+            .Select(static x => (x[5..x.IndexOf('(', StringComparison.Ordinal)], x.Contains("(self:", StringComparison.Ordinal)));
+        Assert.Equal(requirements, PlatformRows.Rows.Select(static x => (x.Name, x.Receiver)));
+        Assert.All(PlatformRows.Rows, static x => Assert.Equal("__kimi_platform_member_" + x.Name, x.Adapter.Name));
+    }
+
     // Code generation addresses these records' stored Fields by name, in this order, and runs their drop; a record without Fields stays
     // zero-sized.
     [Theory]

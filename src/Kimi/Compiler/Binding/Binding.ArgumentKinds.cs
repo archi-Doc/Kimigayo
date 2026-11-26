@@ -195,7 +195,9 @@ public sealed partial class Binding
 
     // SPEC 10.5.1 (PLAN G924, the owner's O-408 (a)): the order in which, after selection, the parts at positions that hold a slot still
     // unsolved take their own Types (SlotSolution.DefaultArguments, DefaultPayloads), each step over the slots the steps before it left
-    // unsolved: the literals' defaults, then the waiting nested calls (constructions included), which do not feed each other.
+    // unsolved: the literals' defaults, then the waiting nested calls (constructions included), which do not feed each other. The late
+    // evidence walk that re-runs the candidate after a step takes them in the same order (PLAN G1266): each literal's default where the
+    // walk meets it, and every own Type of the call step at the walk's end (ownTypes, SlotSolution.InferGathered).
     private static readonly PartKind[] OwnTypeSteps = [PartKind.Literal, PartKind.Call];
 
     // SPEC 10.2.1 (PLAN G924, the owner's O-341 (a)): the Type a part that no expected Type reaches takes for the selected candidate of
