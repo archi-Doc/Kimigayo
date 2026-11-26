@@ -81,7 +81,7 @@ internal enum ProblemFactKind : byte
     Operand, // Binding: the syntax an operator failed at, its operand's Type (Value, an index in BindingReport's kept sides; SPEC 13).
     Terminal, // Binding: the same syntax, the Type the operator judged (Value, the same).
     Constraint, // Binding: the proposition its check needs and could not prove: an operator's requirement, a clause's proposition at a selected call or a range iteration's entry (Value, an index in the kept propositions).
-    OriginRecord, // Binding: the subject, one of its Origin records beyond the first (Value, an index in the kept Origin records; SPEC 15.6.1).
+    OriginRecord, // Binding: the subject, one of its Origin records, the first included (Value, an index in the kept Origin records; SPEC 15.6.1).
     Related, // Binding: a location the record shows, its own or a related one, or reads (Value, the role's ordinal in its code's row; SPEC 23.3).
     Count, // Binding: the subject, a count its requirement states, such as an arity (Value, the count; in its code's row order).
     Reason, // Binding: the subject, a row of the closed enumeration its requirement names, or its code's packed rows (Value; text the adapter's).

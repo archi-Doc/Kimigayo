@@ -123,10 +123,10 @@ internal sealed class BindingReport
         return this.constraints.Count - 1;
     }
 
-    /// <summary>Keeps an Origin record, whose fields are no facts of their own until E4's relation fact.</summary>
+    /// <summary>Keeps an Origin record, an OriginRecord fact's value (the kept Origin record store, as the kept sides; DECISIONS R7-M95
+    /// E4d).</summary>
     /// <param name="record">The record.</param>
     /// <returns>Its index, the fact's Value.</returns>
-    [Transitional("R7", Reason = "An Origin record's row, until E4's relation fact takes both phases' records.")]
     internal long Keep(in OriginRecord record)
     {
         this.origins.Add(record);
@@ -170,8 +170,7 @@ internal sealed class BindingReport
     /// has recorded one of the same requirement at or after it, the condition after that requirement's last, in recording order, so new
     /// facts take a new key. Other requirements' problems never move it: the key and the semantic order compare the requirement before
     /// the condition, and a requirement's first problem stays at its check's condition, where its slot's reads find it.</summary>
-    /// <param name="problem">The problem, at its check's condition: an Origin record beyond its node's first is at 1, since that first
-    /// failure, held outside the report, may be set after it (RecordOriginChains); a refining Contract's conflict at 0.</param>
+    /// <param name="problem">The problem, at its check's condition: an Origin record and a refining Contract's conflict at 0.</param>
     /// <param name="facts">Its facts.</param>
     /// <returns>Its condition.</returns>
     internal ushort Condition(in BindingProblem problem, ReadOnlySpan<ProblemFact> facts)

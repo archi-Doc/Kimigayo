@@ -177,10 +177,6 @@ public sealed partial class Binding
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
         }
-        else if (this.ReportOriginRecords(issue.Node, store, issue.Code, requirement))
-        {
-            // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
-        }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
             this.ReportDuplicateBindingSet(bindingSet, store, reusedSet, requirement, issue.Code);
@@ -209,7 +205,7 @@ public sealed partial class Binding
         }
         else
         {
-            issue.Node.ReportIn(store, requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
+            issue.Node.ReportIn(store, requirement, issue.Code, evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
         }
     }
 
@@ -230,7 +226,7 @@ public sealed partial class Binding
             this.ReportIssue(issues[i]);
         }
 
-        this.ReportResolvedOriginRecords();
+        this.ReportOutsideIssues();
         for (var i = 0; i < derivedIssues.Count; i++)
         {
             this.ReportDerived(derivedIssues[i]);

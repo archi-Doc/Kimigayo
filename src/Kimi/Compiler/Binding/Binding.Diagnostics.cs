@@ -22,11 +22,6 @@ public sealed partial class Binding
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
 
-    // SPEC 15.6.1: the Origin relation that an Origin-only fit failure leaves, at the value that supplies its longer end.
-    private Dictionary<Koto, OriginRelationFact>? originRelations;
-
-    private Dictionary<Koto, OriginContractFact>? originContracts;
-
     // SPEC 15.2.3: the Owned failure of a common Function conversion, recorded only when it fails.
     private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
 
@@ -405,12 +400,12 @@ public sealed partial class Binding
         return this.RecordTypeMismatch(node, at, actual, expected);
     }
 
-    // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
-    // and the others published with it (RecordFurtherOriginRecord): each Function component's failed condition is one
-    // UnprovenOriginContract_Kd at the value (ContractFact); a limit is the located Unsupported_Kd. The plain positions are rows A5 judges
-    // (R7-O1), formed by the recording caller's use-site fit (CheckTypeUse, FitsValueAt): a failure with plain positions only reaches here
-    // on a path that bypassed it, a broken contract. The walk's facts are read only when their first is `failure` (another fit may have
-    // walked since); otherwise `failure` is the one fact.
+    // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, each an Origin record of the
+    // node (RecordOrigin): each Function component's failed condition is one UnprovenOriginContract_Kd at the value (ContractFact); a limit
+    // is the located Unsupported_Kd. The plain positions are rows A5 judges (R7-O1), formed by the recording caller's use-site fit
+    // (CheckTypeUse, FitsValueAt): a failure that is a plain position, at a node that fit left unfailed, reaches here on a path that
+    // bypassed it, a broken contract, the node's Internal failure before any record. The walk's facts are read only when their first is
+    // `failure` (another fit may have walked since); otherwise `failure` is the one fact.
     private BoundType? RecordComparisonFacts(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
     {
         if (failure.Kind == ComparisonFailureKind.Limit)
@@ -418,33 +413,24 @@ public sealed partial class Binding
             return this.Fail(node, BindingFailure.Unsupported);
         }
 
+        if (!failure.IsCondition && this.RecordedFailure(node) == BindingFailure.None)
+        {
+            this.Fail(node, BindingFailure.Internal); // Before any RecordOrigin, so the node keeps its Internal slot.
+        }
+
         var facts = this.comparisonFacts;
         var count = facts.Count != 0 && facts[0].Same(failure) ? facts.Count : 1;
-        var positions = !failure.IsCondition;
-        if (!positions)
+        for (var i = 0; i < count; i++)
         {
-            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(at, failure, node));
-        }
-
-        for (var i = 1; i < count; i++)
-        {
-            if (facts[i].IsCondition)
+            var fact = i == 0 ? failure : facts[i];
+            if (fact.IsCondition)
             {
-                this.RecordFurtherOriginRecord(node, new(null, this.ContractFact(at, facts[i], node)));
-            }
-            else
-            {
-                positions |= facts[i].Kind is ComparisonFailureKind.Position or ComparisonFailureKind.Shape;
+                this.RecordOrigin(node, new(null, this.ContractFact(at, fact, node)));
             }
         }
 
-        // A plain position is a row the recording caller's use-site fit formed; a failure with no other fact bypassed it (design-r2 §2).
-        return positions && this.RecordedFailure(node) == BindingFailure.None ? this.Fail(node, BindingFailure.Internal) : null;
+        return null;
     }
-
-    // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.
-    private DiagnosticCode OriginRelationCode(Koto node)
-        => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
 
     // Fails a node with the facts that explain the failure. A node keeps its first failure only (DIAGNOSTICS rule 4), so the facts are
     // recorded only with the failure the slot takes: a fact in a publication table always explains the failure of its node, whatever the
@@ -694,8 +680,6 @@ public sealed partial class Binding
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
-        this.ResetOriginRecords();
-        this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.erasureOutcomes?.Clear();
         this.ResetParameterShapes();

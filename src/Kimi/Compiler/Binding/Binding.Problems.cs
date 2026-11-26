@@ -11,15 +11,17 @@ namespace Kimi.Compiler;
 //   CollectProblems); the adapter's reads of a problem's facts (ReportProblem, Mismatch, LocatedPart, FactOf).
 // - Inputs: a node, its failure and the facts its check read.
 // - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure; a node's further
-//   issues, each by its own code and condition. Record is a check's way in; a problem that sets no slot is a further Origin record
-//   (RecordFurtherOriginRecord), a selected input's located limit beside its node (RecordLocatedLimit, PLAN G254c) or a report's Defect.
+//   issues, each by its own code and condition. Record is a check's way in, and an Origin record's are RecordOrigin and
+//   RecordResolvedOrigin (Binding.CallRelations.Records.cs); a problem that sets no slot is an Origin record beside its node's slot or
+//   at a Resolved node, a selected input's located limit beside its node (RecordLocatedLimit, PLAN G254c) or a report's Defect.
 // - Invariants: one way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one way in control:
 //   until a family migrates, its sites read the slot to decide whether to record. A node without a failure has no linked problem but one
 //   that sets no slot: a pass's reset empties the report, and inside a pass a failure leaves through ClearFailure or a snapshot that saves
 //   its chain; HirTables.Reset of a try's arms comes before anything binds them (SemanticsIndexed). A located limit is recorded only at an
 //   input whose operation is final (JudgeSelectedInput: judged once per pass, never adapted again at another Type; a candidate trial records
 //   nothing), so it leaves only with the pass's reset or a trial's snapshot, never through ClearFailure. The Final summary publishes a
-//   node's problems that set no slot, Origin records aside (ReportResolvedOriginRecords'), and counts the node as limited (Binding.Check).
+//   node's problems that set no slot, those outside Binding.Issues aside (OutsideIssues: ReportOutsideIssues'), and counts the node as
+//   limited (Binding.Check).
 // - Prohibitions: no failure is decided and no message rendered here.
 public sealed partial class Binding
 {
@@ -104,7 +106,8 @@ public sealed partial class Binding
             BindingFailure.UnprovenAcquisitionCorrelation => DiagnosticCode.UnprovenAcquisitionCorrelation_Kd,
             BindingFailure.ConstructorSelectionChanged => DiagnosticCode.ConstructorSelectionChanged_Kd,
             BindingFailure.BoundMethodValue => DiagnosticCode.BoundMethodValue_Kd,
-            BindingFailure.OriginRelation => this.OriginRelationCode(node),
+            BindingFailure.OriginRelation => this.SlotProblem(node) is >= 0 and var slot ? this.report.Problem(slot).Code
+                : throw new InvalidOperationException("An Origin relation slot has its problem (InternalInvariant; R7-E4 E4d)."),
             BindingFailure.OriginContract => DiagnosticCode.UnprovenOriginContract_Kd,
             BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
             BindingFailure.ArrayAnnotationInference => DiagnosticCode.ArrayAnnotationInference_Kd,
@@ -191,8 +194,8 @@ public sealed partial class Binding
         => this.Record(node, BindingFailure.Unsupported, [LocatedFact(node, part)], unresolved: unresolved);
 
     // SPEC 23.1.1, 23.1.2 (PLAN G254c): a located limit beside its node, which keeps its state, Type and rows: a problem that sets no slot,
-    // so no consumer reads the node as a failed input, published by its subject (CollectIssue). At condition 1 at least, as a further
-    // Origin record is, so the node's own first failure, set later at 0, keeps its key; an equal record keeps its first's (DIAGNOSTICS 4.3).
+    // so no consumer reads the node as a failed input, published by its subject (CollectIssue). At condition 1 at least, so the node's own
+    // first failure, set later at 0, keeps its key; an equal record keeps its first's (DIAGNOSTICS 4.3).
     private void RecordLocatedLimit(Koto node, SourceSpan part)
     {
         ReadOnlySpan<ProblemFact> facts = [LocatedFact(node, part)];
@@ -215,8 +218,7 @@ public sealed partial class Binding
         => (this.IsDerived(node, failure, code) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
 
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
-    // its own, direct or derived by its own requirement (CollectProblem). An Origin record beyond the first is published with the node's first
-    // record, since Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
+    // its own, direct or derived by its own requirement (CollectProblem), except an Origin record outside Binding.Issues (OutsideIssues).
     private void CollectProblems(Koto node)
     {
         var first = this.report.Count == 0 ? -1 : this.report.First(SourceRef.Written(node));
@@ -228,7 +230,7 @@ public sealed partial class Binding
         var slot = this.SlotProblem(node);
         for (var i = first; i >= 0; i = this.report.Next(i))
         {
-            if (i != slot && this.FactOf(i, ProblemFactKind.OriginRecord) is null)
+            if (i != slot && !this.OutsideIssues(node, i))
             {
                 var problem = this.report.Problem(i);
                 this.CollectProblem(node, (BindingFailure)problem.Requirement.Kind, problem.Code, i);
@@ -252,6 +254,13 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "Finds the slot's issue among a node's problems until the slot's reads and Binding.Issues go (R7-E5).")]
     private int SlotProblem(Koto node)
         => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), 0);
+
+    // DECISIONS BU-126: an Origin record that is not its node's slot problem stays out of Binding.Issues and is published by its own key
+    // (ReportOutsideIssues).
+    [Transitional("R7", Reason = "Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).")]
+    private bool OutsideIssues(Koto node, int problem)
+        => (BindingFailure)this.report.Problem(problem).Requirement.Kind is BindingFailure.OriginRelation or BindingFailure.OriginContract &&
+            problem != this.SlotProblem(node);
 
     // A problem's condition, the last part of the key its record is published at; 0 for no problem (a slot without one).
     private ushort ConditionOf(int problem) => problem >= 0 ? this.report.Problem(problem).Condition : (ushort)0;
@@ -435,6 +444,9 @@ public sealed partial class Binding
                 break;
             case BindingFailure.MissingOrigin when node is IdentifierNameKoto name && StorageType(node) is { } storage && this.report.Facts(index).IsEmpty:
                 ReportUndeclaredStorageOrigin(name, storage, store, problem); // SPEC 15.3.2: BindOriginName's record of an undeclared storage name.
+                break;
+            case BindingFailure.OriginRelation or BindingFailure.OriginContract:
+                this.ReportOriginRecord(node, store, index, problem); // RecordOrigin's and RecordResolvedOrigin's, by their own keys (B-4).
                 break;
             case var _ when this.FactOf(index, ProblemFactKind.Operand) is not null:
                 this.ReportOperatorOperand(node, store, index, problem);

@@ -37,7 +37,7 @@ public sealed partial class Binding
             DiagnosticCode.ExclusivePathTake_Kd when (layers & SemanticsMask.Owner) != 0 => PairLayerTakeNote,
             DiagnosticCode.ExclusivePathTake_Kd => ExclusiveTakeNote,
             DiagnosticCode.InvalidAssignment_Kd when (layers & SemanticsMask.Obj) != 0 => ObjectPayloadTakeNote,
-            _ => this.OmittedResultNote(node),
+            _ => null,
         };
         node.ReportIn(store, requirement, code, note: note, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [node.ToString()] : null, condition: condition);
     }
