@@ -80,58 +80,6 @@ public class ContractBindingTest
         "    return need(v) + need(s.0)\npublic func main() -> ()\n    let p = dup<S1>(P.init(x: 3))\n    let n = read<S1>(S3.init(5))\n" +
         "    let m = cap<S1>(P.init(x: 4))\n    if p.0.x + p.1.x == 6 and n == 10 and m == 2 => Console.writeLine(\"ok\")\n    else => Console.writeLine(\"bad\")\n";
 
-    // A freestanding Kernel's platform (SPEC 22.4.5), Board.kimi without its comments: its Contract members `public` (SPEC 8.6.3's
-    // Access row, 9.4.6), before `terminate`; BoardTerminate is `terminate`.
-    private const string Board = """
-        struct Board
-            Self is Copy
-            Self is Platform
-            var next: usize
-            var end: usize
-            var screen: raw/u16
-            var cell: isize
-            var ticks: i64
-
-            init(next: usize, end: usize, screen: raw/u16)
-                self.next = next
-                self.end = end
-                self.screen = screen
-                self.cell = 0
-                self.ticks = 0
-
-            public func start(boot: Boot) -> Self
-                let window = boot.directMapOffset
-                return Board.init(window + 0x0100_0000, window + 0x0300_0000, (window + 0xB_8000)@raw/u16)
-
-            public func mapPages(self: uniq/Self, bytes: isize) -> raw/u8
-                if self.end - self.next < bytes@usize
-                    return null
-                let run = self.next
-                self.next += bytes@usize
-                return run@raw/u8
-
-            public func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64 => 0
-
-            public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64
-                let bytes = text.bytes()
-                var i: isize = 0
-                while i < bytes.length
-                    if bytes[i] == 10
-                        self.cell = (self.cell / 80 + 1) * 80
-                    else
-                        unsafe => self.screen[self.cell] = bytes[i]@u16 + 0x0700
-                        self.cell += 1
-                    i += 1
-                return 0
-
-            public func clock(self: uniq/Self) -> i64
-                self.ticks += 1
-                return self.ticks
-
-        """;
-
-    private const string BoardTerminate = "    public func terminate(self: uniq/Self, status: i32) -> Never\n        loop => ()\n";
-
     [Fact]
     public void AppendingSourceRevokesRetainedConformanceAndPropertyCertificates()
     {
@@ -1299,15 +1247,22 @@ public class ContractBindingTest
     }
 
     // SPEC 8.4-8.6, 22.4.5: Binding verifies the conformance of the Kernel's Board (Hello.kimi's body beside Board.kimi) to the
-    // library's Platform; without `terminate`, Binding's issues are the clause's one missing-requirement record (SPEC 8.6.3). Bind
-    // runs no startup check, so neither fact depends on a target's startup rule.
+    // library's Platform, hosted or freestanding; without `terminate`, Binding's issues are the clause's one missing-requirement record
+    // (SPEC 8.6.3). Bind runs no startup check, so neither fact depends on a target's startup rule.
     [Theory]
-    [InlineData(BoardTerminate, "")]
-    [InlineData("", "MissingContractImplementation_Kd")]
-    public void AProgramsBoardConformsToTheLibrarysPlatform(string terminate, string code)
+    [InlineData("x86_64-pc-windows-msvc", KernelSources.BoardTerminate, "")]
+    [InlineData("x86_64-pc-windows-msvc", "", "MissingContractImplementation_Kd")]
+    [InlineData("x86_64-unknown-linux-musl", KernelSources.BoardTerminate, "")]
+    [InlineData("x86_64-unknown-linux-musl", "", "MissingContractImplementation_Kd")]
+    [InlineData("x86_64-unknown-none", KernelSources.BoardTerminate, "")]
+    [InlineData("x86_64-unknown-none", "", "MissingContractImplementation_Kd")]
+    public void AProgramsBoardConformsToTheLibrarysPlatform(string target, string terminate, string code)
     {
-        var c = CompilationTestHelper.ParseSuccess("Console.writeLine(\"Hello\")\n", "Hello.kimi");
-        c.Kotonoha.AddSource(new SourceDocument("Board.kimi", Board + terminate));
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", KernelSources.Hello));
+        c.Kotonoha.AddSource(new SourceDocument("Board.kimi", KernelSources.Board + terminate));
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.Equal(code.Length == 0, c.Bind().IsComplete);
         var conformance = c.Binding.GetConformance(Container(c, "Board").TypeOf()!, c.Library.GetSymbol(KimiDeclarationId.Platform)!);
         if (code.Length == 0)

@@ -55,11 +55,12 @@ public class TimeLibraryTest
     }
 
     // SPEC 22.1, 22.8.3 (the Tatara plan's B7b6, Q4b (a)): the group `Kimi.Windows` is declared where the Condition `windows` holds, so
-    // on linux-x64 `Windows` is an unknown name; selected by `#if windows`, the call and a Stopwatch are valid on both rows.
+    // on linux-x64 `Windows` is an unknown name; selected by `#if windows`, the call and a Stopwatch are valid on both rows. On the
+    // freestanding row the Application without a platform is also the located Unsupported_Kd at its startup form (SPEC 22.4.5, 23.1.2).
     [Theory]
     [InlineData("x86_64-pc-windows-msvc", WindowsCounter, "")]
     [InlineData("x86_64-unknown-linux-musl", WindowsCounter, "UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
-    [InlineData("x86_64-unknown-none", WindowsCounter, "UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
+    [InlineData("x86_64-unknown-none", WindowsCounter, "Unsupported_Kd var count: i64 = 0 | UnresolvedBinding_Kd Windows.queryPerformanceCounter")]
     [InlineData("x86_64-pc-windows-msvc", SelectedCounter, "")]
     [InlineData("x86_64-unknown-linux-musl", SelectedCounter, "")]
     public void WindowsIsDeclaredWhereWindowsHolds(string triple, string source, string errors)
