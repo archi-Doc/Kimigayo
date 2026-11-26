@@ -135,11 +135,11 @@ public sealed partial class Binding
     /// <summary>Formats the Semantics cases in which a bare acquisition of a pair layer neither Copies nor Reborrows, for a Note
     /// (SPEC 8.14, 23.1.2); empty for another Type or when every case has a plan.</summary>
     /// <param name="type">The stored Type.</param>
-    /// <param name="node">The acquiring syntax.</param>
+    /// <param name="failing">The cases its bare acquisition neither Copies nor Reborrows in (BareAcquisition, judged at the failure).</param>
     /// <returns>The Note's tail, such as <c> in the Semantics case s = owner (SPEC 8.14)</c>.</returns>
-    internal string FailingCaseNote(BoundType type, Koto node)
+    internal string FailingCaseNote(BoundType type, SemanticsMask failing)
     {
-        if (!TryAdaptationSelector(type, out var whole) || (this.BareAcquisition(type, node, out _) is var failing && failing == SemanticsMask.None))
+        if (failing == SemanticsMask.None || !TryAdaptationSelector(type, out var whole))
         {
             return string.Empty;
         }
