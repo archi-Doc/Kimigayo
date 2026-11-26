@@ -840,20 +840,38 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Skips, without reporting, the rest of one item of a delimited list after the caller blamed it: up to the comma that ends the
-    /// item or the end of the grouping's content (<see cref="ExpectCloser"/>). Groupings, bodies and recognized Type argument lists
-    /// inside the item are skipped whole, so their commas and closers stay theirs.
+    /// Skips, without reporting, the rest of one item: the one item skip, which a blamed item's recovery and every read past
+    /// <see cref="SyntaxNesting.Limit"/> pass through. The item ends at its delimiter balance 0, at the comma that ends it (or a
+    /// parameter list's '!'), the end of the grouping's content (<see cref="ExpectCloser"/>), the '&gt;' that closes a Type argument
+    /// or parameter list, or an <c>else</c> that none of the item's own <c>if</c> and <c>require</c> takes, which is an enclosing
+    /// construct's (SPEC F: an <c>if</c> in a single-item body is grouped entirely). Groupings, bodies and recognized Type argument
+    /// lists inside the item are skipped whole, so their commas, closers and elses stay theirs. An <c>else</c> that begins the item
+    /// is its first token, so every skip makes progress.
     /// </summary>
     /// <param name="typeArguments">Whether the list is a Type argument or parameter list, which a '&gt;' at its level closes.</param>
     internal void SkipListItem(bool typeArguments = false)
     {
+        var start = this.Position;
         var angles = 0;
+        var open = 0; // The item's ifs and requires that may still take an else.
         while (this.CanRead && !this.EndsGroupingContent())
         {
             switch (this.currentToken.Kind)
             {
                 case TokenKind.Comma or TokenKind.Exclamation when angles == 0:
                     return; // A comma ends the item; so does a parameter list's '!' boundary, which is no operator elsewhere.
+
+                case TokenKind.If or TokenKind.Require:
+                    open++;
+                    break;
+
+                case TokenKind.Else when angles == 0 && this.Position > start:
+                    if (open-- == 0)
+                    {
+                        return;
+                    }
+
+                    break;
 
                 case TokenKind.LessThan when this.currentToken.OpensTypeArguments:
                     angles++;
@@ -905,35 +923,15 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Reads an expression body's item past <see cref="SyntaxNesting.Limit"/> without nodes (DECISIONS BU-112): to the next expression
-    /// boundary at delimiter balance 0, which the body's enclosing list, line or construct reads (a comma, a parameter list's '!', the
-    /// end of its grouping content, or an <c>else</c> that no <c>if</c> or <c>require</c> of the item takes). A '=&gt;' there continues a
-    /// construct of the item (a function expression, an <c>if</c>), so it ends nothing.
+    /// Reads an expression body's item past <see cref="SyntaxNesting.Limit"/> without nodes (DECISIONS BU-112): the one item
+    /// (<see cref="SkipListItem"/>), whose end the body's enclosing list, line or construct reads. A '=&gt;' in it continues a construct
+    /// of the item (a function expression, an <c>if</c>), so it ends nothing.
     /// </summary>
     /// <returns>The one mark the item leaves; the cut of <see cref="SyntaxNesting"/> above it writes the record.</returns>
     internal ErrorKoto SkipExpressionPastLimit()
     {
         var start = this.InsertionSpan.Start;
-        var open = 0; // The item's ifs and requires that may still take an else.
-        while (this.CanRead && !this.EndsGroupingContent() && this.currentToken.Kind is not (TokenKind.Comma or TokenKind.Exclamation))
-        {
-            if (this.currentToken.Kind == TokenKind.Else)
-            {
-                if (open == 0)
-                {
-                    break;
-                }
-
-                open--;
-            }
-            else if (this.currentToken.Kind is TokenKind.If or TokenKind.Require)
-            {
-                open++;
-            }
-
-            this.SkipOne();
-        }
-
+        this.SkipListItem();
         return this.SkipMark(start);
     }
 

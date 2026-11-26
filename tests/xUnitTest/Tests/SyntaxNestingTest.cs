@@ -148,7 +148,8 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     // past L is read without nodes (fn-type; a link's parameters and the rest of its chain, siblings at L, are two cuts), and so is
     // a fixed array's element, to its `]` (tw-arr). Fail-before: commit 2's head added ExpectedSyntax_Kd, InvalidTypeFormation_Kd or
     // NoApplicableOverload_Kd, lost an UnresolvedBinding_Kd, recorded tw-istest twice, kept fn-type's ExpectedSyntax_Kd past the
-    // cut, or overflowed on tw-arr.
+    // cut, or overflowed on tw-arr. The recheck's twins (G144-19 F-H): a body's item past L is the one item skip, whose Type
+    // argument list keeps its comma (rc-body-targs). Fail-before: cb628a6e04 added ExpectedSyntax_Kd at the list's second Type.
     [Theory]
     [InlineData("parentheses-100k", "NestingLimit_Kd")]
     [InlineData("calls-100k", "NestingLimit_Kd")]
@@ -179,6 +180,8 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     [InlineData("fn-type-1100-I", "NestingLimit_Kd NestingLimit_Kd UnresolvedBinding_Kd")]
     [InlineData("tw-arr-100k-V", "NestingLimit_Kd")]
     [InlineData("tw-arr-100k-I", "NestingLimit_Kd UnresolvedBinding_Kd")]
+    [InlineData("rc-body-targs-V", "NestingLimit_Kd")]
+    [InlineData("rc-body-targs-I", "NestingLimit_Kd UnresolvedBinding_Kd")]
     public void EachTwinKeepsItsRecords(string twin, string codes)
         => Assert.Equal(codes.Split(' ').Order(), this.Compile(Twin(twin)).Records.Select(static x => x.Code).Order());
 
@@ -253,6 +256,8 @@ public class SyntaxNestingTest(ITestOutputHelper output)
             "arrow-100k-V" => Source("arrow", 100_000),
             "tw-arr-100k-V" => $"func f(x: {string.Concat(Enumerable.Repeat("[2 of ", 100_000))}i32{new string(']', 100_000)}) => ()\n",
             "tw-arr-100k-I" => $"func f(x: {string.Concat(Enumerable.Repeat("[2 of ", 100_000))}i32{new string(']', 100_000)}, b: Missing) => ()\n",
+            "rc-body-targs-V" => $"func g2<A, B>(x: i32) -> i32 => x\n\nfunc f()\n    let t = ({string.Concat(Enumerable.Repeat("func [] () => ", 1100))}g2<i32, i32>(1), 2)\n",
+            "rc-body-targs-I" => $"func g2<A, B>(x: i32) -> i32 => x\n\nfunc f()\n    let t = ({string.Concat(Enumerable.Repeat("func [] () => ", 1100))}g2<i32, i32>(1), missing)\n",
             "tA-2001-V" => $"{Box}func f(x: {Boxes(2001)}) => ()\n",
             "tw-targ-cmp-1101-V" => $"{Box}func g<T>(x: i32) -> i32 => x\n\nfunc f() -> bool\n    return g<{Boxes(1101)}>(1) > 2\n",
             "tw-targ-cmp-1101-I" => $"{Box}func g<T>(x: i32) -> i32 => x\n\nfunc f() -> bool\n    return g<{Boxes(1101)}>(1) > missing\n",
