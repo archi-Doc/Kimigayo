@@ -16207,7 +16207,7 @@ resumed by R4-M86 (2026-10-20).
     (under ref a borrowed temporary), and binds only what no evidence binds: `put5(b@ref, 5)` and `put5(5, b@ref)` over
     `put5<s/W, V>(m: s/W, y: s/V)` are valid (e2, e2s), while a Place there is still owner evidence (e1, e1s). With no evidence the
     default fixes the binder after the defaults (L1, d1). Rejected: a literal's default as owner evidence at an exact source
-    (contradicts 10.5.1).
+    before selection (contradicts 10.5.1; after selection it binds a binder still unbound there, BU-268).
   - `OwnerResult` (BU-224) reads any pair layer (`IsPairLayer`) as no owner value, at the result's declared outer Semantics (SPEC
     10.3 step 2): dev's AF-2 accepted the invalid o4x, t2, t3o through it (PLAN G1063, closed here).
   - An annotated occurrence leaves W's outer Origin to other evidence (an open region keyed by `SlotFrame.Node`, which every solve
@@ -16215,8 +16215,7 @@ resumed by R4-M86 (2026-10-20).
   - Closes dev's own class 1 of the same rule: an original fixing `s = owner` first let a later application's target absorb a
     borrowed or abstract actual (`put<s/W, V>(m: s/W, y: s/V)` as `put(a@move, b@ref)`; the Middle's B1 family, C-293). Remainder:
     PLAN G886 (the second phase's missing drivers and G886-p3's representation (R)); ol1s is PLAN G930 (with ol1e and ol1n, which
-    G794's landing leaves); a literal at a fixed-target pair layer binds `s` only after a nested call's own Type, not in the
-    defaults' step SPEC 10.8 states (Dn1, PLAN G1266).
+    G794's landing leaves). The defaults' step at a fixed-target pair layer is BU-268 (PLAN G1266; earlier text 21b05f8b9).
   - Rejected: `Semantics: Parameter` on a pair original (a shared representation change); a solve-level mode field for the region;
     the expected result as "the last source"; every application as evidence (rejects dev's PairFollowTest programs); a structured
     application as the first source (order-dependent); comparing the formed Type with the argument's own Type (`put(5, rr)` rejected
@@ -19675,6 +19674,44 @@ resumed by R4-M86 (2026-10-20).
   - Supersedes in part BU-136: its acceptance movers' "`Entry` (valid by 10.1 and 8.3.3, ruling 2, a corrected label, with `entry-i-two` valid ...)". The reason that no longer holds: 10.1 and 8.3.3 leave the obligation pending only once the initializer is typed, and SPEC 11.6 rejects that typing first, since it needs Owned of `Entry`, a fact about a Type that contains `tag`.
   - Temporary: the walk, its gate and `headerParts` are removed when the proof's stored-Type reads demand the Signature query during the headers (R7-D2 d2 / C2 b, PLAN G381's removal; G1220-1 B3).
   - Rejected: a per-kind clause for the ref, raw and uniq layers (Copy's leaf decides them, O4); changing `TypeMemo` (C6); a change of `ReenterHeader` for an annotated header's re-entry (`r2` shows it recorded on dev: R4 dropped); walking every header's requests (an annotated Property's or a function's own requests would demand headers they do not depend on, `f6`, `f7`: the gate, C4); reading a stored associated projection through the component summary during the headers (it maps projections only once capabilities are ready; open issue PLAN G1220b, G1220-1 B2).
+- **BU-268 Literal defaults bind a pair binder at a fixed-target exact source before the call step's own Types (PLAN G1266)**
+  (Front, 2026-11-26; G1266; Major; independent design review ACCEPT WITH CONDITIONS, F's rulings G1266-1 and G1266-2; the owner's
+  O-343 (a), O-408 (a)). SPEC 8.1.1, 10.5.1 bullet 2, 10.8, 12.3.1. Amends BU-207 and G812 ruling 70's route.
+  - **Rule.** After selection the late evidence walk (`SlotSolution.InferArgument` with `late`, `SolveLate`, the payload walk of
+    `InferPayloads`) takes the parts' own Types in `OwnTypeSteps`' order (10.5.1 bullet 2): each literal's default where the walk
+    meets it, then every own Type of the call step at the walk's end. A literal at an exact source of a pair binder (the original,
+    a solved `s/V`, `s/i64`; `IsExactSource`) whose target the pattern fixes binds a binder still unbound there (no selector, no
+    binding) to `owner` through `IsSource`, with the fixed target as the owner evidence (12.3.1: the literal's Type there is its
+    target). One walk, `DefaultBindsAt`, returns that layer and target; `FitsLiteralShape` reads it unchanged (PLAN G934's site).
+  - **Order.** The call step's own Types the walk meets are gathered in one pending list per pass (`ownTypes`, rented and
+    removed as `wholes`, each with its argument index) and inferred at the walk's end (`SlotSolution.InferGathered`), before the
+    late `SettleSources` or `BindWholes`; an own Type whose pattern then fails to form is judged as its argument is
+    (`UnformedPart`; a payload's as `TypeMismatch`). The replay that `CheckDefaulted` runs after each step therefore no longer
+    depends on argument order.
+  - **Reading.** A nested call's `ref/i32` at the original under `owner` has outer Semantics `ref` (8.1.1), and 10.8's "such a
+    layer is formed ... under `owner`" covers only the other pair layers, so it conflicts with the literal's owner evidence in any
+    argument order whatever the Constraint (G1266-2, reading (b)): Dn1, Dn1s, Dn1r, Dn1e, Dn1j, Dn2, Dn1b, Ti1r, Tk2r and Ti2,
+    which 21b05f8b9 accepted, are rejected at the call (`NoApplicableOverload_Kd`), and so is Ra1 (`kv(pin(r, 1), 6)` over
+    `kv<s/W, V>(m: s/W, y: s/V)`: the literal at an `s/V` only it reaches binds owner first). Dn1o, Dn1ro, Dn1jo, Dn2o and Ti1ro,
+    which 21b05f8b9 already rejected with `UnsatisfiedConstraint_Kd`, take that record instead: five Q13 class 4 moves, counted by
+    code. Tv1, Tv2, To1v, To1p and Va1 (`s/(i64, i32)`) stay accepted.
+  - **Exact sources (F's ruling G1266-4).** An exact source's target is a closed leaf with no abstract part (`IsExactSource`:
+    `HasAbstractPart: false`). Another pair's target alone (`s/U` over `t/U`, a `TargetProjection`) is therefore no exact source, as
+    10.8 states ("gives no evidence for `s`"). A literal there binds nothing (Va3b and Va3r stay accepted, as on 21b05f8b9), and a
+    typed part there gives `s` no evidence and fits the layer the other evidence forms (10.2). Q13 class 3 moves (valid, newly
+    accepted; dev rejected each with `NoApplicableOverload_Kd`), one cause: Va3m (`kt(pin(r, 1), mk64(), big)`), X1
+    (`kt(r, big2, big)` under `s is ref`), X4 and C2 (`kt(n, q, big)`, `q: ref/i64`, under `s is owner or ref` and `s is owner`;
+    10.2's value-read row), and the same form behind a Tuple, in an array, through `uniq/i64` and with a Place after `pin` (the delta
+    review's D1b, D6b, D2, D3, D11). Class 1 closed: Ra1. Class 4: D8 (`kt(pin(r, 1), big2, big)` under `s is owner`,
+    `NoApplicableOverload_Kd` to `UnsatisfiedConstraint_Kd`) and the five rows of the Reading bullet. A typed value the formed
+    layer does not take stays rejected (D4: `ref/(i64, i32)` at the owner `(i64, i32)`; D7), and so do D9 and E1; Va1, X2, X3 and
+    C1, C3, C4 are unchanged.
+  - Rejected: a late walk per `OwnTypeSteps` row (`late` as a step value: twice the walk per trial, about eight signatures,
+    wholes and temporaries registered twice); seeding the literal step's binder into later re-runs (a second representation of a
+    binding beside the selector); the literal alone without the order (order-dependent: Dn1 accepted, Dn1r rejected); deferring
+    own Types through `SettleWaiting` (`InferWaiting` infers with `late: false`, so a mode); forming the original under a bound
+    binder for a nested call's own Type (C2: contradicts 8.1.1 under reading (b)); making a part wait in the late walk until the
+    gathered own Types are inferred (G1266-3 condition 1: it reads the same exactness, so it leaves Va3b failing or reopens Ra1).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
