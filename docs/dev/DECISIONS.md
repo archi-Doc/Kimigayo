@@ -2754,7 +2754,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and fit a static's own body or the layer; `ValidateOriginRelations` per declaration). Stamps: `BindingObligation.Body` (part of a
     row's identity), `BoundOrigin.Body` (defined for non-declaration binders), `OriginDeclaration.Body`. `ParameterVisible` reads it
     (`defaultBindingDepth` and its `Use.Parent` walk deleted). An accessor is named by its `SignatureSymbol`; the view maps MIR's
-    Getter or Setter key (the execution function) to it, since that function is created lazily with state (a reading of E1).
+    Getter or Setter key (the execution function) to it, since that function is created lazily with state (a reading of E1). Amended by BU-271: ExecutableBodies' outputs gain the frame of a FormedTypes row (`FormationFrame`), which each producer writes from the frame it forms the node in, and `ExecutableBody.Declarations` is also entered by `ValidateOriginRelations`' root walk.
   - E2 declaration rows: a row formed with no body lies in no slice; its ends must be `Parameter`, `Input`, `Static`, `Unbound` or meets
     of them, else `InternalInvariant_Kd` in a complete compilation. The old walk judges them until PLAN G210 (BU) gives them the
     `Definition` deadline and a judge (superseded by BU-26: no deadline; Binding's judge consumes them); then a body-origin row with no
@@ -5595,10 +5595,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     U2.1's value-call result proof).
   - PLAN G962 (O-397 (A)): D-739's value-call judge (a Closure's value call carrying its result premises) is not built: it is the
     rejected limited form; `CarriesResultPremises` keeps excluding anonymous functions (c1d7b0eea).
-  - Known: a Field's Function Type result also keeps the Field formation's `UnprovenConstraint_Kd` (that check enters Function Types,
-    their inputs included), a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A). Open,
+  - Known: a nested result written in a declaration frame (its FormedTypes row's) is the declaration judge's root after Completion (BU-271), and one written in a body is `FormNestedResult`'s at its binding; the Field formation's `UnprovenConstraint_Kd` beside it (that check enters Function Types, their inputs included) is a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A). Open,
     pre-existing since R4-M137 (b2in): a nested signature's input clause still fails the call's signature formation, so the call
-    gets `UnprovenConstraint_Kd` and its Closure argument's own records are lost; inputs are outside this unit.
+    gets `UnprovenConstraint_Kd` and its Closure argument's own records are lost; inputs are outside this unit. Amended by BU-271 (hold-b, 2026-11-27): `FormNestedResult` forms the rows of Body-row results only; a Declaration-row result is the declaration judge's root, and a result with no row is neither's.
   - Lost records: the signature record is a Binding-level relation record, so an independent record elsewhere in the compilation is
     lost on both pipelines (z1nmv: z1n's `k` beside a double move; indep: the double move in a caller; dev's `MovedPlace_Kd`). Legacy:
     the old ownership analysis stops beside it, PLAN G56's owner-accepted limit (「G216 (a): (i)」, 2026-10-27), until H11. MIR: A1/A5
@@ -9351,8 +9350,7 @@ resumed by R4-M86 (2026-10-20).
   Open (PLAN G140, U3; BU-55 closed seven of them on G243's V16 family: `VisitInlineLayout`'s Tuples, `CheckTypeConstraints`,
   `ComparisonProof`, `RetentionWalk`, `DependentType`, `ProveTypeLengths`, `HasUnsubstitutedInput`; the Origin-carrying rest is PLAN
   G309): walks with the same shape that no reproducer reaches with a shared part: in Binding `ContainsRawPointer`, `RetainsBorrow`,
-  `CExchangeable`, `HasZeroStride`, `VisitInlineLayout`'s Tuples, `CheckTypeConstraints`, `AddTypeClauseObligations`,
-  `TypeAccessCovers`, `ComparisonProof`, EffectBounds' `Reachable`, `Conflicts`, `CollectItemParts`, `MentionsItemPart` and
+  `CExchangeable`, `HasZeroStride`, `VisitInlineLayout`'s Tuples, `CheckTypeConstraints`, `TypeAccessCovers`, `ComparisonProof`, EffectBounds' `Reachable`, `Conflicts`, `CollectItemParts`, `MentionsItemPart` and
   `Comparison`, `RetentionWalk`, `Witnesses.Leaves`, the predicates `DependentType`, `ContainsUnspellableType`,
   `IndependentInputPattern`, `IsConservative`, `HasRuntimeTypeDependency`, `Closed`, `StoresTypeArgument`, `MentionsSlot`,
   `OwnFunctionBinder`, `CollectShapeDependencies`, `CollectRequirementEdges`, `ProveTypeLengths`, the ungated Origin walks
@@ -9380,6 +9378,10 @@ resumed by R4-M86 (2026-10-20).
   - Amended by R7-M94 (R7-C8 C6a-2, 2026-11-24): `OperandContexts`' clear parts are kept across one capability request
     (`clearParts`, a query spanning the outermost request; its fixed inputs the declaration contexts' states, and a moved change
     signal begins a new query; only a clear answer is kept).
+  - Amended by BU-271 (hold-b, Hold class 1, 2026-11-26): `AddTypeClauseObligations` is a user (a call is a query, its occurrence and
+    frame fixed; a part met again forms only rows the obligation set holds, since the premises at the occurrence only grow during the
+    walk), with its own table `clauseParts`, since each clause's proof builds premise environments whose walks are queries of
+    `visitedParts`. It leaves the Open list.
 - **BU-20** (2026-10-21; A5 step 2 plan 2x-R14 under R4-M89) The intrinsic Contract table is a canonical table. `IntrinsicContract.Of`
   (`Binding/KimiLibraryKinds.cs`) has one row per `IntrinsicKind` and the columns Judged, Declaration, SelfRequirement and
   ConformanceJudged. `ProveConstraint`, a Contract's Self clause, `Register`, the conditional Self clause and `VerifyConformance` read
@@ -9509,8 +9511,7 @@ resumed by R4-M86 (2026-10-20).
   superseded in part by BU-89: its E2 test "whose resolved ends are declaration atoms"; superseded in part by BU-102: a remaining row
   with no body is the view's throw, not `OriginFinding`; superseded in part by R7-M43: the catalog row's sentence "G214 keeps
   the result-only form") (2026-10-22; the owner's answers Q1 and Q2;
-  PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable body, a declaration's row (R4-M101 E1, E2): a
-  Field's, payload's or base's declared Type, a computed Property's header, a signature's well-formedness (a requirement's, an
+  PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a conformance argument, an associated specification and a nested result in any of them (each written Type formed in a declaration frame, BU-271), a computed Property's header, a signature's well-formedness (a requirement's, an
   override's, a specialization's, a nested Function Type part) and a clause's unrepresentable end. `Binding.JudgeDeclarationRows`, at
   the end of `ValidateOriginRelations` in every pass, consumes each such row whose resolved ends are declaration atoms (E2's test;
   `DeclarationAtom` moved from the view to the judge, its only user): a `CallBorrows` row unjudged (each call's borrow formation; the
@@ -9539,7 +9540,7 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: A's own `JudgeDeclarationRow` (a second copy of the per-operand meet rule and the record pairing); B's selection without
     E2's test (a non-declaration end would form a row inside the compaction); the `Definition` deadline (above); a declaration-relation
     table (a side table and a branch in `AddObligation`); judging class 1 only (leaves nested Function Type obligations unjudged);
-    judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge (`IsDerived` owns
+    judging at formation (a Field's own Origins are still `Unbound`; the reason the clause rows of a declaration's written Types are formed at judge time, BU-271); "binder failed, no record" in the judge (`IsDerived` owns
     derivation). Open: A's `IsDerived` widening for an associated specification's record.
 - **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46, BU-113 (G160-2b's rejected binder cap), BU-166
   (`BorrowRawPlace`'s declared-result fit deleted; `RawAnchor`), BU-242 (G212: a Move of an enclosing Place is a read;
@@ -11674,7 +11675,7 @@ resumed by R4-M86 (2026-10-20).
   - Open (2026-10-31; PLAN G309, its unit G309-R): the sweep missed walks that still take 2^n on an Origin-carrying projection-chain
     DAG under a written borrow layer, CHAIN = `Dup<…Dup<ref/i32 during static>.Item…>.Item`: `let y: ref/CHAIN = x`, `func p(x:
     ref/CHAIN)` and `r<T>(x: ref/Dup<…T…>.Item)` called at `ref/i32 during static`, through RetainInnerOutlives, RewriteOrigins
-    (ResolveOrigin and TyCtxt.Intern per visit), AddTypeClauseObligations, LocalOrigins' Match, and CallSlots' Infer with its proofs
+    (ResolveOrigin and TyCtxt.Intern per visit), LocalOrigins' Match, and CallSlots' Infer with its proofs
     and OperandContexts per visit. Not a regression: dev is as slow or slower on these forms.
   - Not a shared representation: BoundType's fields, constructor and interning are unchanged; the table is private to Binding, keyed by
     identity as TypeMemo is, derived only from fields BoundType holds, and read by no other phase. BU-19's rejection of new BoundType
@@ -19842,6 +19843,60 @@ resumed by R4-M86 (2026-10-20).
     - a region with no value (it moves body judgments to A5);
     - regions for value Subjects (their producer owns the Origin);
     - a side input to the entry call's selection, or an AdaptedType rewrite, in place of `$for.subject` (the Middle's C2).
+- **BU-271 The declaration judge owns the Origin clauses of every written Type formed in a declaration frame (hold-b, Hold class 1)**
+  (2026-11-26; M's ruling on hold-b Revision 3; F's consent as R7-M80's owner) SPEC 15.3.3, 15.3.4, 15.6.1, 23.1.2.
+  - Rule: the FormedTypes row of a node records the frame its producer formed it in (`FormationFrame`: Declaration or Body; None = no
+    row), written by every producer from `formingBody` (ExecutableBodies' output). A written Type node with a Declaration row is the
+    declaration judge's: `ValidateOriginRelations`, after every declaration is Completed and before `JudgeDeclarationRows`, walks the
+    pass's nodes in `ExecutableBody.Declarations` and calls `AddTypeClauseObligations` at each root (`DeclarationTypeRoot`): an
+    outermost Type (its parent no Type node and no node with a FormedTypes row, `Binding.OriginClauses.cs:72`) whose `OriginOwner` is no
+    FunctionKoto or PropertyAccessorKoto (signatures stay premises),
+    and a Function Type's written result of any owner (C1). The judge owns the clauses of each root's formed Type through its
+    components (`AddTypeClauseObligations` walks the BoundType, not syntax), and a record sits at the root occurrence with the Type's
+    clause related (source `declared`, commit 1). A projection's bound qualifier (`(Host during b)` in `(Host during b).Item`) is not
+    a component of the formed Type and stays the formation step's (review-r3 C2).
+  - `FormNestedResult` forms the rows of a written nested result with a Body row (a Closure's header, a local's annotation); a result
+    with a Declaration row is the second root kind's, and a result with no row is neither's. A declaration frame's result is the
+    judge's after Completion, which removes the order hazard of forming before the gate is Completed (X1).
+  - Invariant (not checked; FormedTypeRows' contract): a body's node is first formed by its body's binder, so its row is Body; a
+    producer reached first from a pass-level validator is a broken contract, under which the root walk would take that body's node as a
+    root and `FormNestedResult` would skip it.
+  - The formation step's Origin part (`BeginTypeFormation` -> `CheckTypeOriginRelations`) is unchanged in every frame, as is its memo;
+    G491 D1's body-use records keep every frame.
+  - Moves (Q13; the Middle's RP17 consent C-596, `hold-b\m-consent.md` Phase 2 section 3; classes: 1, an invalid program dev accepts,
+    now rejected; 3, an independent record dev misses, now reported; 4, a record added or recoded on a program dev rejects, counted by
+    code). Class 1 fixed, each rejected with UnprovenOriginRelation_Kd at the root occurrence: H01, H04, H06, H07, H08, H10, H13, H20,
+    X1, X2, X3, X4 (one record each) and A1b (two), and the Middle's twins f1-f4, p1-p4, c1-c3, a1-a3, n1, n3 and n4. Class 2: none.
+    Class 3 fixed: H21 (beside the copied failure, at `Keep<Hold during a>`), H22 (the Field's `Hold during a` beside the local's two
+    records) and c4. Class 4: recoded at the base, UnprovenConstraint_Kd -> UnprovenOriginRelation_Kd with the residue staying (H12 and
+    b1-b3; `struct`'s InvalidTypeFormation_Kd and `base(r)`'s record stay); one UnprovenOriginRelation_Kd added beside the formation
+    step's UnprovenConstraint_Kd (the residue: A1, A4, A2e and ff1b); one added beside dev's InvalidOriginBinding_Kd for the same clause
+    (a4, the residue's `ValidateAssociatedApplications`); a second clause on a relation dev already reports (f5, p5, cp1 and cp2); Text:
+    a generic or Contract argument's record at the root (`Option<Hold during a>`, `Keep<Hold during a>`: H06, H13 and H21) and commit
+    1's source (H19, ResultPremiseTest c1fi).
+  - Scaling: the root walk reaches every written declaration Type, so `AddTypeClauseObligations` takes BU-19's rule (BU-19's
+    amendment below); CHAIN's Field form is as flat as dev (CLI `check`, raw leaf n = 24/28/30: dev 3.99/3.56/3.56 s, head
+    3.55/3.56/3.51 s; i32 leaf n = 40: dev 3.58 s, head 3.71 s).
+  - Residue (temporary second judge): where a pass-level validator forms a declaration's Type in the container's scope (the base,
+    `MemberLookup.cs:39` / `Access.cs:445`; an enum Case projection, `Access.cs:471-472`; a Property Type's projection,
+    `Properties.cs:310`), the formation step's Origin part still runs: at the base its later record is dropped by RecordConstraint's
+    slot rule (Transitional); at a projection it records the qualifier's premise at the Case and `enum` (A1: dev 2 records, R3 3) or at
+    the Property (A4: dev 1, R3 2), beside the judge's record of the resolved Item's clause at the Type node (a different clause, one
+    relation `b outlives static`; Q13 code-counted moves). An Origin-parameter specification's formation check
+    (`ValidateAssociatedApplications`, `Binding.AssociatedOrigins.cs:263-276`, InvalidOriginBinding_Kd at the specification) records the
+    clause the root walk also records (the Middle's twin a4: InvalidOriginBinding_Kd at 5:15 and UnprovenOriginRelation_Kd at 5:26), and
+    goes with the residue. A witness of the base residue: b1's InvalidConstraint_Kd at a generic base's `base(r)` (dev and head). The
+    accessor's circular formation proof (R2.2) is the same second judge; its removal condition is the comment at `BeginTypeFormation`
+    (`Binding.ConstraintValidation.Formation.cs`, review N3). Removal condition: R7-E5 (per-problem inputs) or G491 D1's owner decision,
+    whichever comes first: the step's Origin part then keeps only Types with no written occurrence (PLAN G1459).
+  - Rejected: R2's frame test `FormingBodyOf(OriginOwner(node))` (the caller's frame for every non-local owner: a Closure's header
+    and an initializer's Types gain a second record, and pass-level callers on body uses lose G491 D1's record); extending the row
+    test to the formation step (its sites are declarations, inferred targets and Nested sites have no row); entering each plan's
+    body at every pass-level recheck (an open family; a missed member silently loses records); roots from each declaration's Type
+    slots (a list of positions decided by syntax); excluding nodes the step already judged (suppression afterwards; drops E4d's M1
+    records); an `ExecutableBody` row (16 B, against BU-220 N5-1's measured cost); a `bool?` row (three unnamed states); R1's
+    per-owner occurrence list (a new representation).
+  - Rests on: R4-M101 E1, BU-89, BU-26, R4-M162, R7-M80 (G1278-A), G491 D1.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -28510,11 +28565,11 @@ Closure row of `MirCases.Branch`).
     (SPEC 9.7, 9.7.1, 8.6.3, 23.1.2). A declaration carries its written Type (F's Q-A (i)): a Function with a refuted result Type
     stays Resolved, as one with a refuted parameter Type was.
     - **`FormedTypes`, the site fact (F's G1278-6, G1278-7; amended by G396-F).** A Kept family of `NodeColumns` in BU-220's
-      published-column form: a `PagedColumn<bool>` at the node's SyntaxId, with the family's Grow, Renumbered, Retire and Move rows
+      published-column form: a `PagedColumn<FormationFrame>` (one byte) at the node's SyntaxId, with the family's Grow, Renumbered, Retire and Move rows
       in `HirTables`; one accessor, `Binding.FormedTypeRows`. It is a per-pass Kept column: `ResetPass` empties it over the running
       pass's modules (`FormedTypeRows.Empty`) before Index and every binder of the pass, which write its rows again, so a row is its
       node's in the latest pass over its module; a node of another pass's module (the frozen library's) keeps its row, and a
-      renumbering moves a row with its node. A row reads "this node forms its Type". Owner: Binding's Type binding. Producers, each
+      renumbering moves a row with its node. A row is the frame the node formed its Type in (`FormationFrame`: Declaration or Body, from the producer's `formingBody`; None = no row), amended by BU-271. Owner: Binding's Type binding. Producers, each
       where it completes the node's Type: BindType's completion of a written occurrence (whatever names it: a declaration, a `Self`,
       an alias, a Type parameter); the rooted name's operand; `EnumQualifierType`, for a construction or Case qualifier that writes
       its own list or is its declaration's `Self`; `ConstructionTargetType`, for a qualifier with no own parameters (its path forms
@@ -28522,7 +28577,7 @@ Closure row of `MirCases.Branch`).
       root-name form's levels, the unwrapped node and the reference; F's G1278-9); the Dictionary literal's binder (SPEC 12.4). A
       qualifier whose own arguments the expected Type supplies and an inferred construction target (`inferredConstructionTargets`)
       have no row: the acquisition or the construction forms that Type and judges it once. Reader: `ConstrainedType`,
-      ValidateConstraintUses' site test, at the occurrence's Type node (`OccurrenceTypeNode`). Removal: none; it is the canonical
+      ValidateConstraintUses' site test, at the occurrence's Type node (`OccurrenceTypeNode`). `ConstrainedType` reads presence; `ValidateOriginRelations`' root walk (`DeclarationTypeRoot`) reads the node's frame and its parent's presence (`Binding.OriginClauses.cs:72`), and `FormNestedResult` reads the frame (BU-271). Removal: none; it is the canonical
       site fact.
       - Amended by G396-F (Q-791, D-1294, 2026-11-25; PLAN G396; the Back's G1278-A implementation review N6; F's G396F-1; Minor).
         The row was kept across passes because BindType returns early for a node bound in an earlier pass (G1278-6; R-b's
