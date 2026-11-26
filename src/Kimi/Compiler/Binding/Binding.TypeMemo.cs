@@ -44,6 +44,11 @@ public sealed partial class Binding
     // recorded too), and AccumulateRequirements and ClosureArgumentVariance's Occurrences (a bit per polarity).
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
 
+    // The parts AddTypeClauseObligations met in one call (DECISIONS BU-19), a walk whose revisit only repeats what it adds. Its own
+    // table: each clause's proof builds premise environments, whose walks are queries of visitedParts, and nothing the walk calls begins
+    // a query of this one.
+    private readonly TypeMemo<BoundType, byte> clauseParts = new();
+
     // The constructed parts OperandContexts found clear, whose query spans a capability request (R7-C6 a; Binding.ConstraintOperands'
     // ClearQuery): the one table whose query is not one walk's, its fixed inputs the declaration contexts' states during the request.
     private readonly TypeMemo<BoundType, byte> clearParts = new();

@@ -396,6 +396,24 @@ public sealed partial class Binding
         return proof;
     }
 
+    // A kept formation's own first proof limit (W6; ContractSolver's Not replayed): the kept rows' walk (EnumerateClosed) and an
+    // identity table's build (ClassesOf). The proof's earlier limit is set aside for the formation (SetAsideLimit, which returns it)
+    // and joined after it (TakeOwnLimit, which returns the formation's own), so the proof ends with the limit the formation's own
+    // writes would leave; the table keeps the formation's, and each read of it joins it (ScopeReads.Limit ??= it).
+    private ICheckCause? SetAsideLimit()
+    {
+        var outer = this.ScopeReads.Limit;
+        this.ScopeReads.Limit = null;
+        return outer;
+    }
+
+    private ICheckCause? TakeOwnLimit(ICheckCause? outer)
+    {
+        var own = this.ScopeReads.Limit;
+        this.ScopeReads.Limit = outer ?? own;
+        return own;
+    }
+
     // The one channel of an Error resting on a failed node's record (a failed premise's, a named input's: R7-C3).
     private ConstraintProof RestOnFailure(ICheckCause cause)
     {
@@ -547,12 +565,11 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1 (design-r2 Amendment 4): a Callable proof that is Unknown only in the Origin part of its whole-contract comparison, with
-    // that comparison's failure, stamped with the outermost CheckConstraints clause it was proven for. Diagnostic payload only.
-    internal sealed class CallableUnknown(BoundType subject, BoundType required, ComparisonFailure failure)
+    // the proposition it judged (its record's Constraint fact, R7-E4 E4e) and that comparison's failure, stamped with the outermost
+    // CheckConstraints clause it was proven for. Diagnostic payload only.
+    internal sealed class CallableUnknown(BoundConstraint proposition, ComparisonFailure failure)
     {
-        internal BoundType Subject { get; } = subject;
-
-        internal BoundType Required { get; } = required;
+        internal BoundConstraint Proposition { get; } = proposition;
 
         internal ComparisonFailure Failure { get; } = failure;
 
