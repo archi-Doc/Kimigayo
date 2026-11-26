@@ -299,16 +299,17 @@ public sealed partial class Binding
         return holds;
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form's operand; a
-    // result target by its published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary
-    // literal by its own failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its
-    // call (IsCheckedCall), with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part
-    // bound with a Type that failed with its own BindingFailure, recorded or derived (Invalid), is failed.
+    // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form by its own recorded
+    // failure (a delivery's misfit, which FailMismatch writes at the form) and only without one through its operand; a result target by
+    // its published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary literal by its own
+    // failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its call (IsCheckedCall),
+    // with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part bound with a Type that
+    // failed with its own BindingFailure, recorded or derived (Invalid), is failed.
     private bool PartFailed(Koto part)
     {
         if (DeliveredOperand(part) is { } operand)
         {
-            return this.PartFailed(operand);
+            return part.BindingFailure != BindingFailure.None || this.PartFailed(operand);
         }
 
         if (this.resultContexts.TryGetValue(part, out var context))
