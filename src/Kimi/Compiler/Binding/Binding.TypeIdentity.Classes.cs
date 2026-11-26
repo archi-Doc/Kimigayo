@@ -47,7 +47,7 @@ public sealed partial class Binding
         private readonly List<int> open = new();
         private readonly List<byte> cycle = new();
         private readonly List<(int Root, int Member, int Component)> stack = new();
-        private readonly HashSet<BoundType> groupSeen = new(ReferenceEqualityComparer.Instance); // InGroup's walk (R7-C3 C3d)
+        private readonly HashSet<BoundType> groupSeen = new(ReferenceEqualityComparer.Instance); // InGroup's and TypesWith's walk (R7-C3 C3d)
         private readonly List<BoundType> groupWalk = new();
         private BindingScope? scope;
         private bool provisional;
@@ -201,6 +201,34 @@ public sealed partial class Binding
             }
 
             return false;
+        }
+
+        // e2-7 (O-532 (b); SPEC 8.3.3 Limits): the Types of this table and of `type`, each once: the table's nodes (its premises' subterms,
+        // as Add adds them) and the parts of `type` (Arity and Component, as Add walks them) that are no node, by InGroup's one walk. Over
+        // T(G) it is a closure's measure (ContractSolver's ExtendRound): a function of (root, G), linear in both, read from no other table.
+        internal int TypesWith(BoundType type)
+        {
+            var count = this.types.Count;
+            this.groupSeen.Clear();
+            this.groupWalk.Clear();
+            this.groupWalk.Add(type);
+            while (this.groupWalk.Count != 0)
+            {
+                var part = this.groupWalk[^1];
+                this.groupWalk.RemoveAt(this.groupWalk.Count - 1);
+                if (this.node.ContainsKey(part) || !this.groupSeen.Add(part))
+                {
+                    continue; // a node's parts are nodes (Add adds them first)
+                }
+
+                count++;
+                for (var i = 0; i < Arity(part); i++)
+                {
+                    this.groupWalk.Add(Component(part, i));
+                }
+            }
+
+            return count;
         }
 
         // R7-C3 C3d (F's C2/C3 rulings 332, 333; SPEC 8.3.4, 23.1.2): the whole of a pair layer in the final error group `group` whose binder
