@@ -39,14 +39,14 @@ namespace Kimi.Compiler;
 //   judge's paths and the Callable judge's signature read before they refute (PLAN G866).
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
-//   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one publication, and a table that is not is
-//   rebuilt per read: the provisional path costs reads times the view's premise nodes (the reads include the premise clauses' own, so
+//   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one publication, with the first proof
+//   limit its build wrote, which each read joins (W6), and a table that is not is rebuilt per read: the provisional path costs reads times the view's premise nodes (the reads include the premise clauses' own, so
 //   it is quadratic in the premises and linear in the uses); one table per view and pass, rebuilt in place; warm 0 B (pooled tables).
 // - Prohibitions: no premise is withheld, ranked or chosen by order, and no mode parameter; no judgment inside the closure but the
 //   attribute domains', which read no identity; an erroneous class proves nothing and makes its declaration's context no failed one.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes, ICheckCause? Limit)> identityClasses = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
     // A scope's recorded premise error: whether it is the owner's failure, whether an own class reached the closure limit, and the site
     // of its first record when the owner rests on its records (R7-C3 C3d: no record at the owner and no failure of its own; an own
@@ -112,12 +112,14 @@ public sealed partial class Binding
         this.identityClauses.Clear();
     }
 
-    // The view's classes and their Completion; a re-entered build answers nothing (Provisional).
+    // The view's classes and their Completion; a re-entered build answers nothing (Provisional). A memoized table's read joins the
+    // first proof limit its build wrote, as a build would write it again (W6: a failed premise's read is its proof's limit).
     private IdentityClasses? ClassesOf(BindingScope scope, out Completion completion)
     {
         var serial = SerialOf(scope);
         if (this.identityClasses.TryGetValue(scope, out var kept) && kept.Serial == serial)
         {
+            this.ScopeReads.Limit ??= kept.Limit;
             completion = kept.Classes.Completion;
             return kept.Classes;
         }
@@ -139,12 +141,17 @@ public sealed partial class Binding
                 this.identityLent.Add(classes);
             }
 
+            // The proof's earlier limit is set aside for the build and joined after it, so the build's own first limit is the table's.
+            var outer = this.ScopeReads.Limit;
+            this.ScopeReads.Limit = null;
             classes.Open(scope);
             this.ApplyIdentityPremises(classes, scope);
             classes.Close();
+            var limit = this.ScopeReads.Limit;
+            this.ScopeReads.Limit = outer ?? limit;
             this.IdentityClassWork += classes.Work;
             completion = classes.Completion;
-            this.identityClasses[scope] = (classes.Final && SerialOf(scope) == serial ? serial : -1, classes); // -1: kept, not memoized
+            this.identityClasses[scope] = (classes.Final && SerialOf(scope) == serial ? serial : -1, classes, limit); // -1: kept, not memoized
             return classes;
         }
         finally
@@ -232,9 +239,10 @@ public sealed partial class Binding
         }
         else
         {
-            // An unavailable premise is read Provisional (W6): a derived one a Pending source may still supply (the classes may grow),
-            // or one whose read consulted a failure (a failed premise, its derived failure, a failed source), which a kept table would
-            // not replay. So the table is not Final (W7): not memoized, and the view's requests keep no entry or rows (RowsRequest).
+            // An unavailable premise is read with its read's Completion (W6): Provisional where a derived one a Pending source may
+            // still supply (the classes may grow), so the table is not Final (W7): not memoized, and the view's requests keep no entry
+            // or rows (RowsRequest). A read that consulted a failure (a failed premise, its derived failure, a failed source) is
+            // final: its limit is the table's (ClassesOf), joined at each read.
             classes.Read(availability);
         }
     }

@@ -454,7 +454,7 @@ public sealed partial class RecursiveContractTest
     // positive clause against a written negation, a Contract's own premises meeting, a Semantics atom (the admitted set decides, 8.3.4).
     // nts2c-rev is invalid and accepted until PLAN G1406 (F's CC-32 Q4 (a)): its identity at depth is no row.
     // ncs2g's noMark is a group's (SPEC 6.1.1: a Container body never finds a root function; ncs2, a guard row, keeps that record).
-    // twcall keeps b1-r2-failed's records with a name discovery before the copy (W6: a walk that consulted a failure keeps no rows).
+    // twcall keeps b1-r2-failed's records with a name discovery before the copy (W6: a kept answer joins the limit its walk wrote).
     [InlineData("c2-5b2", "nc2", "contract NC\n    associate Next is NC\n    associate V\n    Self.(NC).V is not Copy\n    func near(self: ref/Self) -> ref/Self.(NC).V\n    func deep(self: ref/Self) -> ref/Self.(NC).Next.(NC).V\nfunc noCopy<V>(v: ref/V) -> i32\n    V is not Copy\n    return 0\nfunc probe<T>(t: ref/T) -> i32\n    T is NC\n    let v = t.deep()\n    return noCopy(v)\n", "")]
     [InlineData("c2-5b2", "nc3", NegatedCopies + NoCopy + "func probe<T>(t: ref/T) -> i32\n    T is NC\n    let v = t.deep3()\n    return noCopy(v)\n", "")]
     [InlineData("c2-5b2", "nm2", NegatedMarks + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NM\n    let v = t.deep()\n    return noMark(v)\n", "")]
