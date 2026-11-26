@@ -506,21 +506,36 @@ public sealed partial class Binding
     // enclosing request's classes.
     private (ViewIndex Index, bool Prepared, IdentityClasses? Enclosing) EnterRows(BoundType subject, EvidenceView view, int serial, IdentityClasses? classes, bool final)
     {
-        var enclosing = this.enumerateClasses;
-        this.enumerateClasses = classes;
-        this.enumerateDepth++;
+        var enclosing = this.EnterRequest(classes);
         var (index, prepared) = this.PrepareRows(subject, view, serial, final);
         if (classes is { Limited: true })
         {
             this.OwnEntry(index, view); // a Limited reading is the request's table alone (G1406-11 C-a): its entry keys by it
         }
 
+        this.StartWalk();
+        return (index, prepared, enclosing);
+    }
+
+    // A request's frame opens (EnterRows', CloseRoot's; LeaveRows closes it): its classes are the walk's and it is one request deeper.
+    // Returns the enclosing request's classes.
+    private IdentityClasses? EnterRequest(IdentityClasses? classes)
+    {
+        var enclosing = this.enumerateClasses;
+        this.enumerateClasses = classes;
+        this.enumerateDepth++;
+        return enclosing;
+    }
+
+    // An entered request's walk starts after its preparation: no request starts inside it (RowsRequest), and it starts with no
+    // identity row recorded and Complete until a read meets less (the class header's Kept rows).
+    private void StartWalk()
+    {
         this.enumerateWalking++;
         this.enumerateIdentities.Clear();
         this.enumerateIdentityKeys.Clear();
         this.enumerateJoined = 0;
         this.enumerateCompletion = Completion.Complete;
-        return (index, prepared, enclosing);
     }
 
     // An entered request's preparation: the view's entry in Closure(view) and, for an outermost request whose entry is not Kept, the
