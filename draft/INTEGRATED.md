@@ -1500,6 +1500,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   and the standard Property witness bridges), both before P3; P6 and P11 need P5b; §4.2's chain and gate, §4.3, §5.6's hold row and
   the Z7 row follow. P5's "after H11b" (R5-M182, R4-13: A-12 does not land before H11) is read as §4.2's gate, R7-E1 and H11b-0,
   both landed, with H11b's remainder (O1 H1-H2). No SPEC or IMPL text. Nothing frozen.
+- Revision 122 (2026-11-27, plan §14; the Middle's D-1330, R7-O1 c+f's landing): §5.0's O1 row marks c done (Q-818) and
+  keeps f with its reason (DECISIONS R7-M120). No SPEC or IMPL text. Nothing frozen.
 - R7-SP1 (2026-11-22; the Front's D-1042, F's P1 ruling 1; R7-P1's census
   `artifacts/handoff/2026-11-13-weekly-pause/front/notes/P1/sp1-census.md` on dev 43fc18f6c, its forms run on dev a763e10f7;
   independent review under RQ10, ACCEPT WITH CONDITIONS, applied): T1-T3 are absorbed with no SPEC text, already stated on dev: T1
