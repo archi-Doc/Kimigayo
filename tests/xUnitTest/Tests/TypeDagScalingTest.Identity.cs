@@ -182,6 +182,37 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // R7-C2c2 c2-5c (F's CC-36 C1, the review's probe): a view with no identity premise files the reading of each of m Contract facts
+    // over a completed projection (`Ai is P<SrcI.(HasItem).Item>`) for n uses `x.size(1)`, its entry outside a Kept region formed again
+    // at each request: Θ(m·(n+m)), the identity domain's shape (the twin adds `W is i32`) and never above it; PLAN G1408 is its staged
+    // reduction. Measured on 2c at 8, 16, 32: uses 2,538, 3,546, 5,562 (twin 2,926, 4,142, 6,574); facts 2,538, 7,242, 23,562 (twin
+    // 2,926, 7,910, 24,790). The programs are valid (SPEC 8.2.3, 8.6.1: one candidate).
+    [Theory]
+    [InlineData("uses", 2)]
+    [InlineData("facts", 4)]
+    public void AViewWithoutAnIdentityPremiseFilesReadingsAsTheIdentityDomain(string grown, int factor)
+    {
+        var plain = new[] { 8, 16, 32 }.Select(n => Work(grown, n, string.Empty)).ToArray();
+        var twin = new[] { 8, 16, 32 }.Select(n => Work(grown, n, "    W is i32\n")).ToArray();
+        Assert.True(
+            plain[1] <= factor * plain[0] && plain[2] <= factor * plain[1] && plain.Zip(twin).All(static p => p.First <= p.Second),
+            $"{grown}: {string.Join(", ", plain)} (twin {string.Join(", ", twin)}) at 8, 16, 32");
+
+        static int Work(string grown, int n, string identity)
+        {
+            var (uses, facts) = grown == "uses" ? (n, 8) : (8, n);
+            var parameters = string.Concat(Enumerable.Range(0, facts).Select(static i => $", A{i}"));
+            var premises = string.Concat(Enumerable.Range(0, facts).Select(static i => $"    A{i} is P<SrcI.(HasItem).Item>\n"));
+            var body = string.Concat(Enumerable.Range(0, uses).Select(static i => $"    let r{i} = x.size(1)\n"));
+            var c = MinimalEmissionTest.Analyze("contract HasItem\n    associate Item\nstruct SrcI\n    Self is HasItem\n    associate HasItem.Item is i32\n" +
+                "    public init() => ()\ncontract P<T>\n    func size(self: ref/Self, v: T) -> i32\n" +
+                $"func g<T, W{parameters}>(x: ref/T) -> i32\n{premises}    T is P<SrcI.(HasItem).Item>\n{identity}{body}    return 0\n" +
+                "public func main() -> ()\n    return\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
     // R7-C2c2 c2-2 (design review N1): an extension round per identity row a walk records, the key changing between rounds. M3's clause
     // `Self.(Tree).Child.(Tree).Alias is Self.(Tree).Child`, supplied at every `T.(Tree).Child...` link, joins each `.(Tree).Alias` of the
     // demand `T` + n times `.(Tree).Child.(Tree).Alias` to a shorter chain, so each round keys the demand to a new Type and walks its

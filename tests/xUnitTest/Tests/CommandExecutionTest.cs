@@ -27,10 +27,10 @@ public sealed class CommandExecutionTest : IDisposable
     // (SPEC 23.2.3: an internal selection failure is Faulted; DIAGNOSTICS rule 9); cancellation returns 130. Rows, the expected record
     // first:
     // - The message, no code: a missing input (build, check, restore), a directory without projects, the usage errors (build, toolchain,
-    //   restore's input, an unknown command), run's selection, the toolchain's calls (a missing manifest, run --no-build
-    //   without a build on a host that runs its Windows target, a missing executable), restore's lock write (an output failure naming the lock: PLAN G1257), a malformed
-    //   solution file and two files nested deeper than the configuration reader reads (the parse of a user's file is the file's failure),
-    //   and a project file check cannot read (the load's reason, PLAN G1010).
+    //   restore's input, an unknown command), run's selection, the toolchain's calls (a missing manifest, run --no-build without a build
+    //   on a host that runs its Windows target, a missing executable), restore's lock write (an output failure naming the lock:
+    //   PLAN G1257), a malformed solution file and two files nested deeper than the configuration reader reads (the parse of a user's
+    //   file is the file's failure), and a project file check cannot read (the load's reason, PLAN G1010).
     // - CheckFaulted_Kd: the host's console throwing at the selected project's line (build with a type the toolchain's classification
     //   lists, which printed as a plain failure, and with one it does not, which escaped the command; check and emit), at the line after
     //   the projects (printed as a plain failure), at restore's lock line, and at the line that renders a toolchain failure (escaped).
@@ -150,7 +150,7 @@ public sealed class CommandExecutionTest : IDisposable
         var console = new DiagnosticContractTest.DiagnosticConsole();
         var kimigayo = new Kimigayo(console);
         var source = Path.Combine(this.directory, "A.kimi");
-        File.WriteAllText(source, "::Kimi.Console.writeLine(\"Hello\")");
+        File.WriteAllText(source, LinuxPair.Program("Hello", "Hello.kimi"));
         Environment.ExitCode = 0;
         await new BuildCommand(null!, kimigayo, new Solution(kimigayo)).Execute(target is null ? [source] : ["--Target", target, source], TestContext.Current.CancellationToken);
         var exit = Environment.ExitCode;
@@ -530,7 +530,7 @@ public sealed class CommandExecutionTest : IDisposable
         [InlineData("Built: ", 2, null)]
         public async Task TestFailsByItsInputItsRunnerOrItsOwnFault(string origin, int expected, string? message, params string[] options)
         {
-            Assert.SkipUnless(origin != "Built: " || OperatingSystem.IsWindows(), "The native build runs on Windows.");
+            Assert.SkipUnless(origin != "Built: " || TargetProfile.Host == TargetProfile.Windows, "The native build runs on Windows.");
             Assert.SkipUnless(origin != "results file" || TargetProfile.Host == TargetProfile.Windows, "The run needs a host that runs the Windows target.");
             var input = WriteTests(Path.Combine(this.directory, "A", "A.kimiproj"), origin == "identity" ? "TestProjectId = \"Same\"\n" : string.Empty);
             if (origin == "identity")

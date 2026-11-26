@@ -76,7 +76,7 @@ public sealed partial class Binding
             var clause = this.FactSite(failure.Clause);
             this.candidateFacts.Add(new(ProblemFactKind.Related, clause, 4));
             this.candidateFacts.Add(new(ProblemFactKind.Constraint, clause, this.report.Keep(failure.Constraint)));
-            if (this.RetainedImplementation(failure.Constraint) is { } implementation)
+            if (failure.Conformance is { } conformance && this.RetainedImplementation(conformance) is { } implementation)
             {
                 this.candidateFacts.Add(new(ProblemFactKind.Related, this.FactSite(implementation), 6));
             }
