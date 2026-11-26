@@ -98,11 +98,7 @@ public sealed partial class Binding
     // record and gains no read: its failure did not read this one.
     private void FailBaseRule(Koto node, Koto? read)
     {
-        if (read is not null && this.RecordedFailure(node) == BindingFailure.None && this.IsUnresolvedPrerequisite(read))
-        {
-            this.RecordRead(node, read);
-        }
-
+        this.ReadForFailure(node, read);
         this.Fail(node, BindingFailure.InvalidTypeFormation);
     }
 
@@ -387,11 +383,10 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(member, restsOn); // A failed clause of the bound's supply might give it: the use rests on it.
             }
-            else if (qualifier?.Declaration is { } searched && this.RecordedFailure(member) == BindingFailure.None && this.IsUnresolvedPrerequisite(searched))
+            else
             {
-                // SPEC 23.1.2 (G144-6): the value lookup read the qualifier's container, so one left unresolved or kept as a recovery
-                // (DECISIONS BU-112) is the missing member's one read, in FailBaseRule's form (a Type path's: PublishUse).
-                this.RecordRead(member, searched);
+                // SPEC 23.1.2 (G144-6): the value lookup read the qualifier's container (a Type path's: PublishUse).
+                this.ReadForFailure(member, qualifier?.Declaration);
             }
 
             return null;

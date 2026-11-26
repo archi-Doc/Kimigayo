@@ -158,14 +158,14 @@ public sealed partial class Binding
             this.AddPrerequisite(use, failed);
         }
 
-        return new(PathEnd.Unresolved, null, use);
+        return new(PathEnd.Unresolved, null, use, null);
     }
 
     // The walk's refusal at the Name (as Supported refuses a component): its Unsupported step, which PublishPath publishes as its failure.
     private ResolvedPath ImportLimit(Koto use)
     {
         this.nameSteps.Add(new(NameStepKind.Unsupported, use, null, null, default, default, default, null, null, null));
-        return new(PathEnd.Unresolved, null, use);
+        return new(PathEnd.Unresolved, null, use, null);
     }
 
     // One opened source's same-name declarations join its stage (SPEC 9.5, 9.5.1): every accessible one takes part in the stage's
@@ -201,11 +201,11 @@ public sealed partial class Binding
     // refuses the Name with the walk's Unsupported step (the located Unsupported_Kd); then 9.5's stop, the stage having only Cases and
     // members needing a receiver (none Selectable); else the merged selection. A miss rests on a failed alias (ImportMiss).
     private ResolvedPath ImportStageEnd(in ValueImports stage, string name, BindingScope scope, Koto use, Koto? failed)
-        => stage.Ambiguous ? new(PathEnd.Ambiguous, null, use)
+        => stage.Ambiguous ? new(PathEnd.Ambiguous, null, use, null)
             : stage.Limited ? this.ImportLimit(use)
             : stage.Imported is not { } imported ? this.ImportMiss(use, failed)
-            : stage.Selectable ? new(PathEnd.Selected, imported, use)
-            : new(PathEnd.QualificationStop, null, use, new(stage.Source!, scope, imported, name, LookupRole.Value, 0));
+            : stage.Selectable ? new(PathEnd.Selected, imported, use, null)
+            : new(PathEnd.QualificationStop, null, use, null, new(stage.Source!, scope, imported, name, LookupRole.Value, 0));
 
     // One import stage's same-name value declarations merged so far: the selection (a gathered group's first source), the merged
     // environment, the first source, whether any candidate may be selected unqualified (HasUnqualifiedCandidate), a conflict and the

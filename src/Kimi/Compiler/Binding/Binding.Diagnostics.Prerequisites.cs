@@ -466,6 +466,18 @@ public sealed partial class Binding
         this.prerequisiteStore.Add(read);
     }
 
+    // SPEC 23.1.2 (G651 a2-1; DECISIONS BU-112): the part a failure that a check writes at `node` read (a base rule's part, the
+    // container a lookup searched, the declaration whose arity a use writes) is the node's one read (RecordRead) when it was left
+    // unresolved or kept as a recovery, so publication derives the failure from that part's record (RestsOnRecoveryOrLimit,
+    // RestsOnReported). A node an earlier check failed keeps that check's record and gains no read: its failure did not read this one.
+    private void ReadForFailure(Koto node, Koto? read)
+    {
+        if (read is not null && this.RecordedFailure(node) == BindingFailure.None && this.IsUnresolvedPrerequisite(read))
+        {
+            this.RecordRead(node, read);
+        }
+    }
+
     // SPEC 23.1.2: a check's one read inside the open frame, taken before the check writes its record at `node` (RequireConstraint's
     // named cause, its outcome's read, after the proof): it joins the frame's reads by the range rule, none for a node that holds a failure.
     private void ConsultedFor(Koto node, Koto read)

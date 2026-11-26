@@ -869,7 +869,13 @@ public ref partial struct TokenReader
                     }
                     else
                     {
-                        angles = Math.Max(0, angles - (this.currentToken.Kind is TokenKind.GreaterThanGreaterThan or TokenKind.GreaterThanGreaterThanEquals ? 2 : 1));
+                        // One '>' closes one open list, split off a packed '>>' as a closer is (TryConsumeTypeClose), so the rest stays
+                        // the next level's: the list's own closer at angles 0. An indivisible '>=' closes one and is skipped whole.
+                        angles--;
+                        if (this.TryConsumeTypeClose(out _, false))
+                        {
+                            continue;
+                        }
                     }
 
                     break;
@@ -895,7 +901,40 @@ public ref partial struct TokenReader
         }
         while (this.TryConsume(TokenKind.Comma) || this.TryConsume(TokenKind.Exclamation));
 
-        return new ErrorKoto(ref this, SourceSpan.FromBounds(start, Math.Max(start, this.PreviousEnd))) { IsSkip = true };
+        return this.SkipMark(start);
+    }
+
+    /// <summary>
+    /// Reads an expression body's item past <see cref="SyntaxNesting.Limit"/> without nodes (DECISIONS BU-112): to the next expression
+    /// boundary at delimiter balance 0, which the body's enclosing list, line or construct reads (a comma, a parameter list's '!', the
+    /// end of its grouping content, or an <c>else</c> that no <c>if</c> or <c>require</c> of the item takes). A '=&gt;' there continues a
+    /// construct of the item (a function expression, an <c>if</c>), so it ends nothing.
+    /// </summary>
+    /// <returns>The one mark the item leaves; the cut of <see cref="SyntaxNesting"/> above it writes the record.</returns>
+    internal ErrorKoto SkipExpressionPastLimit()
+    {
+        var start = this.InsertionSpan.Start;
+        var open = 0; // The item's ifs and requires that may still take an else.
+        while (this.CanRead && !this.EndsGroupingContent() && this.currentToken.Kind is not (TokenKind.Comma or TokenKind.Exclamation))
+        {
+            if (this.currentToken.Kind == TokenKind.Else)
+            {
+                if (open == 0)
+                {
+                    break;
+                }
+
+                open--;
+            }
+            else if (this.currentToken.Kind is TokenKind.If or TokenKind.Require)
+            {
+                open++;
+            }
+
+            this.SkipOne();
+        }
+
+        return this.SkipMark(start);
     }
 
     /// <summary>Records the completed part of a pending exclusion without allocating a stack of directive prefixes.</summary>
@@ -939,6 +978,10 @@ public ref partial struct TokenReader
             TokenKind.Separator => this.PeekKind(1) != TokenKind.StartBlock,
             _ => false,
         };
+
+    // The one mark a read past L leaves, over the tokens it read from `start`.
+    private ErrorKoto SkipMark(int start)
+        => new(ref this, SourceSpan.FromBounds(start, Math.Max(start, this.PreviousEnd))) { IsSkip = true };
 
     // Skips the current token, or the nested grouping or body it opens whole, with the line boundaries around a nested body.
     private void SkipOne()

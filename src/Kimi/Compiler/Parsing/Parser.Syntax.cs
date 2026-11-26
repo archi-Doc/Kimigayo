@@ -351,7 +351,9 @@ public static partial class Parser
             // The placeholder is forbidden in generic arguments and other compound element Types (SPEC 4.3).
             var allowInference = reader.AllowArrayElementInference;
             reader.AllowArrayElementInference = allowInference && reader.CurrentTokenKind == TokenKind.OpenBracket;
-            element = ParseType(ref reader, TypeContext.Element);
+            reader.Depth++; // The element lies one level below its array (DECISIONS BU-112).
+            element = reader.PastLimit ? reader.SkipPastLimit() : ParseType(ref reader, TypeContext.Element);
+            reader.Depth--;
             reader.AllowArrayElementInference = allowInference;
         }
 

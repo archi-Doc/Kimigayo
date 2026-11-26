@@ -15,6 +15,11 @@ public class SyntaxNestingTest(ITestOutputHelper output)
 {
     private const int L = 1024;
 
+    // The review's preludes (artifacts/units/g144/review-impl-c2/gen.py): a generic struct and an expression body nested 1,100 times.
+    private const string Box = "struct Box<T>\n    var item: T\n\n";
+
+    private static readonly string Arrows = string.Concat(Enumerable.Repeat("func [] () => ", 1100)) + "1";
+
     public static TheoryData<string> Shapes => ["parentheses", "plus", "labeled do"];
 
     [Theory]
@@ -137,7 +142,13 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     // PLAN G444 U2b's twins (design artifacts/units/g144 R1.5; runner D's dev rows, F's G144-3): each program's records by code. The
     // parser reads past L without nodes (TokenReader.Depth), so a record past the cut is never made (deepsyn) and a record above it
     // stays (ch-pre-y's y, deeptype's TypeMismatch_Kd). Fail-before: dev overflowed on parentheses, calls, ch-pre-y at 100,000 in a
-    // Debug host, or and interp; deepsyn kept its ExpectedSyntax_Kd below the cut.
+    // Debug host, or and interp; deepsyn kept its ExpectedSyntax_Kd below the cut. The review's twins (review-impl-c2, G144-17): a
+    // packed `>>` closes one list per `>` (tA, tw-targ); a container recorded where it stands is no recovery (tw-hdr) and an emptied
+    // one rests its arity (tw-arity); a body's skip ends at its boundary (tw-arrow); one overflow is one cut (tw-istest); a `->` link
+    // past L is read without nodes (fn-type; a link's parameters and the rest of its chain, siblings at L, are two cuts), and so is
+    // a fixed array's element, to its `]` (tw-arr). Fail-before: commit 2's head added ExpectedSyntax_Kd, InvalidTypeFormation_Kd or
+    // NoApplicableOverload_Kd, lost an UnresolvedBinding_Kd, recorded tw-istest twice, kept fn-type's ExpectedSyntax_Kd past the
+    // cut, or overflowed on tw-arr.
     [Theory]
     [InlineData("parentheses-100k", "NestingLimit_Kd")]
     [InlineData("calls-100k", "NestingLimit_Kd")]
@@ -151,6 +162,23 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     [InlineData("oR2-missing-I", "UnresolvedBinding_Kd")]
     [InlineData("oR2-syntax-I", "MissingSyntax_Kd UnresolvedBinding_Kd")]
     [InlineData("missing-qualifier-I", "UnresolvedBinding_Kd")]
+    [InlineData("tA-2001-V", "NestingLimit_Kd")]
+    [InlineData("tw-targ-cmp-1101-V", "NestingLimit_Kd")]
+    [InlineData("tw-targ-cmp-1101-I", "NestingLimit_Kd UnresolvedBinding_Kd")]
+    [InlineData("tw-targ-par-1101-V", "NestingLimit_Kd")]
+    [InlineData("tw-targ-par-1101-I", "NestingLimit_Kd UnresolvedBinding_Kd UnresolvedBinding_Kd")]
+    [InlineData("tw-hdr-V", "NestingLimit_Kd")]
+    [InlineData("tw-hdr-I", "NestingLimit_Kd UnresolvedBinding_Kd UnresolvedBinding_Kd")]
+    [InlineData("tw-arity-V", "NestingLimit_Kd")]
+    [InlineData("tw-arrow-tuple-V", "NestingLimit_Kd")]
+    [InlineData("tw-arrow-tuple-I", "NestingLimit_Kd UnresolvedBinding_Kd")]
+    [InlineData("tw-arrow-arg-V", "NestingLimit_Kd")]
+    [InlineData("tw-arrow-arg-I", "NestingLimit_Kd UnresolvedBinding_Kd")]
+    [InlineData("tw-istest-I", "NestingLimit_Kd")]
+    [InlineData("fn-type-1100-V", "NestingLimit_Kd NestingLimit_Kd")]
+    [InlineData("fn-type-1100-I", "NestingLimit_Kd NestingLimit_Kd UnresolvedBinding_Kd")]
+    [InlineData("tw-arr-100k-V", "NestingLimit_Kd")]
+    [InlineData("tw-arr-100k-I", "NestingLimit_Kd UnresolvedBinding_Kd")]
     public void EachTwinKeepsItsRecords(string twin, string codes)
         => Assert.Equal(codes.Split(' ').Order(), this.Compile(Twin(twin)).Records.Select(static x => x.Code).Order());
 
@@ -223,8 +251,34 @@ public class SyntaxNestingTest(ITestOutputHelper output)
             "oR2-syntax-I" => "alias G0\ngroup G0\n    internal group G1\n        internal func k() -> i32 => 1 +\n        internal func m() -> i32 => 1\n\nfunc f() -> i32 => G1.n()\n",
             "missing-qualifier-I" => "func f() -> i32 => Missing.m()\n",
             "arrow-100k-V" => Source("arrow", 100_000),
-            _ => string.Concat(Enumerable.Range(0, 1100).Select(static i => $"{new string(' ', 4 * i)}struct C{i}\n")) + $"{new string(' ', 4 * 1100)}func m() -> i32 => 1\n",
+            "tw-arr-100k-V" => $"func f(x: {string.Concat(Enumerable.Repeat("[2 of ", 100_000))}i32{new string(']', 100_000)}) => ()\n",
+            "tw-arr-100k-I" => $"func f(x: {string.Concat(Enumerable.Repeat("[2 of ", 100_000))}i32{new string(']', 100_000)}, b: Missing) => ()\n",
+            "tA-2001-V" => $"{Box}func f(x: {Boxes(2001)}) => ()\n",
+            "tw-targ-cmp-1101-V" => $"{Box}func g<T>(x: i32) -> i32 => x\n\nfunc f() -> bool\n    return g<{Boxes(1101)}>(1) > 2\n",
+            "tw-targ-cmp-1101-I" => $"{Box}func g<T>(x: i32) -> i32 => x\n\nfunc f() -> bool\n    return g<{Boxes(1101)}>(1) > missing\n",
+            "tw-targ-par-1101-V" => $"{Box}func f(a: i32, x: {Boxes(1101)}, b: i32) -> bool => a > b\n",
+            "tw-targ-par-1101-I" => $"{Box}func f(a: i32, x: {Boxes(1101)}, b: Missing) -> bool => a > 1 and nope\n",
+            "tw-hdr-V" => Structs(L - 1, "<T>", "T is Copy"),
+            "tw-hdr-I" => Structs(L - 1, "<T>", "T is Copy") + "\nfunc g(x: C0.Nope) => ()\nfunc h() -> i32 => C0.zz()\n",
+            "tw-arity-V" => Grouped(L - 1, 600, ["internal struct S<T>", "    var item: T"], "func f(x: {path}.S<i32>) => ()\n"),
+            "tw-arrow-tuple-V" => $"func f()\n    let t = ({Arrows}, 2)\n",
+            "tw-arrow-tuple-I" => $"func f()\n    let t = ({Arrows}, missing)\n",
+            "tw-arrow-arg-V" => $"func g<T>(h: T, y: i32) -> i32 => y\n\nfunc f() -> i32\n    return g({Arrows}, 2)\n",
+            "tw-arrow-arg-I" => $"func g<T>(h: T, y: i32) -> i32 => y\n\nfunc f() -> i32\n    return g({Arrows}, missing)\n",
+            "tw-istest-I" => $"func f(x: i32) -> bool\n    return (x is {string.Join('.', Enumerable.Range(0, 1100).Select(static i => $"A{i}"))}){string.Concat(Enumerable.Repeat(" and true", 600))}\n",
+            "fn-type-1100-V" => $"func f(g: {string.Concat(Enumerable.Repeat("(i32) -> ", 1100))}i32) => ()\n",
+            "fn-type-1100-I" => $"func f(g: {string.Concat(Enumerable.Repeat("(i32) -> ", 1100))}(i32 i32) -> i32, b: Missing) => ()\n",
+            _ => Structs(1100, string.Empty, "func m() -> i32 => 1"),
         };
+
+    // `n` nested Box Type arguments (Box: the review's prelude).
+    private static string Boxes(int n)
+        => string.Concat(Enumerable.Repeat("Box<", n)) + "i32" + new string('>', n);
+
+    // `levels` nested structs, the innermost with `head` after its name and `inner` as its one line.
+    private static string Structs(int levels, string head, string inner)
+        => string.Concat(Enumerable.Range(0, levels).Select(i => $"{new string(' ', 4 * i)}struct C{i}{(i == levels - 1 ? head : string.Empty)}\n")) +
+            $"{new string(' ', 4 * levels)}{inner}\n";
 
     // `levels` interpolations, each around `parentheses` parentheses: design R1.4's interp twin.
     private static string Interpolations(int levels, int parentheses)
@@ -240,6 +294,10 @@ public class SyntaxNestingTest(ITestOutputHelper output)
 
     // `alias G0...G{opened - 1}`, `levels` nested groups around `m`, and a use of `m` qualified from G{opened} (gen3-oR2.py's twin).
     private static string Aliased(int levels, int opened)
+        => Grouped(levels, opened, ["internal func m() -> i32 => 1"], "func f() -> i32 => {path}.m()\n");
+
+    // `alias G0...G{opened - 1}`, `levels` nested groups around `inner`'s lines, and `use` with `{path}` qualified from G{opened}.
+    private static string Grouped(int levels, int opened, string[] inner, string use)
     {
         var source = new System.Text.StringBuilder("alias ").AppendJoin('.', Enumerable.Range(0, opened).Select(static i => $"G{i}")).Append('\n');
         for (var i = 0; i < levels; i++)
@@ -247,8 +305,12 @@ public class SyntaxNestingTest(ITestOutputHelper output)
             source.Append(' ', 4 * i).Append(i == 0 ? "group" : "internal group").Append($" G{i}\n");
         }
 
-        source.Append(' ', 4 * levels).Append("internal func m() -> i32 => 1\n\nfunc f() -> i32 => ");
-        return source.AppendJoin('.', Enumerable.Range(opened, levels - opened).Select(static i => $"G{i}")).Append(".m()\n").ToString();
+        foreach (var line in inner)
+        {
+            source.Append(' ', 4 * levels).Append(line).Append('\n');
+        }
+
+        return source.Append('\n').Append(use.Replace("{path}", string.Join('.', Enumerable.Range(opened, levels - opened).Select(static i => $"G{i}")), StringComparison.Ordinal)).ToString();
     }
 
     // `levels` nested groups around one static.

@@ -92,12 +92,14 @@ public static partial class Parser
 
             link = (type, reader.CurrentTokenRange);
             reader.Advance();
+            reader.Depth++; // The rest of the chain lies one level below its link (DECISIONS BU-112).
             type = ParseAnnotatedType(ref reader, TypeContext.Type, out parameterList);
         }
         while (reader.CurrentTokenKind == TokenKind.MinusGreaterThan);
 
         while (link is { } frame)
         {
+            reader.Depth--;
             var functionType = new FunctionTypeKoto(
                 ref reader,
                 SourceSpan.FromBounds(frame.Parameters.Span.Start, Math.Max(frame.Arrow.End, type.Span.End)),

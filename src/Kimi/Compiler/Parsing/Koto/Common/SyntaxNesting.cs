@@ -5,8 +5,9 @@
 // directive's Condition, a runtime type test's target), at the reader's count. Output: the same tree, in which a node at depth L (its
 // distance from the module root) that has a child is cut: replaced in its slot by an ErrorKoto, or, where its slot holds only its own
 // form (a body, a name, an attribute), its parent is cut instead; a declaration container at depth L, whose slot takes only
-// containers, is emptied in place (DeclarationContainerKoto.ClearChildren) and becomes a recovery. One NestingLimit_Kd record per cut,
-// at the cut's span, which the ErrorKoto or the emptied container rests on; this walk is the one writer of that record.
+// containers, is emptied in place (DeclarationContainerKoto.ClearChildren) and becomes a recovery; a detached tree with a node past L
+// is cut at its root. One NestingLimit_Kd record per cut, at the cut's span, which the ErrorKoto or the emptied container rests on;
+// this walk is the one writer of that record.
 // Invariants: a published tree has depth at most L, so every later walk recurses at most L levels and needs no guard of its own;
 // nothing under a cut is walked or recorded; the walk itself recurses at most L + 1 levels; nodes of earlier documents are walked
 // only at the module's merge points (declaration containers, the generated function and its body). The parser reads past L without
@@ -66,9 +67,14 @@ internal sealed class SyntaxNesting : KotoVisitor
         this.depth--;
         if (this.deeper && node is DeclarationContainerKoto container)
         {
-            this.deeper = false; // No slot above a nested container takes an ErrorKoto: the container is emptied where it stands.
+            // No slot above a nested container takes an ErrorKoto, so nothing above it is cut: the container is emptied where it stands
+            // and becomes a recovery that rests on its record.
+            this.deeper = false;
             container.ClearChildren();
-            (this.cuts ??= []).Add(container);
+            if (Record(container) is { } key)
+            {
+                container.CodeContext.RecordRecovery(container, key);
+            }
         }
         else if (this.deeper)
         {
@@ -84,48 +90,50 @@ internal sealed class SyntaxNesting : KotoVisitor
     /// <summary>Cuts the nodes of one parse that lie deeper than <see cref="Limit"/> and records each cut.</summary>
     /// <param name="parse">The context of the parse, whose document's nodes are bounded.</param>
     internal static void Bound(CodeContext parse)
-        => new SyntaxNesting(parse.SourceDocument, parse.Kotonoha.GeneratedFunction).Walk(parse.Kotonoha.RootKoto, 0);
-
-    /// <summary>Cuts and records a tree before a parse-time walk reads it, ahead of the module's walk: a directive's Condition or a
-    /// runtime type test's target (DECISIONS BU-112). The module's walk finds the cut's ErrorKoto childless and records nothing more.</summary>
-    /// <param name="tree">The tree, not yet attached.</param>
-    /// <param name="depth">The depth of its root: the reader's count, at most the root's depth in the module.</param>
-    /// <returns>The tree, or the ErrorKoto that replaces it where its root is cut.</returns>
-    internal static Koto Bound(Koto tree, int depth)
-        => new SyntaxNesting(tree.CodeContext.SourceDocument, null).Walk(tree, depth);
-
-    private Koto Walk(Koto tree, int depth)
     {
-        this.depth = depth;
-        this.Visit(tree);
-        if (this.waiting is [var (root, from, to)])
+        var walk = new SyntaxNesting(parse.SourceDocument, parse.Kotonoha.GeneratedFunction);
+        walk.Visit(parse.Kotonoha.RootKoto);
+        if (walk.cuts is not { } cuts)
         {
-            // The root of a detached tree waits for a parent it does not have: the tree itself is cut.
-            tree = new ErrorKoto(root.CodeContext, root.Span);
-            var made = this.cuts ??= [];
-            made.RemoveRange(from, to - from);
-            made.Insert(from, tree);
-        }
-
-        if (this.cuts is not { } cuts)
-        {
-            return tree;
+            return;
         }
 
         foreach (var cut in cuts)
         {
-            cut.AddDiagnostic(DiagnosticCode.NestingLimit_Kd, Limit);
+            var key = Record(cut);
             if (cut is ErrorKoto error)
             {
-                error.Cause = cut.DiagnosticCollection?.LastError;
-            }
-            else if (cut.DiagnosticCollection?.LastError is { } key)
-            {
-                cut.CodeContext.RecordRecovery(cut, key); // An emptied container.
+                error.Cause = key;
             }
         }
+    }
 
-        return tree;
+    /// <summary>Cuts and records a tree before a parse-time walk reads it, ahead of the module's walk: a directive's Condition or a
+    /// runtime type test's target (DECISIONS BU-112). The reader's count can lie below the root's depth in the module (an enclosing
+    /// left-deep chain is built after the tree), so a tree that has a node past L at that count is one overflow, cut at its root: the
+    /// module's walk finds the ErrorKoto childless and cuts nothing more on its path.</summary>
+    /// <param name="tree">The tree, not yet attached.</param>
+    /// <param name="depth">The depth of its root: the reader's count, at most the root's depth in the module.</param>
+    /// <returns>The tree, or the ErrorKoto that replaces it.</returns>
+    internal static Koto Bound(Koto tree, int depth)
+    {
+        var walk = new SyntaxNesting(tree.CodeContext.SourceDocument, null) { depth = depth };
+        walk.Visit(tree);
+        if (walk.cuts is not { Count: > 0 } && walk.waiting is not { Count: > 0 })
+        {
+            return tree;
+        }
+
+        var cut = new ErrorKoto(tree.CodeContext, tree.Span);
+        cut.Cause = Record(cut);
+        return cut;
+    }
+
+    // Writes a cut's one record, at its span (this walk is its one writer), and returns its key, on which the cut rests.
+    private static DiagnosticKey? Record(Koto cut)
+    {
+        cut.AddDiagnostic(DiagnosticCode.NestingLimit_Kd, Limit);
+        return cut.DiagnosticCollection?.LastError;
     }
 
     // Replaces each child of node that waits for its cut, the last first so the earlier ranges stay put; a cut drops the cuts made

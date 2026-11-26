@@ -654,7 +654,7 @@ public static partial class Parser
         {
             if (reader.PastLimit)
             {
-                return reader.SkipPastLimit();
+                return reader.SkipExpressionPastLimit();
             }
 
             if (reader.CurrentTokenKind == TokenKind.Dollar ||

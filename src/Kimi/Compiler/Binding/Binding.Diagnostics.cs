@@ -285,6 +285,7 @@ public sealed partial class Binding
     // container that declares it: that declaration (Related) and its declared and written counts (Count, in that order).
     private BoundType? RecordArity(Koto node, BindingSymbol declaration, int declared, int written)
     {
+        this.ReadForFailure(node, declaration.Declaration); // The count read the declaration: one SyntaxNesting emptied rests it.
         var subject = SourceRef.Of(node);
         return this.Record(
             node,
