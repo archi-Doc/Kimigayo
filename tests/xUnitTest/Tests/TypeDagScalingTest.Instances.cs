@@ -17,7 +17,8 @@ public partial class TypeDagScalingTest
     // callee's atom walk); a comparison of the Tuple tree (ComparisonProof), a Copy requirement on it (DependentType), a called closure
     // capturing it (LacksImage). With Origin-carrying leaves (`ref`, PLAN G309) the calls' Contract rewrites (ContractType), the
     // candidates' and results' Origin tests (the Origin summary), the published result and a Closure with two captures, one of which names
-    // the result's Origin.
+    // the result's Origin; and a `match` and a `for` decomposition reached through a reference, whose `let` bindings each own the region of
+    // the layer the reach adds (PLAN G922), carried by a Closure.
     [Theory]
     [InlineData("tuple", 40)]
     [InlineData("array", 40)]
@@ -219,7 +220,10 @@ public partial class TypeDagScalingTest
         {
             "tuple" => text.Append($"func equal(a: ref/{root}, b: ref/{root}) -> bool => a{path} == b{path}\n").ToString(),
             "ref" => text.Append($"func both(d: ref/{root}, e: ref/D1<ref/i32 during b>) -> ()\n    let v = d{path}\n    let u = e{path}\n")
-                .Append("    let f = func [v, u] () => v\n    let w = f()\n    return\n").ToString(),
+                .Append("    let f = func [v, u] () => v\n    let w = f()\n    return\n")
+                .Append($"func patterns(d: ref/{root}) -> ()\n    match d{path}\n        (let a, let b)\n            let f = func [a, b] () => a\n")
+                .Append($"            let w = f()\n            return\n    return\nfunc loops(d: ref/Array<({root}, {root})>) -> ()\n    for (u, v) in d\n")
+                .Append($"        let g = func [u, v] () => u{path}\n        let z = g()\n    return\n").ToString(),
             _ => text.ToString(),
         };
     }
