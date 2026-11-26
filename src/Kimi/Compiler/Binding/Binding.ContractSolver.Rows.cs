@@ -507,14 +507,31 @@ public sealed partial class Binding
     // identity row: a link's own walk records a subset of its request's. A request that deferred a mate (PLAN G881b) marks them too: a
     // deferred walk records none, so a link only it walked may record one in its own request. Each carries the first proof limit the
     // walk wrote (W6, the class header's Not replayed), which a read of it joins; a walk that wrote one keeps its request's subject
-    // and key links alone, since another link's own walk may write none (F's CC-66 B1).
+    // and key links alone, read by their memo keys, since another link's own walk may write none (F's CC-66 B1; a key that is the
+    // subject is kept once, as KeepRow keeps a link's first copy).
     private void KeepRows(ViewIndex index, EvidenceView view, int serial, BoundType subject, BoundType key, ICheckCause? limit)
     {
+        var extends = this.enumerateIdentities.Count != 0 || this.enumerateDeferred.Count != 0;
+        if (limit is not null)
+        {
+            Keep(subject);
+            Keep(key);
+            return;
+        }
+
         foreach (var ((link, linkView, linkSerial), rows) in this.enumerateMemo)
         {
-            if (rows is not null && linkView == view && linkSerial == serial && (limit is null || ReferenceEquals(link, subject) || ReferenceEquals(link, key)))
+            if (rows is not null && linkView == view && linkSerial == serial)
             {
-                index.KeepRow(link, rows, this.enumerateIdentities.Count != 0 || this.enumerateDeferred.Count != 0, limit);
+                index.KeepRow(link, rows, extends, null);
+            }
+        }
+
+        void Keep(BoundType link)
+        {
+            if (this.enumerateMemo.TryGetValue((link, view, serial), out var rows) && rows is not null)
+            {
+                index.KeepRow(link, rows, extends, limit);
             }
         }
     }
