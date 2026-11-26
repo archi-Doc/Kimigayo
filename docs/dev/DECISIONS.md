@@ -10582,9 +10582,10 @@ resumed by R4-M86 (2026-10-20).
     keeper only where the owner selects a borrow case of its binder; nothing allocated per read).
   - Two facts, two rules (revision 2): the per-case facts (requirement, keepers, Phantom) take a binder only where it admits a
     borrow, and (none, no binder) is no use; variance stays per declaration, every leaf and nested position counting as before, and a
-    Type declaration's slot Phantom in every admitted case (`(none, 0)`) closes as invariant, generalizing the Unused closure; function
-    and accessor schemas keep the Unused closure. Struck from the choice: "nothing when the binder admits no borrow, which also fixes
-    variance" (the leaf counts toward variance: r30 stays rejected).
+    Type declaration's slot Phantom in every admitted case (`(none, 0)`) closes as invariant, generalizing the Unused closure, unless
+    a stored Function Type's signature reaches it (amended by BU-272, PLAN G1456: SPEC 15.3.5 after D-1328); function and accessor
+    schemas keep the Unused closure. Struck from the choice: "nothing when the binder admits no borrow, which also fixes variance"
+    (the leaf counts toward variance: r30 stays rejected).
   - No bound (one cause): a `ulong` of binders lost every ordinal past 63 (F1: such a binder read as unconditional `uniq`), and fix
     round 1's limit on it needed a second decision site, which a nested Type without own pair slots escaped silently (G1, ir18).
     `BinderSet` is the one representation of a slot's binders, with no width limit: ordinals below 64 inline, the others in words that
@@ -19771,6 +19772,42 @@ resumed by R4-M86 (2026-10-20).
     records); an `ExecutableBody` row (16 B, against BU-220 N5-1's measured cost); a `bool?` row (three unnamed states); R1's
     per-owner occurrence list (a new representation).
   - Rests on: R4-M101 E1, BU-89, BU-26, R4-M162, R7-M80 (G1278-A), G491 D1.
+- **BU-272 A stored Function Type's signature is no use of a slot: `StoragePosition`, `OriginParameter.InStoredSignature` (PLAN
+  G1456)** (Front, 2026-11-27; G1456; F's ruling G1456-1 on the design, recommendation (A)) SPEC 15.2.4, 15.3.5 (after D-1328), 5.7,
+  15.4.2, 15.4.3 rule 3. Amends BU-44 revision 2's closure; it is the fix R7-M121's premise correction N1 names.
+  - Cause: the requirement fixed point (`RequirementPart`, `Binding.TypeOrigins.cs`) formed a Loan use and a keeper at every borrow,
+    pair or nested layer whatever its position, so a layer inside a stored Function Type's signature gave its slot `ref` or `uniq`.
+    15.2.4: a callable signature alone stores nothing. So `struct Probe {s}` / `let call: (ref/i32 during s) -> i32` / `let at: raw/i32
+    during s` was accepted (5.7: a raw layer states a Phantom slot), `Sink during static` was rejected for a `uniq` that only a
+    signature states, and a no-input aggregate result did not default such a slot to `static`.
+  - Rule: the walk carries a storage position beside polarity, `StoragePosition {Stored, Signature}` (`Binding.Origins.Model.cs`,
+    beside `OriginDischarge`, whose walk also changes at `BoundTypeKind.Function`: BU-73). The one root call, `AccumulateRequirements`,
+    is Stored; a Function Type's components, its parameters and result, are Signature. At a Signature position a borrow, pair or
+    nested layer forms no use and no keeper, as a raw layer's Origin already did (5.7); its Origins still count toward variance. No
+    caller chooses the state: the walk derives it at the one structural point that defines it, as it derives polarity there.
+  - Published fact: `OriginParameter.InStoredSignature`, "a chain reaches the slot in a stored Function Type's signature" (15.3.5).
+    `AccumulateOrigin` sets it at a Signature position, `changed` on a false-to-true change only (monotone, so the fixed point still
+    terminates). A nested Type's slot marked so marks the slot its argument names (15.3.5: "including slots of nested Types bound to
+    it"), with the use formed at the walk's own position; `CollectRequirementEdges` already re-queues the consumers. It is reset with
+    Variance when the schema's slots are declared (`Binding.Origins.Schemas.cs`).
+  - Phase 1's closure (`Binding.OriginRequirements.cs`): a Type declaration's slot with no requirement closes as invariant unless a
+    stored signature reaches it (`!InStoredSignature`); such a slot takes its variance from the declaration's storage. Generic slots
+    and function or accessor schemas are unchanged.
+  - The walk's visit state (`visitedParts`) keeps one bit per polarity and position, so a part shared between a Field and a signature
+    at one polarity is walked in both.
+  - Moves (Q13): accepted to InvalidOriginBinding_Kd at the raw layer, programs 5.7 makes invalid: a raw layer beside a slot that only
+    a stored signature reaches, directly, through a nested Type's slot, in a result, twice, beside an `s is owner` slot, through a
+    projection `raw/i32 during c.s` (also a body-local `let q: raw/u8 during x.a`), and in a function's signature through a universal
+    Origin that an input binds to such a slot (`func f(c: ref/(C during a), p: raw/i32 during a)`: `a` belongs to nothing, 5.7
+    Origins; the binder's member walk, `HasMember`, finds no keeper). Rejected to accepted, valid: `Sink during static`,
+    a no-input aggregate result defaulting such a slot to `static`, and lengthening a generic Type whose Phantom slot only a signature
+    reaches. No other record moves.
+  - Rejected: a third member of `SlotRequirement` (it mixes a variance fact into the Loan requirement that `RequirementAt` and the
+    Keep guards read); a variance-only walk for signatures (a second copy of RequirementPart's variance rule); a struct bundling
+    polarity and position (an argument-only bag); a bool `inSignature` (a bool steering a function; the enum names the SPEC position
+    and is the row an `Unstored` member would join, PLAN G1466).
+  - Open: the Type-argument route, which SPEC 15.3.5 decides by the owner's O-541 (i) while this unit keeps dev's reading (twins O1
+    and O1b unchanged), and the raw-pointee route (PLAN G1466, after this unit).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
