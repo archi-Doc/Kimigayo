@@ -4,71 +4,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    [Transitional("R7", Reason = "The legacy comparison composition beside TyCtxt.Comparison, read by A4's Witnesses until A-12 reads the view, else R7.")]
-    private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract), (ulong Version, BoundComparison Plan)> comparisonPlans = new();
-
     private readonly TypeMemo<BoundType, (ConstraintProof Proof, BoundConstraint? Failed)> comparedParts = new(); // ComparisonProof's composite parts.
 
-    // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of the legacy plan, of
-    // TyCtxt.Comparison and of the comparison built-in rows (ImplTable.Builtin): elementwise over its parts (a Tuple or a safe `ref` layer),
+    // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of TyCtxt.Comparison and of
+    // the comparison built-in rows (ImplTable.Builtin): elementwise over its parts (a Tuple or a safe `ref` layer),
     // natively (a built-in Type; under source operators also a numeric Type, by IEEE), else by the Contract's mapping for the Type: its
     // witness when the Type is closed, its requirement in every instance when it has an abstract part.
     internal static ComparisonKind ComparisonKindOf(BoundType self, KimiDeclarationId? contract, bool operators)
         => TyCtxt.IsComposite(self) ? ComparisonKind.Composite
             : TyCtxt.OperatorTableRuns(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
             : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
-
-    // The legacy composition under the Contract's mapping: CallPlan leaves from RequirementImplementation under the built-in target's scope (a
-    // built-in Type's library witness among them, LeafTarget), null where a leaf does not resolve there (a Type parameter's), retained per
-    // storage version (DECISIONS R5-M68).
-    [Transitional("R7", Reason = "The legacy comparison composition beside TyCtxt.Comparison, read by A4's Witnesses until A-12 reads the view, else R7.")]
-    private BoundComparison? ComparisonPlan(BindingSymbol site, BoundType self, KimiDeclarationId identity)
-    {
-        var key = (site, self, identity);
-        if (this.comparisonPlans.TryGetValue(key, out var cached) && cached.Version == this.storageVersion)
-        {
-            return cached.Plan;
-        }
-
-        CallPlan? implementation = null;
-        BoundComparison[] parts = [];
-        var kind = ComparisonKindOf(self, identity, false);
-        if (kind == ComparisonKind.Composite)
-        {
-            parts = cached.Plan?.Parts.Length == self.Components.Count ? cached.Plan.Parts : new BoundComparison[self.Components.Count];
-            for (var i = 0; i < parts.Length; i++)
-            {
-                if (this.ComparisonPlan(site, self.Components[i], identity) is not { } part)
-                {
-                    return null;
-                }
-
-                if (!ReferenceEquals(parts[i], part))
-                {
-                    if (ReferenceEquals(parts, cached.Plan?.Parts))
-                    {
-                        parts = (BoundComparison[])parts.Clone();
-                    }
-
-                    parts[i] = part;
-                }
-            }
-        }
-        else if (kind != ComparisonKind.Builtin)
-        {
-            implementation = this.RequirementImplementation(site, self, identity, identity == KimiDeclarationId.Equatable ? "equals" : "compare");
-            if (implementation is null)
-            {
-                return null;
-            }
-        }
-
-        // Revalidate witnesses every Binding pass, retaining only unchanged immutable plans.
-        var plan = cached.Plan is { } previous && ReferenceEquals(previous.Implementation, implementation) && ReferenceEquals(previous.Parts, parts)
-            ? previous : new BoundComparison(self, identity == KimiDeclarationId.Equatable, implementation, parts);
-        this.comparisonPlans[key] = (this.storageVersion, plan);
-        return plan;
-    }
 
     // SPEC 13.4.1: whether a comparison under `contract` composes a Type: each part of a composite (ComparisonKindOf) by its own, a
     // numeric one natively under source operators, any other by its conformance; the requirement the answer first failed on. A composite

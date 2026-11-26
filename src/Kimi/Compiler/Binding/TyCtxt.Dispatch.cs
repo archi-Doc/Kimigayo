@@ -5,7 +5,7 @@
 // (Binding.ResolveRequirementWitness, R5-M22) under the library root's premises, or for a Self with an abstract part (`S<A>`, `(A, i32)`)
 // the reading definition's (Binding.EffectPremises, as TyCtxt.Retains reads such an instance), and the Contract reference the call
 // selected as its Self conforms to it (Binding.InstanceContract, shared with the CallPlan materializer), and a built-in target's Contract
-// by its lang item (ShimContract), the one read of what a shim runs, for Binding's comparison plans and the Backend's shim readers.
+// by its lang item (ShimContract), the one read of what a shim runs, for A4's Require and the Backend's shim readers.
 // ResetDispatch discards the dispatch views' memos together at an edit: Witness's, Comparison's (TyCtxt.Comparison.cs) and Applies'
 // (TyCtxt.Virtuals.cs).
 // Input: a requirement, the Contract reference its call recorded (MirCallee.Contract; null for none), the call's substitution
@@ -72,7 +72,7 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.6.1: a shim's Contract (Binding.PrepareBuiltinTargets) by its lang item, which names what the shim runs: Equatable's or
     // Comparable's comparison, or an arithmetic Contract's operation (KimiLibraryCatalog.IsArithmeticContract); null for a function of
-    // another disposition. Its readers are Binding's comparison plans (Binding.RequirementInstances' Witnesses) and the Backend's shim
+    // another disposition. Its readers are A4's Require (a comparison shim's leaves, MirEffects.Solve) and the Backend's shim
     // targets (InstanceCollector.Witnesses' Shim), capability gaps (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
     internal static KimiDeclarationId? ShimContract(BindingSymbol function)
         => function.Definition.Kind == DispositionKind.Shim ? Contract(function).LibraryDeclaration : null;
@@ -130,26 +130,6 @@ internal sealed partial class TyCtxt
     internal BoundType SelfType(BindingSymbol symbol) => binding.SelfType(symbol);
 
     internal BoundType SelfType(KimiDeclarationId id) => this.SelfType(library.GetSymbol(id)!);
-
-    // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness), the instance of the view's Body and of
-    // A4's target (Binding.Witnesses), under the given Origins; null where the function's slots do not resolve.
-    internal Subst? LibraryInstance(in Binding.RequirementWitness witness, BoundType self, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
-    {
-        var target = witness.Target!;
-        if (!binding.RentWitnessArguments(witness.Group, target, self, out var types, out var lengths, out var count))
-        {
-            return null;
-        }
-
-        try
-        {
-            return this.Intern(target, null, null, types.AsSpan(0, count), lengths.AsSpan(0, count), origins, inputs);
-        }
-        finally
-        {
-            binding.ReturnWitnessArguments(types, lengths);
-        }
-    }
 
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
 
@@ -217,6 +197,26 @@ internal sealed partial class TyCtxt
         var accessor = binding.AccessorFunction(property.Implementation).BoundSymbol!;
         var at = property.Origins.Count;
         return Body(accessor, this.Intern(accessor, null, witness.Declaring, [], [], origins[..at], origins[at..]));
+    }
+
+    // SPEC 21.3.1: a library group's witness at the Self's arguments (InstantiateLibraryWitness), the instance of the view's Body, which A4
+    // enters, under the given Origins; null where the function's slots do not resolve.
+    private Subst? LibraryInstance(in Binding.RequirementWitness witness, BoundType self, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    {
+        var target = witness.Target!;
+        if (!binding.RentWitnessArguments(witness.Group, target, self, out var types, out var lengths, out var count))
+        {
+            return null;
+        }
+
+        try
+        {
+            return this.Intern(target, null, null, types.AsSpan(0, count), lengths.AsSpan(0, count), origins, inputs);
+        }
+        finally
+        {
+            binding.ReturnWitnessArguments(types, lengths);
+        }
     }
 
     // SPEC 21.3.1: a library group's witness at the Self's arguments (LibraryInstance).

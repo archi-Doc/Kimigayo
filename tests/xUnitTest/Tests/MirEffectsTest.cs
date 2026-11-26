@@ -598,8 +598,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // SPEC 23.1.1, 23.1.2 (DECISIONS R4-M153, R4-M237; implementation review 1's N3): the witness destroys a Tuple nested past the
     // destruction walk's bound, Deep; beside it a chain growing through a destructor (GrowingChain) ends past Binding's storage bound,
     // Deep too: one verdict, so one depth limit record either way. Before Z25 the chain was a Limit, whose located Unsupported_Kd
-    // outranked the part past the bound (before Z3 that Limit was a call through several Callable signatures); A4 keeps no other Limit
-    // with a source form but E7's (R7-P5), and the walks' ranking stays pinned by MirTypesTest's limitDeep40.
+    // outranked the part past the bound (before Z3 that Limit was a call through several Callable signatures); no Limit class remains
+    // (E7 went with R7-P5a), and the walks' ranking stays pinned by MirTypesTest's limitDeep40.
     [Theory]
     [InlineData("", "OwnershipDepthLimit_Kd Self is Work 18446744073709551615")]
     [InlineData("        _ = G<i32>.init()\n", "OwnershipDepthLimit_Kd Self is Work 18446744073709551615")]
