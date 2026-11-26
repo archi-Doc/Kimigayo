@@ -367,8 +367,8 @@ public partial class KimiLibraryShapeTest
         foreach (var symbol in symbols)
         {
             var row = symbol.Definition;
-            var coded = row.Code is null ? row.Id != IntrinsicId.Fail
-                : row.Id == IntrinsicId.Fail && (spec.Contains($"{row.Code} (", StringComparison.Ordinal) || spec.Contains($"`{row.Code}: ", StringComparison.Ordinal));
+            var coded = row.Member is null ? row.Id != IntrinsicId.Fail
+                : row.Id == IntrinsicId.Fail && (spec.Contains($"{row.Member} (", StringComparison.Ordinal) || spec.Contains($"`{row.Member}: ", StringComparison.Ordinal));
             Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && row.Kind != DispositionKind.Shim && coded, symbol.Name);
         }
 

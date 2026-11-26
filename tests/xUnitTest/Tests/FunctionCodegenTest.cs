@@ -1452,7 +1452,7 @@ public sealed partial class FunctionCodegenTest
             "Storage.clockFailure",
         ];
         var library = Compilation.CreateForTest().Library;
-        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Member!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
         Assert.Equal(8, codes.Distinct().Count());
         Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
         Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
