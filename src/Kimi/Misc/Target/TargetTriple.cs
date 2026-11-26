@@ -27,6 +27,7 @@ public sealed record class TargetTriple(
     private static readonly (string Spelling, string Family)[] OsFamilies =
     [
         ("windows", "windows"), ("win32", "windows"), ("linux", "linux"), ("macos", "macos"), ("macosx", "macos"), ("darwin", "macos"),
+        ("none", "none"),
     ];
 
     private static readonly (string Spelling, string Family)[] ArchFamilies =

@@ -11,7 +11,7 @@ Names are relative to `Kimi`. The default alias opens its root, but not nested g
 
 Tables omit `public` and may omit `func`. Each signature includes its receiver and result; `Self` denotes the containing Type. Properties are read-only unless stated otherwise. An argument Type written as `A or B` abbreviates two overloads, not a union Type. `during` annotations identify result dependencies; they never extend storage lifetimes.
 
-This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §9. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
+This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §10. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
 
 ## 1. Foundational Types and Contracts
 
@@ -596,7 +596,33 @@ All names in this section belong to `Async`. Implementation of this entire secti
 
 Only the structured operations above request cancellation, for the children they started; no public operation makes a request. Only `sleep`, `checkpoint`, I/O waits, `send` and `receive` observe it, and `each` and `offloadEach` check before each pull. Worker computations run to completion and cannot be preempted by cancellation. Cancellation never interrupts, unwinds or destroys a task frame. Apart from their children's effects, the operations other than `run` have no environment effects and are usable in `confined` implementations. Apart from `run`, every Kimi operation that may wait takes the task slot; `Console.writeLine` stays synchronous.
 
-## 9. Current Source Differences
+## 9. Freestanding Platform
+
+[Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and [the platform](spec/22-core-execution-and-foreign-functions.md#2245-platform).
+
+`Platform` is the platform a freestanding program supplies (SPEC §22.4.5): a static Contract with `Self is Copy`, declared on every target. On a freestanding profile one root-level struct of the Application conforms; the runtime calls `start` once before the startup body and the other members as its platform operations, in the order below. A conforming struct's members are `public`.
+
+| Requirement | Guarantee |
+| --- | --- |
+| `start(boot: Boot) -> Self` | Called once by the runtime before the startup body, with what the loader described. |
+| `mapPages(self: uniq/Self, bytes: isize) -> raw/u8` | A page-aligned run of at least `bytes`, or null. |
+| `releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64` | Releases a whole run `mapPages` returned: 0, or a nonzero platform error. |
+| `write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64` | Writes every byte of `text` to stream 1 (Console) or 2 (the Abort report): 0, or a nonzero platform error. |
+| `clock(self: uniq/Self) -> i64` | Monotonic nanoseconds, or a negative value when there is no clock. |
+| `terminate(self: uniq/Self, status: i32) -> Never` | Ends the program: status 0 after the startup body and shutdown, 1 after an Abort's report. |
+
+`Boot` is what the loader described: a C-layout Copy struct created only by the runtime (it declares no constructor). `Boot.Region` is one memory map entry, a C-layout Copy struct.
+
+| Field | Guarantee |
+| --- | --- |
+| `Boot.directMapOffset: usize` | The higher-half direct map: physical address p is at p + directMapOffset. |
+| `Boot.regions: raw/raw/Boot.Region` | The loader's array of `regionCount` pointers to its memory map entries, read in `unsafe`. |
+| `Boot.regionCount: isize` | The number of entries. |
+| `Boot.Region.address: u64` | The entry's physical start address. |
+| `Boot.Region.length: u64` | The entry's length in bytes. |
+| `Boot.Region.kind: u64` | The loader's entry type: 0 usable, 1 reserved, ..., 5 bootloader reclaimable, ... |
+
+## 10. Current Source Differences
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 

@@ -312,7 +312,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (expected.Kind == BoundTypeKind.OpenSlot)
+        if (IsOpenAtom(expected))
         {
             // Binding.OpenSlots (SPEC 10.8.1, 10.5.1; design v3-A 11.8.7 B1): an atom is no owner Type of the declaration, so it fills
             // nothing and holds against the result; each own slot left unbound is its open atom at the next owner level while the outer
@@ -499,7 +499,7 @@ public sealed partial class Binding
             {
                 fixedTypes[i] = frame.Types[i] ?? (inferred ? owner!.Components[i] : null);
                 anyFixed |= frame.Types[i] is not null;
-                forms |= frame.Types[i] is null or { Kind: BoundTypeKind.OpenSlot };
+                forms |= frame.Types[i] is not { } fixedSlot || IsOpenAtom(fixedSlot);
             }
 
             for (var i = 0; i < originCount; i++)
@@ -799,19 +799,30 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.8: each payload but a settled one is evidence by its kind, in the early or the late pass; a payload that refutes the slots
-    // is the construction's Type mismatch.
+    // SPEC 10.8: each payload but a settled one is evidence by its kind, in the early or the late pass, the nested calls' own Types the
+    // late pass gathers after every literal's default (SPEC 10.5.1 bullet 2); a payload that refutes the slots is the construction's Type
+    // mismatch.
     private bool InferPayloads(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, SlotSet settled, bool late)
     {
         var wholes = this.wholes.Count;
-        for (var i = 0; i < payload.Length; i++)
+        var ownTypes = this.ownTypes.Count;
+        var inferred = true;
+        for (var i = 0; inferred && i < payload.Length; i++)
         {
-            if (!settled.Contains(i) && !solution.InferArgument(payload[i].BoundType!, solution.Call.ArgumentNodes[i], late))
-            {
-                this.wholes.RemoveRange(wholes, this.wholes.Count - wholes);
-                this.Fail(use, BindingFailure.TypeMismatch);
-                return false;
-            }
+            inferred = settled.Contains(i) || solution.InferArgument(payload[i].BoundType!, solution.Call.ArgumentNodes[i], late);
+        }
+
+        for (var p = ownTypes; inferred && p < this.ownTypes.Count; p++)
+        {
+            inferred = solution.InferGathered(p, out _);
+        }
+
+        this.ownTypes.RemoveRange(ownTypes, this.ownTypes.Count - ownTypes);
+        if (!inferred)
+        {
+            this.wholes.RemoveRange(wholes, this.wholes.Count - wholes);
+            this.Fail(use, BindingFailure.TypeMismatch);
+            return false;
         }
 
         if (!solution.BindWholes(wholes, late))

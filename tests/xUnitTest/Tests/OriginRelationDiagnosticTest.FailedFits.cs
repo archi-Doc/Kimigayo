@@ -145,7 +145,9 @@ public partial class OriginRelationDiagnosticTest
 
     // U1.6h-2 (SPEC 23.1.2, 10.4; the owner's rule of 2026-11-02, superseding C16): an ambiguity rests on a failed part only where the
     // kept candidates' patterns there mismatch with certainty, a head mismatch outside every own slot and Function Type that the
-    // adaptation rules bridge in neither direction: Option<T> against Array<U> (rh_head), whose typed twin is valid. The ambiguity is
+    // adaptation rules bridge in neither direction, such as Option<T> against Array<U>. In rh_head, whose typed twin is valid, the
+    // open fit removes g<U>: `.None` names no Case of Array, so identity(.None) misfits Array<U> (SPEC 14.9.2 step 1, 10.5.1; PLAN
+    // G814-6, Q13 class 4); identity's own unbound T, solved only from g's resting T, is still reported (PLAN G814-R). The ambiguity is
     // reported only where two or more kept candidates remain (SPEC 10.4; PLAN G924 AF-3b, ArgFlow ruling 123): a non-failed source or
     // part removes each candidate at whose Type it does not check or adapt (10.5.1), so an integer source against bool at the join's
     // position (n1_ov, h3c), as an element (f2_ov) and at a child position (e3_ov), Option<i64> against Option<bool> in a nested join
@@ -213,7 +215,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6 cert", "pe3_t", GEvidenceFixed + "func g<U>(x: Option<U>, y: U, z: Option<bool>) -> i32 => 1\n" + "func k(c: bool, v: i64, w: Option<i64>) -> i32\n    return g(if c => w else => .None, v, .None)\n", "AmbiguousBinding_Kd g(if c => w else => .None, v, .None)")]
     [InlineData("U1.6 cert", "fe", IdentityT + FFunctions + KHead + "    return f(if c => undefinedName else => idg, .None)\n", "AmbiguousBinding_Kd f(if c => undefinedName else => idg, .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "fe_t", IdentityT + FFunctions + KHead + "    return f(if c => idg else => idg, .None)\n", "AmbiguousBinding_Kd f(if c => idg else => idg, .None)")]
-    [InlineData("U1.6 cert", "rh_head", IdentityT + GHeads + KHead + "    return g(if c => undefinedName else => identity(.None), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => identity(.None), .None); UnresolvedBinding_Kd undefinedName")]
+    [InlineData("U1.6 cert", "rh_head", IdentityT + GHeads + KHead + "    return g(if c => undefinedName else => identity(.None), .None)\n", "UnboundTypeArgument_Kd identity(.None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "rh_head_t", IdentityT + GHeads + "func k(c: bool, o: Option<i64>) -> i32\n    return g(if c => o else => identity(.None), .None)\n", "")]
     [InlineData("U1.6 cert", "rl_len", IdentityT + GLengths + KHead + "    return g(if c => undefinedName else => identity([1, 2]), .None)\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "rl_len_t", IdentityT + GLengths + "func k(c: bool, a: [2 of i64]) -> i32\n    return g(if c => a else => identity([1, 2]), .None)\n", "")]
