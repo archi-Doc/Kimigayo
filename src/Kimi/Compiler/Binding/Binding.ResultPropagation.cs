@@ -79,9 +79,10 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // SPEC 4.3, 10.8 (Binding.OpenSlots' rule; PLAN G814 rule L): a length agrees with a target length that holds a length atom.
     private static bool SameArrayShape(BoundType own, BoundType target)
-        => own.Kind == target.Kind && ReferenceEquals(own.Symbol, target.Symbol) && own.Length == target.Length &&
-            ReferenceEquals(own.LengthExpression, target.LengthExpression);
+        => own.Kind == target.Kind && ReferenceEquals(own.Symbol, target.Symbol) && (target.LengthExpression is { ContainsOpenSlot: true } ||
+            (own.Length == target.Length && ReferenceEquals(own.LengthExpression, target.LengthExpression)));
 
     // SPEC 3.8: a Never element fits its expected element Type, which the literal's Type takes; `elements` holds the elements' Types and
     // receives the fitted ones.
@@ -930,7 +931,7 @@ public sealed partial class Binding
         => target.Components.Count == 1 &&
             (array.BoundType is { Kind: BoundTypeKind.FixedArray } own ? SameArrayShape(own, target) : this.ConstructsAt(array, target));
 
-    // The shape a waiting array literal constructs at the target (SPEC 4.3.1, 4.3.3).
+    // The shape a waiting array literal constructs at the target (SPEC 4.3.1, 4.3.3); its length agrees with a length atom (G814 rule L).
     private bool ConstructsAt(ArrayLiteralKoto array, BoundType target)
     {
         if (target.Kind != BoundTypeKind.FixedArray)
@@ -938,9 +939,9 @@ public sealed partial class Binding
             return array.FillLength is null && target.Kind == BoundTypeKind.Array && ReferenceEquals(target.Symbol, this.Library.DynamicArray);
         }
 
-        return array.FillCount is not { } count
+        return target.LengthExpression is { ContainsOpenSlot: true } || (array.FillCount is not { } count
             ? array.FillLength is null && target.LengthExpression is null && target.Length == array.Elements.Count
-            : count.IsConstant ? target.LengthExpression is null && target.Length == count.Value : ReferenceEquals(target.LengthExpression, count);
+            : count.IsConstant ? target.LengthExpression is null && target.Length == count.Value : ReferenceEquals(target.LengthExpression, count));
     }
 
     // SPEC 12.4.3: a dictionary literal takes the target's key and value Types when every key and value fits them, also one waiting.
