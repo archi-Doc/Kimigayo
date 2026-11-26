@@ -30445,6 +30445,20 @@ Closure row of `MirCases.Branch`).
   - **Rejected:** deleting it with openers only over settled state (false for that session; its stage is R7-O1 e's per-body
     closure); a version per state kind (a second reading of one state); keeping `JudgeCallPosition` (it judges nothing since R7-M51)
     and `BodyChain` (its contrast with Binding's judgment ended with R7-M66).
+- **R7-M121 A slot that only a stored Function Type's signature reaches takes its variance from storage (the owner's O-536 (a))**
+  (Middle, 2026-11-27; X-5 N3, PLAN G396 (7); SPEC 15.3.5 by D-1328) SPEC 15.3.5, 15.2.3, 15.2.4.
+  - **Rule.** A slot that is Phantom in every admitted case stays invariant, unless a chain of stored Fields reaches it in a
+    stored Function Type's signature. Then it takes its variance from the declaration's storage like any other slot, with polarity
+    reversed at a parameter. It stays Phantom: its requirement is `none`, and it grants no validity, Loan, Copy or access.
+  - **Why.** The Variance paragraph derives a Type's variance from its storage, and a stored Function Type Field is storage.
+    `struct Callback {input}` / `let call: (ref/i32 during input) -> i32` accepts every `ref/i32` that lives during `b`, so a
+    `Callback during b` serves where a `Callback during a` is wanted when `a outlives b`. It stores no borrow of `input`.
+  - **Premise corrected (K's SPEC review N1).** Dev matches the rule on variance only. Binding's requirement fixed point counts a
+    Function Type's borrow layer as a `ref` or `uniq` use (`RequirementPart`), so the slot is not `none` on dev. PLAN G1456 (the
+    Front's) fixes this.
+  - **Tests.** MirOriginsTest's `AnOriginPositionRelatesByItsVariance` rows B0, B1, E0, E1 and E3 carry the rule at A5.
+  - **Rejected:** (b), Phantom and invariant as the old Phantom sentence read. A callable wrapper `Callback during b` could not
+    then serve where `Callback during a` is wanted, although every input it receives outlives `b`.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
