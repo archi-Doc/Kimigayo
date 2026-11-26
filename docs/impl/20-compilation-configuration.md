@@ -50,6 +50,7 @@ The built-in Conditions `os` and `arch` ([§19.2](../spec/19-compile-time-direct
 | OS `windows`, `win32` | `windows` |
 | OS `linux` | `linux` |
 | OS `macos`, `macosx`, `darwin` | `macos` |
+| OS `none` | `none` |
 | any other OS | `unknown` |
 | arch `x86_64`, `amd64` | `x86_64` |
 | arch `i386`, `i486`, `i586`, `i686`, `x86` | `x86` |
