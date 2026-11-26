@@ -455,7 +455,10 @@ public partial class TypeIdentityTest
     // extends stays its first walk's, until R7-C3) is unchanged; these programs no longer reach it. Each family's twins pin the
     // refusal: under stride 2 a premise at an odd depth, 3 or 67 links, joins `T.Next.Up`'s class, not x's (spm-, dg-, dm-o3 and -o67),
     // and no family's x has a premise without one (-np): INVALID (SPEC 8.2.3), x's class never closes, so the limit's record (8.3.3).
-    // Under stride 1 every depth joins x's class, so s1- and bd-o3 and -o67 are VALID and accepted.
+    // Under stride 1 every depth joins x's class, so s1- and bd-o3 and -o67 are VALID and accepted. e2-7 (G1406-26 D1; SPEC 8.2.3,
+    // 8.3.3): Bt's closure (two recursive associates) is Limited under O-532 (b); a call asking `Option<T> is Result<T, i32>` differs
+    // at known heads, an answer that reads no closure, so it keeps its UnprovenConstraint_Kd (bt-indep0), beside a let the closure
+    // leaves open, whose record is the limit's (bt-indep).
     public static TheoryData<string, string, string> RoundBoundProgramRows => new()
     {
         { "spm-a", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    need(x)\npublic func main() => ()\n", string.Empty },
@@ -494,6 +497,8 @@ public partial class TypeIdentityTest
         { "dm-o3", Dm(Up(3, "Mkr")), "AnalysisLimit_Kd" },
         { "dm-o67", Dm(Up(67, "Mkr")), "AnalysisLimit_Kd" },
         { "dm-np", Dm(string.Empty), "AnalysisLimit_Kd" },
+        { "bt-indep", "contract Bt\n    associate L is Bt\n    associate R is Bt\n    associate Up\n    Self.(Bt).L.(Bt).Up is Self\n    Self.(Bt).R.(Bt).Up is Self\nfunc same<A, B>(x: ref/A, y: ref/B) -> i32\n    A is B\n    return 0\nfunc probe<T>(a: ref/T.(Bt).L.(Bt).Up, o: ref/Option<T>, r: ref/Result<T, i32>) -> i32\n    T is Bt\n    let x: ref/T.(Bt).R = a\n    return same(o, r)\npublic func main() => ()\n", "AnalysisLimit_Kd UnprovenConstraint_Kd" },
+        { "bt-indep0", "contract Bt\n    associate L is Bt\n    associate R is Bt\n    associate Up\n    Self.(Bt).L.(Bt).Up is Self\n    Self.(Bt).R.(Bt).Up is Self\nfunc same<A, B>(x: ref/A, y: ref/B) -> i32\n    A is B\n    return 0\nfunc probe<T>(o: ref/Option<T>, r: ref/Result<T, i32>) -> i32\n    T is Bt\n    return same(o, r)\npublic func main() => ()\n", "UnprovenConstraint_Kd" },
     };
 
     [Theory]

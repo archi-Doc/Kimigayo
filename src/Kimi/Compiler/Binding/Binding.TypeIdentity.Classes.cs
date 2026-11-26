@@ -69,6 +69,35 @@ public sealed partial class Binding
         // a judge left Unknown over it refuses (ReadIdentityLimit) and its Refuted answers false (Binding.IdentityRefuted). Open clears it.
         internal bool Limited { get; private set; }
 
+        // SPEC 8.2.3's Refuted at known heads (G1406-26 D1): whether `a` and `b` differ at a corresponding position where both heads are
+        // known, which no premise can change (a premise joining them is itself an erroneous class, IdentityPremiseErrorRead), so such an
+        // answer reads no class and no closure (8.3.3: it depends on no limited analysis). An abstract Type, a pair layer or an open
+        // position decides nothing here; SameHead reads no length arguments.
+        internal static bool Distinct(BoundType a, BoundType b)
+        {
+            if (ReferenceEquals(a, b) || !Known(a) || !Known(b))
+            {
+                return false;
+            }
+
+            if (!SameHead(a, b))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < a.Components.Count; i++)
+            {
+                if (Distinct(a.Components[i], b.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+
+            static bool Known(BoundType type) => !type.IsAbstract && !type.IsPairLayer && type.Kind is not (BoundTypeKind.Open or BoundTypeKind.OpenSlot);
+        }
+
         internal void Read(Completion availability) => this.provisional |= availability == Completion.Provisional;
 
         internal void MarkLimited() => this.Limited = true;

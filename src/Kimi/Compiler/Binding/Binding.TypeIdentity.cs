@@ -567,9 +567,10 @@ public sealed partial class Binding
     }
 
     // SPEC 8.2.3: `a is b` holds in the view when the two are one complete Type, or the classes of its reading (ClassesOf over a and b)
-    // make them one (Verdict's Proven); an erroneous or provisional class proves nothing. `read` is that reading's table: a judge that
-    // leaves the judgment unproven reads its Limited bit (ReadIdentityLimit; G1406-11 C-a). It never refuses, so a branch that reads it
-    // records nothing of its own (C3).
+    // make them one (Verdict's Proven); an erroneous or provisional class proves nothing. `read` is the table the answer read: a judge
+    // that leaves the judgment unproven reads its Limited bit (ReadIdentityLimit; G1406-11 C-a); none (null) where known heads differ
+    // (IdentityClasses.Distinct: the answer reads no closure, G1406-26 D1). It never refuses, so a branch that reads it records nothing
+    // of its own (C3).
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope, out IdentityClasses? read)
     {
         read = null;
@@ -589,6 +590,7 @@ public sealed partial class Binding
         }
 
         this.ReadIdentityPremiseError(scope, a, b);
+        read = IdentityClasses.Distinct(a, b) ? null : classes;
         return false;
     }
 
@@ -598,12 +600,14 @@ public sealed partial class Binding
     // the scope's own), completed projections first (ContractType); the view's classes judge it by their one table (Refuted). A judge
     // refutes two Types' agreement only so; a pair with no known difference that it cannot prove is Unknown (the Contract judge's
     // paths, the Callable judge's signature), and so is any pair while the view's table is being built, and any pair at a Limited root
-    // (SPEC 8.3.3: no Refuted rests on the limited analysis; G1406-11 N1): its judge left Unknown reads the limit of `read`, the reading's
-    // table (ReadIdentityLimit).
+    // (SPEC 8.3.3: no Refuted rests on the limited analysis; G1406-11 N1) unless known heads differ (IdentityClasses.Distinct: the
+    // answer reads no closure, G1406-26 D1): its judge left Unknown reads the limit of `read`, the table the answer read (ReadIdentityLimit).
     private bool IdentityRefuted(BoundType a, BoundType b, BindingScope scope, BoundType? self, out IdentityClasses? read)
     {
         var (left, right) = (this.ContractType(a, scope, self), this.ContractType(b, scope));
-        return (read = this.ClassesOf(scope, [left, right], out _)) is { Limited: false } classes && classes.Refuted(left, right);
+        var classes = this.ClassesOf(scope, [left, right], out _);
+        read = IdentityClasses.Distinct(left, right) ? null : classes;
+        return classes is not null && read is not { Limited: true } && classes.Refuted(left, right);
     }
 
     // SPEC 8.2.3 ("an abstract Type ... takes the form its binding, a completed projection or its admitted set fixes"): the members of a
