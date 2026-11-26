@@ -30,6 +30,8 @@ public sealed partial class Binding
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<IdentityRow> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows, each with its source
     private readonly HashSet<(BoundType, BoundType, BindingSymbol)> enumerateIdentityKeys = new(); // their (pair, source), emptied with them
+    private readonly Dictionary<BoundType, int> enumerateJoinKeys = new(ReferenceEqualityComparer.Instance); // O-533 (a): RowJoins' numbers of the round's class keys
+    private readonly List<int> enumerateJoins = new(); // their union-find (each number's parent), emptied each round
     private readonly List<BoundType> enumerateDeferred = new(); // PLAN G881b: the round's mates row (5) did not walk (a cycle)
     private readonly List<BoundType> extendRoots = new(); // c2-4b: a closure's roots (CloseRoot, ExtendRound), a request table (LeaveRows)
     private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
@@ -45,6 +47,7 @@ public sealed partial class Binding
     private int enumerateDepth;
     private int enumerateWalking;
     private bool enumerateMoved; // PLAN G881b: a link of the round closed with rows that are not its last round's
+    private int enumerateJoined; // O-533 (a): the closure's rows that joined two classes as they were added (RowJoins), emptied with the rows
 
     // The outermost request's own scratch value (the class header's Kept rows): the meet of its walk's availability reads (WalkAvailable),
     // set at each outermost walk's start and read at its end (KeepRows' condition); no collection, so no store the library-layer dump lists.
@@ -166,7 +169,8 @@ public sealed partial class Binding
     // Rows only grow from the same roots, so a round that adds none ends the closure (null). G1406-19: the closure has one budget,
     // PremiseClosureLimit, that its rounds past a root's first walk and its re-rootings spend together (`closure.Spent`, counted from
     // the part asked and never reset; `closure.Rooted`, what was spent when the last re-rooting started the current root's own
-    // rounds). O-532 (b): the same budget bounds the closure's rows (enumerateIdentities), at most `closure.Rows`, PremiseClosureLimit
+    // rounds). O-532 (b), O-533 (a): the same budget bounds the closure's rows that join two classes as they are added (enumerateJoined,
+    // RowJoins; a row within one class adds no identity), at most `closure.Rows`, PremiseClosureLimit
     // per Type of its root and of the premises of the declaration's grounds G it reaches (T(G).TypesWith(root), the root's connected
     // part of G, G1406-27; set at the root's first walk): one count, a
     // function of (root, G) and linear in both, so a closure whose classes grow without bound (two recursive associates double them a
@@ -184,12 +188,13 @@ public sealed partial class Binding
             {
                 this.enumerateIdentities.Clear(); // the closure starts (again) from its roots with no rows
                 this.enumerateIdentityKeys.Clear();
+                this.enumerateJoined = 0;
             }
             else if (this.enumerateIdentities.Count == closure.Applied)
             {
                 return null;
             }
-            else if (++closure.Spent > PremiseClosureLimit || this.enumerateIdentities.Count > closure.Rows)
+            else if (++closure.Spent > PremiseClosureLimit || this.enumerateJoined > closure.Rows)
             {
                 closure.Spent = PremiseClosureLimit + 1; // the budget is spent: the closure is Limited (CloseRoot reads it); its reader refuses
                 return null;
@@ -207,6 +212,8 @@ public sealed partial class Binding
             }
 
             this.enumerateClasses = extended;
+            this.enumerateJoinKeys.Clear(); // RowJoins numbers this round's keys: the table holds the earlier rounds' rows
+            this.enumerateJoins.Clear();
             var restarted = false;
             for (var r = 0; r < this.extendRoots.Count; r++)
             {
@@ -492,6 +499,7 @@ public sealed partial class Binding
         this.enumerateWalking++;
         this.enumerateIdentities.Clear();
         this.enumerateIdentityKeys.Clear();
+        this.enumerateJoined = 0;
         this.enumerateCompletion = Completion.Complete;
         return (index, prepared, enclosing);
     }

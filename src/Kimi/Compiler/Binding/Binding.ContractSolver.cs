@@ -790,12 +790,48 @@ public sealed partial class Binding
                         this.enumerateIdentityKeys.Add((left, right, shape.Symbol)))
                     {
                         this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional));
+                        this.enumerateJoined += this.RowJoins(left, right) ? 1 : 0;
                     }
                 }
 
                 this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
             }
         }
+    }
+
+    // O-533 (a) (SPEC 8.3.3 Limits): whether a closure's row joins two classes as it is added, the classes of the round's table (its
+    // sides' class keys, ClassKey) and of the rows the round added before it (a union-find over the keys' numbers, JoinRoot), so
+    // PremiseClosureLimit counts the rows that add an identity (ExtendRound). Linear in the round's rows (path halving).
+    private bool RowJoins(BoundType left, BoundType right)
+    {
+        var (a, b) = (this.JoinRoot(left), this.JoinRoot(right));
+        if (a == b)
+        {
+            return false;
+        }
+
+        this.enumerateJoins[b] = a;
+        return true;
+    }
+
+    // A row side's root in RowJoins' union-find: its class key in the round's table (the side itself without one), numbered at its first row.
+    private int JoinRoot(BoundType side)
+    {
+        var key = this.enumerateClasses is { } round ? this.ClassKey(side, round) : side;
+        if (!this.enumerateJoinKeys.TryGetValue(key, out var n))
+        {
+            n = this.enumerateJoins.Count;
+            this.enumerateJoinKeys.Add(key, n);
+            this.enumerateJoins.Add(n);
+        }
+
+        while (this.enumerateJoins[n] != n)
+        {
+            this.enumerateJoins[n] = this.enumerateJoins[this.enumerateJoins[n]];
+            n = this.enumerateJoins[n];
+        }
+
+        return n;
     }
 
     // Row (5) (PLAN G881; SPEC 8.2.3): the link is one Type with each member of its class in the request's classes, so their rows
