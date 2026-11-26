@@ -386,7 +386,12 @@ public sealed partial class Binding
         context.DecideRest();
         if (context.Outcome == JoinOutcome.Dependent)
         {
-            return this.CompleteDependent(node, context.Cause!); // SPEC 23.1.2: it rests on its failed source.
+            // SPEC 14.9.2, 23.1.2 (DECISIONS BU-79): a Dependent join keeps its Outcome and has no record; where a source supplied a
+            // candidate and none pends, it completes with its formed Type, which its consumers check, unless that Type holds an open mark
+            // (BU-240) or would make it a Never value (IsNeverValue: the Expression Type is Never only when every source is, which its
+            // failed part is not known to be); otherwise it rests on its cause.
+            return suppliedValue && common is { ContainsOpen: false } && !this.IsNeverValue(node, common) && !context.Pending ? Complete(node, common)
+                : this.CompleteDependent(node, context.Cause!);
         }
 
         if (context.Pending)
@@ -402,7 +407,8 @@ public sealed partial class Binding
 
     // A join's outcome (SPEC 14.9.2, 23.1.2; DECISIONS BU-43): undecided while it collects its sources and forms its Type; waiting for
     // its position's Type (an outer join's, its call's); failed by a conflict it found (Conflict, its own record) or resting on a failed
-    // part or on the join it waited for (Dependent, no record); or decided (bound, or pending on a source that waits for its call).
+    // part or on the join it waited for (Dependent, no record, typed where a source supplied a candidate: DecideResult); or
+    // decided (bound, or pending on a source that waits for its call).
     internal enum JoinOutcome : byte
     {
         Undecided,
