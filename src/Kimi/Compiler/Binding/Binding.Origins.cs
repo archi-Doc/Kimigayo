@@ -94,10 +94,32 @@ public sealed partial class Binding
         return order != 0 ? order : StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.SourceText, right.CodeContext.SourceDocument?.SourceText);
     }
 
+    // SPEC 15.3.6: `longer outlives shorter` holds by identity when the two are one Origin or `shorter` is a meet (interned and flat,
+    // Meet) holding `longer` as an operand, whatever its atoms' values: no premise, region or row decides it. This is the one copy of the
+    // rule: the relation's answers ask it first (OriginOutlives, InstanceOutlives), and a body relation it holds forms no row
+    // (FormBodyRelation), so a fit at a formed common Type adds no row for a source whose Origin is an operand of the meet.
+    private static bool HoldsByIdentity(BoundOrigin longer, BoundOrigin shorter)
+    {
+        if (ReferenceEquals(longer, shorter))
+        {
+            return true;
+        }
+
+        for (var i = 0; shorter.Kind == OriginKind.Intersection && i < shorter.Operands.Count; i++)
+        {
+            if (ReferenceEquals(shorter.Operands[i], longer))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Proves only context-independent outlives facts; lack of proof is not equality.</summary>
     private static bool OriginOutlives(BoundOrigin a, BoundOrigin b)
     {
-        if (ReferenceEquals(a, b) || a.Kind is OriginKind.Static or OriginKind.Anchor)
+        if (HoldsByIdentity(a, b) || a.Kind is OriginKind.Static or OriginKind.Anchor)
         {
             return true;
         }

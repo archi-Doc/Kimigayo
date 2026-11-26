@@ -93,7 +93,7 @@ public sealed partial class Binding
 
             var longer = comparison.Instantiate(writtenLonger);
             var shorter = comparison.Instantiate(writtenShorter);
-            if (ReferenceEquals(longer, shorter) || longer.Kind == OriginKind.Static)
+            if (HoldsByIdentity(longer, shorter) || longer.Kind == OriginKind.Static)
             {
                 return true;
             }

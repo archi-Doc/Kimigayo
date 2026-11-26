@@ -93,11 +93,12 @@ public sealed partial class Binding
     // (SPEC 15.4.4), inside them the pure FitsOriginOutlives; (3) a body chain (an end not fixed in the body, an Unbound end included,
     // or a region chain) is the row whatever (2) said, since its obligation bounds the region graph (RecordLocalRegionBound), its ends
     // read as the fit reads them, a `let` region of the use's body as its value (RegionValueAtUse; PLAN G492-a (ii)); (4) a fixed-fixed
-    // relation (2) proves needs no row; (5) any other is the row, through AddObligation, whose Unstated rule is SPEC 5.7's.
+    // relation (2) proves needs no row; (5) any other is the row, through AddObligation, whose Unstated rule is SPEC 5.7's. Before
+    // all of these, a relation that holds by identity in each direction it requires (HoldsByIdentity) is no row, a chain's included.
     private void FormBodyRelation(in BindingObligation row)
     {
         var (at, longer, shorter, equality, condition) = (row.Use, row.Longer!, row.Shorter!, row.Equality, row.Condition);
-        if (ReferenceEquals(longer, shorter))
+        if (HoldsByIdentity(longer, shorter) && (!equality || HoldsByIdentity(shorter, longer)))
         {
             return;
         }
