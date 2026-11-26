@@ -140,6 +140,7 @@ public sealed partial class Binding
         this.failedCause = null;
         this.dependence = int.MaxValue;
         this.heldObligations = 0;
+        this.evidenceQuery = 0;
         this.contractHeadersReady = false;
         this.conformancesDecided = false;
         this.bindingConstraintTypes = false;

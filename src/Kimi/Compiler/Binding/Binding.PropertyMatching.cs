@@ -103,7 +103,7 @@ public sealed partial class Binding
         }
         else
         {
-            if (selection.DeclaringType is null || implementation.Property.Type is not { } storageType ||
+            if (selection.DeclaringType is null || this.WrittenSignaturePart(new(implementation), 3) is not { } storageType || // the Field, as written
                 this.PartTypeIn(storageType, selection.DeclaringType, scope) is not { } field)
             {
                 return ConstraintProof.Unknown;

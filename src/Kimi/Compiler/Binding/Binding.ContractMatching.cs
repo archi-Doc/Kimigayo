@@ -570,7 +570,7 @@ public sealed partial class Binding
                 return ConstraintProof.Refuted;
             }
 
-            if (demanded.Input(i) is not { } required || declared.Input(i) is not { } actual)
+            if (demanded.Input(i) is not { } required || this.WrittenSignaturePart(declared, i) is not { } actual)
             {
                 proof = CombineProof(proof, ConstraintProof.Unknown, true);
                 continue;
@@ -600,7 +600,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            proof = CombineProof(proof, SignatureRelation(required, actual, demanded.Binder, declared.Binder), true);
+            proof = CombineProof(proof, this.SignatureRelation(required, actual, demanded.Binder, declared.Binder, scope, implementation), true);
             if (proof == ConstraintProof.Refuted)
             {
                 return proof;

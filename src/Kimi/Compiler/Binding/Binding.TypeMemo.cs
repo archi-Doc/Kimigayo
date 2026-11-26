@@ -18,7 +18,8 @@ namespace Kimi.Compiler;
 // Invariants: Begin gives every query a stamp no other query of the table has, so an entry of another query, pass or edit is stale and
 // never read; a query begun during another (a nested entry call) only evicts the outer query's entries, which it then recomputes; the
 // table drops its Types when a new pass begins a query and keeps its capacity, so a warm pass allocates nothing.
-// Must not carry an answer past its query, or serve two walks with different inputs under one stamp.
+// Must not carry an answer past its query, or serve two walks with different inputs under one stamp; an entry an enclosing query recorded
+// (TryGet's second stamp) is one whose answer is the same in every query the enclosing one spans.
 public sealed partial class Binding
 {
     // A query-stamped memo's first query number: 0 is no query, the number an absent row or entry carries.
@@ -76,9 +77,13 @@ public sealed partial class Binding
             return this.query;
         }
 
-        internal bool TryGet(TKey key, uint query, out T answer)
+        internal bool TryGet(TKey key, uint query, out T answer) => this.TryGet(key, query, query, out answer);
+
+        // The entry either query recorded for `key`: a call's own, or the enclosing query it runs in (Binding.ContractTypes' evidence
+        // query, DECISIONS BU-64), whose entries every query it spans reads.
+        internal bool TryGet(TKey key, uint query, uint enclosing, out T answer)
         {
-            if (this.answers.TryGetValue(key, out var entry) && entry.Query == query)
+            if (this.answers.TryGetValue(key, out var entry) && (entry.Query == query || entry.Query == enclosing))
             {
                 answer = entry.Answer;
                 return true;

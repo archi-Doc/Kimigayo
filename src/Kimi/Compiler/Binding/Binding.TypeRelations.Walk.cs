@@ -21,8 +21,9 @@ namespace Kimi.Compiler;
 //   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
 //   that this walk meets reversed, under a contravariant one). A walk with a row sink appends to it each region conjunct its
 //   comparisons left as rows (LeavesBodyRows); the reader that set the sink forms or drops them, so "holds" there is conditional on them.
-//   Under a comparison's scope (CallableInstance.Scope) a pair with a held side (HeldProjection) holds, binds nothing and is counted in
-//   the held sink (heldPairs), so "holds" there is Unknown for the comparison's readers, which read the sink against their mark.
+//   Under a comparison's scope (CallableInstance.Scope) a pair with a held side (EvidenceProjection) holds, binds nothing and is counted
+//   in the held sink (heldPairs), so "holds" there is Unknown for the comparison's readers, which read the sink against their mark; a side
+//   the evidence determines is related as its image.
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
 //   inputs, its result, then the implementation's own well-formedness. A Callable comparison stops at its first failure, which is its
 //   one fact (SPEC 15.6.1); outside every comparison a recording root's walk goes on past an Origin position's or a Function
@@ -369,10 +370,18 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (instance.Scope is { } scope && (this.owner.HeldProjection(actual, scope, this.Site) || this.owner.HeldProjection(expected, scope, this.Site)))
+            if (instance.Scope is { } scope)
             {
-                this.owner.heldPairs++; // A held part holds and binds nothing; the comparison's reader reads the held sink (heldPairs).
-                return true;
+                if (this.owner.EvidenceProjection(actual, scope, this.Site, out var actualImage) || this.owner.EvidenceProjection(expected, scope, this.Site, out var expectedImage))
+                {
+                    this.owner.heldPairs++; // A held part holds and binds nothing; the comparison's reader reads the held sink (heldPairs).
+                    return true;
+                }
+
+                if (actualImage is not null || expectedImage is not null)
+                {
+                    return this.Relate(actualImage ?? actual, expectedImage ?? expected, invariant, skipOrigin, instance); // A determined side is its image.
+                }
             }
 
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !this.SameShape(actual, expected))

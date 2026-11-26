@@ -35,4 +35,31 @@ public partial class TypeDagScalingTest
             => $"struct {name}0\n    Self is D\n    associate D.Y is P<{box}<S>.(K).X, {box}<S>.(K).X>\n" +
                 string.Concat(Enumerable.Range(1, n).Select(k => $"struct {name}{k}\n    Self is D\n    associate D.Y is P<{name}{k - 1}.(D).Y, {name}{k - 1}.(D).Y>\n"));
     }
+
+    // R7-C2e2 e2-5b 3a (design-e25b-p0.md R3.1.1's cyclic row; DECISIONS BU-64): a diamond of depth N over c1-g's cycle, `C.Item` the
+    // diamond's top and its bottom `S.(C).Y`, whose image reaches `S.(C).Item` again (the guard's hit, ContractTypes' normalizingAssociated):
+    // every level's formation contains the hit, so each keeps its call's query and is formed once per call: dev's order, which BU-64's
+    // open limit N2 bounds (the guard path runs one nested query per normalized level, O(sum of subtree sizes)), a doubling ratio
+    // w(2n) <= 4.5 w(n), where a memo that kept none would walk the diamond as a tree (2^N; CC-50 C1's rejected form). The batch twin
+    // reads the same parts through a hole Z the result binds. Both keep dev's records (cyc2's shape); the row reads only the work.
+    [Fact]
+    public void AContractTypeOverACycleFormsEachLevelOncePerCall()
+    {
+        foreach (var hole in new[] { false, true })
+        {
+            var (w30, w60, w120) = (Work(30, hole), Work(60, hole), Work(120, hole));
+            Assert.True(w30 < w60 && w60 <= 4.5 * w30 && w120 <= 4.5 * w60, $"hole {hole}: {w30} at 30, {w60} at 60, {w120} at 120");
+        }
+
+        static int Work(int n, bool hole)
+            => MinimalEmissionTest.Analyze(Cycle(n, hole) + "public func main() -> ()\n    return\n").Binding.ContractPartWork;
+
+        static string Cycle(int n, bool hole)
+            => "contract M\ncontract D\n    associate Y\ncontract C\n    associate Item is M\n    associate Y is M\n" + (hole ? "    associate Z\n" : string.Empty) +
+                $"    func get(self: ref/Self) -> Pair<Self.Item, Self.{(hole ? "Z" : "Y")}>\nstruct Pair<A, B>\n    Self is M\n" +
+                "struct L0\n    Self is D\n    associate D.Y is S.(C).Y\n" +
+                string.Concat(Enumerable.Range(1, n).Select(static k => $"struct L{k}\n    Self is D\n    associate D.Y is Pair<L{k - 1}.(D).Y, L{k - 1}.(D).Y>\n")) +
+                $"struct S\n    Self is C\n    associate C.Item is Pair<L{n}.(D).Y, i32>\n    associate C.Y is Pair<S.(C).Item, i32>\n" +
+                "    public func get(self: ref/Self) -> Pair<S.(C).Item, S.(C).Y> => $abort(\"x\")\n";
+    }
 }

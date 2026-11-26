@@ -24,7 +24,7 @@ public sealed partial class Binding
             for (var i = 0; i < requirement.InputCount; i++)
             {
                 var required = requirement.Input(i);
-                var actual = implementation.Input(i);
+                var actual = this.WrittenSignaturePart(implementation, i); // R7-C2e2 e2-5b: as written, formed in the comparison (design R3.1).
                 if (required is null || actual is null)
                 {
                     if (required != actual)
@@ -54,7 +54,7 @@ public sealed partial class Binding
                     return ConstraintProof.Refuted;
                 }
 
-                written[count] = actual;
+                written[count] = this.ContractType(actual, scope);
                 demanded[count++] = required;
             }
 
@@ -72,9 +72,9 @@ public sealed partial class Binding
                 this.CollectOriginInference(written[i], demanded[i], inference, site);
             }
 
-            if (implementation.Result is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
+            if (this.WrittenSignaturePart(implementation, implementation.InputCount) is { } produced && expected is not null && this.ProjectCallableType(produced, declaringType) is { } projected)
             {
-                this.CollectOriginInference(projected, expected, inference, site, result: true);
+                this.CollectOriginInference(this.ContractType(projected, scope), expected, inference, site, result: true);
             }
 
             // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
@@ -93,7 +93,7 @@ public sealed partial class Binding
                 }
 
                 var required = demanded[j++];
-                var actual = Translate(implementation.Input(i)!);
+                var actual = Translate(this.WrittenSignaturePart(implementation, i)!);
                 if (actual is null || !this.IsSubtypeAt(this.ClassForm(required, scope, out _), this.ClassForm(actual, scope, out _), requirement.Binder, comparison) ||
                     !this.ProvesInputPremises(actual, required, requirement.Binder, comparison))
                 {
@@ -106,7 +106,7 @@ public sealed partial class Binding
                 return this.RestsOnHeld(held, ConstraintProof.Refuted); // It reads the solution above.
             }
 
-            var result = implementation.Result is { } output ? Translate(output) : null;
+            var result = this.WrittenSignaturePart(implementation, implementation.InputCount) is { } output ? Translate(output) : null;
             if (result is not null && implementation.Binder is FunctionKoto function &&
                 !this.ProvesResultPremises(function, result, requirement.Binder, comparison))
             {

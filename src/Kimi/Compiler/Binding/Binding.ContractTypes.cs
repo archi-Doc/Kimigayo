@@ -15,8 +15,24 @@ public sealed partial class Binding
     // The images of ContractType's queries (DECISIONS BU-64): one outermost call is a query, its scope, Self, normalize flag,
     // activeRequirementContract and normalizingAssociated's set fixed, so each distinct part is rewritten once per query. The set changes
     // only by a push after a part's components are rewritten, popped before that part returns, and what runs under the push enters
-    // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
-    private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
+    // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract). Keyed as the
+    // associated collection's batch, without the guard set (R7-C2e2 e2-5b), so a requirement's evidence (BeginEvidence) keeps an entry
+    // for its evidence query (evidenceQuery) where its formation made no unkeyed read (unkeyedReads), and any other for its call's query.
+    private readonly TypeMemo<(BoundType Part, BindingScope Scope, BoundType? Self, bool Normalize, BindingSymbol? Contract), (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
+
+    // SPEC 8.6.3 (R7-C2e2 e2-5b, design R3.1.1): the query of contractParts the innermost requirement's evidence began (BeginEvidence),
+    // spanning every ContractType call until EndEvidence; 0 where none is open, a formation read (BeginFormation) included. Written only
+    // by ConditionalConformances' brackets.
+    private uint evidenceQuery;
+
+    // The reads a formation made that the evidence query's key does not carry (design R3.1.1, R3.1.4): a guard hit (ContractTypeCore's
+    // normalizingAssociated arm), an obligation open and not held (OpenObligation, ReadOpen) and a projection not yet inferred
+    // (ProjectionSpecification). An entry whose formation raised none is the same under every guard set and in every call of its
+    // evidence; any other keeps its call's query. Only ever raised: a store compares it before and after a formation.
+    private int unkeyedReads;
+
+    // The scaling rows' measure: the parts ContractType rewrote past its memo in this compilation (ContractTypeCore's runs).
+    internal int ContractPartWork { get; private set; }
 
     // The compilation's level of the hop chains through a frozen library path (Hop; PLAN G949 Stage 2 U3, Revision 3): the chains first
     // formed after the seal, kept for the compilation's life as an interner's compilation level, so a warm pass allocates none.
@@ -112,10 +128,12 @@ public sealed partial class Binding
             return this.ContractTypeCore(type, scope, self, normalize, query);
         }
 
-        if (!this.contractParts.TryGet(type, query, out var answer))
+        var key = (type, scope, self, normalize, this.activeRequirementContract);
+        if (!this.contractParts.TryGet(key, query, this.evidenceQuery, out var answer))
         {
+            var reads = this.unkeyedReads;
             answer = this.ContractTypeCore(type, scope, self, normalize, query);
-            this.contractParts.Set(type, query, answer);
+            this.contractParts.Set(key, this.evidenceQuery != 0 && reads == this.unkeyedReads ? this.evidenceQuery : query, answer);
         }
 
         return answer;
@@ -126,15 +144,17 @@ public sealed partial class Binding
     private bool Batched => this.collectingAssociated is not null && this.FormationRead;
 
     // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch);
-    // Provisional (W4) whatever the batch stored, as the batch is open.
+    // Provisional (W4) whatever the batch stored, as the batch is open. An entry whose formation made an unkeyed read (unkeyedReads)
+    // keeps its call's query and answers that call only (design R3.1.1); any other (Query 0) answers the batch.
     private (BoundType Image, ResolutionHops? Hops, Completion Completion) BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         var batch = this.collectingAssociated!;
         var key = (type, scope, self, normalize, this.activeRequirementContract);
-        if (!batch.Normalized.TryGetValue(key, out var known))
+        if (!batch.Normalized.TryGetValue(key, out var known) || (known.Query != 0 && known.Query != query))
         {
+            var reads = this.unkeyedReads;
             var result = this.ContractTypeCore(type, scope, self, normalize, query);
-            batch.Normalized[key] = known = (result.Image, result.Hops);
+            batch.Normalized[key] = known = (result.Image, result.Hops, reads == this.unkeyedReads ? 0 : query);
         }
 
         return (known.Image, known.Hops, Completion.Provisional);
@@ -148,6 +168,7 @@ public sealed partial class Binding
     // the image is stored and read in other views; a judgment that needs it identified forms it at its own intake (ClassForm's readers).
     private (BoundType Image, ResolutionHops? Hops, Completion Completion) ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
+        this.ContractPartWork++;
         type = this.ApplyContractEnvironment(type, scope, out var completion);
         if (this.activeRequirementContract is { } bound)
         {
@@ -188,8 +209,14 @@ public sealed partial class Binding
 
             result = this.ContractLength(result, scope, self, normalize, out var length);
             completion = Meet(completion, length);
-            if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))
+            if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication))
             {
+                return (result, null, completion);
+            }
+
+            if (!this.normalizingAssociated.Add((result, scope)))
+            {
+                this.unkeyedReads++; // The guard's hit: the image reads the set, which no key carries.
                 return (result, null, completion);
             }
 

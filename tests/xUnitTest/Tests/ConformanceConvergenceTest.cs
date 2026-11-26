@@ -617,6 +617,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData("ih-r", "contract C\n    associate Item\ncontract K\ncontract E\nopen struct B<X>\n    Self is C\n    associate C.Item is i32\nstruct Wrap<T>\n    Self is K when T is E\nstruct Box<T>\n    T is K\n    public var v: i32\nstruct D : B<Box<Wrap<D>>>\n    Self is E\nfunc use(x: ref/D.(C).Item) -> i32 => 1\n")]
     [InlineData("t-pv", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract D\nstruct R\n    Self is D\ncontract C\n    associate W\nstruct Box<A>\n    Self is C when A is D\n    associate C.W is i32\ncontract K\n    associate X\n    Source is Origin\n    Self.(K).X is R\nfunc f<T>(v: Box<T.(K).X>.(C).W) -> i32\n    T is K\n    return v\n")]
     [InlineData("t-pv2", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract D\nstruct R\n    Self is D\ncontract C\n    associate W\nstruct Box<A>\n    Self is C when A is D\n    associate C.W is i32\ncontract K\n    associate X\n    Self.(K).X is R\n    Source is Origin\nfunc f<T>(v: Box<T.(K).X>.(C).W) -> i32\n    T is K\n    return v\n")]
+    // R7-C2e2 e2-5b 3a (design-e25b-p0.md R3.1.1, the review's twin; a guard of the evidence memo), labelled from SPEC before any run:
+    // one projection part read inside one bracket under a push and outside it, with no guard hit (8.8.2, 8.5, 10.7: c1-v).
+    [InlineData("c1-v", "contract K\n    associate X\ncontract D\n    associate Y\ncontract C\n    func get<T>(self: ref/Self, x: T) -> P<Q<T>.(D).Y, T.(K).X>\n        T is K\nstruct P<A, B>\nstruct Q<U>\n    U is K\n    Self is D\n    associate D.Y is Option<U.(K).X>\nstruct S\n    Self is C\n    public func get<T>(self: ref/Self, x: T) -> P<Option<T.(K).X>, T.(K).X>\n        T is K\n        return $abort(\"x\")\n")]
     public void AnEvidenceReadingNoDependentPartHolds(string id, string source)
         => Assert.True(Errors(source).Length == 0, id);
 
@@ -713,6 +716,11 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // own record (8.6.3, 8.5.5 Completion, 23.1.2: rid-i, `u8` against `i32`; emission order at one position).
     [InlineData("ih-q", "contract K\n    associate X\ncontract C\n    associate Item\n    func put(self: ref/Self, x: Self.Item) -> ()\nstruct R\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nopen struct B<Y>\n    Y is C\n    Self is C\n    associate C.Item is Box<Y>.(K).X\n    public func put(self: ref/Self, x: R) -> () => ()\nstruct D : B<D>\n", "UnprovenConstraint_Kd@16:12", Explicit = true)] // e2-5b
     [InlineData("rid-i", "contract C\n    associate Item\n    func put(self: ref/Self, x: Pair<Self.Item, u8>) -> ()\nstruct Pair<A, B>\nstruct S\n    Self is C\n    public func put(self: ref/Self, x: Pair<i32, i32>) -> () => ()\n", "MissingContractImplementation_Kd@6:5 AssociatedTypeInferenceFailed_Kd@6:5", Explicit = true)] // e2-5b
+    // R7-C2e2 e2-5b 3a (design-e25b-p0.md R3.1.1; guards of the evidence memo and the batch, dev's records): c1-g, a read with a guard
+    // hit, as cyc2 (8.2.3's unbounded Types are open), and its batch twin c1-gb, where dev's batch serves an entry cut under a push
+    // outside it (Z a hole; no record moves).
+    [InlineData("c1-g", "contract M\ncontract C\n    associate Item is M\n    associate Y is M\n    func get(self: ref/Self) -> Pair<Self.Item, Self.Y>\nstruct Pair<A, B>\n    Self is M\nstruct S\n    Self is C\n    associate C.Item is Pair<S.(C).Y, i32>\n    associate C.Y is Pair<S.(C).Item, i32>\n    public func get(self: ref/Self) -> Pair<S.(C).Item, S.(C).Y> => $abort(\"x\")\n", "")]
+    [InlineData("c1-gb", "contract M\ncontract C\n    associate Item is M\n    associate Y is M\n    associate Z\n    func get(self: ref/Self) -> Pair<Self.Item, Self.Z>\nstruct Pair<A, B>\n    Self is M\nstruct S\n    Self is C\n    associate C.Item is Pair<S.(C).Y, i32>\n    associate C.Y is Pair<S.(C).Item, i32>\n    public func get(self: ref/Self) -> Pair<S.(C).Item, S.(C).Y> => $abort(\"x\")\n", "AssociatedTypeInferenceFailed_Kd@10:5")]
     public void AnEvidenceReadingADependentPartSuppliesNone(string id, string source, string records)
     {
         var errors = Errors(source);

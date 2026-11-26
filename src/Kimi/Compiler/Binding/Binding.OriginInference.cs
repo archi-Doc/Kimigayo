@@ -124,12 +124,22 @@ public sealed partial class Binding
             return;
         }
 
-        // SPEC 15.3.6, 8.6.3 (R7-C2e2 e2-5b): in a comparison, a pair with a held side (HeldProjection) gives no bound, since no evidence
-        // decides that part's Type yet: it is skipped and counted in the held sink (heldPairs), whose reader reads a failed solve as Unknown.
-        if (inference.Comparison.Scope is { } scope && (this.HeldProjection(pattern, scope, site) || this.HeldProjection(actual, scope, site)))
+        // SPEC 15.3.6, 8.6.3 (R7-C2e2 e2-5b): in a comparison, a pair with a held side (EvidenceProjection) gives no bound, since no evidence
+        // decides that part's Type yet: it is skipped and counted in the held sink (heldPairs), whose reader reads a failed solve as Unknown;
+        // a side the evidence determines gives its image's bounds.
+        if (inference.Comparison.Scope is { } scope)
         {
-            this.heldPairs++;
-            return;
+            if (this.EvidenceProjection(pattern, scope, site, out var patternImage) || this.EvidenceProjection(actual, scope, site, out var actualImage))
+            {
+                this.heldPairs++;
+                return;
+            }
+
+            if (patternImage is not null || actualImage is not null)
+            {
+                this.CollectOriginInference(patternImage ?? pattern, actualImage ?? actual, inference, site, polarity, result, known);
+                return;
+            }
         }
 
         // G1128 (B2): BU-55's per-query table while a slot's bindings are collected: a repeated (pattern, actual, polarity) adds the

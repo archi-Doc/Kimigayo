@@ -7,7 +7,9 @@ namespace Kimi.Compiler;
 // Owns a bound Type syntax node's Type as written (AsWritten; PLAN G1001; SPEC 8.5.5, 8.6.3): the Type the binder formed for the node
 // (BoundType) with each associated projection written in it kept as the projection BindAssociatedProjection formed (the node's `Right`, or
 // an Origin application's target), its receiver and its Contract reference as written, as an associated specification's candidate keeps
-// them while Constraint Types are bound. Inputs: a bound Type syntax node and its scope. Output: a Type, never stored. Invariants: a node
+// them while Constraint Types are bound. Inputs: a bound Type syntax node and its scope. Output: a Type, stored only for an
+// implementation's signature part (writtenParts, WrittenSignaturePart: per signature and position, filled on its first read, kept across unchanged
+// passes and revoked by every edit, Binding.Invalidate), so a warm read walks and allocates nothing. Invariants: a node
 // with no projection written below it is its BoundType; a composed Type keeps its BoundType's kind, symbol and Origins and takes the
 // written parts in the binder's component order for the form: the Type list a form interns, a container reference's own arguments and
 // then its environment (ContainerPath and QualifierEnvironment, the binder's members: the lookup at the qualifier's declared Self, the
@@ -15,9 +17,42 @@ namespace Kimi.Compiler;
 // Prohibitions: no component position counted from syntax; no lookup but QualifierEnvironment's; no proof, record or obligation.
 public sealed partial class Binding
 {
+    // WrittenSignaturePart's walks, per signature (the function's symbol, or the property's for its Field) and position; owner
+    // Binding.AsWritten, reset by Binding.Invalidate with the other facts kept across unchanged passes.
+    private readonly Dictionary<(BindingSymbol Signature, int Position), BoundType> writtenParts = [];
+
     // `syntax`'s Type as written, `bound` where it binds no Type.
     private BoundType AsWritten(Koto? syntax, BindingScope scope, BoundType bound)
         => syntax is { BoundType: not null } ? this.Written(syntax, scope) : bound;
+
+    // SPEC 8.6.3, 8.5.5 (R7-C2e2 e2-5b, design R3.1): an implementation's signature part as written, so a requirement's evidence reads
+    // both sides in one image: a function's parameter at `position` or its result (position InputCount); an accessor's stored Field (its
+    // property's Type, the one part a storage bridge writes) at InputCount + 1, its receiver, input and result being formed, not written;
+    // the formed Type where nothing is written, none where the header has none. Its readers form it in the comparison's scope
+    // (ContractType), as the header's formation forms it in the implementation's (N3).
+    private BoundType? WrittenSignaturePart(FnSig signature, int position)
+    {
+        var field = signature.Function is null && position > signature.InputCount;
+        if ((field ? signature.Accessor!.Property.Type : position == signature.InputCount ? signature.Result : signature.Input(position)) is not { } formed)
+        {
+            return null;
+        }
+
+        var syntax = signature.Function is not { } function ? field ? signature.Accessor!.Property.Declaration.TypeKoto : null
+            : position == signature.InputCount ? function.ReturnType : function.Parameters[position].Type;
+        if (syntax is not { BoundType: not null })
+        {
+            return formed;
+        }
+
+        var key = (signature.Function is { } owner ? owner.BoundSymbol! : signature.Accessor!.Property.Symbol, position);
+        if (!this.writtenParts.TryGetValue(key, out var written))
+        {
+            this.writtenParts[key] = written = this.Written(syntax, signature.Function is { } scoped ? this.scopes[scoped] : this.DeclarationScope(key.Item1));
+        }
+
+        return written;
+    }
 
     private BoundType Written(Koto syntax, BindingScope scope)
     {
