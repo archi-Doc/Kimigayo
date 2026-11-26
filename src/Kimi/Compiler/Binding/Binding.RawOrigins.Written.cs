@@ -9,9 +9,6 @@ namespace Kimi.Compiler;
 // for every position after the last requirement fixed point (JudgeRawOrigin, from ValidateOriginRequirements).
 public sealed partial class Binding
 {
-    // SPEC 5.7: the Phantom slot a raw layer states and the cases it is Phantom in (FailingCase), recorded only when the check fails.
-    private readonly PhantomRawOriginRows phantomRawOrigins;
-
     // SPEC 5.7 Origins (D17, D18; design-final §5; DECISIONS BU-24): the Origin a raw layer's `during` writes, one atom (never a meet or
     // Origin arguments), the atom its name binds whatever position it is written in: `self` names the holding value (Holder) on a layer
     // in inline storage (a Field's or Case payload's Type or a Tuple or fixed-array element of one) and nothing elsewhere in storage; a
@@ -63,7 +60,7 @@ public sealed partial class Binding
     {
         instance = null;
         if (annotation.OriginExpression is not MemberAccessKoto { Left: IdentifierNameKoto input, Right: IdentifierNameKoto target } ||
-            !this.OriginCandidate(input.IdentifierName, use, scope, out _, out instance, out _))
+            this.OriginCandidate(input.IdentifierName, use, scope, out _, out instance, out _) is not true)
         {
             return null;
         }
@@ -74,7 +71,7 @@ public sealed partial class Binding
 
     private BoundOrigin? FailOrigin(Koto use)
     {
-        this.Fail(use, BindingFailure.InvalidOrigin);
+        this.Record(use, BindingFailure.InvalidOrigin, []);
         return null;
     }
 
@@ -104,8 +101,7 @@ public sealed partial class Binding
 
         if ((projected ?? NamedSlot(raw, out instance)) is { } slot && this.RequirementAt(slot, instance).Weakest == LoanRequirement.None)
         {
-            var cases = this.FailingCase(slot, instance, LoanRequirement.None);
-            this.FailExplained(PhantomRawOriginRows.Family, node, BindingFailure.InvalidOrigin, (slot, LoanRequirement.None, cases));
+            this.RecordFailingCase(node, slot, instance, LoanRequirement.None);
             return true;
         }
 
@@ -121,7 +117,15 @@ public sealed partial class Binding
             pair = this.BoundInputType(raw.Binder, i) is { } input && TryPairLayer(input, out _, out _) && ReferenceEquals(this.OuterOrigin(input), raw);
         }
 
-        this.Fail(node, pair ? BindingFailure.Unsupported : BindingFailure.InvalidOrigin);
+        if (pair)
+        {
+            this.Fail(node, BindingFailure.Unsupported);
+        }
+        else
+        {
+            this.Record(node, BindingFailure.InvalidOrigin, []);
+        }
+
         return true;
     }
 
@@ -151,17 +155,5 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(inputs, clearArray: true);
         }
-    }
-
-    /// <summary>The `phantomRawOrigins` family's one accessor (DECISIONS BU-220): a pass family, the Phantom slot a raw layer states with
-    /// its failing cases, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a present row always has
-    /// its Slot). Its members keep the names its readers use.</summary>
-    private readonly struct PhantomRawOriginRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), PassCounter> Family(ref NodeColumns columns) => ref columns.PhantomRawOrigins;
-
-        internal bool TryGetValue(Koto node, out (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases) phantom)
-            => (phantom = binding.RecordedFact(node, Family)).Slot is not null;
     }
 }

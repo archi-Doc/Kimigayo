@@ -57,6 +57,23 @@ public class SingleSlotBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
     }
 
+    private const string Projection = "contract Holder\n    associate Item\nstruct Pack\n    Self is Holder\n    associate Item is ref/i32 during static\n";
+
+    // SPEC 3.3.2, 8.5.1 (R7-E4 E4c, TypeOrigins' written Origin over a Type that carries its own): an associated-Type projection keeps
+    // its Origin and declares no slot, so a written `during` has no target: one InvalidOriginBinding_Kd at the use, a fact-less record.
+    // An unbound `q` in the signature introduces a universally quantified Origin, also when it appears only in the result (15.3.4), so
+    // `during q` has the same one failure. The projection written alone is valid.
+    [Theory]
+    [InlineData("-> Pack.Item during x", "Pack.Item during x")]
+    [InlineData("-> Pack.Item during q", "Pack.Item during q")]
+    [InlineData("-> Pack.Item", null)]
+    public void AProjectionThatCarriesItsOwnOriginGivesDuringNoTarget(string result, string? use)
+    {
+        var source = Projection + "func f(x: ref/i32) " + result + " => $abort(\"u\")\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}: {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}");
+        Assert.Equal(use is null ? [] : [$"{nameof(DiagnosticCode.InvalidOriginBinding_Kd)}: {use}"], records);
+    }
+
     private const string ExecutionSource =
         "struct View {source}\n    public let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\n" +
         "func make(value: ref/i32 during a) -> View during a => View.init(value)\n" +

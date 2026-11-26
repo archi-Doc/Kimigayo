@@ -418,6 +418,24 @@ public sealed partial class Binding
             case BindingFailure.AccessorReceiverShape when node is PropertyAccessorKoto { ReceiverType: { } written } accessor:
                 this.ReportAccessorReceiverShape(accessor, store, written, problem.Requirement);
                 break;
+            case BindingFailure.InvalidOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                this.ReportOriginSlotCase(node, store, index, problem); // Role 0, "Origin slot": the declaration of the schema listing the slot.
+                break;
+            case BindingFailure.InvalidOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 1 } typeDeclaration:
+                ReportAbsentSlot(node, store, problem, this.compilation.SyntaxOf(typeDeclaration.Site)); // Role 1: the Type that declares no such slot.
+                break;
+            case BindingFailure.MissingOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 0 }:
+                this.ReportPerCallSlot(node, store, index, problem); // Role 0: the declaration whose Type parameter S's per-call Origins would satisfy.
+                break;
+            case BindingFailure.MissingOrigin when this.FactOf(index, ProblemFactKind.Related) is { Value: 1 }:
+                this.ReportPerCallOrigin(node, store, index, problem); // Role 1: the argument whose own per-call Origin would satisfy the slot.
+                break;
+            case BindingFailure.MissingOrigin or BindingFailure.InvalidOrigin when this.FactOf(index, ProblemFactKind.Related) is null && this.FactOf(index, ProblemFactKind.Reason) is { } formation:
+                ReportFormationCause(node, store, problem, formation.Value); // SPEC 8.1.2: FailTypeRole's Language cause, at the occurrence.
+                break;
+            case BindingFailure.MissingOrigin when node is IdentifierNameKoto name && StorageType(node) is { } storage && this.report.Facts(index).IsEmpty:
+                ReportUndeclaredStorageOrigin(name, storage, store, problem); // SPEC 15.3.2: BindOriginName's record of an undeclared storage name.
+                break;
             case var _ when this.FactOf(index, ProblemFactKind.Operand) is not null:
                 this.ReportOperatorOperand(node, store, index, problem);
                 break;

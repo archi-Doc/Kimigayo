@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
-    private readonly InvalidStaticOriginSlotRows invalidStaticOriginSlots;
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
@@ -106,7 +105,7 @@ public sealed partial class Binding
         {
             if (type.Symbol?.Schema is not { Origins.Count: > 0 })
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             annotation!.OriginExpression!.BindingState = BindingState.Resolved;
@@ -115,20 +114,24 @@ public sealed partial class Binding
 
         if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
         {
-            return this.Fail(use, BindingFailure.InvalidOrigin);
+            return this.Record(use, BindingFailure.InvalidOrigin, []);
         }
 
         if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             var origin = written ? annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope) : type.Origin;
+            // SPEC 3.3.2, 8.5.1: a named Type that carries its own Origin (an associated Type's projection, `Pack.Item during x`) gives a
+            // written `during` no target, its own failure.
             if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                // Transitional, R7-E5 (E4c, B1, C1; PLAN's accepted Origin binding on an associated-Type projection, whose unit
+                // deletes this arm): a null `origin` reads BindOrigin's or BindOriginName's record, so the arm keeps `Fail`.
+                return origin is null ? this.Fail(use, BindingFailure.InvalidOrigin) : this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             if (written && type.Kind == BoundTypeKind.Parameter)
@@ -161,7 +164,7 @@ public sealed partial class Binding
 
             if (origin?.Kind == OriginKind.Static && IsExclusive(type.Semantics))
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             var supplied = !ReferenceEquals(origin, type.Origin);
@@ -222,7 +225,7 @@ public sealed partial class Binding
             if (written && (objectLayer || count != 1 || annotation!.OriginArguments is not null ||
                 (target.OriginArguments.Count == 1 && target.OriginArguments[0] is not null)))
             {
-                return this.Fail(use, BindingFailure.InvalidOrigin);
+                return this.Record(use, BindingFailure.InvalidOrigin, []);
             }
 
             if (count != 0 && (written || (!context.SuppressOuter && (target.OriginArguments.Count != count || target.OriginArguments.Contains(null!)))))
@@ -472,7 +475,7 @@ public sealed partial class Binding
             // unrelated slot is a hidden Origin, judged once every declaration completed.
             if (node is TypeSemanticsKoto { OriginExpression: { } expression, BoundType.Origin.Kind: OriginKind.ConstraintSet } && StorageType(node) is not null)
             {
-                this.Fail(expression, BindingFailure.InvalidOrigin);
+                this.Record(expression, BindingFailure.InvalidOrigin, []);
             }
 
             var invalid = false;
@@ -487,15 +490,17 @@ public sealed partial class Binding
                         // annotation owns formation; its declaration and names only repeat the already invalid Type.
                         // SPEC 15.3.5: uniq in some case the Type selects, the record naming those cases (DECISIONS BU-44).
                         var site = OriginFormationSite(node, type);
-                        var slot = schema.Origins[i];
-                        var cases = this.FailingCase(slot, type, LoanRequirement.Uniq);
-                        this.FailExplained(InvalidStaticOriginSlotRows.Family, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
+                        this.RecordFailingCase(site, schema.Origins[i], type, LoanRequirement.Uniq);
                         if (!ReferenceEquals(site, node))
                         {
                             this.CompleteDependent(node, site);
                         }
 
+                        // Transitional, R7-E5 (E4c, N1; PLAN's second independent failure at an occupied Origin key): a site's first
+                        // failing uniq slot only. A further slot reads the same Type at the same site, not a failed input, but its
+                        // record would be a second InvalidOrigin under the site's key (a Defect), until RecordNumbered per failure.
                         invalid = true;
+                        break;
                     }
                 }
             }
@@ -579,17 +584,5 @@ public sealed partial class Binding
         }
 
         return false;
-    }
-
-    /// <summary>The `invalidStaticOriginSlots` family's one accessor (DECISIONS BU-220): a pass family, a static Origin bound to a slot
-    /// that requires uniq with its failing cases, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
-    /// present row always has its Slot). Its members keep the names its readers use.</summary>
-    private readonly struct InvalidStaticOriginSlotRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), PassCounter> Family(ref NodeColumns columns) => ref columns.InvalidStaticOriginSlots;
-
-        internal bool TryGetValue(Koto node, out (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases) invalid)
-            => (invalid = binding.RecordedFact(node, Family)).Slot is not null;
     }
 }

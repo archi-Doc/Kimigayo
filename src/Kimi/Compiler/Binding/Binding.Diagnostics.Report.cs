@@ -177,33 +177,9 @@ public sealed partial class Binding
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
         }
-        else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 8.1.2: a pair occurrence's Language cause, at the occurrence.
-        }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
-        {
-            ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins.TryGetValue(issue.Node, out var perCallOrigin))
-        {
-            ReportPerCallOrigin(issue.Node, perCallOrigin, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 15.3.2: an undeclared storage name, at the name.
-        }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
-        }
         else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
         {
             // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
-        }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, store, requirement, issue.Code))
-        {
-            // SPEC 15.2.3, 5.7: an Origin slot the written binding cannot supply, at the annotation.
         }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
