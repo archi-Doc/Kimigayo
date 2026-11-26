@@ -94,8 +94,8 @@ internal sealed partial class MirEffects
     }
 
     /// <summary>Gets the solved summary of a body view from the last <see cref="Run"/> as A4 keeps it: its classes, an environment
-    /// effect's and its initializations' included, and its atoms over the definition's abstract Types (SPEC 15.6.4: its
-    /// parameter-dependent effects).</summary>
+    /// effect's, a static access's (<see cref="Static"/>) and its initializations' included, and its atoms over the definition's abstract
+    /// Types (SPEC 15.6.4: its parameter-dependent effects).</summary>
     /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
     /// <param name="view">The view.</param>
     /// <param name="classes">The summary's classes.</param>

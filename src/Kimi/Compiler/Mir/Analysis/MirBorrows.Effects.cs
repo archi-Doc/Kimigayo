@@ -150,7 +150,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        var outcome = MirEffects.Outcome(classes).Join(decided == ProblemFactKind.EffectWrite ? MirOutcome.Decided : MirOutcome.None);
+        var outcome = MirEffects.Outcome(classes, EffectRule.Confined).Join(decided == ProblemFactKind.EffectWrite ? MirOutcome.Decided : MirOutcome.None);
         if (outcome.IsDecided || outcome.IsNone)
         {
             return;
@@ -182,7 +182,7 @@ internal sealed partial class MirBorrows
         row = this.Row(at, taking, field, row, ref classes);
         if (Decided(row, classes, field) is null)
         {
-            this.Limit(this.Subject(at), MirEffects.Outcome(classes)); // No key and no Unknown: A4's Limit or Deep, if any.
+            this.Limit(this.Subject(at), MirEffects.Outcome(classes, EffectRule.Confined)); // No key and no Unknown: A4's Limit or Deep, if any.
         }
         else if (this.Covered(this.Source(at).Scope, -1, -1))
         {
