@@ -544,7 +544,9 @@ public sealed class TataraExecutorTest : IDisposable
     // u64 converted to f64 and divided) leaves exactly __floatundidf and __divdf3 undefined at O0, and __floatdidf and __divdf3 at O2,
     // which proves the u64 non-negative (probe P0b); the Library holds every floating operation the generator writes (FloatOperations,
     // P0b), whose object needs only the supply's symbols and the platform's adapters it declares. The Library half is vacuous at O2,
-    // which deletes the internal functions, so its O0 object carries P0b's pin. Fail-before (B9e): the row's supply was empty.
+    // which deletes the internal functions, so its O0 object carries P0b's pin: beside the adapters, exactly P0b's 39 names, the supply
+    // less the five only its members call (comparedf2.c's __cmpdf2, comparesf2.c's __cmpsf2 and __unordsf2, fp_mode.c's two), so every
+    // member is reached. Fail-before (B9e): the row's supply was empty.
     [Theory]
     [InlineData(OutputKind.Application)]
     [InlineData(OutputKind.Library)]
@@ -573,6 +575,10 @@ public sealed class TataraExecutorTest : IDisposable
             {
                 Assert.Equal(["__divdf3", level == "O2" ? "__floatdidf" : "__floatundidf"], undefined.Order(StringComparer.Ordinal));
             }
+            else if (level == "O0")
+            {
+                Assert.Equal(backend.Except(["__cmpdf2", "__cmpsf2", "__fe_getround", "__fe_raise_inexact", "__unordsf2"]), undefined.Where(x => !adapters.Contains(x)).Order(StringComparer.Ordinal));
+            }
 
             var (failure, disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", obj);
             Assert.Equal(string.Empty, failure);
@@ -583,7 +589,8 @@ public sealed class TataraExecutorTest : IDisposable
 
     // IMPL 21.6.7 (the Tatara plan's decision 33; build-compiler-rt.ps1's checks over the committed archive, design §3.6, notes F6): the
     // none row's kimi_backend archive defines exactly the row's supply symbols, every undefined symbol of a member is defined in the
-    // archive, and no member uses an xmm register or an x87 instruction. Fail-before (B9e): no archive.
+    // archive, and no member uses an xmm register, an x87 instruction or an address below rsp (-mno-red-zone). Fail-before (B9e): no
+    // archive.
     [Fact]
     public async Task TheNoneBackendArchiveIsItsRowsSupply()
     {
@@ -599,6 +606,7 @@ public sealed class TataraExecutorTest : IDisposable
         (failure, var disassembly) = await Launch("llvm-objdump", this.directory, "-d", "--no-show-raw-insn", archive);
         Assert.Equal(string.Empty, failure);
         Assert.DoesNotMatch(FloatInstruction, disassembly);
+        Assert.DoesNotMatch(@"-0x[0-9a-f]+\(%rsp\)", disassembly);
 
         // llvm-nm -j's symbol names, without its member headers ("<member>:") and blank lines.
         static string[] Names(string listing) => [.. listing.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(static x => !x.EndsWith(':'))];

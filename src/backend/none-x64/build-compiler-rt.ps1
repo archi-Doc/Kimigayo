@@ -7,7 +7,8 @@
 # code model; T's ruling 142); llvm-ar rcD archives the objects in the catalog's order, run in their folder so the members are file
 # names. The catalog's sources are probe P1's list: the files defining the routines the generator's float operations call on the row
 # (probe P0b), and the generic lib/builtins files those need, so no member is unreferenced.
-# Checks, all before anything is copied to -OutputDirectory: the tarball's SHA-256 is the catalog's sourceSha256 (its signature is
+# Checks, all before anything is copied to -OutputDirectory: the catalog's llvmVersion and compilerRt.version are the pinned LLVM version
+# (Windows' profile, the tools' version); the tarball's SHA-256 is the catalog's sourceSha256 (its signature is
 # checked at the download); every undefined symbol of every member is defined in the archive; no member holds an xmm register or an
 # x87 instruction (llvm-objdump -d); no product holds the build directory's path; then the catalog match: the archive's defined external
 # symbols are the catalog's providedSymbols (Ordinal order), the row's supply, the archive is its catalog row's SHA-256 and LICENSE.TXT
@@ -30,6 +31,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../windows-x64/toolchain.ps1')
 $catalog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'profile.json') -Raw | ConvertFrom-Json
 $llvmVersion = (Read-KimiWindowsProfile).llvmVersion
+if ($catalog.llvmVersion -cne $llvmVersion -or $catalog.compilerRt.version -cne $llvmVersion) { throw "The catalog's llvmVersion $($catalog.llvmVersion) and compilerRt.version $($catalog.compilerRt.version) are not the pinned LLVM $llvmVersion" }
 $Flags = @('--target=x86_64-unknown-none', '-ffreestanding', '-fno-builtin', '-nostdlibinc', '-mno-red-zone', '-mcmodel=kernel', '-mgeneral-regs-only', '-O2', '-fno-stack-protector', '-c')
 $archive = $catalog.files[0].name
 $BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
