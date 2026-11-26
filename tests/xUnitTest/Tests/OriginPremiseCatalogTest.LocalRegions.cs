@@ -248,12 +248,16 @@ public partial class OriginPremiseCatalogTest
     // name (pbm), an operand of a meet (pbmm), a projection (pbmp) and a name in a Function Type parameter (pbmfp, whose result is not
     // bound once its parameter fails, as on dev) alike. Class 1 (invalid, accepted before): pbm, pbmc1 (b not carried), rvb (in the nested
     // body), rvn, pbmn and pbmn2 (nested Tuples), pbmu (a copy local's own merged part), pbmg2 (a generic call's result), rvcn and rvcnc
-    // (a named function's or a nested Closure's header naming a Closure's captures, which only that Closure's own uses carry). O-534 (a)'s
-    // approved reductions (valid): pbmq, pbmt and pbmnt. rvr's record moves from its relation to the limit at `a` (DECISIONS Q13: the
-    // relation reads a's failed Type and rests). Kept: pbmc (each name carried), pbmf (one call Origin), rvo (the local's own body), rvc
-    // (no merged name), rvcnl (two `let` locals, nothing merged), rvm (each name a `let` local's own unmerged region); and, invalid and
-    // accepted as on dev, rvg and rvg0 (a generic call's result holds the contributor's Origin p, no merged region: PLAN G922's O-2 row)
-    // and rvh (its names are in the declaring body; G922 U2/U3).
+    // (a named function's or a nested Closure's header naming a Closure's captures, which only that Closure's own uses carry), and cbu (an
+    // Origin name alone is no capture, SPEC 9.3). O-534 (a)'s approved reductions (valid): pbmq, pbmt and pbmnt, and under the owner's
+    // O-540 (a) the valid forms whose binding the Closure carries in a way the carried test does not read, until U2/U3: pbmtc (pbmc1's
+    // Types), pbmct (b carried through t), pbmcc (through `let c = b`), pbmco (an omitted list's header, before its captures form), and
+    // cbi and cbif (an omitted list's body names b before b's first value use, in the body or in a nested omitted list; cbib, the value
+    // use first, is accepted: the limit depends on statement order). rvr's record moves from its relation to the limit at `a` (DECISIONS
+    // Q13: the relation reads a's failed Type and rests). Kept: pbmc (each name carried), pbmf (one call Origin), rvo (the local's own
+    // body), rvc (no merged name), rvcnl (two `let` locals, nothing merged), rvm (each name a `let` local's own unmerged region); and,
+    // invalid and accepted as on dev, rvg and rvg0 (a generic call's result holds the contributor's Origin p, no merged region: PLAN
+    // G922's O-2 row) and rvh (its names are in the declaring body; G922 U2/U3).
     public static TheoryData<string, string, string> MergedRegionRows => new()
     {
         { "pbm", MergedFrame + "            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
@@ -261,6 +265,14 @@ public partial class OriginPremiseCatalogTest
         { "pbmp", "struct View {source}\n    Self is Copy\n    public let data: ref/i64 during source\n    public init(data: ref/i64 during source) => self.data = data\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (View.init(p), View.init(p))\n    match t@copy\n        (let a, let b)\n            func inner(x: ref/i64 during a.source) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@9:42" },
         { "pbmfp", MergedFrame + "            func inner(f: (ref/i64 during a) -> ref/i64 during b) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@5:43" },
         { "pbmc1", MergedFrame + "            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:70" },
+        { "pbmtc", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match (t.0, t.0)\n        (let a, let b)\n            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:70" },
+        { "pbmct", MergedFrame + "            let g = func [a, t] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:73" },
+        { "pbmcc", MergedFrame + "            let c = b\n            let g = func [a, c] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@6:73" },
+        { "pbmco", MergedFrame + "            let g = func (x: ref/i64 during a) -> i64 => x@follow + a@follow\n" + MergedEnd, "Unsupported_Kd@5:45" },
+        { "cbi", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                return y@follow + b@follow\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbif", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                let h = func () -> i64 => b@follow\n                return y@follow + h()\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbu", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                return y@follow\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbib", MergedFrame + "            let g = func () -> i64\n                let z = b@follow\n                let y: ref/i64 during b = a\n                return y@follow + z\n" + MergedEnd, string.Empty },
         { "rvcn", MergedFrame + "            let g = func [a, b] () -> i32\n                func inner(x: ref/i64 during a) -> ref/i64 during b => x\n                return 0\n" + MergedEnd, "Unsupported_Kd@6:46|Unsupported_Kd@6:67" },
         { "rvcnc", MergedFrame + "            let g = func [a, b] () -> i32\n                let h = func [] (x: ref/i64 during a) -> ref/i64 during b => x\n                return 0\n" + MergedEnd, "Unsupported_Kd@6:52|Unsupported_Kd@6:73" },
         { "rvcnl", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let a = p\n    let b = p\n    let g = func [a, b] () -> i32\n        func inner(x: ref/i64 during a, y: ref/i64 during b) -> i32 => 0\n        return 0\n    return 0\n", string.Empty },
