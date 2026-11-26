@@ -547,12 +547,11 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1 (design-r2 Amendment 4): a Callable proof that is Unknown only in the Origin part of its whole-contract comparison, with
-    // that comparison's failure, stamped with the outermost CheckConstraints clause it was proven for. Diagnostic payload only.
-    internal sealed class CallableUnknown(BoundType subject, BoundType required, ComparisonFailure failure)
+    // the proposition it judged (its record's Constraint fact, R7-E4 E4e) and that comparison's failure, stamped with the outermost
+    // CheckConstraints clause it was proven for. Diagnostic payload only.
+    internal sealed class CallableUnknown(BoundConstraint proposition, ComparisonFailure failure)
     {
-        internal BoundType Subject { get; } = subject;
-
-        internal BoundType Required { get; } = required;
+        internal BoundConstraint Proposition { get; } = proposition;
 
         internal ComparisonFailure Failure { get; } = failure;
 
