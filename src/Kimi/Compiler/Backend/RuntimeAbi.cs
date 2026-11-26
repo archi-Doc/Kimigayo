@@ -5,8 +5,8 @@
 // runtime routine that generated code defines or calls, the platform layer's routines (PlatformRoutines, which the common runtime and
 // the allocator call and every layer template defines; the Tatara plan's decision 22) and a layer's own (PlatformStart, Clock; B7b2a,
 // N6), the adapters of a program-supplied platform (PlatformMember*, one per Platform requirement, which x86_64-unknown-none's layer
-// calls and the module frame defines; decision 30), one RuntimeLayer record per platform layer (windows-x64's over kernel32, linux-x64's
-// over system calls, x86_64-unknown-none's over the program's platform: its template's resource name, which a target row's Layer column
+// calls and ModuleCodegen's frame defines; decision 30), one RuntimeLayer record per platform layer (windows-x64's over kernel32,
+// linux-x64's over system calls, x86_64-unknown-none's over the program's platform: its template's resource name, which a target row's Layer column
 // names; its OS-error prefix; its definition list, the routines whose template definitions are spliced from them; its start form, the
 // start routine, the module asm defining the entry and the layer's routines called before the startup root; the test runtime its test
 // builds link, if any), and
@@ -170,8 +170,9 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi StartBody = new("__kimi_start_body", Unit.ComputationType, []) { NoReturn = true };
 
     // The adapters of a program-supplied platform (IMPL 21.6; the Tatara plan's decision 30): x86_64-unknown-none's layer routines call
-    // one per Platform requirement, in the requirements' order, each named __kimi_platform_member_ and the requirement's name; the module
-    // frame defines each over the program's member, or declares it where the module has no platform. No layer defines them.
+    // one per Platform requirement (PlatformRows, in the requirements' order), each named __kimi_platform_member_ and the requirement's
+    // name; ModuleCodegen's frame defines each over the program's member, or declares it where the module has no platform
+    // (ModuleCodegen.Platform). No layer defines them.
     internal static readonly FunctionAbi PlatformMemberStart = new(PlatformMember + "start", Unit.ComputationType, [new("ptr", "boot")]);
 
     internal static readonly FunctionAbi PlatformMemberMapPages = new(PlatformMember + "mapPages", "ptr", [new("i64", "bytes")]);

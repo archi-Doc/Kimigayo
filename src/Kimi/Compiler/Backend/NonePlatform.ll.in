@@ -2,16 +2,17 @@
 ; and 31): Limine's base-revision tag and its higher-half direct map and memory map requests (base revision 6, Limine's PROTOCOL.md at
 ; limine-protocol c5a7f597a, implemented by Limine v11.2.1), the boot that passes their answers to the program's platform, and the
 ; routines through which the common runtime (Runtime.ll.in) writes and exits, its allocator (HeapRuntime.ll.in) maps and releases pages
-; and Kimi.Time reads the clock, each over the program's platform member through its adapter (__kimi_platform_member_<member>, which the
-; module frame defines). A routine tests the busy flag, sets it, calls its adapter, clears it and maps the result: a member call while a
-; member runs, an Abort's report included, halts the processor with interrupts disabled, without a report. No system call, no import
-; and no adapter declaration; the template makes no other call of the program.
+; and Kimi.Time reads the clock, each over the program's platform member through its adapter (__kimi_platform_member_<member>, which
+; ModuleCodegen's frame defines). A routine tests the busy flag, sets it, calls its adapter, clears it and maps the result: a member
+; call while a member runs, an Abort's report included, halts the processor with interrupts disabled, without a report. No system call,
+; no import and no adapter declaration; the template makes no other call of the program.
 
 @__kimi_os_prefix = private constant [{{os_prefix_length}} x i8] c"{{os_prefix}}"
 
-; Limine's requests, written by the loader before the entry: the start marker, the base-revision tag (the loader sets its third word to 0
-; when it accepts the revision), the two requests (id, revision 0, the response pointer the loader sets) and the end marker, each
-; 8-byte aligned, in the sections the linker script orders and keeps. @llvm.compiler.used keeps them through the IR passes.
+; Limine's requests, the program's, of which the loader writes only the base-revision tag's words and the response pointers before
+; the entry: the start marker, the base-revision tag (the loader sets its third word to 0 when it accepts the revision), the two
+; requests (id, revision 0, the response pointer the loader sets) and the end marker, each 8-byte aligned, in the sections the linker
+; script orders and keeps. @llvm.compiler.used keeps them through the IR passes.
 @__kimi_limine_start = internal global [4 x i64] [i64 u0xf6b8f4b39de7d1ae, i64 u0xfab91a6940fcb9cf, i64 u0x785c6ed015d3e316, i64 u0x181e920a7852b9d9], section ".limine_requests_start", align 8
 @__kimi_limine_base_revision = internal global [3 x i64] [i64 u0xf9562b2d5c95a6c8, i64 u0x6a7b384944536bdc, i64 6], section ".limine_requests", align 8
 @__kimi_limine_hhdm = internal global { [4 x i64], i64, ptr } { [4 x i64] [i64 u0xc7b1dd30df4c8b88, i64 u0x0a82e883a194f07b, i64 u0x48dcf1cb8ad2b852, i64 u0x63984e959a98244b], i64 0, ptr null }, section ".limine_requests", align 8

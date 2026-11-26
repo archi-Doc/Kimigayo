@@ -230,13 +230,19 @@ public sealed class Kernel32ImportsTest
         foreach (var (routine, adapter, mapping) in routines)
         {
             var body = Definition(runtime, routine.GetDefinition(exported: false));
-            var guard = body.IndexOf(
+            const string Guard =
                 "  %busy = load i8, ptr @__kimi_platform_busy, align 1\n  %reentered = icmp ne i8 %busy, 0\n  br i1 %reentered, label %halt, label %call\n" +
-                "halt:\n  call void @__kimi_halt()\n  unreachable\ncall:\n  store i8 1, ptr @__kimi_platform_busy, align 1\n",
-                StringComparison.Ordinal);
+                "halt:\n  call void @__kimi_halt()\n  unreachable\ncall:\n  store i8 1, ptr @__kimi_platform_busy, align 1\n";
+            var guard = body.IndexOf(Guard, StringComparison.Ordinal);
             var arguments = string.Join(", ", adapter.Parameters.Select(static x => Regex.Escape(x.Type) + @" %\w+"));
             var call = Regex.Match(body, $@"\n  (?:%\w+ = )?call {Regex.Escape(adapter.Result)} @{adapter.Name}\({arguments}\)\n");
             Assert.True(guard >= 0 && call.Success && guard < call.Index, routine.Name);
+
+            // The whole body: the entry (the start's Boot local), the guard, the start's boot step alone between the guard and the call,
+            // the call and the mapping, so no other call of the program or system call lies in a routine.
+            var start = routine == RuntimeAbi.PlatformStart;
+            Assert.Equal(start ? "entry:\n  %boot = alloca [24 x i8], align 8\n" : "entry:\n", body[..guard]);
+            Assert.Equal(start ? "  call void @__kimi_boot(ptr %boot)\n" : string.Empty, body[(guard + Guard.Length)..(call.Index + 1)]);
             Assert.Equal(mapping, body[(call.Index + call.Length)..]);
             Assert.Equal(adapter.NoReturn ? 0 : 1, body.Split(Clear).Length - 1);
         }

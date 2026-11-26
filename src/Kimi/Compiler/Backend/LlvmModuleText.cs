@@ -4,7 +4,7 @@
 // row of the target table on first use): the header with the pooled constants (the row's float marker where it has one), the runtime,
 // composed of the row's platform layer (its RuntimeLayer's template; windows-x64's WindowsPlatform.ll.in owns every kernel32 call of the
 // runtime in a program module, linux-x64's LinuxPlatform.ll.in every system call, x86_64-unknown-none's NonePlatform.ll.in Limine's boot
-// data and the platform's routines over the program's adapters, which the module frame defines), the common part (Runtime.ll.in) and
+// data and the platform's routines over the program's adapters, which ModuleCodegen's frame defines), the common part (Runtime.ll.in) and
 // Kimi's allocator (HeapRuntime.ll.in)
 // and expanded in one scan, with the layer's ABI definitions spliced in and the row's constants written, and its test variant (none for
 // a layer naming no test runtime, where a test build is a broken contract), each with the row's runtime declarations it declares (its

@@ -9,7 +9,9 @@
 // one per library, then the row's C runtime when any is required (Libraries; SPEC 22.6: resolved when the program is built; moved here
 // from the toolchain's publication, R9-B1; IMPL 21.5.2), the output form around the output roots (IMPL 21.4.2, 21.5.2: an Application's
 // start calls its startup root and exits with 0, through main on the C path, a Library has no entry, a
-// test build's is the test runtime's, which runs the case the runner selects, each test root called in catalog order; DECISIONS R5-M136) and
+// test build's is the test runtime's, which runs the case the runner selects, each test root called in catalog order; DECISIONS R5-M136;
+// on a row whose program supplies its platform, IMPL 21.6, the platform storage and one adapter per Platform requirement over its
+// witness, the roots after the startup body, or the adapters' declarations without a platform) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); a row per item kind and output form: DropGlue
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
@@ -35,8 +37,9 @@
 // partial list, Libraries the previous module's), since the generation entry publishes them only for a written module
 // (Compilation.Generated) and a read there without one is a broken contract; or nothing and the Records of why: InternalInvariant_Kd at a broken input
 // contract, an inexact body reaching FunctionCodegen.Write among them (DECISIONS R5-M96, R5-M185); no record only for a broken contract
-// without a subject (an Application's startup that is no generated root), which the caller records. The caller publishes each record
-// keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's one call writer (DECISIONS R5-M89).
+// without a subject (an Application's startup that is no generated root, or an Application without a platform on a row whose program
+// supplies its platform), which the caller records. The caller publishes each record keyed by its location (DECISIONS R5-M65). The entry's
+// call and each adapter's go through FunctionCodegen's one call writer (DECISIONS R5-M89).
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
 // record was made; deterministic (admission order, item-indexed names); each item's and unnamed signature is reused while Abi.Matches holds
 // and every buffer is kept, so a warm module allocates nothing; a request naming an item outside Generated (Requested: its Signature, Glue,
@@ -48,7 +51,8 @@
 // (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations and the required libraries (ModuleCodegen.Imports.cs),
 // the common Function values' entries (ModuleCodegen.Erasures.cs), the object descriptors
 // with their virtual tables (ModuleCodegen.Objects.cs), and the Dictionary rows' routines and helpers
-// (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
+// (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs), and its platform part: the storage, the
+// adapters and their declarations (ModuleCodegen.Platform.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -78,13 +82,17 @@ internal sealed partial class ModuleCodegen
     /// <param name="types">The compilation's Type context, which FunctionCodegen's case views read.</param>
     /// <param name="imports">Binding's validated <c>#LibraryImport</c> declarations, kept current across its passes.</param>
     /// <param name="tests">The compilation's test catalog, which a test build's discovery fills.</param>
-    /// <param name="row">The compilation's target row, a row of TargetProfile.Rows, whose module frame every Write writes.</param>
+    /// <param name="row">The compilation's target row, a row of the target table, whose module frame every Write writes.</param>
     internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types, IReadOnlyList<LibraryImport> imports, Testing.TestCatalog tests, TargetProfile row)
     {
         (this.Layout, this.Locations, this.types, this.imports, this.Tests, this.row) = (layout, locations, types, imports, tests, row);
         this.importConvention = ImportConvention(row);
         this.bodies = new(this, types);
-        this.caseCall = (output, index) => _ = this.bodies.WriteEntryCall(output, RuntimeAbi.Start, this.cases[index], default);
+        this.caseCall = (output, index) =>
+        {
+            this.bodies.BeginFrameFunction(output, RuntimeAbi.Start);
+            _ = this.bodies.WriteEntryCall(this.cases[index], default);
+        };
     }
 
     /// <summary>Gets the layout of the compilation's Types.</summary>

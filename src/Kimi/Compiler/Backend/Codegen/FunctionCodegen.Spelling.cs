@@ -6,10 +6,10 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The text's spelling of FunctionCodegen (R5 package C 3.2 I1): a value of the text and its name (Value), a local's or literal's spelling
-// (Spell, LlvmScalarText's operand precondition), a named one's (Spelled: a pooled constant, a parameter, an item's global, a local's
-// home), a value and a branch target written into the function's text (WriteValue, WriteLabel), and a check's failure operands spelled
-// for LlvmScalarText's failure block (Failure), which writes the branch and the Abort. Spelling writes nothing but names and allocates
-// nothing; a zero-sized home's spelling requests the module's zero-sized symbol (IMPL 21.1.3).
+// (Spell, LlvmScalarText's operand precondition), a named one's (Spelled: a pooled constant, a parameter, an item's global, the platform
+// storage, a local's home), a value and a branch target written into the function's text (WriteValue, WriteLabel), and a check's failure
+// operands spelled for LlvmScalarText's failure block (Failure), which writes the branch and the Abort. Spelling writes nothing but names
+// and allocates nothing; a zero-sized home's spelling requests the module's zero-sized symbol (IMPL 21.1.3).
 internal sealed partial class FunctionCodegen
 {
     // The longest spelling of an operand, a label or a location operand: a two-character prefix and an Int128, or @ and a constant's name.
@@ -75,7 +75,7 @@ internal sealed partial class FunctionCodegen
     private void WriteValue(Value value) => this.output.Write(this.Spelled(value, stackalloc char[SpellingLength]));
 
     // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, an
-    // item's global (ItemGlobal), a local's home (SpellHome), or Spell's.
+    // item's global (ItemGlobal), the platform storage (ModuleCodegen.PlatformStorage), a local's home (SpellHome), or Spell's.
     private ReadOnlySpan<char> Spelled(Value value, Span<char> text)
     {
         if (value.Prefix == 'h')
@@ -91,6 +91,13 @@ internal sealed partial class FunctionCodegen
             value.Number.TryFormat(text[at..], out var digits, default, CultureInfo.InvariantCulture);
             suffix.CopyTo(text[(at + digits)..]);
             return text[..(at + digits + suffix.Length)];
+        }
+
+        if (value.Prefix == 'P')
+        {
+            text[0] = '@';
+            ModuleCodegen.PlatformStorage.CopyTo(text[1..]);
+            return text[..(ModuleCodegen.PlatformStorage.Length + 1)];
         }
 
         if (value.Prefix is not ('@' or 'p'))
@@ -131,7 +138,8 @@ internal sealed partial class FunctionCodegen
     // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
     // pooled constant @<name> of index Number (Prefix @), the table of adapter item Number (Prefix g), the slot of StaticInit item Number
     // (Prefix v) and its state (Prefix w), the function of body item Number (Prefix e), the home of local Number, its address (Prefix h),
-    // the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the
-    // literal integer Number (Prefix NUL). Internal, so the module frame names the arguments of its root calls (WriteEntryCall).
+    // the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n), the
+    // platform storage @__kimi_platform (Prefix P, IMPL 21.6) or the literal integer Number (Prefix NUL). Internal, so the module frame
+    // names the arguments of its root calls (WriteEntryCall).
     internal readonly record struct Value(char Prefix, Int128 Number);
 }

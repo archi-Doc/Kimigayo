@@ -38,6 +38,10 @@ public sealed class TataraExecutorTest : IDisposable
     // The probe's metadata naming a dependent library, so its ELF object has a .deplibs section.
     private const string DependentLibrary = "!llvm.dependent-libraries = !{!0}\n!0 = !{!\"c\"}";
 
+    // The none row's target (IMPL 21.6): a freestanding x86-64 ELF object.
+    private static readonly TataraContext NoneContext = new(
+        (_, _) => { }, CancellationToken.None, TargetProfile.None.Target, TargetProfile.None.Cpu, TargetProfile.None.Features, TargetProfile.None.RelocationModel, TargetProfile.None.CodeModel);
+
     private static readonly string Triple = TargetProfile.Windows.Target;
 
     private static readonly string[] Levels = ["O0", "O2"];
@@ -449,14 +453,11 @@ public sealed class TataraExecutorTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var row = TargetProfile.None;
-        var context = new TataraContext((_, _) => { }, CancellationToken.None, row.Target, row.Cpu, row.Features, row.RelocationModel, row.CodeModel);
         var (frame, layer) = (LlvmModuleText.Frame(row), RuntimeAbi.Layer(row));
         var text = new StringBuilder(frame.Header).Append(frame.Runtime).Append(layer.StartAssembly).Append(layer.Start.GetDefinition(exported: false))
             .Append("entry:\n  call void @").Append(RuntimeAbi.PlatformStart.Name).Append("()\n  call void @").Append(RuntimeAbi.Exit.Name)
             .Append("(i32 0)\n  unreachable\n}\n");
-        FunctionAbi[] adapters = [RuntimeAbi.PlatformMemberStart, RuntimeAbi.PlatformMemberMapPages, RuntimeAbi.PlatformMemberReleasePages,
-            RuntimeAbi.PlatformMemberWrite, RuntimeAbi.PlatformMemberClock, RuntimeAbi.PlatformMemberTerminate];
-        foreach (var adapter in adapters)
+        foreach (var adapter in PlatformRows.Rows.Select(static x => x.Adapter))
         {
             text.Append(adapter.GetDefinition(exported: false)).Append("entry:\n  ")
                 .Append(adapter.NoReturn ? "unreachable" : adapter.Result == "void" ? "ret void" : "ret " + adapter.Result + " zeroinitializer").Append("\n}\n");
@@ -471,18 +472,52 @@ public sealed class TataraExecutorTest : IDisposable
             var ir = level == "O2" ? Path.Combine(this.directory, "none.O2.ll") : module;
             if (level == "O2")
             {
-                File.WriteAllText(ir, Tatara.Instance.Optimize(context, module));
+                File.WriteAllText(ir, Tatara.Instance.Optimize(NoneContext, module));
             }
 
             var obj = Path.Combine(this.directory, $"none.{level}.o");
-            File.WriteAllBytes(obj, Tatara.Instance.Emit(context, ir, obj, level[1] - '0'));
-            Assert.Empty(Assert.Single(Tatara.Instance.Inspect(context, obj).Members).Undefined);
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(NoneContext, ir, obj, level[1] - '0'));
+            Assert.Empty(Assert.Single(Tatara.Instance.Inspect(NoneContext, obj).Members).Undefined);
             var (failure, listing) = await Launch("llvm-readobj", this.directory, "--sections", "--symbols", obj);
             Assert.Equal(string.Empty, failure);
             foreach (var (symbol, section) in requests)
             {
                 Assert.Matches($@"Name: __kimi_limine_{symbol} \(\d+\)\r?\n(?:[^\r\n}}]*\r?\n)*?\s*Section: \.limine_requests{section} \(", listing);
             }
+        }
+    }
+
+    // IMPL 21.6: Kernel's module on the none row, and a Library's, optimized at O2 and emitted at O0 and O2: Kernel's object has no
+    // undefined symbol (it uses no float), a Library's only the platform's adapters it declares, and neither uses an xmm register or an
+    // address below rsp (the row's soft float and noredzone).
+    [Theory]
+    [InlineData(OutputKind.Application)]
+    [InlineData(OutputKind.Library)]
+    public async Task TheNoneRowsModulesUseNoFloatOrRedZone(OutputKind output)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var row = TargetProfile.None;
+        var source = output == OutputKind.Application
+            ? KernelSources.Hello + KernelSources.Board + KernelSources.BoardTerminate
+            : "public group Twice\n    public func twice(x: i64) -> i64 => x + x\n";
+        var module = Path.Combine(this.directory, "kernel.ll");
+        File.WriteAllText(module, CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(row, source, "Kernel.kimi", output)));
+        var adapters = PlatformRows.Rows.Select(static x => x.Adapter.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (var level in Levels)
+        {
+            var ir = level == "O2" ? Path.Combine(this.directory, "kernel.O2.ll") : module;
+            if (level == "O2")
+            {
+                File.WriteAllText(ir, Tatara.Instance.Optimize(NoneContext, module));
+            }
+
+            var obj = Path.Combine(this.directory, $"kernel.{level}.o");
+            File.WriteAllBytes(obj, Tatara.Instance.Emit(NoneContext, ir, obj, level[1] - '0'));
+            Assert.All(Assert.Single(Tatara.Instance.Inspect(NoneContext, obj).Members).Undefined, x => Assert.True(output == OutputKind.Library && adapters.Contains(x.Name), x.Name));
+            var (failure, disassembly) = await Launch("llvm-objdump", this.directory, "-d", obj);
+            Assert.Equal(string.Empty, failure);
+            Assert.DoesNotContain("xmm", disassembly, StringComparison.Ordinal);
+            Assert.DoesNotMatch(@"-0x[0-9a-f]+\(%rsp\)", disassembly);
         }
     }
 

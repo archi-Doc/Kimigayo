@@ -7,9 +7,10 @@ namespace Kimi.Compiler.Backend;
 // The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e, C9a, C9b; DECISIONS R5-M89,
 // R5-M92, R5-M93, R5-M102, R5-M114, R5-M121, R5-M124, R5-M128, R5-M130): a callee by its kind's row (a Value callee's in
 // FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once in its site's order, and the one call
-// writer, which the intrinsic rows, the glue items and the module frame's root calls (WriteEntryCall: a caller and its arguments) call
-// too; each argument is FunctionCodegen.Arguments' (its
-// parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot, which only makes the callee
+// writer, which the intrinsic rows, the glue items and the module frame's root calls call too, through the frame-function writers (a
+// function the frame begins, BeginFrameFunction, its slots, WriteTextSlot, then WriteEntryCall with the frame's arguments, and an
+// adapter's end after its call, End, which an adapter item's entry (WriteAdapter) writes too); each argument is FunctionCodegen.Arguments'
+// (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot, which only makes the callee
 // value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's signature (ModuleCodegen.Slot); a body target
 // that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or PropertyWitness target its shim's function
 // (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); an Import target, a #LibraryImport function's direct call or a
@@ -18,19 +19,68 @@ internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
 
-    /// <summary>Writes a call of a root from a function the module frame writes (IMPL 21.4.2; DECISIONS R5-M89), the one member through
-    /// which the frame calls a root (the module entry's call of its startup root, a test entry's of a case's root; an interrupt thunk's
-    /// call of its handler is to reuse it): through the one call writer, with the calling function as the spelling context of the
-    /// arguments (its parameters, and its values numbered from 0, as a body's are).</summary>
+    /// <summary>Begins a function the module frame writes (IMPL 21.4.2, 21.6): the spelling context of what FunctionCodegen writes into
+    /// it next (WriteTextSlot, WriteEntryCall), its parameters and its values numbered from 0, as a body's are. Every frame-written
+    /// function that calls a root begins here first.</summary>
     /// <param name="output">The module's writer.</param>
     /// <param name="caller">The signature of the function the frame is writing, whose parameters the arguments may name.</param>
+    internal void BeginFrameFunction(TextWriter output, FunctionAbi caller) => (this.output, this.abi, this.next) = (output, caller, 0);
+
+    /// <summary>Writes a slot of <c>Text.Utf8Slice</c> in the function the frame writes (IMPL 21.6.3: a platform adapter's text), its
+    /// alloca by the Type's layout and its <c>value</c> Field's Slice words <c>data</c> and <c>length</c> (Storage.SliceRepr, through
+    /// Word), never a literal record. The caller gives each word a value of its Type: a <c>ptr</c> and an <c>i64</c>.</summary>
+    /// <param name="text">The slot's Type, <c>Text.Utf8Slice</c>.</param>
+    /// <param name="data">The bytes' address, a <c>ptr</c>.</param>
+    /// <param name="length">The byte count, an <c>i64</c>.</param>
+    /// <returns>The slot's address.</returns>
+    internal Value WriteTextSlot(BoundType text, Value data, Value length)
+    {
+        var record = this.module.Layout.Of(text).Value!; // A witness's parameter Type, laid out by the collector.
+        var slot = new Value('t', this.next);
+        this.WriteSlot("  %t", this.next++, record.Layout);
+        var field = AdtDef.IndexOf(text, "value");
+        var slice = AdtDef.FieldType(this.typeContext, text, field)!;
+        var start = this.Offset(slot, record.Layout.FieldOffsets.Span[field]);
+        var words = this.module.Layout.Of(slice).Value!;
+        this.StoreWord(slice, words, start, "data", data);
+        this.StoreWord(slice, words, start, "length", length);
+        return slot;
+    }
+
+    /// <summary>Writes a call of a root from the function the frame began (BeginFrameFunction; IMPL 21.4.2; DECISIONS R5-M89), the one
+    /// member through which the frame calls a root (the module entry's call of its startup root, a test entry's of a case's root, a
+    /// platform adapter's of its witness; an interrupt thunk's call of its handler is to reuse it): through the one call writer, in that
+    /// function's spelling context.</summary>
     /// <param name="routine">The root's signature.</param>
     /// <param name="arguments">The call's arguments, one per parameter of the root's signature.</param>
     /// <returns>The call's value, or null for a void result.</returns>
-    internal Value? WriteEntryCall(TextWriter output, FunctionAbi caller, FunctionAbi routine, ReadOnlySpan<Value> arguments)
+    internal Value? WriteEntryCall(FunctionAbi routine, ReadOnlySpan<Value> arguments) => this.WriteCall(routine, arguments);
+
+    /// <summary>Writes the end of an adapter's function after its one call, of a platform adapter the frame began (BeginFrameFunction)
+    /// or of an adapter item's entry (WriteAdapter): <c>unreachable</c> after a callee that never returns, else the call's value
+    /// returned as the written function's result, or <c>ret void</c> without one (SPEC 10.7).</summary>
+    /// <param name="callee">The called signature.</param>
+    /// <param name="result">The call's value, or null for a void result.</param>
+    internal void End(FunctionAbi callee, Value? result)
     {
-        (this.output, this.abi, this.next) = (output, caller, 0);
-        return this.WriteCall(routine, arguments);
+        var output = this.output;
+        if (callee.NoReturn)
+        {
+            output.Write("  unreachable\n}\n");
+            return;
+        }
+
+        if (result is not { } value)
+        {
+            output.Write("  ret void\n}\n");
+            return;
+        }
+
+        output.Write("  ret ");
+        output.Write(this.abi.Result);
+        output.Write(' ');
+        this.WriteValue(value);
+        output.Write("\n}\n");
     }
 
     // A Call by its callee's row: a Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer

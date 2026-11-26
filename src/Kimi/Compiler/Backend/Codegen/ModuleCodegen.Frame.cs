@@ -126,6 +126,7 @@ internal sealed partial class ModuleCodegen
         }
 
         output.Write(this.functions.GetStringBuilder());
+        output.Write(this.platformText.GetStringBuilder()); // The platform part (ModuleCodegen.Platform), empty on a hosted row.
         this.Entry = null;
         if (start is not null)
         {
@@ -171,7 +172,8 @@ internal sealed partial class ModuleCodegen
             output.Write("()\n");
         }
 
-        _ = this.bodies.WriteEntryCall(output, routine, startup, default);
+        this.bodies.BeginFrameFunction(output, routine);
+        _ = this.bodies.WriteEntryCall(startup, default);
         if (main)
         {
             output.Write("  ret i32 0\n}\n");
@@ -187,10 +189,14 @@ internal sealed partial class ModuleCodegen
     // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test
     // build's is the test runtime's entry, which calls each test root, in the catalog's case order as the generation entry gives the roots,
     // under its signature: a Test body takes no parameter and returns Unit, so another signature is a broken contract at the root's subject.
-    // False for an Application whose startup root has no signature while nothing explains it: a broken contract without a subject.
+    // On a row whose program supplies its platform, the platform part (ModuleCodegen.Platform): an Application's roots are its startup
+    // body, then its witnesses' in PlatformRows' order (positional, as OutputRoots gives them), over which it defines the adapters
+    // (PlatformAdapters); a Library has none and declares them (PlatformDeclarations). False for an Application whose startup root has no
+    // signature while nothing explains it: a broken contract without a subject.
     private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
     {
         entry = null;
+        this.platformText.GetStringBuilder().Clear();
         if (this.IsTestBuild)
         {
             this.cases.Clear();
@@ -213,10 +219,20 @@ internal sealed partial class ModuleCodegen
 
         if (startup.OutputKind == OutputKind.Library)
         {
+            this.PlatformDeclarations();
             return true;
         }
 
+        // On a row whose program supplies its platform, roots 1 to 6 are the witnesses' items in PlatformRows' order (OutputRoots, whose
+        // PlatformRoots checks their count); an Application there without a platform (Binding's startup check refuses it) is a broken
+        // contract without a subject.
+        if (this.row.ProgramPlatform && startup.Platform is null)
+        {
+            return false;
+        }
+
         entry = roots[0] < this.signatures.Length ? this.signatures[roots[0]] : null;
+        this.PlatformAdapters(roots[1..]);
         return entry is not null || this.Records.Count != 0;
     }
 }

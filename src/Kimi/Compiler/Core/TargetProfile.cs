@@ -287,8 +287,9 @@ internal sealed class TargetProfile
     /// host Kimi runs on runs them (linux-x64 until the Tatara plan's B8: no Linux host runs Kimi's native build or its launcher).</summary>
     internal required string? ExecutionHost { get; init; }
 
-    /// <summary>Gets a value indicating whether the program supplies the platform layer's routines through Kimi.Platform (SPEC 22.4.5;
-    /// the Tatara plan's decision 29): true on a freestanding row, false on a hosted row, whose layer the runtime defines.</summary>
+    /// <summary>Gets a value indicating whether the program supplies its platform through Kimi.Platform (SPEC 22.4.5; the Tatara plan's
+    /// decision 29), whose members the layer's routines call: true on a freestanding row, false on a hosted row, whose layer calls the
+    /// OS.</summary>
     internal required bool ProgramPlatform { get; init; }
 
     /// <summary>Gets the row of a target triple, staged rows included.</summary>
