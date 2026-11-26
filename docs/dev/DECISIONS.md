@@ -10582,9 +10582,10 @@ resumed by R4-M86 (2026-10-20).
     keeper only where the owner selects a borrow case of its binder; nothing allocated per read).
   - Two facts, two rules (revision 2): the per-case facts (requirement, keepers, Phantom) take a binder only where it admits a
     borrow, and (none, no binder) is no use; variance stays per declaration, every leaf and nested position counting as before, and a
-    Type declaration's slot Phantom in every admitted case (`(none, 0)`) closes as invariant, generalizing the Unused closure; function
-    and accessor schemas keep the Unused closure. Struck from the choice: "nothing when the binder admits no borrow, which also fixes
-    variance" (the leaf counts toward variance: r30 stays rejected).
+    Type declaration's slot Phantom in every admitted case (`(none, 0)`) closes as invariant, generalizing the Unused closure, unless
+    a stored Function Type's signature reaches it (amended by BU-272, PLAN G1456: SPEC 15.3.5 after D-1328); function and accessor
+    schemas keep the Unused closure. Struck from the choice: "nothing when the binder admits no borrow, which also fixes variance"
+    (the leaf counts toward variance: r30 stays rejected).
   - No bound (one cause): a `ulong` of binders lost every ordinal past 63 (F1: such a binder read as unconditional `uniq`), and fix
     round 1's limit on it needed a second decision site, which a nested Type without own pair slots escaped silently (G1, ir18).
     `BinderSet` is the one representation of a slot's binders, with no width limit: ordinals below 64 inline, the others in words that
@@ -12269,10 +12270,11 @@ resumed by R4-M86 (2026-10-20).
   (2026-11-01; PLAN G216 (a) Part 1 U1.6h-1): superseded by BU-79 (2026-11-02); full text: 4fb6fcdb1.
 
 - **BU-78 A failed source takes no part in its join: its join rests on it at its verdict, and a failed part makes its position wait**
-  (superseded in part by BU-79: B4 / fix (a) and the FailedFit readers) (2026-11-01; PLAN G216 (a) Part 1 U1.6h-3' (3 + 3'); design
-  revision 4; the owner's 「改訂 4でGO！」 and 「(1) 3′ で進める」) Amends U1.6d: a failed source of a join that waits for its position fits every
-  candidate as a source, not as its whole join (SPEC 23.1.2, 10.4, 10.5.1, 14.9.2). It covers joins their call classifies; a typed join
-  that decides by itself is not covered (PLAN).
+  (superseded in part by BU-79: B4 / fix (a) and the FailedFit readers; and by option C, PLAN G103 R1: site 1 and the G368 (1)
+  amendment's nested-join line, for a join with a candidate) (2026-11-01; PLAN G216 (a) Part 1 U1.6h-3' (3 + 3'); design revision 4;
+  the owner's 「改訂 4でGO！」 and 「(1) 3′ で進める」) Amends U1.6d: a failed source of a join that waits for its position fits every candidate as
+  a source, not as its whole join (SPEC 23.1.2, 10.4, 10.5.1, 14.9.2). It covers joins their call classifies; a typed join that decides
+  by itself is not covered (PLAN).
   - Site 1, the verdict: RestOn records the cause during classification and decides nothing. `DecideRest`, the one writer of
     Dependent, writes the verdict when the join decides (DecideResult; DecideWaiting under a failed position). Conflict prevails.
   - Sites 2 and 6 (U1.6h-4): a failed source takes no part in whether its join's sources await (SourcesAwait, BoundSince), and a
@@ -12314,6 +12316,15 @@ resumed by R4-M86 (2026-10-20).
     reads). Nothing is bound and no default is taken.
   - Rejected: a call resting on its taken argument's cause at Calls.cs:391 (h2 never reaches selection); a shared join-rests
     completion for DecideResult (it changed no probe).
+  - Superseded in part by the owner's option C (2026-11-26, PLAN G103 R1, census question (7) (b); the Front's unit G103c): site 1's
+    "its join rests on it at its verdict" and the G368 (1) amendment's "A typed join nested in it still rests at its verdict" no
+    longer hold for a join some source supplied a candidate to. Such a join keeps its Dependent outcome and has no record; DecideResult
+    completes it with the Type it formed (SPEC 14.9.2 step 2), through the same Complete as a decided join, unless that Type holds an
+    open mark (BU-240), would make it a Never value (IsNeverValue), or a source pends. Its consumers' checks read that Type (rule W,
+    BU-79): `let v = if c => undefinedName else => x` with x: bool, then `return v` at i32, gives TypeMismatch_Kd at `return v` (P10).
+    A join that no source supplied a candidate to still rests on its cause (CompleteDependent), at its verdict and nested alike (T1).
+    A delivery form's misfit is the form's own recorded failure, which PartFailed reads before the form's operand (FailMismatch
+    writes it at the form).
 
 - **BU-79 Rule W: a failed part is a wildcard; only a node's own verdict over a failed child is suppressed** (2026-11-02, the owner's
   「了解しました。5件とも推奨どおり進めてください。」; the done-when, DECISIONS Q13) Supersedes BU-77 (FailedFit, its readers C15 and C16, B1, B2, and step 1's
@@ -19771,6 +19782,42 @@ resumed by R4-M86 (2026-10-20).
     records); an `ExecutableBody` row (16 B, against BU-220 N5-1's measured cost); a `bool?` row (three unnamed states); R1's
     per-owner occurrence list (a new representation).
   - Rests on: R4-M101 E1, BU-89, BU-26, R4-M162, R7-M80 (G1278-A), G491 D1.
+- **BU-272 A stored Function Type's signature is no use of a slot: `StoragePosition`, `OriginParameter.InStoredSignature` (PLAN
+  G1456)** (Front, 2026-11-27; G1456; F's ruling G1456-1 on the design, recommendation (A)) SPEC 15.2.4, 15.3.5 (after D-1328), 5.7,
+  15.4.2, 15.4.3 rule 3. Amends BU-44 revision 2's closure; it is the fix R7-M121's premise correction N1 names.
+  - Cause: the requirement fixed point (`RequirementPart`, `Binding.TypeOrigins.cs`) formed a Loan use and a keeper at every borrow,
+    pair or nested layer whatever its position, so a layer inside a stored Function Type's signature gave its slot `ref` or `uniq`.
+    15.2.4: a callable signature alone stores nothing. So `struct Probe {s}` / `let call: (ref/i32 during s) -> i32` / `let at: raw/i32
+    during s` was accepted (5.7: a raw layer states a Phantom slot), `Sink during static` was rejected for a `uniq` that only a
+    signature states, and a no-input aggregate result did not default such a slot to `static`.
+  - Rule: the walk carries a storage position beside polarity, `StoragePosition {Stored, Signature}` (`Binding.Origins.Model.cs`,
+    beside `OriginDischarge`, whose walk also changes at `BoundTypeKind.Function`: BU-73). The one root call, `AccumulateRequirements`,
+    is Stored; a Function Type's components, its parameters and result, are Signature. At a Signature position a borrow, pair or
+    nested layer forms no use and no keeper, as a raw layer's Origin already did (5.7); its Origins still count toward variance. No
+    caller chooses the state: the walk derives it at the one structural point that defines it, as it derives polarity there.
+  - Published fact: `OriginParameter.InStoredSignature`, "a chain reaches the slot in a stored Function Type's signature" (15.3.5).
+    `AccumulateOrigin` sets it at a Signature position, `changed` on a false-to-true change only (monotone, so the fixed point still
+    terminates). A nested Type's slot marked so marks the slot its argument names (15.3.5: "including slots of nested Types bound to
+    it"), with the use formed at the walk's own position; `CollectRequirementEdges` already re-queues the consumers. It is reset with
+    Variance when the schema's slots are declared (`Binding.Origins.Schemas.cs`).
+  - Phase 1's closure (`Binding.OriginRequirements.cs`): a Type declaration's slot with no requirement closes as invariant unless a
+    stored signature reaches it (`!InStoredSignature`); such a slot takes its variance from the declaration's storage. Generic slots
+    and function or accessor schemas are unchanged.
+  - The walk's visit state (`visitedParts`) keeps one bit per polarity and position, so a part shared between a Field and a signature
+    at one polarity is walked in both.
+  - Moves (Q13): accepted to InvalidOriginBinding_Kd at the raw layer, programs 5.7 makes invalid: a raw layer beside a slot that only
+    a stored signature reaches, directly, through a nested Type's slot, in a result, twice, beside an `s is owner` slot, through a
+    projection `raw/i32 during c.s` (also a body-local `let q: raw/u8 during x.a`), and in a function's signature through a universal
+    Origin that an input binds to such a slot (`func f(c: ref/(C during a), p: raw/i32 during a)`: `a` belongs to nothing, 5.7
+    Origins; the binder's member walk, `HasMember`, finds no keeper). Rejected to accepted, valid: `Sink during static`,
+    a no-input aggregate result defaulting such a slot to `static`, and lengthening a generic Type whose Phantom slot only a signature
+    reaches. No other record moves.
+  - Rejected: a third member of `SlotRequirement` (it mixes a variance fact into the Loan requirement that `RequirementAt` and the
+    Keep guards read); a variance-only walk for signatures (a second copy of RequirementPart's variance rule); a struct bundling
+    polarity and position (an argument-only bag); a bool `inSignature` (a bool steering a function; the enum names the SPEC position
+    and is the row an `Unstored` member would join, PLAN G1466).
+  - Open: the Type-argument route, which SPEC 15.3.5 decides by the owner's O-541 (i) while this unit keeps dev's reading (twins O1
+    and O1b unchanged), and the raw-pointee route (PLAN G1466, after this unit).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -29831,6 +29878,8 @@ Closure row of `MirCases.Branch`).
     before its selection names the call as its cause (`MarkOmittedHeaders`), so the earlier check's empty range stood and a record
     resting on the failed selection (SPEC 7.7.1) was reported; the cause is the header binder's provisional failure (PLAN G1391); a
     published "waiting header" fact the dependent writer consults (a who-wrote predicate under another name).
+  - Amended by R7-M124 (PLAN G144 F1): its two `RecordRead` sentences (the writer list's "a check's one read outside any frame" and
+    "writes its read whatever the node holds") are replaced there; held frames and the frame-less half are unchanged (PLAN G1391).
 - **R7-M107 A negated leaf atom is its kind's row; the Callable reader answers both polarities** (Front, 2026-11-25; R7-C2c2 c2-5b;
   Major, an acceptance mover; `artifacts/units/r7-c25b/plan.md`, `design.md`, F's CC-8, CC-9, CC-12, CC-13, CC-17, CC-18 and CC-20;
   supersedes in part R7-M31's Staged bullet and its "under `not`" sentence, and R7-M41's Temporary bullet for `Reading`). SPEC 8.3.2
@@ -30614,6 +30663,48 @@ Closure row of `MirCases.Branch`).
     Unit, n)` (a Binding table at render time and an undecided `?? Unit`, ruling 49); a ProblemFactKind `Member` for the inherited
     member (a vocabulary entry for a fact Actual carries, ruling 50 (B)); forming the Callable proposition at record time (the proof
     already holds it, B-3).
+- **R7-M124 A check's one read joins its node's own unheld frame: the recorder decides once where a read goes (PLAN G144, G144-11
+  Rule F1)** (Front, 2026-11-27; R7-D3 G144 F1; Major; design `artifacts\units\g144\design-frame.md` (G144-10), F's ruling G144-11,
+  6.1 (a); the Middle's consent with four conditions, G144-12) SPEC 23.1.2. Amends R7-M106.
+  - **Rule** (`Binding.Diagnostics.Prerequisites.cs`, stated once in its contract). It replaces two sentences of R7-M106: "A node's
+    prerequisite range has three writers: `EndConsultation` (a frame's reads), `ConsultedFor` (a check's one read inside a frame)
+    and `RecordRead` (a check's one read outside any frame)" and "`RecordRead` writes its read whatever the node holds, as before".
+    The three writers stay; `RecordRead(node, read)` is "a check's one read: inside its node's unheld frame, a read of that frame;
+    the range until the frame's end". It writes its one-read range whatever the node holds, as before, so the readers inside the
+    frame (`BindAndAdaptNode`'s temporary rest, `CheckConformance`'s use) read the one representation, the range (6.1 (a)'s write
+    order); when `node` is the open frame's node and that frame is not held, the read also joins the frame, unfiltered (the readers filter at
+    publication), so `EndConsultation`, which replaces the range with the frame's reads, keeps it. Anywhere else (no frame, another node's
+    frame, a held frame) the one-read range is the node's range, as on dev. Held frames stay PLAN G1391's (R7-M106's frame-less
+    half): a held frame is dropped, so a read joining it would be lost. `FailBaseRule` keeps its caller guard until G1391.
+  - **Defect closed.** `RecordRead` ran inside its node's own frame at almost every `CompleteDependent` caller, and the frame's end
+    replaced the read unless the frame had read it too. Counted on dev 79934ae85 over the whole suite (in-process, 48,744 tests):
+    11,171 one reads, 2,965 in the node's own unheld frame (the reads that now join), 48 in a held own frame, 3,214 in another
+    node's frame, 4,944 outside any frame; 127 own-frame ends lost the read (BindAssociatedApplication 42, BindNode 27, DecideResult
+    28, DecideWaiting 8, BindContainerReference 12, FailUnboundSlots 6, BindValueCallOnSplit 3, CaptureEntries 1), 984 kept it.
+    R7-M106's in-frame case (a `ProofRestsOnLimit` one read rewritten by `EndConsultation`) is 327 on dev 79934ae85, each a
+    one-read frame that keeps the read (R7-M106's 475 was suite 331 plus twins 144, counted on R7-C4's head merged onto 52505fff8; this trace recounted the suite
+    only, and the suite has changed since).
+    The 457 such reads in the node's own unheld frame all end accounted for: 327 rewritten and 130 empty frames.
+    Every reader is an OR over the range, so the range only gains the lost read: a record may only become derived (rule W, Q13),
+    never added.
+  - **Shape B** (a read outside the node's frame, then the end of a later frame of that node) is left as on dev by this rule: 8
+    such ends in the suite, and each of them had also read it in its own frame, so no read was lost and no record rests on a lost
+    read of that shape (G144-12 condition 3).
+  - **Removes** the per-site question: G144-9's SelectMember line (`consulted.Add(searched)` under an open frame) is again
+    `RecordRead(member, searched)`, one case of the rule, in G144's commit 2.
+  - **Moves (Q13):** none (G144-12 condition 4): the whole suite at its labels (48,746 passed), the diagnostic snapshot 0
+    differences against shared-base 79934ae85, the A5 oracle 0 of 1,764 (commit `120a90fb8`). The regression row (GenericCallFormationBindingTest
+    `ADecisionsReadInItsOwnFrameIsAReadOfTheFrame`, f1-o): `Kimi.Option<i32, i64>.Some(1)`'s call read its callee (resting on the
+    written list) in its frame, then rested on the written Type; its causes now name the written `Kimi.Option<i32, i64>` (dev: the
+    callee alone). Its records are unchanged (one InvalidTypeFormation_Kd); the counterpart f1-o2 keeps `missing`'s independent
+    UnresolvedBinding_Kd (SPEC 23.1.2).
+  - **Cost:** one reference compare per `RecordRead`; `consulted` is the reused collector (no allocation after warm-up; the
+    `Purpose=Allocation` rows of the whole suite pass).
+  - **Rejected:** a per-site move into the frame (an open family); G144-8's End test; `EndConsultation` merging the node's earlier
+    range of the pass (stale reads of retried frames would join); folding `ConsultedFor` into `RecordRead` (it would drop either
+    `ConsultedFor`'s held guard or `RecordRead`'s unfiltered read); a fourth frame field with a recorder query for the mid-frame
+    readers (6.1 (b): a second place for one fact); joining a held frame (the read would be dropped with the frame, and G1391's
+    question would be settled here).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -36265,3 +36356,43 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **Rejected:** an `Unsupported_Kd` at emit for an import `start` (design §3.5 C2: unreachable, since check refuses the import; ruling
     143); the collector's Import root for `start`; a second call writer; adapters with fixed argument shapes per row; `Runs` re-deriving
     the witnesses; Binding reporting a Backend limit.
+
+- **T-M58 The none row's kimi_backend: compiler-rt's soft-float builtins** (Tatara, 2026-11-27; the plan's unit B9e, Q-824, D-1338;
+  Major; the Tatara plan's decision 33; T's rulings 142, 144, 147, 150, 153, 154; notes F1-F6, O1-O4, O8; the owner's O-535 (a)):
+  - **The supply:** `TargetProfile.None.Supplies` is `kimi_backend`, `static`, its symbols the private literal `NoneBackendSymbols`
+    in the catalog's order; `ReservedSymbols` reads them through the table's array, so compiler-rt's names are reserved external names
+    on every target (**change N1**, IMPL 21.2): `#LibraryImport("codec", "__divdf3")` was accepted on windows-x64 and is
+    `InvalidLibraryImport_Kd` on every row; `#LibraryImport("kimi_backend", "__divdf3")` on the none row, `UnavailableReservedImport_Kd`
+    before, is `InvalidLibraryImport_Kd` (the reserved-name test runs first). No repository program names a compiler-rt routine.
+    `CoreModelTest`'s `ReservedSymbols` literal holds the none symbols after `__chkstk` (a revision's change, not a weakened pin).
+  - **The list (O1):** the 28 files defining the routines the generator's float operations call on the row (probe P0b at O0 and O2:
+    add, sub, mul and div for `f32` and `f64` (`adddf3.c` ... `divsf3.c`), `comparedf2.c`, `comparesf2.c`, `extendsfdf2.c`,
+    `truncdfsf2.c`, the signed and unsigned 32- and 64-bit conversions both ways (`fixdfsi.c` ... `floatundisf.c`)), and the generic
+    `fp_mode.c` their members call (`adddf3.c` and `addsf3.c` call `__fe_getround` and `__fe_raise_inexact`; the generic file returns
+    to-nearest and raises nothing, x86's reads mxcsr); every other undefined name of a member is defined by a listed file (probe P1).
+    At O2, `seconds`'s u64-to-f64 conversion calls `__floatdidf` (LLVM proves the operand non-negative, `uitofp nneg`) and at O0
+    `__floatundidf`; both are listed (T's ruling 150 (4)). The six 64-bit conversion members (`fixdfdi.c`, `fixsfdi.c`, `fixunsdfdi.c`, `fixunssfdi.c`,
+    `floatdidf.c`, `floatundidf.c`) compile compiler-rt's hardware-FP branch, because clang defines no `__SOFTFP__` for x86-64 under
+    `-mgeneral-regs-only`; so `__floatdidf` calls `__floatsidf`, `__muldf3` and `__adddf3`. The results are exact or correctly
+    rounded for every in-range input (the generator's range tests keep out-of-range inputs away; the Back's C-597 N1), and the
+    closure check lists the callees. `negdf2.c` and `negsf2.c` dropped (P0b: negation is an integer sign flip, no `__neg*` call). The archive defines 44 symbols
+    (`__cmpdf2`, `__cmpsf2`, `__unordsf2` and the comparison aliases are `comparedf2.c`'s and `comparesf2.c`'s own members). Products:
+    `kimi_backend_none_x64_v1.a` 34,076 bytes, SHA-256 676aa31f74870b69b6d3695304449d2f4eb19194a9c36d70ec959f6db1b26b5c;
+    `LICENSE-compiler-rt.txt` 16,708 bytes, SHA-256 1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d.
+  - **The build:** `src/backend/none-x64/build-compiler-rt.ps1` (development only): the pinned tarball's SHA-256 (its GPG signature
+    checked at the download, key FFB3368980F3E6BB5737145A316C56D064CACBA5), Windows' `tar.exe` (libarchive with liblzma) extracting only
+    `<top>/compiler-rt/lib/builtins/` and `LICENSE.TXT`, the pinned clang with `--target=x86_64-unknown-none -ffreestanding -fno-builtin
+    -nostdlibinc -mno-red-zone -mcmodel=kernel -mgeneral-regs-only -O2 -fno-stack-protector -c` (ruling 142: `-msoft-float -mno-sse
+    -mno-mmx` refuses a float return), `llvm-ar rcD`; checks before any copy: the closure, the defined set equal to the catalog's
+    `providedSymbols`, no `xmm` or x87 instruction, no build path, the catalog's hashes; reproduction: two runs at different depths
+    give the committed bytes (T-M8).
+  - **The catalog:** `src/backend/none-x64/profile.json` in the Linux catalog's form (profile, library, providedSymbols, files), plus
+    `compilerRt` (version, source, sourceSha256, signingKey, licenseSha256), `sources`, and the identity fields Windows' carries
+    (`packageId` `kimi-backend-none-x64`, `abiVersion` 1, `llvmVersion`; F4) for B9f's head, unread until then. `ToolchainIdentity`
+    reads it through the Linux record's read (`ReadCatalog(row, stem)`; `ReadFile` takes the stem), its supplies over `AllRows`;
+    a mismatch is the initializer's `InvalidDataException`. The licence `LICENSE-compiler-rt.txt` is pinned by `licenseSha256` and
+    embedded.
+  - **Rejected:** a per-row reserved list (one name's validity would depend on the target); leaving the names unreserved (a program
+    library's definition meeting the archive's lazy member by link order, B7b's change W5); the whole builtins library (speculative
+    members, O1); a CMake build of compiler-rt (a further download and a second build system); committing the tarball; checking the
+    none catalog's packageId and abiVersion against new constants (a second copy with no reader before B9f).

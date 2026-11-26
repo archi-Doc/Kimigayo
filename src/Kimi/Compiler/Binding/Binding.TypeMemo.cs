@@ -42,7 +42,7 @@ public sealed partial class Binding
     // ContainsAssociatedProjection, DependentType, TypeAccessCovers, ProveTypeLengths, HasLocalRegion, HasRegionBounds and CarrierOf, and the walks
     // whose revisit only repeats what they add, CollectRequirementEdges, AddStoredPremises, ClosureType's Collect, AbstractParts (a leaf
     // recorded too), LocalBorrowType's MarkMerged (one query per opening, begun at its first part met again), and AccumulateRequirements
-    // and ClosureArgumentVariance's Occurrences (a bit per polarity).
+    // (a bit per polarity and StoragePosition) and ClosureArgumentVariance's Occurrences (a bit per polarity).
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
 
     // The parts AddTypeClauseObligations met in one call (DECISIONS BU-19), a walk whose revisit only repeats what it adds. Its own
