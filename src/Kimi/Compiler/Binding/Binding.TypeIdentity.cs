@@ -100,8 +100,10 @@ public sealed partial class Binding
 
     // A closed part's closure (FileClosure; G1406-11 C2, G1406-16 B1, C2): its final key; its pair row `part is Key` (an index of
     // identityClosed) when the part is not the key, else -1; its rows E (a range of identityClosed, the key's); what its closure spent of
-    // its one budget from the part (G1406-19: its rounds and re-rootings, a filed key's included); and whether it is Limited.
-    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Spent, bool Limited, int Serial, Completion Completion);
+    // its one budget from the part (G1406-19: its rounds and re-rootings, a filed key's included); whether it is Limited; and the serial
+    // it is kept for, -1 if not kept (E27-BOUND (P), G1406-30: its walk read only what is final in the publication, CloseRoot's
+    // WalkComplete, and so did its key's; read by Keeps alone, ForgetUnkeptClosures).
+    private readonly record struct IdentityClosure(BoundType Key, int Pair, int Start, int Count, int Spent, bool Limited, int Serial);
 
     // SPEC 8.2.3: whether a Type-identity premise of any subject is available in `scope` or an enclosing scope (HasTypeIdentity).
     private static bool HasTypeIdentity(BindingScope scope)
@@ -117,8 +119,10 @@ public sealed partial class Binding
         return false;
     }
 
-    // C-b (R3.1): a table built for a reading under `serial` is kept only when Final and the serial is unchanged across its build.
-    private static bool Keeps(BindingScope scope, int serial, IdentityClasses classes) => classes.Final && SerialOf(scope) == serial;
+    // The one keep rule of what was formed under `serial` (R7-M20): kept while the scope's view is the one the serial names (-1 names
+    // none). Its readers: a table built for a reading, kept only when Final and the serial is unchanged across its build (C-b, R3.1); a
+    // filing, by the serial it is kept for (IdentityClosure, ForgetUnkeptClosures).
+    private static bool Keeps(BindingScope scope, int serial) => SerialOf(scope) == serial;
 
     // The index pass's reset of a member or element access's identity premise, which each pass publishes again (DECISIONS BU-72).
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
@@ -250,7 +254,8 @@ public sealed partial class Binding
 
     // Files a closed root for the publication (CloseRoot's one writer of the filing; G1406-11 C2, G1406-16 B1, C2) and returns the
     // closure of `entry`, closed to `key` by the open request (its last round: enumerateIdentities' rows, enumerateClasses' table,
-    // enumerateCompletion) under the reading's `serial` after spending `spent` of its one budget (G1406-19). A restart onto a
+    // enumerateCompletion) after spending `spent` of its one budget (G1406-19), kept for `serial` (-1: not kept; CloseRoot gives the
+    // reading's serial where its walk read only what is final in the publication, IdentityClosure). A restart onto a
     // filed key reads that filing, so the entry spends what the key spent as well. An entry other than its key past
     // PremiseClosureLimit is filed alone, Limited, with no rows, and its key is not filed: the key's own closure has its own budget, so
     // what is filed is a function of (entry, G) whichever reader closes first (SPEC 8.3.3). Otherwise the key, unless filed, is filed
@@ -265,7 +270,7 @@ public sealed partial class Binding
         spent += known ? this.identityClosures[closure].Spent : 0;
         if (spent > PremiseClosureLimit && !ReferenceEquals(entry, key))
         {
-            return File(entry, new(entry, -1, 0, 0, spent, true, serial, completion));
+            return File(entry, new(entry, -1, 0, 0, spent, true, serial));
         }
 
         if (!known)
@@ -279,7 +284,7 @@ public sealed partial class Binding
                 }
             }
 
-            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, spent, spent > PremiseClosureLimit, serial, this.enumerateCompletion));
+            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, spent, spent > PremiseClosureLimit, serial));
         }
 
         if (ReferenceEquals(entry, key))
@@ -289,7 +294,7 @@ public sealed partial class Binding
 
         var filed = this.identityClosures[closure];
         this.identityClosed.Add(new(this.InternConstraint(new(ConstraintKind.TypeIdentity, entry, filed.Key)), null, null, null, completion));
-        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Spent = spent, Serial = serial, Completion = Meet(filed.Completion, completion) });
+        return File(entry, filed with { Pair = this.identityClosed.Count - 1, Spent = spent, Serial = Math.Min(filed.Serial, serial) }); // kept when both are
 
         int File(BoundType part, IdentityClosure filing)
         {
@@ -298,10 +303,10 @@ public sealed partial class Binding
         }
     }
 
-    // E27-BOUND (P): a publication starts: the readings are forgotten, and every filing but a Complete one whose scope still denotes
-    // the view it was filed in (SerialOf unchanged, as Keeps for tables): such a closure is a function of (root, G) for an unchanged G,
-    // so the publication cannot change it. A kept filing's rows stay in identityClosed. Each other filing is removed as it is met
-    // (Dictionary.Remove keeps the enumeration valid), so the step allocates nothing.
+    // E27-BOUND (P): a publication starts: the readings are forgotten, and every filing but one kept for the view its scope still
+    // denotes (Keeps, as for tables): such a closure read only what is final in the publication and is a function of (root, G) for an
+    // unchanged G, so the publication cannot change it. A kept filing's rows stay in identityClosed. Each other filing is removed as it
+    // is met (Dictionary.Remove keeps the enumeration valid), so the step allocates nothing.
     private void ForgetUnkeptClosures()
     {
         this.identityReadingHeads.Clear();
@@ -309,7 +314,7 @@ public sealed partial class Binding
         this.identityReadingClosures.Clear();
         foreach (var (key, closure) in this.identityRoots)
         {
-            if (this.identityClosures[closure] is not { Completion: Completion.Complete } filed || filed.Serial != SerialOf(key.Scope))
+            if (!Keeps(key.Scope, this.identityClosures[closure].Serial))
             {
                 this.identityRoots.Remove(key);
             }
@@ -374,7 +379,7 @@ public sealed partial class Binding
             }
 
             completion = classes.Completion;
-            var memo = Keeps(scope, serial, classes) ? serial : -1; // -1: kept, not memoized
+            var memo = classes.Final && Keeps(scope, serial) ? serial : -1; // -1: kept, not memoized
             if (based)
             {
                 this.identityClasses[scope] = (memo, classes);
@@ -468,7 +473,7 @@ public sealed partial class Binding
             }
 
             var classes = this.ClassesOver(kept.Classes is { } reused && this.identityBuilding.Count == 1 ? reused : this.RentClasses(), scope, rows, 0);
-            this.identityGrounds[scope] = (Keeps(scope, serial, classes) ? serial : -1, classes);
+            this.identityGrounds[scope] = (classes.Final && Keeps(scope, serial) ? serial : -1, classes);
             return classes;
         }
         finally

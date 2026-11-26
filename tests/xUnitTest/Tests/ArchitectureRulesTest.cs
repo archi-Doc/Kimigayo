@@ -614,14 +614,15 @@ public class ArchitectureRulesTest
     // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
     // R7-C3a: W7, the identity classes' Completion member (DECISIONS R7-M20's amendment). R7-C2e2 e2-3a: W8, ReadSourceState
     // (SourceStates.cs); W6's meets in AvailableContractPremise and AvailableConstraintFact (ContractSolver.cs); and an outermost
-    // walk's start and admission in each keeper, PremiseRefines and FirstRows (ContractSolver.Rows.cs; G1406: their one start is
-    // EnterRows, the frame both enter).
+    // walk's start and admission (ContractSolver.Rows.cs; G1406: their one start is EnterRows, the frame both enter; G1406-30: the one
+    // admission is WalkComplete, read by each keeper, PremiseRefines and FirstRows, and by CloseRoot for a closure's filing, so
+    // TypeIdentity's filing reads a serial and names no Completion).
     // R7-C2c2 c2-4a (review-impl-c24a B1, a row for the review): MemberOf's Complete where the view has no identity premise (no
     // table is read); with one it gives the table's W7.
     // R7-C2c2 c2-4b (design R3.3): ClassForm's Complete where the view has no identity premise (with one it gives the table's W7, as
     // MemberOf); SubstituteIdentity's and IdentityPremise's (TypeIdentity.cs's two; W2, W3, which W7 replaces, DECISIONS R7-M20) went
     // with those members (a removed subject, not a weakened rule).
-    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=3;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=2")]
+    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=2;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=2")]
     // R7-C2c2 c2-4a (design §4's Owner row, review-impl-c24a N4): an identity class's Member reaches the judgments only through
     // MemberOf, which the Contract judge, the capability judge, JudgeConstraintAtom's other arms and ContractTypeCore's (E) arm read;
     // IdentityClasses.Member's other reader is Refuted; R7-C3 C7: the capability works' key reads it once more (JudgedCapabilityKey, the

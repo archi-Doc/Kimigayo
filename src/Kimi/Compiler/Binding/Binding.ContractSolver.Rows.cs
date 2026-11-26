@@ -50,7 +50,7 @@ public sealed partial class Binding
     private int enumerateJoined; // O-533 (a): the closure's rows that joined two classes as they were added (RowJoins), emptied with the rows
 
     // The outermost request's own scratch value (the class header's Kept rows): the meet of its walk's availability reads (WalkAvailable),
-    // set at each outermost walk's start and read at its end (KeepRows' condition); no collection, so no store the library-layer dump lists.
+    // set at each outermost walk's start and read at its end through WalkComplete; no collection, so no store the library-layer dump lists.
     private Completion enumerateCompletion;
     private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
 
@@ -73,6 +73,11 @@ public sealed partial class Binding
 
     // PLAN G881: row (5)'s work, the class members ProjectionMembers scanned and the mates walked (the scaling rows' measure).
     internal long IdentityMateWork { get; private set; }
+
+    // The request boundary's one test of a walk's Completion (G1406-30): whether the outermost walk read only what is final in the
+    // publication (every availability read it made was Complete, W6 and W8). Its readers keep what the walk formed past the request:
+    // the keepers' rows (PremiseRefines and FirstRows, KeepRows) and a closure's filing (CloseRoot, FileClosure's serial).
+    private bool WalkComplete => this.enumerateCompletion == Completion.Complete;
 
     // SPEC 8.3.2's refinement row over Enumerate's rows: an available one is a refinement of `contract`.
     private static bool RowsRefine(List<PremiseRow>? rows, BindingSymbol contract)
@@ -145,7 +150,7 @@ public sealed partial class Binding
                 this.ReadIdentityLimit(null, scope, classes);
             }
 
-            if (keep && prepared && this.enumerateCompletion == Completion.Complete)
+            if (keep && prepared && this.WalkComplete)
             {
                 this.KeepRows(index, view, serial);
             }
@@ -257,6 +262,7 @@ public sealed partial class Binding
         (int Applied, int Spent, int Rooted, int Rows) closure;
         BoundType key;
         Completion completion;
+        int kept; // the serial the closure is kept for, -1: not kept (FileClosure)
         try
         {
             this.extendRoots.Add(root);
@@ -268,12 +274,12 @@ public sealed partial class Binding
             }
 
             key = this.extendRoots[0];
-            completion = this.enumerateCompletion;
+            (completion, kept) = (this.enumerateCompletion, this.WalkComplete ? serial : -1);
 
             // Rooted 0: no re-rooting, so the key is the root.
             if (closure.Rooted == 0 || this.identityRoots.ContainsKey((scope, key)))
             {
-                return this.FileClosure(scope, root, key, closure.Spent, serial, completion);
+                return this.FileClosure(scope, root, key, closure.Spent, kept, completion);
             }
         }
         finally
@@ -282,7 +288,7 @@ public sealed partial class Binding
         }
 
         this.CloseRoot(scope, serial, key); // 5e': an unfiled key's own closure, with its own budget: a function of (key, G)
-        return this.FileClosure(scope, root, key, closure.Spent, serial, completion);
+        return this.FileClosure(scope, root, key, closure.Spent, kept, completion);
     }
 
     // A request's own entry (a closure's round, ExtendRound; a request over a Limited reading, EnterRows): the view's entry reopened as the request's
@@ -391,7 +397,7 @@ public sealed partial class Binding
         try
         {
             var (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
-            if (keep && prepared && this.enumerateCompletion == Completion.Complete)
+            if (keep && prepared && this.WalkComplete)
             {
                 this.KeepRows(index, view, serial);
             }
