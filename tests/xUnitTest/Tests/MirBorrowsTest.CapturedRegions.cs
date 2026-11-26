@@ -28,6 +28,11 @@ public sealed partial class MirBorrowsTest
 
     private const string ClauseEnd = "        return w\n    r = q@ref\n    let n = c()\n    see(n@ref)\n" + Main;
 
+    // A struct whose clause relates its two Origins, built over a Closure's result: the rows of
+    // AStructsClauseAtItsConstructorOverAnEnclosingRegionIsTheCallsRow and its twins.
+    private const string ClauseAtConstructor = See + "struct P {a, b}\n    origin a outlives b\n    public let x: ref/i32 during a\n    public let y: ref/i32 during b\n" +
+        "    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.x = x\n        self.y = y\nfunc f(p: ref/i32)\n";
+
     // A call's and a constructor's Function Type parameter, the destinations of a named Closure value (the rows ag2v, ag7v).
     private const string TakeFn = "func takeFn(g: () -> i32) -> i32 => g()\n";
 
@@ -218,7 +223,7 @@ public sealed partial class MirBorrowsTest
     // SPEC 10.1, 8.3.3, 15.2.3, 15.3.6 (DECISIONS: G572 U2a): an Unknown at step 5 is an obligation judged after every body is bound, when a
     // local region's bounds are complete, so `T is Owned` over a region whose bounds are all `static` holds: a bound over a Closure's result
     // (s1), a constructor's bound (s4), a local (g4), beside a waiting Closure argument (w1) and through a method (w1m). The rows left
-    // AConstraintOverAnEnclosingRegionIsARecordedLimit (s1, s4), valid by SPEC 15.2.3 (Q13: a valid program rejected before).
+    // the owner's O-57 recorded limit (s1, s4), valid by SPEC 15.2.3 (Q13: a valid program rejected before).
     [Theory]
     [InlineData("func need<T>(x: T)\n    T is Owned\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    need(c())\n" + Main)]
     [InlineData(See + "struct Box<T>\n    public var v: T\n    public init(v: T)\n        T is Owned\n        self.v = v@move\nfunc f(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let b = Box.init(c())\n    see(b.v)\n" + Main)]
@@ -235,13 +240,28 @@ public sealed partial class MirBorrowsTest
     public void AnOwnedRegionWithALaterSourceIsUnproven(string source, string context)
         => MirTargetSide.Check(source, (DiagnosticCode.UnprovenConstraint_Kd, MirTargetSide.At(context, null)));
 
-    // A recorded limit (the owner's O-57, verbatim 「両方とも(a)でお願いします。」, amended by O-59, verbatim 「すべて (a)」): a struct's clause at its
-    // constructor over an enclosing region (t31, n21; G572 U2c) stays this record until its unit turns it accepted. Its bound and constructor
-    // forms (s1, s4) left the class with G572 U2a (AStaticOnlyRegionIsOwnedOnceEveryBodyIsBound); the erasure (s2) is G572 U2b's.
+    // SPEC 15.6.4 step 3, 15.2.3 (PLAN G990 D1, its ruling G990-5): a struct's clause at its constructor over an enclosing region
+    // (PLAN G572 U2c) is the call's row, since a construction's result premises over its owner's own Type are (RequireResultPremises),
+    // and A5 judges it: c()'s result holds r's one source p, so `a outlives b` is `P outlives P`, in the own body (t31) and in a nested
+    // body (n21). It was the owner's O-57 and O-59 recorded limit (verbatim 「両方とも(a)でお願いします。」, 「すべて (a)」), UnprovenConstraint_Kd at
+    // the constructor call until its unit turned it accepted (Q13: a valid program rejected before).
     [Theory]
-    [InlineData(See + "struct P {a, b}\n    origin a outlives b\n    public let x: ref/i32 during a\n    public let y: ref/i32 during b\n    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.x = x\n        self.y = y\nfunc f(p: ref/i32)\n    var r = p\n    let c = func [r] () => r\n    let b = P.init(c(), p)\n    see(b.x)\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "P.init(c(), p)", null)]
-    public void AConstraintOverAnEnclosingRegionIsARecordedLimit(string source, DiagnosticCode code, string context, string? subject)
-        => MirTargetSide.Check(source, (code, MirTargetSide.At(context, subject)));
+    [InlineData(ClauseAtConstructor + "    var r = p\n    let c = func [r] () => r\n    let b = P.init(c(), p)\n    see(b.x)\n" + Main)]
+    [InlineData(ClauseAtConstructor + "    var r = p\n    let c = func [r, p] () -> i32\n        let inner = func [r] () => r\n        let b = P.init(inner(), p)\n" +
+        "        see(b.x)\n        return 0\n    let n = c()\n" + Main)]
+    public void AStructsClauseAtItsConstructorOverAnEnclosingRegionIsTheCallsRow(string source) => MirTargetSide.Check(source);
+
+    // SPEC 15.6.4 step 3, 15.6.5: the invalid twins, a later local source (AnOwnedRegionWithALaterSourceIsUnproven's form), so r's region
+    // holds q's Borrow, which the clause needs to outlive p: Refuted in the own body (t31n), not proven where the nested body carries r
+    // (n21n, as AClauseOverAnEnclosingRegionIsARow's c1i); A5's record at the constructor call, relating the clause.
+    [Theory]
+    [InlineData(ClauseAtConstructor + "    var q: i32 = 1\n    var r = p\n    let c = func [r] () => r\n    let b = P.init(c(), p)\n    see(b.x)\n" +
+        "    r = q@ref\n    see(r)\n" + Main, DiagnosticCode.UnsatisfiedOriginRelation_Kd, "P.init(c(), p)")]
+    [InlineData(ClauseAtConstructor + "    var q: i32 = 1\n    var r = p\n    let c = func [r, p] () -> i32\n        let inner = func [r] () => r\n" +
+        "        let b = P.init(inner(), p)\n        see(b.x)\n        return 0\n    r = q@ref\n    let n = c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd,
+        "P.init(inner(), p)")]
+    public void AStructsClauseAtItsConstructorOverALaterLocalSourceIsA5s(string source, DiagnosticCode code, string context)
+        => MirTargetSide.Check(source, (code, MirTargetSide.At(context, null)));
 
     // SPEC 10.7, 7.7.4, 15.6.1 (the owner's O-61, verbatim 「O-61 a」; DECISIONS: G570): a comparison with a Function Type is judged by the
     // contract alone: a Callable bound over a `var`'s region (c12) keeps its record. The conversion's Owned condition reads a local `var`
