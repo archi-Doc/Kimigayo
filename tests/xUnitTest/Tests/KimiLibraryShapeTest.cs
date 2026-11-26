@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 using Xunit;
 
 namespace XunitTest;
@@ -13,10 +14,11 @@ namespace XunitTest;
 public partial class KimiLibraryShapeTest
 {
     // Read-only: no test changes the library or its Binding. The library of a compilation without a target is windows-x64's selection
-    // (the Tatara plan's F1 (a)); the Linux row's library is selected under its own Conditions (B7b6: no Kimi.Windows, Time over the
-    // platform layer's clock).
+    // (the Tatara plan's F1 (a)); each row's library, staged rows included, is selected under its own Conditions (B7b6: no Kimi.Windows
+    // where `windows` does not hold, Time over the platform layer's clock), bound once on its first read (LibraryOf).
     private static readonly Lazy<Compilation> Library = new(() => BoundLibrary(null));
-    private static readonly Lazy<Compilation> LinuxLibrary = new(() => BoundLibrary(TargetProfile.Linux.Target));
+    private static readonly Dictionary<string, Lazy<Compilation>> Libraries = TargetProfile.AllRows.Select(static x => x.Target).Prepend(string.Empty)
+        .ToDictionary(static x => x, static x => x.Length == 0 ? Library : new Lazy<Compilation>(() => BoundLibrary(x)));
 
     // PLAN G776-b (the owner's O-194 (a): a built-in conformance adds no member): the receiver groups no witness-table row names, the
     // fixed array's member group (SPEC 22.1).
@@ -66,9 +68,9 @@ public partial class KimiLibraryShapeTest
     ];
 
     // The bodiless compiler functions without a lang item (R8-G1 G1-6: no C# reader names them), by their library path, each with the
-    // target whose library alone declares it (null: every target's; the Tatara plan's B7b6: Time.monotonicNanoseconds where `windows`
-    // does not hold).
-    private static readonly (string Path, string Shape, string? Target)[] UnnamedCompilerFunctionShapes =
+    // value of the Condition `windows` under which the library declares it (null: on every target; the Tatara plan's B7b6:
+    // Time.monotonicNanoseconds where `windows` does not hold, linux-x64's and none-x64's library).
+    private static readonly (string Path, string Shape, bool? Windows)[] UnnamedCompilerFunctionShapes =
     [
         ("Console.writeStdout", "internal unsafe func writeStdout(data: raw/u8, length: isize)", null),
         ("Storage.missingDictionaryKey", "internal func missingDictionaryKey() -> Never", null),
@@ -86,7 +88,7 @@ public partial class KimiLibraryShapeTest
         ("Raw.writeVolatile", "public unsafe func writeVolatile<T>(storage: raw/T, value: T)\nT is PrimitiveInteger", null),
         ("Storage.argumentOutOfRange", "internal func argumentOutOfRange() -> Never", null),
         ("Storage.indexBounds", "internal func indexBounds() -> Never", null),
-        ("Time.monotonicNanoseconds", "func monotonicNanoseconds() -> i64", TargetProfile.Linux.Target),
+        ("Time.monotonicNanoseconds", "func monotonicNanoseconds() -> i64", false),
     ];
 
     public static TheoryData<KimiDeclarationId> CatalogEntries
@@ -122,9 +124,12 @@ public partial class KimiLibraryShapeTest
         get
         {
             var data = new TheoryData<string, string, string>();
-            foreach (var (path, shape, target) in UnnamedCompilerFunctionShapes)
+            foreach (var (path, shape, windows) in UnnamedCompilerFunctionShapes)
             {
-                data.Add(path, shape, target ?? string.Empty);
+                foreach (var target in windows is null ? [string.Empty] : Libraries.Keys.Where(x => WindowsHolds(x) == windows))
+                {
+                    data.Add(path, shape, target);
+                }
             }
 
             return data;
@@ -134,6 +139,7 @@ public partial class KimiLibraryShapeTest
     [Theory]
     [InlineData("", 84)]
     [InlineData("x86_64-unknown-linux-musl", 85)]
+    [InlineData("x86_64-unknown-none", 85)]
     public void LibraryBindsCompletely(string target, int unnamed)
     {
         var c = LibraryOf(target);
@@ -147,9 +153,10 @@ public partial class KimiLibraryShapeTest
         // three `splitAt`, four position and range `format` bodies, Array `index` and `indexUniq`, and seven Time functions; the Time unit's
         // `Storage.clockFailure` and `Time.readCounterFrequency`; O-412 (1)'s Array.sort(by:), which destroys `by` inside the operation;
         // R8-X1's Storage.growthTarget, the growth target growArray and DictionaryStorage.grow share, PLAN G970; OSF2's Raw.writeVolatile,
-        // whose pair Raw.readVolatile is cataloged for its NoStore row); the Linux row's library adds Time.monotonicNanoseconds (B7b6).
-        // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
-        Assert.Equal(122, KimiLibraryCatalog.Entries.Length);
+        // whose pair Raw.readVolatile is cataloged for its NoStore row); the library where `windows` does not hold (linux-x64's,
+        // none-x64's) adds Time.monotonicNanoseconds (B7b6).
+        // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`. Platform (SPEC 22.4.5) is cataloged on every target.
+        Assert.Equal(123, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             Assert.NotNull(c.Library.GetSymbol(entry.Id));
@@ -162,7 +169,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf(c));
         }
 
-        Assert.Equal((122, unnamed), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((123, unnamed), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
@@ -179,6 +186,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("")]
     [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("x86_64-unknown-linux-musl")]
+    [InlineData("x86_64-unknown-none")]
     public void TheLibraryCollectsWithoutRecords(string target)
     {
         var c = BoundLibrary(target.Length == 0 ? null : target);
@@ -321,6 +329,7 @@ public partial class KimiLibraryShapeTest
     [Theory]
     [InlineData("", 29)]
     [InlineData("x86_64-unknown-linux-musl", 30)]
+    [InlineData("x86_64-unknown-none", 30)]
     public void EveryCompilerFunctionHasAShape(string target, int count)
     {
         // Every registered intrinsic, Form function (L2) or linked constructor, named or not (R8-G1 G1-6), and no other declaration, has
@@ -338,7 +347,7 @@ public partial class KimiLibraryShapeTest
         Koto[] shaped =
         [
             .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
-            .. UnnamedCompilerFunctionShapes.Where(x => (x.Target ?? target) == target).Select(x => LibrarySource.Declaration(library, x.Path)),
+            .. UnnamedCompilerFunctionShapes.Where(x => x.Windows is null || x.Windows == WindowsHolds(target)).Select(x => LibrarySource.Declaration(library, x.Path)),
         ];
         Assert.Equal((count, count), (expected.Count, shaped.Length));
         Assert.True(expected.SetEquals(shaped));
@@ -582,6 +591,8 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.PositionRange, "public contract PositionRange: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\neffect Utf8Format.format confined\nfunc tryResolve(self: Self, length: isize) -> Option<ResolvedRange>")]
     [InlineData(KimiDeclarationId.Utf8Format, "public contract Utf8Format\nfunc format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>")]
     [InlineData(KimiDeclarationId.BufferWriter, "public contract BufferWriter\nfunc reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
+    // SPEC 22.4.5: the requirements in declaration order, the order the startup check publishes and the runtime's adapters read.
+    [InlineData(KimiDeclarationId.Platform, "public contract Platform\nSelf is Copy\nfunc start(boot: Boot) -> Self\nfunc mapPages(self: uniq/Self, bytes: isize) -> raw/u8\nfunc releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64\nfunc write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64\nfunc clock(self: uniq/Self) -> i64\nfunc terminate(self: uniq/Self, status: i32) -> Never")]
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
@@ -616,6 +627,9 @@ public partial class KimiLibraryShapeTest
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
     [InlineData("Text.InvalidUtf8", "public struct InvalidUtf8")]
+    // SPEC 6.3.6, 22.1: no Field initializer, so neither has a constructor; only the runtime creates a Boot (IMPL 21.6).
+    [InlineData("Boot", "public struct Boot\npublic let directMapOffset: usize\npublic let regions: raw/raw/Boot.Region\npublic let regionCount: isize")]
+    [InlineData("Boot.Region", "public struct Region\npublic let address: u64\npublic let length: u64\npublic let kind: u64")]
     public void RecordFieldsAreFixed(string path, string shape)
     {
         var c = Library.Value;
@@ -691,6 +705,11 @@ public partial class KimiLibraryShapeTest
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
     [InlineData("Storage.BufferRepr", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
+    // IMPL 21.1.2, 21.6: Boot's by the runtime's boot template, which stores the loader's answers in its three Fields.
+    [InlineData("Boot", 24, "directMapOffset", 0, "regions", 8, "regionCount", 16)]
+    // IMPL 21.1.2, 21.6: Boot.Region's equals the loader's memory-map entry (three u64), which the loader writes and the program reads
+    // through Boot.regions.
+    [InlineData("Boot.Region", 24, "address", 0, "length", 8, "kind", 16)]
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {
         var (layout, type) = Layout(path);
@@ -785,9 +804,14 @@ public partial class KimiLibraryShapeTest
         return c;
     }
 
-    // The class's bound library of a target: "" the one without a target (windows-x64's selection), else the Linux row's.
+    // The class's bound library of a target: "" the one without a target (windows-x64's selection), else the row's.
     private static Compilation LibraryOf(string target)
-        => target.Length == 0 ? Library.Value : target == TargetProfile.Linux.Target ? LinuxLibrary.Value : throw new ArgumentOutOfRangeException(nameof(target));
+        => Libraries[target].Value;
+
+    // Whether the Condition `windows` holds in the class's library of a target (SPEC 19.2.1): the one without a target is windows-x64's
+    // selection.
+    private static bool WindowsHolds(string target)
+        => target.Length == 0 || TargetTriple.Parse(target).OsFamily == "windows";
 
     private static bool HasBody(Koto declaration)
         => declaration is FunctionKoto function && (function.Body is not null || function.ExpressionBody is not null);
