@@ -13,7 +13,7 @@ public sealed partial class Binding
     private readonly List<BoundEnumCase?> storedCases = new();
     private readonly List<BoundType> enumPayloadTypes = new();
     private readonly TypeMemo<BoundType, BoundType?> completedParts = new(); // CompleteProjections' results.
-    private readonly TypeMemo<BoundType, bool> headerParts = new(); // The Types one header walk met (DemandContainedHeaders).
+    private readonly TypeMemo<(BoundType Type, IntrinsicKind Kind), bool> headerParts = new(); // The Types one header walk met, each under a kind (DemandContainedHeaders).
     private bool inferringHeader; // An inferred stored Property's header is the innermost one being computed (BindHeader).
 
     internal int HeaderWalkWork { get; private set; } // The Types the header walks visited (TypeDagScalingTest).
@@ -624,32 +624,34 @@ public sealed partial class Binding
 
     // SPEC 11.6 (PLAN G1220; DECISIONS: G1220): a fact request made while an inferred stored Property's header types its initializer
     // (inferringHeader, which BindHeader sets for that header alone, so a function's or an annotated header's own requests walk nothing)
-    // demands the Signature query of every stored Property the request's Type contains: the parts the capability rows read (CapabilityParts;
-    // for a declaration-judged instance its Type arguments, which Copy reads only through a conditional opt-in, SPEC 8.8) and its
-    // declaration's storage in its formals (StoredSyntax; the base through DirectBase), each part the leaf rule does not decide. A demand
-    // that meets the running header is its re-entry, whose rule records the cycle (ReenterHeader); the request then answers as before.
-    // Each Type is visited once per walk (headerParts, this walk's own table), a declaration's storage once per instance; a nested walk,
-    // begun by a header a demand binds, can only overwrite entries of headers it completes, so the walks of a pass stay bounded by the
-    // headers times the parts.
+    // demands the Signature query of every stored Property the request's Type contains: the parts the capability rows read and its
+    // declaration's storage in its formals (StoredSyntax; the base through DirectBase), each part the leaf rule does not decide. The parts
+    // are CapabilityParts', except that Copy of a declaration-judged instance reads, as NominalCopy does, each conditional opt-in's premises
+    // for the instance's arguments under each premise's own kind (SubstitutedPremise; SPEC 8.8.2), never an argument no premise names. A
+    // demand that meets the running header is its re-entry, whose rule records the cycle (ReenterHeader); the request then answers as
+    // before. Each Type is visited once per kind per walk (headerParts, this walk's own table), a declaration's storage once per instance
+    // and kind; a nested walk, begun by a header a demand binds, can only overwrite entries of headers it completes, so the walks of a pass
+    // stay bounded by the headers times the parts.
     // Temporary (DECISIONS: G1220): deleted with its gate when the proof's stored-Type reads demand the Signature query during the headers (R7-D2
     // d2 / C2 b, PLAN G381's removal).
-    private void DemandContainedHeaders(BoundType type, IntrinsicKind kind) => this.DemandHeaders(type, kind, this.headerParts.Begin(this.storageVersion));
+    private void DemandContainedHeaders(BoundType type, IntrinsicKind kind, BindingScope scope) => this.DemandHeaders(type, kind, scope, this.headerParts.Begin(this.storageVersion));
 
-    private void DemandHeaders(BoundType type, IntrinsicKind kind, uint query)
+    private void DemandHeaders(BoundType type, IntrinsicKind kind, BindingScope scope, uint query)
     {
-        if (this.headerParts.TryGet(type, query, out _) || this.TryLeafCapability(type, kind, out _))
+        if (this.headerParts.TryGet((type, kind), query, out _) || this.TryLeafCapability(type, kind, out _))
         {
             return;
         }
 
-        this.headerParts.Set(type, query, true);
+        this.headerParts.Set((type, kind), query, true);
         this.HeaderWalkWork++;
         if (JudgedByDeclaration(type))
         {
             var container = (DeclarationContainerKoto)type.Symbol!.Declaration!;
-            this.DemandStoredHeaders(container, kind, query); // Once per instance: its stored Types repeat in formals, met once.
-            if (kind == IntrinsicKind.Copy && !(this.copyByType.TryGetValue(container, out var copies) && copies.Exists(static x => x.Premises is not null)))
+            this.DemandStoredHeaders(container, kind, scope, query); // Once per instance: its stored Types repeat in formals, met once.
+            if (kind == IntrinsicKind.Copy)
             {
+                this.DemandPremiseHeaders(container, type, scope, query);
                 return;
             }
         }
@@ -658,16 +660,47 @@ public sealed partial class Binding
         {
             if (part is not null)
             {
-                this.DemandHeaders(part, kind, query);
+                this.DemandHeaders(part, kind, scope, query);
             }
         }
     }
 
-    private void DemandStoredHeaders(DeclarationContainerKoto container, IntrinsicKind kind, uint query)
+    private void DemandPremiseHeaders(DeclarationContainerKoto container, BoundType type, BindingScope scope, uint query)
+    {
+        if (!this.copyByType.TryGetValue(container, out var copies))
+        {
+            return;
+        }
+
+        for (var i = 0; i < copies.Count; i++)
+        {
+            for (var j = 0; j < (copies[i].Premises?.Operands.Length ?? 0); j++)
+            {
+                this.DemandConditionHeaders(this.SubstitutedPremise((IsKoto)copies[i].Premises!.Operands[j], type, scope), scope, query);
+            }
+        }
+    }
+
+    // A premise's atoms, each under its own kind where the intrinsic table judges it, as JudgeConstraintAtom requests it (SPEC 8.8.1: the
+    // requirements of one clause joined by `and`).
+    private void DemandConditionHeaders(BoundConstraint? premise, BindingScope scope, uint query)
+    {
+        if (premise is { Kind: ConstraintKind.And })
+        {
+            this.DemandConditionHeaders(premise.Left, scope, query);
+            this.DemandConditionHeaders(premise.Right, scope, query);
+        }
+        else if (premise is { Subject: { } subject, Contract: { } contract } && IntrinsicContract.Of(contract.Intrinsic).Judged)
+        {
+            this.DemandHeaders(subject, contract.Intrinsic, scope, query);
+        }
+    }
+
+    private void DemandStoredHeaders(DeclarationContainerKoto container, IntrinsicKind kind, BindingScope scope, uint query)
     {
         if (container is StructKoto structure && this.DirectBase(structure) is { } baseSymbol)
         {
-            this.DemandHeaders(structure.BaseClause!.BoundType ?? this.SelfType(baseSymbol), kind, query);
+            this.DemandHeaders(structure.BaseClause!.BoundType ?? this.SelfType(baseSymbol), kind, scope, query);
         }
 
         var members = new StoredSyntax(container);
@@ -685,7 +718,7 @@ public sealed partial class Binding
 
             if ((members.Member is PropertyKoto ? members.Member.BoundSymbol?.Type : syntax.BoundType) is { } stored)
             {
-                this.DemandHeaders(stored, kind, query);
+                this.DemandHeaders(stored, kind, scope, query);
             }
         }
     }

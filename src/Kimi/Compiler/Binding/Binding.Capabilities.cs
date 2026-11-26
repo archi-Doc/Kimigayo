@@ -311,7 +311,7 @@ public sealed partial class Binding
 
             if (this.inferringHeader && !derivation)
             {
-                this.DemandContainedHeaders(type, intrinsic.Intrinsic); // SPEC 11.6: a fact about a Type containing the Property
+                this.DemandContainedHeaders(type, intrinsic.Intrinsic, scope); // SPEC 11.6: a fact about a Type containing the Property
             }
 
             return ConstraintProof.Unknown;

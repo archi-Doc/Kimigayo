@@ -770,11 +770,12 @@ public class ConstraintBindingTest
     // SPEC 11.6 (DECISIONS: G1220; G1220-1 C9, C10): an inferred Property whose initializer's typing needs a fact (Copy, Owned, layout)
     // about a Type that contains it is CyclicBinding_Kd at its declaration: the request demands the headers of the stored Properties its
     // Type contains, through a field, a Case payload, a Tuple component, a fixed-array element, an unused Type argument, a base, a
-    // conditional opt-in or Option, and through another inferred Property (p1, p1r). e1-e3 were DECISIONS BU-136's `Entry` and
-    // `entry-i-two`, labelled valid (SPEC 11.6's own example: a corrected label, Q13). A Type that does not contain it (n1, f1, f2, f7), a
-    // fact the leaf rule decides (f3, f4, n2, c4's unconditional opt-in), an annotation (e1a, r1), a callee's own declaration check (f6)
-    // and a body's request (n3) demand nothing; r2's annotated re-entry keeps its records. A Copy opt-in's proof and a Property reading
-    // the failed one record their own Unproven (c1, c5, x6, p1r: PLAN G1181's remainder, readers of the Type only).
+    // conditional opt-in's premise under its own kind (c5, a5, k1, q2: SPEC 8.8.2) or Option, and through another inferred Property (p1,
+    // p1r). e1-e3 were DECISIONS BU-136's `Entry` and `entry-i-two`, labelled valid (SPEC 11.6's own example: a corrected label, Q13). A
+    // Type that does not contain it (n1, f1, f2, f7), a Type argument no premise names (v4, q1), a fact the leaf rule decides (f3, f4, n2,
+    // c4's unconditional opt-in), an annotation (e1a, r1), a callee's own declaration check (f6) and a body's request (n3) demand nothing;
+    // r2's annotated re-entry keeps its records. A Copy opt-in's proof and a Property reading the failed one record their own Unproven
+    // (c1, c5, q2, x6, p1r: PLAN G1181's remainder, readers of the Type only).
     [Theory]
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "CyclicBinding_Kd 6:5")] // e1
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag: i32 = Tags.tagOf<Entry>()\n", "")] // e1a
@@ -783,6 +784,11 @@ public class ConstraintBindingTest
     [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Entry>()\n", "UnprovenConstraint_Kd 6:5; CyclicBinding_Kd 7:5; UnprovenConstraint_Kd 7:15")] // c1
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Tag<U>\n    Self is Copy\n    var n: i32 = 0\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Tag<Entry>>()\n", "")] // c4
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\n    public func payOf<T>() -> i32\n        T is ObjectPayload\n        return 0\nstruct Tag<U>\n    Self is Copy when U is Copy\n    var n: i32 = 0\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Tag<Entry>>()\n", "UnprovenConstraint_Kd 15:5; CyclicBinding_Kd 16:5; UnprovenConstraint_Kd 16:15")] // c5
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Pair<A, B>\n    Self is Copy when A is Copy\n    var a: A\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Pair<i32, Entry>>()\n", "")] // v4
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Pair<A, B>\n    Self is Copy when A is Copy\n    var a: A\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Pair<Pair<i32, Entry>, i32>>()\n", "")] // q1
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Pair<A, B>\n    Self is Copy when A is Copy\n    var a: A\nstruct Entry\n    Self is Copy\n    var tag = Tags.dupOf<Pair<Pair<Entry, i32>, i32>>()\n", "UnprovenConstraint_Kd 9:5; CyclicBinding_Kd 10:5; UnprovenConstraint_Kd 10:15")] // q2
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Tag<U>\n    Self is Copy when U is Owned\n    var n: i32 = 0\nstruct Entry\n    var tag = Tags.dupOf<Tag<Entry>>()\n", "CyclicBinding_Kd 9:5")] // a5
+    [InlineData("group Tags\n    public func dupOf<T>() -> i32\n        T is Copy\n        return 0\nstruct Tag<U>\n    Self is Copy when U is Owned\n    var n: i32 = 0\nstruct Outer\n    var e: Entry\nstruct Entry\n    var tag = Tags.dupOf<Tag<Outer>>()\n", "CyclicBinding_Kd 11:5")] // k1
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Outer\n    var e: Entry\nstruct Entry\n    var tag = Tags.tagOf<Outer>()\n", "CyclicBinding_Kd 8:5")] // t1
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Box<U>\n    var u: U\nstruct Entry\n    var tag = Tags.tagOf<Box<Entry>>()\n", "CyclicBinding_Kd 8:5")] // t2
     [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = G2.k\ngroup G2\n    public let k = Tags.tagOf<Entry>()\n", "CyclicBinding_Kd 6:5")] // p1
