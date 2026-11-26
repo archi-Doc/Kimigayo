@@ -31,28 +31,29 @@ public sealed partial class Binding
     private static bool FollowsContract(Koto node) => node.BindingFailure == BindingFailure.OriginContract;
 
     // A node's first Origin relation or Origin contract record, then its records beyond the first; false when it has neither.
-    private bool ReportOriginRecords(Koto node, DiagnosticCode code, DiagnosticRequirement requirement)
+    private bool ReportOriginRecords(Koto node, DiagnosticCollection? store, DiagnosticCode code, DiagnosticRequirement requirement)
     {
+        BindingProblem first = new(code, requirement, SourceRef.Written(node), 0);
         if (code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd &&
             this.originRelations?.TryGetValue(node, out var relation) == true)
         {
-            this.ReportOriginRelation(node, relation, requirement, code, this.OmittedResultNote(node));
+            this.ReportOriginRelation(node, store, first, relation, this.OmittedResultNote(node));
         }
         else if (code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(node, out var contract) == true)
         {
-            ReportOriginContract(node, contract, requirement, code);
+            ReportOriginContract(node, store, first, contract);
         }
         else
         {
             return false;
         }
 
-        this.ReportFurtherOriginRecords(node, requirement);
+        this.ReportFurtherOriginRecords(node, store, requirement);
         return true;
     }
 
     // The records of one node beyond the first, each by its kind and with its own condition so that it stays an independent problem.
-    private void ReportFurtherOriginRecords(Koto node, DiagnosticRequirement requirement)
+    private void ReportFurtherOriginRecords(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
         for (var i = this.report.First(SourceRef.Written(node)); i >= 0; i = this.report.Next(i))
         {
@@ -61,14 +62,14 @@ public sealed partial class Binding
                 continue;
             }
 
-            var problem = this.report.Problem(i);
+            var problem = this.report.Problem(i) with { Requirement = requirement };
             if (this.report.Origin(fact).Relation is { } relation)
             {
-                this.ReportOriginRelation(node, relation, requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
+                this.ReportOriginRelation(node, store, problem, relation, this.OmittedResultNote(node));
             }
             else
             {
-                ReportOriginContract(node, this.report.Origin(fact).Contract!.Value, requirement, problem.Code, problem.Condition);
+                ReportOriginContract(node, store, problem, this.report.Origin(fact).Contract!.Value);
             }
         }
     }
@@ -87,13 +88,14 @@ public sealed partial class Binding
                 continue;
             }
 
+            var store = this.compilation.StoreOf(node);
             if (this.report.Origin(fact).Relation is { } relation)
             {
-                this.ReportOriginRelation(node, relation, problem.Requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
+                this.ReportOriginRelation(node, store, problem, relation, this.OmittedResultNote(node));
             }
             else
             {
-                ReportOriginContract(node, this.report.Origin(fact).Contract!.Value, problem.Requirement, problem.Code, problem.Condition);
+                ReportOriginContract(node, store, problem, this.report.Origin(fact).Contract!.Value);
             }
         }
     }

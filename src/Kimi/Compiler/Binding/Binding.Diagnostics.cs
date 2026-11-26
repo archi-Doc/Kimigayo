@@ -191,19 +191,19 @@ public sealed partial class Binding
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
     // SPEC 15.6.1, 23.1: the Reason names the comparison, the member, the relation and its two ends, rigid symbols of the comparison
     // displayed as the required contract writes them; an omitted end is related at its Type occurrence.
-    private static void ReportOriginContract(
-        Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition = 0)
+    private static void ReportOriginContract(Koto node, DiagnosticCollection? store, in BindingProblem problem, OriginContractFact contract)
     {
         if (contract.Required is { } original)
         {
             var relation = contract.Equality ? "==" : "outlives";
-            node.Report(
-                requirement,
-                code,
+            node.ReportIn(
+                store,
+                problem.Requirement,
+                problem.Code,
                 evidence: ["implementation", contract.Member, relation, OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)],
                 related: [("requirement", original, "the original implementation contract")],
                 at: contract.At,
-                condition: condition);
+                condition: problem.Condition);
             return;
         }
 
@@ -222,25 +222,27 @@ public sealed partial class Binding
             // is related at the anonymous function's header.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
             const string Note = "A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.7.4)";
-            node.Report(
-                requirement,
-                code,
+            node.ReportIn(
+                store,
+                problem.Requirement,
+                problem.Code,
                 note: Note,
                 evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
                 related: related,
                 relatedSpans: [("origin", closure, header, null)],
                 at: contract.At,
-                condition: condition);
+                condition: problem.Condition);
             return;
         }
 
-        node.Report(
-            requirement,
-            code,
+        node.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
             evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter],
             related: related,
             at: contract.At,
-            condition: condition);
+            condition: problem.Condition);
     }
 
     // The capture entry that names an environment binding, when the closure has a capture list (CaptureEntryIndex).
@@ -304,15 +306,13 @@ public sealed partial class Binding
         node.ReportIn(store, record.Requirement, record.Code, evidence: [(int)facts[1].Value, (int)facts[2].Value], related: [("declaration", this.compilation.SyntaxOf(facts[0].Site), null)]);
     }
 
-    // ReportIssue's one helper that takes no store (PLAN G949 Stage 2 U3-3; B's U3 ruling 33): the store would be its seventh parameter, so it
-    // reads Core's store decision for its subject itself, the same decision ReportIssue passes its siblings for the same node.
-    private void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
+    // An Origin relation record of `node` under the problem's code, requirement and condition, into Core's store decision for the node.
+    private void ReportOriginRelation(Koto node, DiagnosticCollection? store, in BindingProblem problem, OriginRelationFact relation, string? note)
     {
-        var store = this.compilation.StoreOf(node);
         var (evidence, related, spans) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
         // A closure end's record at a block body is at the Borrow that supplied it.
         var at = spans is not null && relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
-        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: at, condition: condition);
+        node.ReportIn(store, problem.Requirement, problem.Code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: at, condition: problem.Condition);
     }
 
     // The call signature of a Function Item, closure or Function value.

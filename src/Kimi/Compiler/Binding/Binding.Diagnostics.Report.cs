@@ -177,7 +177,7 @@ public sealed partial class Binding
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
         }
-        else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
+        else if (this.ReportOriginRecords(issue.Node, store, issue.Code, requirement))
         {
             // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
         }
@@ -233,8 +233,11 @@ public sealed partial class Binding
         this.ReportResolvedOriginRecords();
         for (var i = 0; i < derivedIssues.Count; i++)
         {
-            var issue = derivedIssues[i];
-            issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), this.ConditionOf(issue.Problem));
+            this.ReportDerived(derivedIssues[i]);
         }
     }
+
+    // Publishes one derived failure with its node's prerequisite keys (SPEC 23.1.2) into Core's store decision for the node.
+    private void ReportDerived(BindingIssue issue)
+        => issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), this.ConditionOf(issue.Problem));
 }
