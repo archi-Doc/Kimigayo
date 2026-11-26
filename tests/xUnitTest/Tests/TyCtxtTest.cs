@@ -284,7 +284,9 @@ public sealed partial class TyCtxtTest
         "var h = 4 Projection 0: i32 S",
         "var o: Option<i32> = .Some(3) Projection 0: Option<i32> S, i32 S",
         "var values: [2 of i32] = [1, 2] Projection 0: i32 S",
+        "var w: ref/i32 = x@ref Projection 0: ref/i32 S",
         "var w: ref/i32 = x@ref Projection 0: ref/i32 X",
+        "var x = 1 Projection 0: i32 S",
         "var x = 1 Projection 0: i32 S",
     ];
 
@@ -933,9 +935,10 @@ public sealed partial class TyCtxtTest
 
     // SPEC 5.7 Origins ("the outer Origin of a borrow value ... in a body, a local's, to that borrow"), 15.6.5, 5.7 Fits and claims
     // (PLAN G148 (1), the Origin-atom borrows): each Projection or Anchor atom lists the Borrows formed with it as their outer Origin,
-    // equal referents joined (w's shared then exclusive borrow, X), a part's borrow under its root's atom (b.0), a Slice view, a Subject
-    // and its by-reference binding, a capture's slot borrow, a raw Place's fresh anchor and the implicit argument borrows; a claim marks
-    // the Origin its Type states (s's region). Labels: originpub labels-r1.txt row1 (V).
+    // each Borrow of a local its own atom (SPEC 15.6.5: w's shared and exclusive borrows, S and X; x's two shared borrows), a part's
+    // borrow under its root's atom (b.0), a Slice view, a Subject and its by-reference binding, a capture's slot borrow, a raw Place's
+    // fresh anchor and the implicit argument borrows; a claim marks the Origin its Type states (s's region). Labels: originpub
+    // labels-r1.txt row1 (V); G922 tms labels.md #5.
     [Fact]
     public void ABodyAtomListsTheBorrowsFormedWithIt()
     {
@@ -1011,10 +1014,10 @@ public sealed partial class TyCtxtTest
     // (`origin b outlives a`): `a and static` is a (SPEC 15.2.2), so a's solution is kx's Origin and every argument's raw Origin is its
     // parameter's, and x's projection is marked by the clause alone (store2's own body fit marks its `a`); its twin ce2t (`origin a
     // outlives b`, the shorter end on no raw layer) marks none. t6e does not isolate it: the clause also makes a's solution a meet (`a
-    // and b`: w's and y's projections), so h's own argument fit marks both operands without it (store's body fit marks its `a`). t6's
-    // reassignment also as an overloaded call's argument (t6o) and in a Closure body (t6k). `null` and an equal Origin form
-    // none (p02, t08x, x01, d01, t9, t9k). h's layer states the atom `s@follow@raw` states, w's projection (which also carries
-    // SharedAddress), and `during s` names s's own region: by SPEC one Origin, the outer Origin of s's borrow (5.4, 15.2.1), which
+    // and b`: the atoms of w's two Borrows, s's and the argument's, and of y's argument Borrow, each its own by SPEC 15.6.5), so h's
+    // own argument fit marks every operand without it (store's body fit marks its `a`). t6's reassignment also as an overloaded call's
+    // argument (t6o) and in a Closure body (t6k). `null` and an equal Origin form none (p02, t08x, x01, d01, t9, t9k). h's layer states
+    // the atom `s@follow@raw` states, w's projection (which also carries SharedAddress), and `during s` names s's own region: by SPEC one Origin, the outer Origin of s's borrow (5.4, 15.2.1), which
     // Binding splits into two atoms (PathOrigin reads a `let` borrow's region as its initializer borrow's atom, the Origin expression the
     // let's own region), so t6w's, t6wn's and p10's initializers are raw fits too, a sound over-mark (labels.txt's addendum (2)). The
     // split is a PLAN open issue (Front); its removal unmarks t6wn and p10. Labels from SPEC (`G147\z6f2i\labels.txt`, before any run;
@@ -1034,7 +1037,7 @@ public sealed partial class TyCtxtTest
     [InlineData("func pick<T>(a: T, b: T) -> T => a@move|", FitHead + "var h = Wrap.init(pick(s@follow@raw@raw/u8, r@follow@raw@raw/u8))" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Box.init(s@follow@raw@raw/u8)|if c => h.value = r@follow@raw@raw/u8" + FitTail, FitS)]
     [InlineData("", FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c|    let hr = h@uniq|    hr@follow = Wrap.init(r@follow@raw@raw/u8)" + FitTail, FitS)]
-    [InlineData(FitStore, FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => store(h@uniq, r@follow@raw@raw/u8, w@ref, y@ref)" + FitTail, "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b) Parameter 0:  FittedIntoHolder|" + FitS + "|var y = 2 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
+    [InlineData(FitStore, FitHead + "var h = Wrap.init(s@follow@raw@raw/u8)|if c => store(h@uniq, r@follow@raw@raw/u8, w@ref, y@ref)" + FitTail, "func store(h: uniq/Wrap<raw/u8 during a>, q: raw/u8 during b, ka: ref/(ref/i32 during c) during a, kb: ref/i32 during b) Parameter 0:  FittedIntoHolder|var w: ref/i32 = x@ref Projection 0: ref/i32 S FittedIntoHolder, FittedExclusive|" + FitS + "|var y = 2 Projection 0: i32 S FittedIntoHolder, FittedExclusive")]
     [InlineData(FitClause + FitClauseCaller + "store2(kx, ks, hp@uniq, qs)|", "return", "func store2(ka: ref/i32 during a, kb: ref/i32 during b, h: uniq/(raw/u8 during a), q: raw/u8 during b) Parameter 0:  FittedIntoHolder|var x = 1 Projection 0: i32 S SharedAddress, FittedIntoHolder, FittedExclusive")]
     [InlineData(FitClauseT + FitClauseCaller + "store5(kx, ks, hp@uniq, kx@follow@raw@raw/u8)|", "return", "")]
     [InlineData("", FitHead + "var h = Wrap.init(r@follow@raw@(raw/u8 during s))" + FitTail, "let s = w@ref Inference -1:  FittedIntoHolder, FittedExclusive")]

@@ -1508,9 +1508,10 @@ public sealed partial class MirBorrowsTest
     // `ref/i32 during a` admits no local borrow), methodShared, methodUniq, ctorShared, i32Referent, loopShared, twoShared, tuplePart and
     // fieldPart (a part's referent i32), slotPart and slotKept (a slot's keeper's referent i32), paramSlot and t11 (one root, two part
     // borrows); a constructor lending the holder (reachedByStep) stores z's borrow, but nothing holding it is used after `z = 5` (SPEC 15.4;
-    // Z6's O5-4). An address taken past the shared s whose atom also has an exclusive borrow keeps the located Unsupported_Kd (mixedAtom,
-    // t11s, valid: Z6's named limit R6.1, R6.8 (b2); removal: route (a)), as does duringShared (valid): `during s` names s's own region,
-    // which Binding states by another atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
+    // Z6's O5-4). An address taken past the shared s stores nothing, the other Borrows of its root being their own atoms (mixedAtom,
+    // t11s, valid: SPEC 15.6.5, 15.6.4 item 1; since PLAN G922 tms they no longer reach Z6's named limit R6.1, R6.8 (b2), a Q13 class 3
+    // move). duringShared (valid) keeps the located Unsupported_Kd: `during s` names s's own region, which Binding states by another
+    // atom than s's borrow, so the written initializer is a fit from another Origin (FittedIntoHolder,
     // the whitelist's cost; removal: D-1116 (1)'s one atom). A claim states its atom; an address
     // carries no mode, so a claimed atom with an exclusive member stays the located Unsupported_Kd (claimUniq, invalid; removal: per-layer
     // address provenance in A5), and one whose borrows are all shared stores nothing (claimShared, claimMixed, claimRaw, claimRawMixed: a
@@ -1991,11 +1992,10 @@ public sealed partial class MirBorrowsTest
                 "flat: z = 5", "flat: inspect(w)", "nested: z = 5", "nested: inspect(w)", "optionNested: z = 5",
                 "optionNested: inspect(w)", "looped: k = 2", "looped: z = 5", "looped: inspect(w)",
                 "nestedPointee: z = 5", "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5",
-                "tupleTyped: inspect(w)", "mixedAtom: h.put(z@ref) Unsupported_Kd", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
+                "tupleTyped: inspect(w)", "duringShared: h.put(z@ref) Unsupported_Kd", "duringUniq: z = 5",
                 "duringUniq: inspect(w)", "duringNull: z = 5", "twoUniq: z = 5", "twoUniq: inspect(v)", "twoStatic: z = 5", "twoStatic: inspect(w)",
                 "twoStatic: var y: raw/u8 during static = null", "twoStatic: var w: ref/i32 = x@ref", "twoStatic: var x = 1", "reborrow: z = 5",
                 "reborrow: inspect(w)", "tuplePartD: z = 5", "tuplePartD: b", "fieldPartD: z = 5", "fieldPartD: b",
-                "t11s: h.put(z@ref) Unsupported_Kd",
                 "claimUniq: h.put(z@ref) Unsupported_Kd", "regionRaw: h.put(z@ref) Unsupported_Kd",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));

@@ -283,7 +283,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("3c4ffb8ea44b", ": let local: i32 = 1 <- local@ref")]
     [InlineData("noncfl-candidate-v", "h: s.1 = 5 <- r")]
     [InlineData("store-every-origin", "se: var r = local@ref <- r@ref")]
-    [InlineData("merge-two-paths-v", "f: let local = 1 <- q; r")]
+    [InlineData("merge-two-paths-v", "f: let local = 1 <- r; q")]
     [InlineData("g526-borrow-arg-v", "g: let v: i32 = 1 <- mkr(v@ref)")] // The cause's fit at the initializer (R7-O1 H's D5).
     [InlineData("two-views", "pp: let local = 1 <- r")]
     [InlineData("pair-application-part", "pa: var local = x@copy <- local@ref")]
@@ -349,8 +349,8 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
     // PD31 (DECISIONS R4-M132): each Cause fact names, by its index, an UnsatisfiedOriginRelation_Kd of the derived problem's body at the
-    // fact's site whose finite source is its Borrow's Origin: anchored at the conflict's Borrow, or where two Refs of one root share the
-    // atom (noncfl-candidate-v's s.0 and s.1) at the first of them.
+    // fact's site whose finite source is its Borrow's Origin: anchored at the conflict's Borrow, or at another Borrow of its root, each
+    // Borrow having its own Origin (SPEC 15.6.5; merge-two-paths-v's q beside r).
     [Fact]
     public void EachCauseNamesARefutedProblemOfTheBorrowsOrigin()
     {
@@ -377,7 +377,7 @@ public sealed partial class MirBorrowsTest
             }
         }
 
-        Assert.Equal(["noncfl-candidate-v"], shared);
+        Assert.Equal(["merge-two-paths-v"], shared);
         // R7-O1 H: j-bad's, m-write4's and 27e4888a2ae9's derived conflicts (F-H-9's class; 27e4888a2ae9's cause is the Refuted relation
         // at the returned value since PLAN G1115, AConflictCausedOnlyByRefutedRelationsIsDerived).
         Assert.Equal(48, causes);

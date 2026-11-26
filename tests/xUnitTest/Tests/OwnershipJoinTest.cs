@@ -37,15 +37,15 @@ public class OwnershipJoinTest
     }
 
     // SPEC 14.9.2, 15.6 (F1): a joined borrow's Type names both Origins and its value carries both Loans, so a write of either owner while
-    // it is live conflicts on the MIR (A5).
+    // it is live conflicts on the MIR (A5). The value meets one Origin per Borrow (SPEC 15.6.5: the nested row's two Borrows of a are two).
     [Theory]
-    [InlineData("if c => a@ref else => b@ref")]
-    [InlineData("if c => b@ref else => a@ref")]
-    [InlineData("if c\n        yield a@ref\n    else => b@ref")]
-    [InlineData("match c\n        true => a@ref\n        false => b@ref")]
-    [InlineData("label choose: do\n        if c => exit to choose a@ref\n        exit to choose b@ref")]
-    [InlineData("if c => (if c => a@ref else => b@ref) else => a@ref")]
-    public void BorrowResultsRetainBothDependencies(string expression)
+    [InlineData("if c => a@ref else => b@ref", 2)]
+    [InlineData("if c => b@ref else => a@ref", 2)]
+    [InlineData("if c\n        yield a@ref\n    else => b@ref", 2)]
+    [InlineData("match c\n        true => a@ref\n        false => b@ref", 2)]
+    [InlineData("label choose: do\n        if c => exit to choose a@ref\n        exit to choose b@ref", 2)]
+    [InlineData("if c => (if c => a@ref else => b@ref) else => a@ref", 3)]
+    public void BorrowResultsRetainBothDependencies(string expression, int operands)
     {
         foreach (var annotation in new[] { string.Empty, ": ref/Cell" })
         {
@@ -59,7 +59,7 @@ public class OwnershipJoinTest
             Assert.Equal(OriginKind.Inference, region.Kind);
             var value = c.Binding.RegionValueAtUse(region, region.Binder!);
             Assert.Equal(OriginKind.Intersection, value.Kind);
-            Assert.Equal(2, value.Operands.Count);
+            Assert.Equal(operands, value.Operands.Count);
             Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code.IsLoanConflict());
             foreach (var owner in new[] { "a", "b" })
             {

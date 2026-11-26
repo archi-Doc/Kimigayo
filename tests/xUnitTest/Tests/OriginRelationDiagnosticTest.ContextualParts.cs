@@ -163,7 +163,8 @@ public partial class OriginRelationDiagnosticTest
     // Inside Closures (d3 §3): r03 to r06 (`.Some(a@ref)`, `swap3(.Some(a@uniq), b@uniq)`, `(a@ref, .None)`, `[.Some(a@ref), .None]`) are
     // valid and stay ClosureEnvironmentOriginTest's rows (not repeated). Their twins store a Closure local's Borrow toward the enclosing `q`
     // through the same shapes: a Refuted relation. A Case whose expected Type the parameter fixes (r03_n, r04_n, r06_n) is judged by its own
-    // fit, at the payload; only a position the call opens records at the argument (r05_n's `.None`; D-1's scope, decided 2026-10-29).
+    // fit, at the payload; only a position the call opens records at the argument (r05_n's `.None`; D-1's scope, decided 2026-10-29),
+    // once for each of r05_n's two Borrows of short, each its own Origin (SPEC 15.6.5, 23.1.2; PLAN G922 tms, Q13 class 4).
     // Each payload record is A5's one (R7-O1 H; the MIR's twin at the same span, H0b §5.4, R4-M108, went with Binding's record). Each
     // also has A5's Loan conflict at `short`'s declaration: `*s` may retain `short`'s Loan through the aggregate argument, which is neither
     // the borrow nor a Copy, so the record is shown by SPEC 15.6.5 rule W's letter (family F-b, class 4; R4's verdict, R6-check H5; r03_n,
@@ -171,7 +172,7 @@ public partial class OriginRelationDiagnosticTest
     [Theory]
     [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd var short = 2; UnsatisfiedOriginRelation_Kd short@uniq", null)]
-    [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
+    [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd (short@ref, .None); UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
     [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     public void AContextualPartInsideAClosureIsJudged(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
