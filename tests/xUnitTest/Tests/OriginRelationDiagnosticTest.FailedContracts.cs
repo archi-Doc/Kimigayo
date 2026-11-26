@@ -396,12 +396,12 @@ public partial class OriginRelationDiagnosticTest
     // comparison; p2bv).
     [Theory]
     [InlineData("p2a", "func k(a: ref/i32, b: ref/i32, f: (ref/i32 during a) -> ref/i32 during a) -> i32\n    let g: (ref/i32 during a) -> ref/i32 during b = f\n    return 0\n", "UnprovenOriginContract_Kd f")]
-    [InlineData("p2bv", "func h(y: ref/i32, z: ref/i32) -> ref/i32 during y => y\nfunc apply(f: (ref/i32 during a, ref/i32 during b) -> ref/i32 during b, a: ref/i32, b: ref/i32) -> i32 => 0\n" +
-        "func k(a: ref/i32, b: ref/i32) -> i32\n    return apply(h, a, b)\n", "UnprovenOriginContract_Kd h")]
+    [InlineData("p2bv", "func h(y: ref/i32, z: ref/i32) -> ref/i32 during y => y\nfunc apply(f: (ref/i32 during a, ref/i32 during b) -> ref/i32 during b, a: ref/i32, b: ref/i32) -> i32 => 0\nfunc k(a: ref/i32, b: ref/i32) -> i32\n    return apply(h, a, b)\n", "UnprovenOriginContract_Kd h")]
     public void AContractsFirstRecordIsItsNodesSlotProblem(string form, string body, string records)
     {
         AssertRecords(form, body, records, null);
         var issue = Assert.Single(MirBuildTest.Compile(body + Main).Binding.Issues, static x => x.Failure == BindingFailure.OriginContract);
         Assert.Equal(DiagnosticCode.UnprovenOriginContract_Kd, issue.Code);
+        Assert.True(issue.Problem >= 0);
     }
 }
