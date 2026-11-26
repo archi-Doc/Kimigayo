@@ -418,7 +418,7 @@ public sealed partial class Binding
         if (context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
         {
             this.BindWaitedSources(node, context, ResultExpectation(node, expected));
-            return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependent(node, context.Cause!);
+            return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependentJoin(node, context);
         }
 
         context.Outcome = JoinOutcome.Undecided;
@@ -508,10 +508,13 @@ public sealed partial class Binding
             {
                 var deferred = context.SourceNodes[i] is { } node && this.Deferred(node);
                 awaiting |= deferred;
-                context.Pending |= !deferred;
                 if (!deferred && context.SourceNodes[i] is { } failed && this.PartFailed(failed))
                 {
                     context.RestOn(failed);
+                }
+                else
+                {
+                    context.Pending |= !deferred;
                 }
             }
             else if (!ReferenceEquals(source, BoundType.Never))
@@ -645,10 +648,13 @@ public sealed partial class Binding
             }
 
             context.Sources[i] = this.SuppliedType(source);
-            context.Pending |= context.Sources[i] is null;
             if (waited && context.Sources[i] is null && this.PartFailed(source))
             {
-                context.RestOn(source); // U1.6h site 6: a waited source that fails when its join decides is the join's cause.
+                context.RestOn(source); // U1.6h site 6: a waited source that fails when its join decides is the join's cause, not pending.
+            }
+            else
+            {
+                context.Pending |= context.Sources[i] is null;
             }
 
             failed ??= fits ? null : context.Sources[i];

@@ -386,7 +386,7 @@ public sealed partial class Binding
         context.DecideRest();
         if (context.Outcome == JoinOutcome.Dependent)
         {
-            return this.CompleteDependent(node, context.Cause!); // SPEC 23.1.2: it rests on its failed source.
+            return this.CompleteDependentJoin(node, context);
         }
 
         if (context.Pending)
@@ -399,6 +399,9 @@ public sealed partial class Binding
         var completion = node is FunctionKoto function ? (function.Body ?? function.ExpressionBody)! : node;
         return Complete(node, !suppliedValue && !this.ResultStructure().CanComplete(completion) ? BoundType.Never : common);
     }
+
+    // SPEC 23.1.2 (DECISIONS BU-79): a Dependent join's one completion, DecideResult's and DecideWaiting's: it rests on its cause.
+    private BoundType? CompleteDependentJoin(Koto node, ResultContext context) => this.CompleteDependent(node, context.Cause!);
 
     // A join's outcome (SPEC 14.9.2, 23.1.2; DECISIONS BU-43): undecided while it collects its sources and forms its Type; waiting for
     // its position's Type (an outer join's, its call's); failed by a conflict it found (Conflict, its own record) or resting on a failed
