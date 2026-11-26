@@ -365,6 +365,12 @@ public sealed partial class Binding
                 var (limitValue, limitText) = AnalysisLimitOf((AnalysisBound)bound.Value);
                 node.ReportIn(store, problem.Requirement, problem.Code, limitValue, limitText, condition: problem.Condition);
                 break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Constraint }, { Kind: ProblemFactKind.Reason }, ..]:
+                this.ReportOwnedConversion(node, store, index, problem); // `S is Owned`, then its member row (RecordOwned).
+                break;
+            case BindingFailure.UnprovenConstraint when this.report.Facts(index) is [{ Kind: ProblemFactKind.Related, Value: 0 }, { Kind: ProblemFactKind.Constraint }, { Kind: ProblemFactKind.OriginRecord }]:
+                this.ReportCallableConstraint(node, store, index, problem); // A clause's record with its trial's contract (RecordCallableConstraint).
+                break;
             case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { } entry && entry.Value == 2:
                 // Role 2, "entry": a range iteration's selected entry declaration (IntoIterable, Iterable or UniqIterable, SPEC 14.6.2),
                 // which the range does not satisfy or is not proven to; ordinal 2 keeps the clause record's roles 0 and 1 apart.

@@ -2,9 +2,9 @@
 
 // Owns the target table (IMPL 21.4, 21.5, 21.6, SPEC 22; Tatara r3 §4; DECISIONS R5-M174): one row per executable target profile,
 // windows-x64 (Windows), linux-x64 (Linux, the Tatara plan's B7b2a: static, without a C library, its layer over system calls) and
-// none-x64 (None, the Tatara plan's B9: freestanding, its program supplying its platform), which Binding's native resolution and its
-// startup check (ProgramPlatform), the Backend's module frame and runtime ABI, target selection (Project, Solution, LSP), project
-// configuration and the native build read.
+// none-x64 (None, the Tatara plan's B9: freestanding, its program supplying its platform, its kimi_backend compiler-rt's soft-float
+// routines, B9e), which Binding's native resolution and its startup check (ProgramPlatform), the Backend's module frame and runtime
+// ABI, target selection (Project, Solution, LSP), project configuration and the native build read.
 // None is staged until its link exists (Staged; removal B9g): Find and the reads over every row (AllRows: Rows, then Staged) reach it,
 // selection (Host, Project.ArtifactTarget) and the readers of the selectable rows (Rows) do not.
 // Input: this process's operating system and architecture (HostName, read once). Output: the selectable rows (Rows), the staged rows
@@ -50,7 +50,7 @@ internal sealed class TargetProfile
     /// text order: this before the Windows row's values.</summary>
     internal static readonly string[] MemorySymbols = ["memcmp", "memcpy", "memmove", "memset"];
 
-    // The backend supply's name, which the Windows row's supply and the reserved external names read (IMPL 21.4.7).
+    // The backend supply's name, which the Windows and none rows' supplies and the reserved external names read (IMPL 21.4.7, 21.6.7).
     private const string BackendSupply = "kimi_backend";
 
     // The Windows row's values that its columns read, stated once. Static initializers run in text order: these before Windows, Windows
@@ -74,6 +74,18 @@ internal sealed class TargetProfile
 
     // The backend supply's helper symbols in catalog order (IMPL 21.4.7), reserved external names through the supply (ReservedSymbols).
     private static readonly string[] WindowsBackendSymbols = ["__chkstk"];
+
+    // The none row's backend supply's symbols in catalog order (src/backend/none-x64/profile.json's providedSymbols, ToolchainIdentity's
+    // check): compiler-rt 22.1.8's soft-float routines the generated float operations call and the members' own needs (IMPL 21.6.7, the
+    // Tatara plan's decision 33), reserved external names on every target through the supply (ReservedSymbols). Before None (text order).
+    private static readonly string[] NoneBackendSymbols =
+    [
+        "__adddf3", "__addsf3", "__cmpdf2", "__cmpsf2", "__divdf3", "__divsf3", "__eqdf2", "__eqsf2", "__extendsfdf2", "__fe_getround",
+        "__fe_raise_inexact", "__fixdfdi", "__fixdfsi", "__fixsfdi", "__fixsfsi", "__fixunsdfdi", "__fixunsdfsi", "__fixunssfdi",
+        "__fixunssfsi", "__floatdidf", "__floatdisf", "__floatsidf", "__floatsisf", "__floatundidf", "__floatundisf", "__floatunsidf",
+        "__floatunsisf", "__gedf2", "__gesf2", "__gtdf2", "__gtsf2", "__ledf2", "__lesf2", "__ltdf2", "__ltsf2", "__muldf3", "__mulsf3",
+        "__nedf2", "__nesf2", "__subdf3", "__subsf3", "__truncdfsf2", "__unorddf2", "__unordsf2",
+    ];
 
     /// <summary>Gets the windows-x64 row, the pinned, module-local Windows execution profile (IMPL 21.4). Its reserved supplies (IMPL
     /// 20.4), in Ordinal name order: kernel32, the generated import library, whose symbol set is the runtime declarations' symbols, then
@@ -155,8 +167,9 @@ internal sealed class TargetProfile
 
     /// <summary>Gets the none-x64 row, the freestanding x86-64 profile (IMPL 21.6; the Tatara plan's decision 22): kernel code generation
     /// (the kernel code model, static relocation, no red zone, soft float without SSE or x87 state, and no stack probe: SPEC 17.4.3's
-    /// freestanding exception, decision 44), its program supplying its platform layer's routines (ProgramPlatform, SPEC 22.4.5), no
-    /// runtime declaration, reserved supply, C runtime or host. Staged (<see cref="Staged"/>) until the Tatara plan's B9g.</summary>
+    /// freestanding exception, decision 44), its program supplying its platform layer's routines (ProgramPlatform, SPEC 22.4.5), one
+    /// reserved supply, kimi_backend, compiler-rt's soft-float routines, a static library (IMPL 21.6.7; the Tatara plan's B9e), and no
+    /// runtime declaration, C runtime or host. Staged (<see cref="Staged"/>) until the Tatara plan's B9g.</summary>
     internal static TargetProfile None { get; } = new()
     {
         Target = "x86_64-unknown-none",
@@ -175,7 +188,7 @@ internal sealed class TargetProfile
         Layer = "NonePlatform.ll.in",
         UnmappedBound = 65536,
         RuntimeDeclarations = [],
-        Supplies = [],
+        Supplies = [new(BackendSupply, "static", NoneBackendSymbols)],
         Kinds = ["static"],
         CRuntime = null,
         ArgumentExtension = "SystemV",

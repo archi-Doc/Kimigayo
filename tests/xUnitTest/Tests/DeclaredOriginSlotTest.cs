@@ -19,6 +19,11 @@ public class DeclaredOriginSlotTest
 
     private const string Item = "contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\n";
 
+    // SPEC 15.3.5's example: a slot only a stored Function Type's input states; and a slot a Field keeps beside a signature's `uniq` layer.
+    private const string Callback = "struct Callback {input}\n    let call: (ref/i32 during input) -> i32\n";
+
+    private const string Mixed = "struct Mixed {m}\n    let keep: ref/i32 during m\n    let call: (uniq/i32 during m) -> i32\n";
+
     [Theory]
     [InlineData("public struct View<T> {source}\n    private let data: ref/T during buffer\n", "buffer", "header", "{source}")]
     [InlineData("struct Pair {source}\n    let first: ref/i32 during source\n    let second: ref/i32 during souce\n", "souce", "header", "{source}")]
@@ -149,7 +154,10 @@ public class DeclaredOriginSlotTest
     // declaration's pair binders, its own and an enclosing declaration's, and a generic definition is valid only when every case is
     // (SPEC 8.15.2; DECISIONS BU-44): a slot only a conditional pair slot or a nested slot uses is Phantom where those cases store no
     // borrow (the owner case; `s = owner, t = owner`; Inner<i32>'s and an owner-only binder's every case), and kept where every case does
-    // (`ref or uniq`; a `uniq` binder beside an `owner or ref` one) or another Field keeps it.
+    // (`ref or uniq`; a `uniq` binder beside an `owner or ref` one) or another Field keeps it. A stored Function Type's signature stores
+    // nothing (SPEC 15.2.4), so a slot only its layers state is Phantom too (PLAN G1456): in a parameter, through a nested slot bound to
+    // it, in a result, under a double reversal, in a pair binder's case, and at a projection of the slot; a Field keeping it beside a
+    // signature's `uniq` layer keeps it.
     [Theory]
     [InlineData("struct W<T> {s}\n    let p: raw/T during s", "InvalidOriginBinding_Kd: raw/T during s")]
     [InlineData("struct W<T> {s}\n    let keep: Loan<ref/T during s>\n    let p: raw/T during s", null)]
@@ -163,6 +171,14 @@ public class DeclaredOriginSlotTest
     [InlineData(PairAnnotationBindingTest.InnerOwnerUniq + "struct Outer {a}\n    let j: Inner<i32> during a\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
     [InlineData(PairAnnotationBindingTest.InnerOwnerUniq + "struct Outer<q/U> {a}\n    q is owner\n    let j: Inner<q/U> during a\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
     [InlineData(PairAnnotationBindingTest.InnerOwnerUniq + "struct Outer<q/U> {a}\n    q is owner or uniq\n    let j: Inner<q/U> during a\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
+    [InlineData("struct Probe {s}\n    let call: (ref/i32 during s) -> i32\n    let at: raw/i32 during s", "InvalidOriginBinding_Kd: raw/i32 during s")]
+    [InlineData(Callback + "struct Relay {r}\n    let inner: Callback during r\n    let at: raw/i32 during r", "InvalidOriginBinding_Kd: raw/i32 during r")]
+    [InlineData("struct Maker {s}\n    let make: () -> ref/i32 during s\n    let at: raw/i32 during s", "InvalidOriginBinding_Kd: raw/i32 during s")]
+    [InlineData("struct Twice {s}\n    let call: ((ref/i32 during s) -> i32) -> i32\n    let at: raw/i32 during s", "InvalidOriginBinding_Kd: raw/i32 during s")]
+    [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "    let call: (ref/i32 during a) -> i32\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
+    [InlineData(Mixed + "    let at: raw/i32 during m", null)]
+    [InlineData("struct C {s}\n    let call: (ref/i32 during s) -> i32\nfunc f(c: ref/C, p: raw/i32 during c.s) => ()", "InvalidOriginBinding_Kd: raw/i32 during c.s")]
+    [InlineData("struct C {s}\n    let call: (ref/i32 during s) -> i32\nfunc f(c: ref/(C during a), p: raw/i32 during a) => ()", "InvalidOriginBinding_Kd: raw/i32 during a")]
     public void ARawLayerStatesNoPhantomSlot(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
 
@@ -185,6 +201,14 @@ public class DeclaredOriginSlotTest
         "static cannot supply uniq for Origin slot a in the Semantics cases q = uniq; p = uniq")]
     public void AConditionalSlotsRecordNamesItsCase(string declarations, string label)
         => Assert.Equal(label, Assert.Single(DiagnosticCorpus.Check(declarations + "\n" + Main).Diagnostics).Label);
+
+    // SPEC 15.2.4, 15.3.5, 15.4.2 (PLAN G1456): a stored Function Type's `uniq` layer is no use of its slot, so `static` supplies a slot
+    // only such a layer states (Sink) or a `ref` Field keeps beside it (Mixed).
+    [Theory]
+    [InlineData("struct Sink {s}\n    let call: (uniq/i32 during s) -> i32\nfunc f(x: Sink during static) => ()")]
+    [InlineData(Mixed + "func f(x: Mixed during static) => ()")]
+    public void StaticSuppliesASlotOnlyASignatureMakesUniq(string declarations)
+        => Assert.Empty(RawPointerSyntaxTest.Records(declarations));
 
     // R7-E4 E4c: a slot case records its facts at the failure, read back by position (ProblemFact's contract): the listing schema's
     // declaration (Related, role 0), the instance, Reason 1 the failing row with the slot's index above bit 8, then one SemanticsMask
