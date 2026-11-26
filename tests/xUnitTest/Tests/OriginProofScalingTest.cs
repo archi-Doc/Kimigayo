@@ -574,4 +574,61 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.Equal(0, metrics.BoundViolations);
         return metrics;
     }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // SPEC 15.6.5, 15.3.6 (PLAN G922 tms; the twin of ADiamondChainOfVarDefinitionsIsReadOnce): n Borrows of one local `t` holding k
+        // references, each its own finite Origin, met into one `var` that a Closure returns at its region, a fixed Origin equal to its
+        // candidate (one, valid); the baseline borrows n locals once each (distinct, valid). A first Bind's allocation at n = 10, 20, 40, 80
+        // is gated against the baseline's (G922-15 C5), because Meet is already quadratic on the baseline: at each doubling the one-local
+        // form's total grows by no more than the baseline's, at each n it is at most the baseline's, and per doubling it is at most 3x.
+        [Theory]
+        [InlineData(1)]
+        [InlineData(8)]
+        public void BorrowsOfOneLocalMeetLikeBorrowsOfDistinctLocals(int k)
+        {
+            foreach (var one in new[] { true, false })
+            {
+                Assert.Empty(CompilationTestHelper.RecordsAtLines(BorrowMeet(k, 80, one)));
+            }
+
+            var (same, distinct) = (ColdBytes(k, true), ColdBytes(k, false));
+            var series = $"one {string.Join(", ", same)}; distinct {string.Join(", ", distinct)}";
+            output.WriteLine($"k {k}, n 10, 20, 40, 80: {series}; one/distinct at 80 {100 * same[3] / distinct[3]}%");
+            for (var i = 0; i < same.Length; i++)
+            {
+                Assert.True(same[i] <= distinct[i], series);
+                Assert.True(i == 0 || (same[i] * distinct[i - 1] <= distinct[i] * same[i - 1] && same[i] <= 3 * same[i - 1]), series);
+            }
+        }
+
+        // A first Bind's allocation of BorrowMeet at n = 10, 20, 40, 80.
+        private static long[] ColdBytes(int k, bool one)
+        {
+            int[] sizes = [10, 20, 40, 80];
+            var compilations = new Compilation[sizes.Length];
+            var bytes = AllocationMeasurement.MeasureSeries(sizes.Length, i =>
+            {
+                var c = compilations[i] = CompilationTestHelper.Parse(BorrowMeet(k, sizes[i], one));
+                return () => c.Bind();
+            });
+            Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
+            return bytes;
+        }
+
+        // `u` met over n Borrows, of `t` n times (one) or of t1 ... tn once each, each local p or a k-tuple of p, returned by a Closure
+        // whose result writes the stored layers at p (omitted, a Closure's shared result layer would be `static`, SPEC 15.4.3).
+        private static string BorrowMeet(int k, int n, bool one)
+        {
+            var shape = $"({string.Join(", ", Enumerable.Repeat("ref/i32 during p", k))})";
+            var value = k == 1 ? "p" : $"({string.Join(", ", Enumerable.Repeat("p", k))})";
+            string Name(int i) => one ? "t" : $"t{i}";
+            var locals = one ? $"    let t = {value}\n" : string.Concat(Enumerable.Range(1, n).Select(i => $"    let t{i} = {value}\n"));
+            return "func f(p: ref/i32)\n" + locals + $"    var u = {Name(1)}@ref\n" +
+                string.Concat(Enumerable.Range(2, n - 1).Select(i => $"    u = {Name(i)}@ref\n")) +
+                $"    let c = func [u] () -> ref/{shape} during u => u\n    let v = c()\npublic func main() => ()\n";
+        }
+    }
 }

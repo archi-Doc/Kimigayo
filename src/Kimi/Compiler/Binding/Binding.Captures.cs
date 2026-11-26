@@ -337,7 +337,7 @@ public sealed partial class Binding
         }
 
         var binder = source.Declaration ?? function;
-        environment.Type = this.types.Intern(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.PlaceAtom(binder, SymbolOriginSlot(source)));
+        environment.Type = this.types.Intern(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.PlaceAtom(binder, SymbolOriginSlot(source), null));
         environment.CaptureAcquisition = exclusive ? CaptureAcquisition.ExclusiveSlotBorrow : CaptureAcquisition.SharedSlotBorrow;
         return null;
     }

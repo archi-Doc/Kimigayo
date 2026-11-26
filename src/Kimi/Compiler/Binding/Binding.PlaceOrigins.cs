@@ -18,8 +18,8 @@ namespace Kimi.Compiler;
 // - Invariants: a Borrow reached through safe borrow layers is named by the meet of their Origins, from its last dereference outward up
 //   to and including the first shared layer, every one when none is shared, and then also the containment of the root they are stored
 //   in, a Closure's receiver Origin ρ for an environment binding (SPEC 15.6.3, 15.8.2; EnvironmentContainment); a reference read in
-//   place is its referent; a binding's own Place is the atom of its binder and slot; a raw dereference ends the walk (raw Origins are
-//   Binding.RawOrigins').
+//   place is its referent; a binding's own Place is the atom of its binder and slot, one atom per Borrow of a local or parameter root
+//   (SPEC 15.6.5; PlaceAtom); a raw dereference ends the walk (raw Origins are Binding.RawOrigins').
 // - Prohibitions: nothing here judges an Origin relation, selects an adaptation or reports a diagnostic; no other component meets the
 //   layers of a Borrow's path or a root's containment (a nested bare entry's Type reads EnvironmentContainment, Binding.Captures), and
 //   a Pattern position's layers (Binding.Patterns.Layers) meet through MeetLayer, this walk's step.
@@ -92,8 +92,11 @@ public sealed partial class Binding
         : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
 
     // SPEC 15.6.5: the atom of a Borrow that dereferences nothing, named by its Place's binder and Projection slot (PlaceOriginBinder,
-    // PlaceOriginSlot; a capture entry's, Binding.Captures). The one form of such an atom.
-    private BoundOrigin PlaceAtom(Koto binder, int slot) => this.OriginAtom(binder, OriginKind.Projection, slot);
+    // PlaceOriginSlot; a capture entry's, Binding.Captures). The one form of such an atom. A Borrow whose root occurrence `root` is a local
+    // or a parameter (a constructor's or destructor's `self` among them) has its own finite Origin, so that occurrence is also its atom's
+    // identity (BorrowRoot); any other root, and a capture entry, which has no root occurrence, names the Place's one atom.
+    private BoundOrigin PlaceAtom(Koto binder, int slot, Koto? root)
+        => this.OriginAtom(binder, OriginKind.Projection, slot, borrowRoot: root?.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter ? root : null);
 
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
     // (SPEC 13.5.5), as the adaptation recorded it; otherwise the source Place's.
@@ -182,10 +185,10 @@ public sealed partial class Binding
                 walk.Met = this.MeetWith(walk.Met, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin);
                 return true;
             case PathStep.Candidate:
-                walk.Met = this.MeetWith(walk.Met, this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path)));
+                walk.Met = this.MeetWith(walk.Met, this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path), path));
                 return true;
             case PathStep.Root when walk.Met is not null || walk.Unbounded is not null:
-                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path)));
+                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.PlaceAtom(this.PlaceOriginBinder(path), PlaceOriginSlot(path), path));
                 return true;
             case PathStep.Root or PathStep.Receiver or PathStep.RawFollow:
                 return true;
@@ -265,7 +268,7 @@ public sealed partial class Binding
         => this.HelperOrigin(source) ?? (KotoHelper.UnwrapParentheses(source) is var slot &&
             (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
             slot is InvocationKoto)
-            ? this.PlaceAtom(this.PlaceOriginBinder(slot), PlaceOriginSlot(slot)) : this.PlaceOrigin(source));
+            ? this.PlaceAtom(this.PlaceOriginBinder(slot), PlaceOriginSlot(slot), slot) : this.PlaceOrigin(source));
 
     // SPEC 13.5.6: the Origin of a Borrow of the Place `source` designates; a caller typing the Places reached through a receiver
     // names one of them, never the receiver.
@@ -323,7 +326,7 @@ public sealed partial class Binding
         // A pair layer's Origin is that of the reference it may hold, so the layer itself is its own dependency.
         var layer = this.AccessType(source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
         return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
-            ? (IsRawRoot(source) ? this.RawAnchor(place, place) : this.PlaceAtom(this.PlaceOriginBinder(source), PlaceOriginSlot(source)))
+            ? (IsRawRoot(source) ? this.RawAnchor(place, place) : this.PlaceAtom(this.PlaceOriginBinder(source), PlaceOriginSlot(source), source))
             : reachedThrough ? layer.Origin!
             : this.MeetWith(layer.Origin!, IsExclusive(layer.Semantics) ? this.EnvironmentContainment(source.BoundSymbol) : null)!;
     }

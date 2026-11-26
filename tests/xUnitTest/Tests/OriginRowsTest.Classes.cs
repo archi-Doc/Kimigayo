@@ -206,6 +206,25 @@ public sealed partial class OriginRowsTest
         Assert.Equal((OriginAtomKind.Inferred, ProjectionRole.Place), (atom.Kind, atom.Role));
     }
 
+    // SPEC 15.6.5 (PLAN G922 tms): each Borrow of a local, a parameter or a constructor's receiver has its own finite Origin, so two Borrows
+    // of one Place are two atoms (one before), each a Finite root of the role its Place's binder gives (rows 3 and 4's Place, Parameter
+    // and Receiver).
+    [Theory]
+    [InlineData("func outer(p: ref/i64) -> i32\n    let t = (p, p)\n    let a = t@ref\n    let b = t@ref\n    return 0\n", "outer", "t@ref", "Place")]
+    [InlineData("func outer(q: i64) -> i32\n    let a = q@ref\n    let b = q@ref\n    return 0\n", "outer", "q@ref", "Parameter")]
+    [InlineData("struct S\n    var m: i64\n    var n: i64\n    init(v: i64)\n        self.m = v\n        self.n = v\n        let a = self.m@ref\n        let b = self.m@ref\n", "init", "self.m@ref", "Receiver")]
+    public void EachBorrowOfARootIsItsOwnAtomOfTheRootsRole(string source, string body, string site, string role)
+    {
+        var c = MirBuildTest.Compile(source + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        var key = Bodies(c).Single(x => x.Key.Decl is { } decl && decl.Name == body && InProgram(decl.Declaration)).Key.Body;
+        var atoms = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x is ConversionKoto && InProgram(x) && First(x) == site)
+            .Select(x => Atom(c, key, HirTables.TypeOf(x)!.Origin!, x)).ToArray();
+        Assert.Equal(2, atoms.Length);
+        Assert.NotSame(atoms[0].Atom, atoms[1].Atom);
+        Assert.All(atoms, x => Assert.Equal(("Finite", role), (x.Kind.ToString(), x.Role.ToString())));
+    }
+
     // PLAN G216 (SPEC 15.3.4, 15.6.1; DECISIONS R4-M126 P10, R4-M137): a nested signature's input, an anonymous function's or a Function
     // Type's parameter, is well formed by premise in that signature and by proof at each call, so its well-formedness forms no row of the
     // body it is written in: no row lies at a Type occurrence and no other declaration's Input is in that body's slice. An omitted inner

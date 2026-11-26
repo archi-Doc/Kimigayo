@@ -45,6 +45,9 @@ public partial class OriginPremiseCatalogTest
         { "a6c", "func outer(p: ref/i64, q: ref/i64) -> i64\n    let r = p\n    func inner(v: ref/i64 during r) -> i64\n        return v@follow\n    return inner(r)\n", string.Empty },
         { "z1", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    func inner(w: ref/(ref/i64 during z) during q, v: ref/i64 during p) -> ref/i64 during q\n        return v\n    return 0\n", "UnprovenOriginRelation_Kd@5:16" },
         { "z2", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let x = p\n    let z = x@ref\n    let f = func() -> ref/i64 during z => x\n    let k = f()\n    return 0\n", "UnprovenOriginRelation_Kd@4:43" },
+        // SPEC 15.6.5 (PLAN G922 tms): two Borrows of one local, each its own Origin, named in a named nested function's signature:
+        // each fixed there with no premise, so the relation is Unknown at the input, the record one atom per Place gave (ml5).
+        { "ml5", "func outer(p: ref/i64) -> i32\n    let t = (p, p)\n    let a = t@ref\n    let b = t@ref\n    func inner(x: ref/i64 during a) -> ref/i64 during b => x\n    return 0\n", "UnprovenOriginRelation_Kd@5:60" },
         { "k1", "func f(p: ref/i64) -> ref/i64 during p\n    let r = p\n    let g = func() -> ref/i64 during p => r\n    return g()\n", string.Empty },
         { "k1v", "func f(p: ref/i64) -> ref/i64 during p\n    var r = p\n    let g = func() -> ref/i64 during p => r\n    return g()\n", string.Empty },
         { "pl1", "func outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    let w = n@ref\n    let z = w\n    let x = z\n    let k = func (v: ref/i64 during w) -> ref/i64 during x => v\n    return 0\n", "UnprovenOriginRelation_Kd@6:63" },
