@@ -31,8 +31,11 @@ internal sealed partial class TyCtxt
         _ => BodylessKind.Unclassified,
     };
 
-    // SPEC 8.7.5: whether a dispatching callee is a closed Contract's requirement, which has no effect (Binding.ClosedRequirement).
-    internal static bool ClosedRequirement(BindingSymbol callee) => Binding.ClosedRequirement(callee);
+    // SPEC 8.7.5: whether a dispatching callee is `tryResolve`, the one requirement a closed Contract declares, whose every implementation
+    // reads only its boundaries and the length and has no other effect (Binding.DispatchBounds: every bound; A4's Discharged). The `format`
+    // they inherit is Utf8Format's and takes its bound from their effect item.
+    internal static bool ClosedRequirement(BindingSymbol callee)
+        => callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange;
 
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
     // parameter On, the parameter below which it destroys, -1 for none, whether it destroys that target in place (`replace`), and the

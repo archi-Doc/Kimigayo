@@ -27,12 +27,6 @@ internal readonly record struct EffectObligation(
 
 public sealed partial class Binding
 {
-    // SPEC 8.7.5: whether a callee is `tryResolve`, the one requirement a closed Contract declares, whose every implementation reads only
-    // its boundaries and the length and has no other effect (DispatchBounds: every bound). The `format` they inherit is Utf8Format's and
-    // takes its bound from their effect item.
-    internal static bool ClosedRequirement(BindingSymbol callee)
-        => callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange;
-
     /// <summary>Lists the effect obligations of the latest pass (DECISIONS R4-M22). Confined: each witness of a conformance whose Contract
     /// or an ancestor declares <c>confined</c> for its requirement, each virtual function whose slot declares it, and each selected use of a
     /// Callable clause declaring it whose premises do not prove it; a holding premise adds none. StaticFree (SPEC 22.4.5, the Tatara plan's
@@ -117,7 +111,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return ClosedRequirement(callee) ||
+        return TyCtxt.ClosedRequirement(callee) ||
             this.AvailableEffectBounds(function, self, this.EffectPremises(definition), QuerySite.AfterPass, reference: contract);
     }
 
