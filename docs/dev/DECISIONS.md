@@ -29948,6 +29948,9 @@ Closure row of `MirCases.Branch`).
     reads a failed premise rests wherever it is asked (SPEC 8.3.3: no answer depends on who asked first): F's C2 rulings 301 and 308
     (virtualBlock's and virtualClause's `TransferRequired_Kd` an independent failure) are superseded for that form, since their
     reason, that the answer did not read the failure, held only while an earlier walk's kept rows answered it (F's CC-27 (2)).
+    Superseded in part by R7-M122 (c2-5b2's perf fix, `claude/f-c25b2-perf`, 2026-11-27): a failed premise, its derived failure
+    and a Refuted source read as the proof's limit are Complete again, and the kept tables keep and replay that limit; a failed or
+    unresolved declaration context stays Provisional, and the supersession of F's C2 rulings 301 and 308 stands.
   - Representation (CC-15 Q1 (a)): `RowKinds` gains `Not`, the negations' row; `ViewIndex.Add` keys a fact's bucket by the fact's
     own kind, so every negated atom is filed in the `Not` bucket under its atom's subject and class key (`FilingAtom` gives that
     subject alone), and the walk's rows (1) and (2) read it as a leaf row (its Clause the negation, no Contract). No validator reads
@@ -30468,6 +30471,35 @@ Closure row of `MirCases.Branch`).
   - **Tests.** MirOriginsTest's `AnOriginPositionRelatesByItsVariance` rows B0, B1, E0, E1 and E3 carry the rule at A5.
   - **Rejected:** (b), Phantom and invariant as the old Phantom sentence read. A callable wrapper `Callback during b` could not
     then serve where `Callback during a` is wanted, although every input it receives outlives `b`.
+- **R7-M122 A kept table keeps the proof limit its formation wrote; each read replays it** (Front, 2026-11-27; R7-C2c2 c2-5b2's
+  perf fix; Minor; F's CC-65, CC-66; supersedes in part R7-M110's W6 bullet). SPEC 23.1.2, 8.3.3.
+  - Reason R7-M110's W6 no longer holds ("a kept answer would not replay" the limit): a failure read Provisional reached W7 through
+    `ApplyIdentityPremise`, so a view with a failed identity premise never had a Final table: it was rebuilt at every read, and
+    its requests kept no rows.
+  - Rule: a failed premise, its derived failure and a Refuted source read as the proof's limit are published and final, so the
+    read is Complete (W6); a failed or unresolved declaration context stays Provisional. A kept table carries the first proof
+    limit its formation wrote, and each read of it joins that limit (`ScopeReads.Limit ??= limit`), as a fresh formation writes it.
+  - Representation: `ViewIndex.Rows`' value is (Rows, Extends, Limit) and `identityClasses`' value is (Serial, Classes, Limit).
+    The formation's own limit has one rule, `SetAsideLimit` and `TakeOwnLimit` (Binding.ConstraintValidation.Proofs): the proof's
+    earlier limit is set aside for the formation and joined after it, so the proof ends as the formation's own writes leave it.
+    Its two callers are `EnumerateClosed` (the requests' one entry to the walk, whose limit `KeepRows` keeps) and `ClassesOf`'s
+    build. `PremiseRefines`' and `FirstRows`' kept hits and `ClassesOf`'s memo hit replay it. No reader takes a flag.
+  - What a kept answer replays: a walk that wrote a limit keeps only its request's subject and key links (`KeepRows`), so the
+    subject's own request replays exactly that walk's limit, and the key's own request, which walks the key's class, at most
+    differs in its first cause (record selection, Q13). A prefix or mate link that walk formed is formed again by its own request,
+    with its own limit: kept with another link's limit, it would lose an independent record (SPEC 23.1.2; F's CC-66 B1). A walk
+    that wrote no limit keeps every link, as before.
+  - The identity table's limit is replayed at every read of the table, so a reading and a Kept entry, kept only under a Final
+    table, join the table's limit through `RowsRequest`'s `ClassesOf` in the same proof scope. Other limits a reading's formation
+    writes are not replayed by a kept reading (dev's state for every view with a Final table), and in `Supply` the table's limit
+    joins after a failed fact's, so the first cause can differ from a fresh formation's (record selection, Q13).
+  - Open issue: the view's Final identity table is built again at each round of the premise fixpoint (each round fails a premise
+    and moves the view's serial), so a failed premise chain's table work is quadratic in the chain; a table carried across the
+    rounds belongs to the round re-walk design seat, beside e2-7's closure rounds (F's CC-67).
+  - Rejected: keeping R7-M110's Provisional and making only the walk's own completion Complete (W7's table would still be rebuilt
+    per read); keeping every link of a limit-writing walk with its one limit (CC-65's first shape: a prefix link would replay a
+    limit its own walk does not write, F's CC-66 B1); a second limit slot written beside every limit write (a second copy of the
+    rule at each write site); replaying by walking again on a kept hit (the cost the kept tables remove).
 - **R7-M123 E4e (Owned and Callable): the Owned conversion and Callable Origin-only records record through `RecordConstraint`**
   (Back, 2026-11-26; R7-E4 E4e, Q-820, D-1332; Major unit of a Major design, R7 plan §5.1 E4; design
   `artifacts\units\r7e4e\design.md` Revision 1 with B's ruling 1 and F's R7-E4 rulings 47 and 48; the Front's independent design
