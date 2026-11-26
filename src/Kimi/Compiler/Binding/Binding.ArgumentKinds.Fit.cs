@@ -6,6 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 10.5.3, 10.4 step 1 (PLAN G814; rulings G814-1 O3, G814-7 C3): the class of a waiting callable (an awaited anonymous function
+    // or function reference) at a slot of its candidate that no evidence binds, its own F, `ref/F` or `uniq/F` (TryCandidateCore's callable
+    // row) or a bare atom of an open Type (the place rule, FitArgumentPart): it keeps its own Function Item or closure Type there, which F
+    // binds without erasure, so it is Exact. The one class source of both rows; at a Function Type the callable's fit is an erasure.
+    private const ArgumentAdaptation CallableAtSlotClass = ArgumentAdaptation.Exact;
+
     // SPEC 10.5.1 (G812 rulings 122, 123; ArgFlow ruling 146): the parts awaiting their call (a contextual Case, a named Call, a Case
     // construction) that the last argument fit kept, each with the Type at its position, the components down to it from the argument
     // and its checked verdict's classification there (WaitingPart). The outermost fit (FitArgument) starts it; a part's fit within it
@@ -105,9 +111,9 @@ public sealed partial class Binding
                 return CandidateApplicability.Applicable;
             case var _ when type.ContainsOpenSlot && this.PlacedAtOpenSlot(node, kind, type, scope):
                 // SPEC 10.5.1, 10.8 (Binding.OpenSlots' place rule): a checked part that is not a nested call holds at a bare atom and
-                // binds nothing; it is completed after selection. Ranked as an owner value by its form; an awaited callable binds its own
-                // Function Item or closure there without erasure (SPEC 10.5.3), Exact, as at its own callable slot (TryCandidate's row).
-                var placed = kind is PartKind.Function or PartKind.Reference ? ArgumentAdaptation.Exact : this.CheckedClass(type, ownerResult: true);
+                // binds nothing; it is completed after selection. Ranked as an owner value by its form, an awaited callable by
+                // CallableAtSlotClass.
+                var placed = kind is PartKind.Function or PartKind.Reference ? CallableAtSlotClass : this.CheckedClass(type, ownerResult: true);
                 operation = new(part, null, type, ArgumentOperationKind.Value, placed);
                 return CandidateApplicability.Applicable;
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:

@@ -607,9 +607,10 @@ public sealed partial class Binding
                             }
 
                             // SPEC 10.5: without a Callable Constraint on F the candidate supplies no expectation; it is compared under
-                            // 10.4 without the body, and only if it is selected is the argument checked without S.
+                            // 10.4 without the body, and only if it is selected is the argument checked without S. At its F it is ranked by
+                            // CallableAtSlotClass.
                             waitingCallables = true;
-                            operations[i] = new(call.ArgumentNodes[i], null, signature, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                            operations[i] = new(call.ArgumentNodes[i], null, signature, ArgumentOperationKind.Value, CallableAtSlotClass, ParameterIndex: mapping[i]);
                             continue;
                         }
 
@@ -630,13 +631,13 @@ public sealed partial class Binding
                                 // SPEC 10.5.1, 10.4 step 1 (PLAN G924 AF-3b v3-A commit 3a, PLAN G814; ArgFlow rulings 156, 159, 160): a
                                 // checked part, a nested call, construction or Case that awaits its call or a Tuple or array literal or a join,
                                 // is checked at the position's open Type (OpenType), its candidate the in-flight owner, by FitArgument, as at
-                                // a closed position: a part that does not fit there makes the candidate inapplicable, and its operation's class
-                                // and positions are the fit's (CheckedClass, the place rule at a bare atom, FitComposite), so its closed
-                                // positions are ranked while a part held at an atom is ranked whole (BetterCandidate's walk). A waiting part is
-                                // completed after selection, never at an atom. Under the argument probe a candidate whose result holds a slot
-                                // no evidence binds queries none (ProbedResultOpen): a call part has no class, and the candidate defers the
-                                // call unranked (Deferred; ArgFlow ruling 171 C2); a literal or join keeps the class of its materialization
-                                // at the pattern, with no positions.
+                                // a closed position: a part that does not fit there makes the candidate inapplicable (a Pending or Error fit is
+                                // its state, as the closed row below returns it), and its operation's class and positions are the fit's
+                                // (CheckedClass, the place rule at a bare atom, FitComposite), so its closed positions are ranked while a part
+                                // held at an atom is ranked whole (BetterCandidate's walk). A waiting part is completed after selection, never
+                                // at an atom. Under the argument probe a candidate whose result holds a slot no evidence binds queries none
+                                // (ProbedResultOpen): a call part has no class, and the candidate defers the call unranked (Deferred; ArgFlow
+                                // ruling 171 C2); a literal or join keeps the class of its materialization at the pattern, with no positions.
                                 row.Deferred |= openType is null && this.AwaitedKind(argument) is PartKind.Call or PartKind.Case;
                                 var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure
                                     : kind is PartKind.Aggregate or PartKind.Join

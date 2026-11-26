@@ -27,7 +27,8 @@ namespace Kimi.Compiler;
 //   adds none, two distinct atoms at one place agree in none and fail the match, and later evidence never replaces a fill (FillOpenSlots,
 //   read at the match's agreement only). A projection over an atom that the premises do not reduce, one formed with no closed form,
 //   is as open as its subject (SPEC 10.8: a projection is never inverted), so every reader of the rule reads it as an atom (IsOpenAtom;
-//   PLAN G814, o5); a projection that a premise or a binding fixes is formed closed and is fitted.
+//   PLAN G814, o5); a projection that a binding fixes is formed closed and is fitted. One a premise fixes is still formed over the atom
+//   and held (open issue G814-P: o5-fixed, valid, is AmbiguousBinding_Kd).
 // - The place rule (SPEC 10.5.1, 10.8; design v3-A 11.8.3 and its Rev, ArgFlow rulings 159 and 160): a checked part that is not a
 //   nested call (a literal form, a Dictionary literal one while its position forms its Type, a join, a leading-dot Case, an awaited
 //   anonymous function or function reference) whose place is a bare atom holds there and binds nothing; it is completed after
