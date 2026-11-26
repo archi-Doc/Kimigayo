@@ -620,6 +620,11 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // R7-C2e2 e2-5b 3a (design-e25b-p0.md R3.1.1, the review's twin; a guard of the evidence memo), labelled from SPEC before any run:
     // one projection part read inside one bracket under a push and outside it, with no guard hit (8.8.2, 8.5, 10.7: c1-v).
     [InlineData("c1-v", "contract K\n    associate X\ncontract D\n    associate Y\ncontract C\n    func get<T>(self: ref/Self, x: T) -> P<Q<T>.(D).Y, T.(K).X>\n        T is K\nstruct P<A, B>\nstruct Q<U>\n    U is K\n    Self is D\n    associate D.Y is Option<U.(K).X>\nstruct S\n    Self is C\n    public func get<T>(self: ref/Self, x: T) -> P<Option<T.(K).X>, T.(K).X>\n        T is K\n        return $abort(\"x\")\n")]
+    // R7-C2e2 e2-5b 3a' (CC-53 B2; the 3a review's twins), labelled from SPEC before any run, 2b's records: an identification whose
+    // requirement names its own associated Type, inferred from the implementation (8.5.5 infers Item = T, 8.6.3: g1 on a generic
+    // receiver, g1n on a concrete one).
+    [InlineData("g1", "contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\n    func put(self: ref/Self, value: Self.Item) -> ()\nstruct Wrap<T>\n    Self is C\n    public func get(self: ref/Self) -> T => $abort(\"x\")\n    public func put(self: ref/Self, value: T) -> () => ()\npublic func main() -> ()\n    return\n")]
+    [InlineData("g1n", "contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\n    func put(self: ref/Self, value: Self.Item) -> ()\nstruct S\n    Self is C\n    public func get(self: ref/Self) -> i32 => $abort(\"x\")\n    public func put(self: ref/Self, value: i32) -> () => ()\npublic func main() -> ()\n    return\n")]
     public void AnEvidenceReadingNoDependentPartHolds(string id, string source)
         => Assert.True(Errors(source).Length == 0, id);
 
@@ -721,6 +726,13 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // outside it (Z a hole; no record moves).
     [InlineData("c1-g", "contract M\ncontract C\n    associate Item is M\n    associate Y is M\n    func get(self: ref/Self) -> Pair<Self.Item, Self.Y>\nstruct Pair<A, B>\n    Self is M\nstruct S\n    Self is C\n    associate C.Item is Pair<S.(C).Y, i32>\n    associate C.Y is Pair<S.(C).Item, i32>\n    public func get(self: ref/Self) -> Pair<S.(C).Item, S.(C).Y> => $abort(\"x\")\n", "")]
     [InlineData("c1-gb", "contract M\ncontract C\n    associate Item is M\n    associate Y is M\n    associate Z\n    func get(self: ref/Self) -> Pair<Self.Item, Self.Z>\nstruct Pair<A, B>\n    Self is M\nstruct S\n    Self is C\n    associate C.Item is Pair<S.(C).Y, i32>\n    associate C.Y is Pair<S.(C).Item, i32>\n    public func get(self: ref/Self) -> Pair<S.(C).Item, S.(C).Y> => $abort(\"x\")\n", "AssociatedTypeInferenceFailed_Kd@10:5")]
+    // R7-C2e2 e2-5b 3a' (CC-53 B2; the 3a review's twins), labelled from SPEC before any run, 2b's records: a requirement's parameter
+    // projected on a built-in receiver under an invalid premise (8.6.3: `i32 is K<T>`): with the qualifier abstract (g2, B2's
+    // regression: the identification refutes, as with the concrete qualifier of g2b) and with the implementation writing the same
+    // projection (g2c: identical, so the conformance's record is its compatibility's).
+    [InlineData("g2", "contract K<A>\n    associate X\ncontract C\n    func f<T>(self: ref/Self, x: i32.(K<T>).X) -> ()\n        i32 is K<T>\nstruct S\n    Self is C\n    public func f<T>(self: ref/Self, x: i32) -> ()\n        i32 is K<T>\n        return\npublic func main() -> ()\n    return\n", "UnsatisfiedConstraint_Kd@4:34 MissingContractImplementation_Kd@7:5")]
+    [InlineData("g2b", "contract K<A>\n    associate X\ncontract C\n    func f<T>(self: ref/Self, x: i32.(K<i32>).X) -> ()\n        i32 is K<i32>\nstruct S\n    Self is C\n    public func f<T>(self: ref/Self, x: i32) -> ()\n        i32 is K<i32>\n        return\npublic func main() -> ()\n    return\n", "UnsatisfiedConstraint_Kd@4:34 MissingContractImplementation_Kd@7:5")]
+    [InlineData("g2c", "contract K<A>\n    associate X\ncontract C\n    func f<T>(self: ref/Self, x: i32.(K<T>).X) -> ()\n        i32 is K<T>\nstruct S\n    Self is C\n    public func f<T>(self: ref/Self, x: i32.(K<T>).X) -> ()\n        i32 is K<T>\n        return\npublic func main() -> ()\n    return\n", "UnsatisfiedConstraint_Kd@4:34 IncompatibleContractImplementation_Kd@7:5 UnsatisfiedConstraint_Kd@8:41")]
     public void AnEvidenceReadingADependentPartSuppliesNone(string id, string source, string records)
     {
         var errors = Errors(source);

@@ -205,10 +205,13 @@ public sealed partial class Binding
     // itself because a path its receiver meets rests on an obligation the evidence holds pending (ProjectionOutcome.Held, from
     // PathConditions' `held`); such a part is neither its binding nor absent: a relation reading it holds and binds nothing, and its
     // reader's verdict is Unknown. Else `image`: a projection whose specification names a Type, as its image in the comparison's scope
-    // (ContractType, the evidence query's entry) where that is no projection, which the relation reads in its place. Else neither, which
-    // keeps the side's verdict (Refuted where a relation reads it): a projection that fails, has no conformance or is not yet inferred,
-    // any other Type, and every side in a formation read (it holds none: the bracket is ConditionalConformances' BeginEvidence and
-    // EndEvidence, read through FormationRead). Asked inside the evidence that kept the part, so it reads the same open and held obligations.
+    // (ContractType, the evidence query's entry), which the relation reads in its place. The kind test's rule: an image that is itself a
+    // projection gives no image, so the relation reads the written side. It is also the relation walk's termination guarantee: an image
+    // read in the side's place that were a projection would ask this answer again on the same kind, without end on cyclic bindings. Else
+    // neither, which keeps the side's verdict (Refuted where a relation reads it): a projection that fails, has no conformance or is not
+    // yet inferred, any other Type, and every side in a formation read (it holds none: the bracket is ConditionalConformances'
+    // BeginEvidence and EndEvidence, read through FormationRead). Asked inside the evidence that kept the part, so it reads the same open
+    // and held obligations.
     private bool EvidenceProjection(BoundType type, BindingScope scope, QuerySite site, out BoundType? image)
     {
         image = null;

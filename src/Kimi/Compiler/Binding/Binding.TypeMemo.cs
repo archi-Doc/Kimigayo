@@ -77,19 +77,21 @@ public sealed partial class Binding
             return this.query;
         }
 
-        internal bool TryGet(TKey key, uint query, out T answer) => this.TryGet(key, query, query, out answer);
+        internal bool TryGet(TKey key, uint query, out T answer) => this.TryGet(key, query, query, out answer, out _);
 
-        // The entry either query recorded for `key`: a call's own, or the enclosing query it runs in (Binding.ContractTypes' evidence
-        // query, DECISIONS BU-64), whose entries every query it spans reads.
-        internal bool TryGet(TKey key, uint query, uint enclosing, out T answer)
+        // The entry either query recorded for `key`, with the stamp it carries: a call's own, or the enclosing query it runs in
+        // (Binding.ContractTypes' evidence query, DECISIONS BU-64), whose entries every query it spans reads.
+        internal bool TryGet(TKey key, uint query, uint enclosing, out T answer, out uint stamp)
         {
             if (this.answers.TryGetValue(key, out var entry) && (entry.Query == query || entry.Query == enclosing))
             {
                 answer = entry.Answer;
+                stamp = entry.Query;
                 return true;
             }
 
             answer = default!;
+            stamp = 0;
             return false;
         }
 

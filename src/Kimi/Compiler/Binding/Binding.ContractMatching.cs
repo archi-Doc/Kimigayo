@@ -600,7 +600,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            proof = CombineProof(proof, this.SignatureRelation(required, actual, demanded.Binder, declared.Binder, scope, implementation), true);
+            proof = CombineProof(proof, SignatureRelation(required, actual, demanded.Binder, declared.Binder), true);
             if (proof == ConstraintProof.Refuted)
             {
                 return proof;

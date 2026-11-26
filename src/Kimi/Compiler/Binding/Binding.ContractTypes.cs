@@ -18,6 +18,8 @@ public sealed partial class Binding
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract). Keyed as the
     // associated collection's batch, without the guard set (R7-C2e2 e2-5b), so a requirement's evidence (BeginEvidence) keeps an entry
     // for its evidence query (evidenceQuery) where its formation made no unkeyed read (unkeyedReads), and any other for its call's query.
+    // A hit on an entry an evidence kept for its call counts as an unkeyed read, as its formation did, so an image formed over it is kept
+    // for its call too (CC-53 B1); the batch's entries likewise (BatchedContractType).
     private readonly TypeMemo<(BoundType Part, BindingScope Scope, BoundType? Self, bool Normalize, BindingSymbol? Contract), (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
 
     // SPEC 8.6.3 (R7-C2e2 e2-5b, design R3.1.1): the query of contractParts the innermost requirement's evidence began (BeginEvidence),
@@ -129,11 +131,15 @@ public sealed partial class Binding
         }
 
         var key = (type, scope, self, normalize, this.activeRequirementContract);
-        if (!this.contractParts.TryGet(key, query, this.evidenceQuery, out var answer))
+        if (!this.contractParts.TryGet(key, query, this.evidenceQuery, out var answer, out var stamp))
         {
             var reads = this.unkeyedReads;
             answer = this.ContractTypeCore(type, scope, self, normalize, query);
             this.contractParts.Set(key, this.evidenceQuery != 0 && reads == this.unkeyedReads ? this.evidenceQuery : query, answer);
+        }
+        else if (this.evidenceQuery != 0 && stamp == query)
+        {
+            this.unkeyedReads++; // An entry the evidence kept for its call: its formation's unkeyed read.
         }
 
         return answer;
@@ -145,7 +151,8 @@ public sealed partial class Binding
 
     // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch);
     // Provisional (W4) whatever the batch stored, as the batch is open. An entry whose formation made an unkeyed read (unkeyedReads)
-    // keeps its call's query and answers that call only (design R3.1.1); any other (Query 0) answers the batch.
+    // keeps its call's query and answers that call only (design R3.1.1), a hit on it counting as that read (CC-53 B1); any other (Query 0)
+    // answers the batch.
     private (BoundType Image, ResolutionHops? Hops, Completion Completion) BatchedContractType(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         var batch = this.collectingAssociated!;
@@ -155,6 +162,10 @@ public sealed partial class Binding
             var reads = this.unkeyedReads;
             var result = this.ContractTypeCore(type, scope, self, normalize, query);
             batch.Normalized[key] = known = (result.Image, result.Hops, reads == this.unkeyedReads ? 0 : query);
+        }
+        else if (known.Query != 0)
+        {
+            this.unkeyedReads++; // An entry kept for its call: its formation's unkeyed read.
         }
 
         return (known.Image, known.Hops, Completion.Provisional);

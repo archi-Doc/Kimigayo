@@ -103,7 +103,8 @@ public sealed partial class Binding
         }
         else
         {
-            if (selection.DeclaringType is null || this.WrittenSignaturePart(new(implementation), 3) is not { } storageType || // the Field, as written
+            var signature = new FnSig(implementation);
+            if (selection.DeclaringType is null || this.WrittenSignaturePart(signature, signature.InputCount + 1) is not { } storageType || // the Field, as written
                 this.PartTypeIn(storageType, selection.DeclaringType, scope) is not { } field)
             {
                 return ConstraintProof.Unknown;
