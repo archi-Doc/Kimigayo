@@ -29081,6 +29081,9 @@ Closure row of `MirCases.Branch`).
         text, recorded at binding time.
     - **Rejected:** the lent Type delivered with no operation (Revision 1's (i): it carries a dependent Origin record to every fixed
       destination, rv-e3p); a named adaptation (a vocabulary entry and an AdaptationBorrow exception, removing nothing).
+  - Superseded in part by R7-M119 (R7-E4 E4c, Q-807, 2026-11-26): two E4c checks, TypeOrigins' static-Origin check and
+    FailTypeRole's guard over a use that already holds a record (L11's meet), keep a node's first record until PLAN G1442
+    (R7-M119's "Departs" line).
 - **R7-M96 A nested signature's per-call relation is that signature's declaration row (R7-O3 O3-B c1, PLAN G216 (b)'s U-O3)**
   (Front, 2026-11-23; Major, an acceptance mover; Q-727, D-1206; design `front\notes\restart10\o3\design-o3.md` §6.2, §7.1, §8, §10
   (O3-B), the independent design review `o3\review-o3.md` ACCEPT WITH CONDITIONS (C1-C4, C7), F's rulings O3-1, O3-2 and O3-6 to O3-9;
@@ -30208,6 +30211,40 @@ Closure row of `MirCases.Branch`).
     - C4b, `RestOnCause` at an Error Copy proof: a TransferRequired row on the node's prerequisite would derive a sibling capture's
       independent record, and an InvalidConstraint problem gives the failure a wrong kind. The common fix, `IsDerived` reading a
       numbered problem's own cause, exceeds the unit (PLAN G1438).
+- **R7-M119 E4c (Origin formation): an Origin formation failure records its facts at the failure** (Back, 2026-11-26; R7-E4
+  E4c, Q-807, D-1311; Major unit of a Major design, R7 plan §5.1 E4; design `artifacts\units\r7e4c\design.md` with B's rulings
+  1-4 (`ruling.md`); the Front's independent design review REVISE, then CONSENT WITH CONDITIONS on Revisions 1 and 2 and the
+  relabels; the implementation review ACCEPT WITH CONDITIONS, its C1 and C2 met at 67125af1d4 and its delta read ACCEPT,
+  R7E4 ruling 46) SPEC 3.3.2, 8.1.2, 8.5.1, 10.6, 15.3.6, 23.1.1, 23.1.2. Applies R7-M95's rule to
+  Origin formation.
+  - **Rule.** An Origin slot's case failure (a `during static` uniq slot, TypeOrigins; a Phantom raw slot, RawOrigins.Written)
+    records `Related` at the declaration of the schema listing the slot, its Instance when there is one, and Reasons by position
+    (R7-M95 E4a-2's order). Reason 1 is the failing LoanRequirement row with the slot's index above bit 8. Then comes one Reason
+    per binder of the slot's requirement, in its order: that binder's SemanticsMask, always present, a zero one keeping its
+    position. A per-call slot records its declaration, the Type parameter's ordinal and dev's `ulong` parameter mask as a second
+    Reason, with S as Expected. A per-call Origin records its argument and, with a named slot, the selected declaration (read, not
+    shown) and the ordinal. An absent slot records the Type's declaration alone. FailTypeRole's Reason packs the TypeRoleCause
+    bits with the admitted SemanticsMask above bit 8, judged at the failure; no adapter re-runs AdmittedSemantics.
+  - **Related roles.** InvalidOriginBinding_Kd: 0 "Origin slot" (a slot case), 1 "header" or "type" (an absent slot).
+    MissingOriginBinding_Kd: 0 "declaration" (a per-call slot), 1 "argument" (a per-call Origin), 2 the selected declaration
+    (read, not shown).
+  - **Removes** perCallSlots, absentSlotProjections, pairCaseRows, PerCallOrigins, PhantomRawOrigins and InvalidStaticOriginSlots
+    (NodeKeyedTableSites Binding 5 -> 3 after E4b).
+  - **Departs from R7-M95's Rule** at two checks, for E4c's sites only, each with an R7-E5 Transitional naming PLAN G1442. R7-M95
+    says a check that reads none of the node's failed inputs "records beside the node's earlier failure"; these two keep the
+    node's first record by a first-failure read spelled at the site. (1) TypeOrigins' static-Origin check records a site's first
+    failing uniq slot and stops: a further slot reads the same Type at the same site, not a failed input. (2) FailTypeRole records
+    no Language cause where the use already holds a record (`RecordedFailure(use) == None`): the occurrence's Origin row
+    (L11's meet) or any earlier failure at the use, although the formation cause is independent; a CheckBound recheck of the
+    same problem takes the same arm and records nothing new. Reason: E4c moves 0 records, and dev reports neither; a Record
+    would add a record under the other code, and under the same code a Defect. Removal: RecordNumbered per failure, with the
+    added records labelled under Q13 (PLAN G1442).
+  - **Moves (Q13).** None, apart from L11's named text change, which zero programs reach (T1 is valid; no test or snapshot row
+    reaches it).
+  - **Rejected.** E4a-2's case-index mask (CaseText's union is not a product, and the mask names no slot); seven 9-bit rows packed
+    per Reason (a new packing whose continuation needs a presence rule); Count rows as parameter ordinals (a second meaning of
+    Count, R7-M62); a requirement role per case (no row needs it); a cap on binders or a continuation Reason (one Reason per
+    binder needs neither); a Record at L11's meet (an added record or a Defect); showing role 2 (a message change).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
