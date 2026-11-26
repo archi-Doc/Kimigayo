@@ -160,12 +160,12 @@ public sealed partial class Binding
         {
             // Only nested complete Type arguments carry annotations here. Enum Origin slots
             // are determined by the construction's expected Type and payloads. The written list forms the qualifier's Type (FormedTypeRows).
-            FormedTypeRows.Add(qualifier);
+            FormedTypeRows.Add(qualifier, this.formingBody);
             type = this.BindTypeStructure(qualifier, scope, this.TypeContext(qualifier, scope));
         }
         else if (symbol.SelfOf is not null)
         {
-            FormedTypeRows.Add(qualifier);
+            FormedTypeRows.Add(qualifier, this.formingBody);
             type = symbol.Type; // SPEC 9.1: a Self (the published SelfOf) names its declaration with all its bindings.
         }
         else

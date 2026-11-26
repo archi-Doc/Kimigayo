@@ -7,11 +7,12 @@ namespace Kimi.Compiler;
 // Binding's own judgment of declared Origin relations (SPEC 15.3.3, 15.3.6, 15.6.1, 15.6.5; DECISIONS BU-26, R4-M101, R4-M108): once
 // per pass, after the bodies, the clauses of each completed declaration that proof alone does not establish, then the declaration rows.
 // - Responsibility: ValidateOriginRelations judges a clause by its owner's part, a local's (JudgeLocalClause) or a Field's, Case's,
-//   alias's or associated formation's (JudgeDeclaredRelation), both over FailedDeclaredRelation; JudgeDeclarationRows is the one judge
-//   of the Origin rows Binding formed with no executable body (DeclarationAtom, UnboundAtom), through R4-M118's chain rule for a row with
-//   an Unbound end (Binding.OriginClauses.Chains.cs; DECISIONS BU-62).
-// - Inputs: the completed Origin declarations, the pass's obligations, and the proof and relation judge (Binding.OriginProof.cs,
-//   JudgeDeclarationPosition).
+//   alias's or associated formation's (JudgeDeclaredRelation), both over FailedDeclaredRelation, and forms the own clauses' rows of each
+//   written Type formed in a declaration frame at its root (DeclarationTypeRoot, AddTypeClauseObligations); JudgeDeclarationRows is the
+//   one judge of the Origin rows Binding formed with no executable body (DeclarationAtom, UnboundAtom), through R4-M118's chain rule for
+//   a row with an Unbound end (Binding.OriginClauses.Chains.cs; DECISIONS BU-62).
+// - Inputs: the completed Origin declarations, the pass's obligations, the pass's nodes with their FormedTypes rows' frames, and the proof
+//   and relation judge (Binding.OriginProof.cs, JudgeDeclarationPosition).
 // - Outputs: Origin relation records (RecordOrigin; a declaration row's and a chain's through PublishCallRelations), the derived
 //   Unsupported failure of a row with an Unbound end (UnboundCause), obligations for the clauses the judge leaves to region inference,
 //   and a local clause's row and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
@@ -63,6 +64,13 @@ public sealed partial class Binding
         return null;
     }
 
+    // A root of the declaration judge's walk, a written Type formed in a declaration frame (SPEC 15.3.3): a Function Type's written
+    // result, of any owner (R4-M162), or an outermost Type (its parent no Type) outside a signature, whose Types are premises; the root's
+    // walk forms the Types below it (AddTypeClauseObligations), so each written Type is one root's.
+    private static bool DeclarationTypeRoot(Koto node)
+        => FormedTypeRows.Frame(node) == FormationFrame.Declaration && (node.Parent is FunctionTypeKoto function ? ReferenceEquals(function.ReturnType, node) :
+            node.Parent is not TypeKoto && (node.Parent is null || !FormedTypeRows.Contains(node.Parent)) && OriginOwner(node) is not (FunctionKoto or PropertyAccessorKoto));
+
     // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
     // their owner's part: a local's (a FieldKoto, the parser's local declaration) by the local part, JudgeLocalClause, and any other
     // owner's, a Field's, Case's, alias's or associated formation's, by the declaration part, JudgeDeclaredRelation: a declaration's
@@ -86,6 +94,24 @@ public sealed partial class Binding
             {
                 this.formingBody = saved;
             }
+        }
+
+        // DECISIONS R4-M162, BU-26: each written Type formed in a declaration frame is the declaration judge's after Completion: its own
+        // clauses' rows at each root, in the judge's frame (FormedTypeRows' frame, the one its producer published).
+        var frame = this.EnterBody(ExecutableBody.Declarations);
+        try
+        {
+            for (var i = 0; i < this.nodes.Count; i++)
+            {
+                if (this.nodes[i] is { BoundType: { } type } node && DeclarationTypeRoot(node))
+                {
+                    this.AddTypeClauseObligations(type, node);
+                }
+            }
+        }
+        finally
+        {
+            this.formingBody = frame;
         }
 
         this.JudgeDeclarationRows();

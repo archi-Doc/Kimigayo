@@ -136,6 +136,11 @@ public sealed partial class Binding
         this.BeginProof(site);
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ?
             ConstraintProof.Unknown : ConstraintProof.Proven;
+
+        // A temporary second judge of a declaration's written Type, beside the declaration judge's roots (ValidateOriginRelations): a
+        // pass-level validator forming it in its container's or an accessor's scope (a base, a Property Type's or an enum Case's
+        // projection, an accessor's circular proof of its Field's Type). Removal condition: R7-E5 or G491 D1's owner decision, whichever
+        // comes first; this part then judges only a Type with no written occurrence (PLAN's open issue on the base residue).
         return CombineProof(proof, this.CheckTypeOriginRelations(type, scope.Owner), true);
     }
 

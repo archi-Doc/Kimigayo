@@ -610,11 +610,13 @@ public sealed partial class Binding
     // of its per-call Origins (AddTypeClauseObligations forms a row only for a clause those premises do not entail). It is never a premise
     // of a body and never proven by a call. The one entry of both: BindFunctionType, wherever a Function Type is bound (a Closure header's
     // probe included; the obligation set keeps one), and an anonymous function's own written result once per binding of its header, at
-    // its commitment (BindClosureHeader) or at its failed fit (FailClosureHeader), never by a header probe (ClosureSignatureFits). The
-    // bound result passes through, also when there is no written result (`written` null) or its binding failed (null).
+    // its commitment (BindClosureHeader) or at its failed fit (FailClosureHeader), never by a header probe (ClosureSignatureFits). A result
+    // written in a declaration frame (its FormedTypes row's) is the declaration judge's root after Completion (ValidateOriginRelations),
+    // so this forms the rows of a result written in a body (a Body row), the exact complement. The bound result passes through, also
+    // when there is no written result (`written` null) or its binding failed (null).
     private BoundType? FormNestedResult(BoundType? result, Koto? written)
     {
-        if (result is not null && written is not null)
+        if (result is not null && written is not null && FormedTypeRows.Frame(written) == FormationFrame.Body)
         {
             this.AddTypeClauseObligations(result, written);
         }
