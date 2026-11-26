@@ -2743,7 +2743,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M101 The C1-F4 view and Binding's formation context** (2026-10-22; under R4-M94's package; E4's "Recorded limit" superseded in
   part by R4-M168; E2's end list superseded in part by BU-89; E2's and E4's InternalInvariant_Kd, and E4's sharing rule, superseded in
   part by BU-102: the view's throw, an atom's part its forming unit's; E1's "`ParameterVisible` reads it" superseded by BU-259:
-  parameter visibility by the use's position, `Binding.Functions`)
+  parameter visibility by the use's position, `Binding.Functions`; E1's entries amended by BU-262: a local's declaration, its
+  Type's Origin declaration and its initializer form in the local's declaring body, `FormingBodyOf`)
   - E1 formation context: Binding records the executable body it is binding, an `ExecutableBody`, a body in MIR's key form
     `(BindingSymbol? Definition, int Index)` (Index: a default template's parameter index, a module's ordinal for top-level statements,
     whose function has no symbol; the default value is no body, a declaration). Entries set and restore it (`BindHeader` none,
@@ -11277,6 +11278,7 @@ resumed by R4-M86 (2026-10-20).
 
 - **BU-56 A declaration's written Origin that names a body local's written Type and selects a body local's atom is a located
   `Unsupported_Kd`, an interim for wrong code until PLAN G230's (A)** (superseded in part by BU-89: its removal condition's E2 item, and by BU-258: narrowed to the located limit for a selection no body reads;
+  its rest superseded by BU-264 (G230-H, 2026-11-26): the located limit is removed, a written name demands the local;
   the declaring body and the name link remain) (2026-10-30; PLAN G230, BU's unit bu70: option (B) of its stopped design, R4 agreeing)
   SPEC 15.3.4, 23.1.1, 23.1.2.
   - SPEC reading: a named nested function's signature may name visible Origins of enclosing functions, each a fixed Origin of it, and a
@@ -11314,7 +11316,7 @@ resumed by R4-M86 (2026-10-20).
     local's Type before the name selects one (invalid names became `Unsupported_Kd`).
   - Extended by R8-M56 (PLAN G492-a (ii), the owner's O-394 (a), 2026-11-19): the interim also covers a written Origin naming an
     enclosing `let` local's written Type, as a `var` local's, until PLAN G230 (A).
-  - Amended by D-990 (Q-607; Front, 2026-11-21; a Q13 regression on dev since W-292; F's G147 ruling 46) SPEC 23.1.2, 15.3.4: a nested
+  - Amended by D-990 (Q-607; Front, 2026-11-21; a Q13 regression on dev since W-292; F's G147 ruling 46; result rule superseded by BU-258, remainder by BU-264, G230-H) SPEC 23.1.2, 15.3.4: a nested
     function's result the header failed is the interim's located `Unsupported_Kd` where its second binding binds it (the unannotated
     class; BU-234's failed-slot fact applied to it).
     - Cause: BindDeclarations' header loop binds a named nested function's header before its enclosing body types an unannotated local
@@ -19074,7 +19076,9 @@ resumed by R4-M86 (2026-10-20).
 - **BU-258 A named nested function's declaring body is recorded by the index walk; its signature's name of an enclosing body local names
   that local's region (PLAN G230 (A); R7-O3 O3-A)** (Front, 2026-11-24; Binding; Q-751, D-1248; Major, an acceptance and A5-verdict mover;
   F's rulings O3-1, O3-11..O3-26) SPEC 15.3.4, 15.6.5, 7.2.3. Supersedes in part BU-56, BU-89's "until G230 (A)" and D-990's result rule. (Its Representation's `ParameterVisible` reading
-  superseded by BU-259: `ParameterVisible` reads the use's position, no chain.)
+  superseded by BU-259: `ParameterVisible` reads the use's position, no chain. `DeclaringBody` recorded for every local too,
+  and the Open item G1369 closed, by BU-262. A named function's declaring body is the walk's, a module's top-level statements and an accessor body included, and the
+  Open list's acc_lift and module-level form closed, by BU-263.)
   - Representation: `BindingSymbol.DeclaringBody` is the one recorded fact for the body that declares a function: a Closure's evaluating
     body (written at its header scope; `BoundClosure.EvaluatingBody` is deleted) and a named nested function's declaring body (written by
     the index walk's current-body state `indexBody`: a function's own body, a default template's (f, i), none in a Type's declaration or
@@ -19089,6 +19093,10 @@ resumed by R4-M86 (2026-10-20).
     (D-990's located `Unsupported_Kd` is removed); a declaration's plain name of an annotated body local is that local's region slot.
     BU-56 is narrowed to `UnlinkedLocalType`'s located limit for a declaration's selection of a body local's annotation or set atom that
     no body reads.
+  - Superseded in part by BU-264 (G230-H, 2026-11-26; earlier text in c56616439): "The name link" above (BindFunction's re-bind
+    binding a result the header could not bind; a declaration's plain name of an annotated body local as that local's region slot;
+    BU-56's narrowed limit) gives way: a written name demands the local's declaration; the re-bind stays only for a Pattern or `for`
+    binding and a Closure-body local that cannot form before its literal binds (BU-264, BU-265).
   - A call in the declaring body (C-537, F's O3-26, R8-M56): a nested signature's `during r` read at a call in r's own body reads a `let`
     r's region as its value, so `pass(inner@ref)` must outlive that value (t7d_fn, t7e_blk invalid, `UnsatisfiedOriginRelation_Kd`; a
     `var r` is an inferred region, t7v_fn valid).
@@ -19307,6 +19315,243 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** a mark by the key's Type (a Closure Type with a `let` binding): it marks `mk()`'s result key and accepts the
     invalid cloResultLetSharedOk (pair L; relabelled I, the name kept); the mark folded into the class (`PastLayer.ReadOnly`, revision 0): it changed the
     declared step of `Any` layers.
+- **BU-262 A local's slot fixed by equality is its region valued by the equality, and a local forms in its declaring body
+  (PLAN G1369)** (Front, 2026-11-25; Binding, with A5's input; Major, an acceptance mover; F's rulings G1369-1..15; B's consent
+  C-541, C-548 and C-554, R8-M56 being the Back's; the Middle's RP17 consent C-583 (for the stack)) SPEC 15.3.3, 15.3.4, 15.3.6,
+  15.4.4, 15.6.1, 15.6.5, 13.5.6. Amends R8-M56 (its line below), R4-M101 E1 (its entries gain a local's declaration) and BU-258
+  (`DeclaringBody` recorded for every local).
+  - Cause. The completion substituted a local's equality end into its Type (`SubstituteOriginEqualities`), so an equality-fixed
+    slot was never a region and a nested signature or body read the end as a premise (t4_clause's family accepted, class 1); a
+    local's clause assumes nothing (15.3.3's Local row) and is never a premise (15.6.1).
+  - Representation. For a local, an equality of an unfixed slot with an Origin that is no unfixed slot of the local substitutes
+    the slot's region (`FixedRegion`, numbered before the regions `BindVariableCore` numbers, `FixedRegions`), whose published
+    value is that Origin as the body reads it (15.3.6 "Unless fixed by equality", 15.4.4), `let` or `var`; an equality of two
+    unfixed slots substitutes nothing until a later pass has fixed one of them. A function's, Type's or alias's equality
+    substitutes the end as before. The region's own body reads the value through R8-M56's readers; a nested signature or body
+    reads the region, fixed there with no premise (15.3.4, 15.6.5).
+  - The published relation (C-548, C-554). `LocalRegion.Equality`: a value is published as an inclusion (the initializer's or the
+    solved candidate: the value outlives the region) or, by `FixedRegion`, as an equality (both bounds), unless the equality's end
+    holds a region of the body published as an inclusion: the slot's region is that end, so it may lie inside the value too, an
+    inclusion (`origin k.at == r` with `let r = p`: rvi_eq_let); with a region published as an equality the equality composes
+    (rvi_eq_chain: an equality). One predicate, `ReadsLetValue` (an end holding a region published as an inclusion), is read by
+    O-400 (b)'s limit and by `FixedRegion`; the comparison's row gate (`LeavesBodyRows`) asks whether the region has any published
+    value (`ReadsAsValue`) and leaves a row only where the values prove it: two readers, two contracts over one fact (G1369-13). A
+    failed condition is the located limit only where an end the comparison reads as a region holds a region published as an
+    inclusion (its shorter end; either end of an equality); one whose region ends are equality regions only is decided by the
+    values (dev's `UnprovenOriginContract_Kd`: rv_cmp), and an equality region at the longer end leaves the limit a `let` region
+    at the shorter end gives (rvi_res_let).
+  - A value's regions (C-554). A published value holds no region of its own body that publishes a value (each is read through
+    once), so a read at a use is one step; it may hold a `var` region of its own body that publishes none (a `let` initializer, or
+    an equality, naming a `var` local: rvi_var_carry), which `RegionValue` reads by its candidate, so each further read moves down
+    that body's definitions or one body outward.
+  - Formation. A local's declaration, its Type's Origin declaration and its initializer form in its declaring body whoever demands
+    them (a use, a capture or a written Origin name demanding the whole declaration, initializer included, BU-264): `IndexNode`
+    records every local's `DeclaringBody` with the value Binding enters the body with (a function's own body or a module's
+    top-level statements', `FunctionBody`; a default template's; an accessor body, `AccessorBody`, shared with `BindAccessorBody`;
+    a Property's initializer, `InitializerBody`), and `FormingBodyOf` is its one reader (`BindVariable` around `BindVariableCore`,
+    `BindType` for a local-owned Type); a local with none is `InternalInvariant_Kd`. `DeclareFunction` keeps a function's
+    declaring body as before (a function's own body or a default template): PLAN G230's root form and acc_lift record the other
+    bodies for functions.
+  - Reads. The typed borrow's identity test (13.5.6) compares both Types read at the use (`RegionValuesAt`), joining R8-M56's reader
+    list (tb_let valid, accepted; rv_tb_bad and rvi_tb_eq_bad invalid, `TypeMismatch_Kd` at the borrow).
+  - Rejected: the Type keeping the end with a slot -> region side table (two representations of one slot); forming the region lazily
+    in the body (two completion paths); naming a local's region by its slot position (PLAN G230 N2's scope, proposed there); re-binding
+    a nested header's failed clause in the declaring body (G230 N2's omitted-set-slot form, not this cause); a Callable comparison
+    reading an equality region as its value (one reader's exception; the published relation decides instead); every equality published
+    as an equality (a valid rvi_eq_let would get `UnprovenOriginContract_Kd`, a Language error where naming `r` keeps the limit).
+  - Moves (against dev; rows in ClosureEnvironmentOriginTest, LocalOriginClauseTest, OriginPremiseCatalogTest and
+    TypedBorrowConversionTest). Class 1, invalid programs newly rejected with one `UnprovenOriginRelation_Kd` at `v`: t4_clause,
+    t4_clause_var, t4_two, t4_nest2, t4_blk, t4_clo_sig, rv_chain_x, rv_root_clo. Class 3, valid newly accepted: tb_let. Kept at dev's
+    records: t4_fwd, t4_fwd_ok and the leak test (PLAN G230 N2), t4_q and x1c_inf (PLAN rows), rv_cmp, x_cmp_var, x_cmp_res,
+    rvi_eq_chain (`UnprovenOriginContract_Kd`), x_cmp_incl, rvi_eq_let, rvi_eq_set, rvi_direct_r, rvi_res_let (O-400 (b)'s limit). A5
+    oracle: 1,764/1,764 rows, 0 record differences on the stack's head (5791a84df0, `a5-oracle-unit.sh b-g230h c56616439`).
+  - Open (the Front: G230's unit or a structure unit; no behavior change). The published relation is computed outside the row's owner:
+    `FixedRegion` (Binding.OriginDeclarations.cs) reads `ReadsLetValue` (Binding.OriginProof.cs) and writes `LocalRegion.Equality`
+    (Binding.LocalRegions.cs); the predicate belongs beside `ValueRow` with the row's owner, or the owner publishes an equality itself.
+    `ReadsLetValue`'s name (C-548's) says its `let` case; it also answers for a slot fixed equal to a `let` region.
+- **BU-263 A named function's declaring body is the body the index walk declares it in, a module's top-level statements and an
+  accessor body included (PLAN G230's root form, acc_lift and N3; G230-R)** (Front, 2026-11-25; Binding, with the C1-F4 view's
+  input; Major, an acceptance and A5-verdict mover; F's rulings G230-1..G230-4; the Middle's RP17 consent C-583) SPEC 15.3.4,
+  6.1.1, 11.3, 15.6.5. Supersedes in part BU-258 ("none ... for a module-level function" and its Open list's acc_lift and
+  module-level form).
+  - Rule. `DeclareFunction` writes `BindingSymbol.DeclaringBody = indexBody` for every named function. Since BU-262 the index
+    walk enters every body Binding forms locals in with the value Binding enters it with (a function's own body or a module's top-level
+    statements, `FunctionBody`; a default template's; an accessor body, `AccessorBody`; a Property's initializer, `InitializerBody`),
+    so the value is total for a function declared in a body, as for a local; a Type's member, declared where the walk is in no body,
+    has none. BU-258's reason for "none for a module-level function", a walk that entered no top-level statements or accessor body,
+    no longer holds. A root function lies in its document's execution scope (6.1.1), so the top-level statements are its enclosing
+    body for 15.3.4; an accessor has the common Body (11.3).
+  - Readers unchanged. Every reader reads the one chain `EvaluatingBody`: the view's row 6 (`EnclosingAtom`, also for atoms MIR
+    interns on demand), Binding's judge (`FixedIn`, `RegionIn`, `BoundableIn`, `SourcesIn`, `BodyChain`), `ForeignEnd` and
+    `RegionBounded`. A top-level or accessor local's region named by such a function is Fixed there with no premise (row 6), never
+    Unclassed (row 9), so the relation gets SPEC's record instead of A5's located `Unsupported_Kd`. A named function's value (`let g =
+    pick`) has no Origin atom of its own (a ClosureValue atom is an anonymous literal's): it is classed through the Origins its Type
+    names, so a root or an accessor function's value stays accepted (rf_fval, acc_fval).
+  - The class moves, not only the timing. In a root function's body a top-level region was no enclosing atom on dev: Binding's
+    judge read its recorded sources from the module body (`SourcesIn`) and a relation formed there could bound it in the module
+    body's graph (`BoundableIn`). Now it is Fixed with no premise (15.6.5: in any other nested body its candidate gives no
+    premise), with no cross-body read or bound: a root function's relation bounds no top-level `var` region (rv8_var_bound, no
+    record in the module body). `RegionBounded` now defers such a region while the root function's body is bound, as an enclosing
+    function's region in a nested function's body on dev, so an Owned judgment naming it is decided at Finality: still a
+    Constraint failure (rv5, a borrow of a top-level `let`: `UnprovenConstraint_Kd` at the call, as on dev), no deferral left
+    unjudged. No reader takes a value there (a named function carries none, A1; it captures no top-level binding, 6.1.1).
+  - Records (Q13: a located limit replaced by SPEC's record, or a valid program accepted). The root d6 form (put stores its own
+    `v: ref/i32` into a slot `during r` of a top-level `r`, then a block's `inner` is passed) gives `UnprovenOriginRelation_Kd` at
+    `v` alone: the call reads put's signature, which relates `v` to nothing (15.6.4), so dev's `ComparisonLoanConflict_Kd` at `let
+    inner` was the limit's by-product (F's G230-2), as the nested twin's exact row already shows. A function nested in a root
+    function and one in a getter naming the getter's local give `UnprovenOriginRelation_Kd` at the input; a root function passing
+    its own input to one needing it `during r` (rv2_relay_inv) and one returning its own input as `during r` of a top-level `var`
+    r (rv8_var_bound) move from `Unsupported_Kd` to `UnprovenOriginRelation_Kd` at the same place (`Unsupported_Kd` -2,
+    `UnprovenOriginRelation_Kd` +2); a Reborrow through such an input passed to another function is valid (root and accessor forms
+    accepted). Rows: `ClosureEnvironmentOriginTest.ANestedSignatureNamingABodyLocalNamesItsRegion` (rf_d6, rf_nest, acc_inv,
+    T1_rf_reborrow, T1x, T2b_acc_reborrow, T2_acc_reborrow, rv2_relay_inv, rv8_var_bound). A5 oracle: 1,764/1,764 rows, 0 record
+    differences on the stack's head (5791a84df0, `a5-oracle-unit.sh b-g230h c56616439`).
+  - Rejected: a reader exception for a module or accessor body (a second copy of the chain rule); keeping the gate with a whitelist of
+    A5's Unclassed arms (the Middle's c2 interim).
+  - Open: PLAN G230-H (N1, N2, G1369's omitted-set-slot and header-order forms); the Middle's c2 removes `OriginAtomKind.Unclassed`,
+    row 9 and A5's Unclassed and Undecided arms, now unreachable for these forms.
+- **BU-264 A written Origin name of a body local demands the local's declaration, as a value use does (PLAN G230-H, rule D)**
+  (Front, 2026-11-26; Binding; Q-806, D-1310; Major, an acceptance and record mover; F's rulings G230H-1..4, G1369-18) SPEC 15.3.4,
+  15.4.4, 9.3, 15.3.3, 9.1. Supersedes BU-56's rest (`UnlinkedLocalType`), BU-258's "The name link" item and D-990's remainder.
+  - Cause: `BindDeclarations`' header loop binds a body-declared function's header (nested, root, accessor-body or Closure-body) before
+    its body (R4-M101 E3), and `OriginCandidate` read a body local there without its declaration: an unannotated local had no Type
+    (InvalidOriginBinding_Kd, healed for parameters and results only by `BindFunction`'s second binding, so a use before the statement
+    read a failed header: N1, N2), an annotated local or a set gave its annotation's atom (`UnlinkedLocalType`'s located
+    `Unsupported_Kd`), and a local's clause end gave its written Type's own slot (G1369-17's two regions for one slot).
+  - Rule: a written Origin name of a local, its value or its set, outside that local's own declaration demands the declaration
+    (`QueryValueType`); the local forms in its declaring body (`FormingBodyOf`), initializer included, so a header bound before that
+    body selects the Type and the regions the body forms. Owner: `OriginCandidate`'s value and set branches; a local's own Type and
+    clauses read its declared Type as it forms (SPEC 9.3).
+  - Removed: `UnlinkedLocalType` and `LocalAtom`; the plain-name region case. `BindFunction`'s second binding stays as a temporary
+    structure for one class, a local the demand cannot form before its evaluating construct binds (F's G230H-6). That is a Pattern
+    or `for` binding (no declaration to demand), or a local of a Closure body whose literal omits a parameter Type (SPEC 7.7.1: the
+    expected Function Type gives it, so the literal's Environment query is not ready until the literal binds). The demand rests
+    without a record, so does the name (`OriginCandidate`'s entry ask, G230H-8 (1)), and the second binding at the function's
+    statement binds the header again (PLAN G230-H's Q-B row; removal: such a declaration formable on demand). Run (P2, 899137f51):
+    clo_par_inf accepted; its forward twin keeps dev's UnresolvedBinding_Kd 4:9.
+  - Census (P1, `p1\census.md`; env-gated lines, never committed; F's G230H-9): nothing is formed on demand while unvisited (no
+    `value`, `set` or `unlinked` line, and no function or module `forming` line, on the head), except G230H-6's class, a declaration
+    whose evaluating construct is binding: the 8 `forming` lines are Closure-body locals (`l`, `n`) formed in their body while the
+    literal binds. The 18 base `unlinked` lines naming a set (`x.s`, `k.at`, `s.a`, `s.b`) are the trace's classification gap, no
+    behaviour: unclassified, equal on base and head. The one `second` line is h's parameter 0 (`ref/i32`, a Closure body): class 2.
+  - Exposure: a demanded initializer binds in the declaration phase (Constraint proofs before `ValidateConformances`, an
+    accessor's receiver); a cycle through a header (cyc_init) is invalid, its independent record at the first name of the region,
+    pick's parameter `r` 3:33 (the owner's answer, G230H-7; SPEC 15.3.6's sentence, K's docs request); the result's `during r`
+    3:54 reads the same failed region, a dependent record that dev and the head both keep (SPEC 23.1.2, rule W; M's C-583 (a));
+    the same cycle through an annotated local (it.c-annotated) gives no record at pick's first `r` yet (Edit 9's row, M's C-583
+    C1); a Closure-body local borrowing a capture or a Closure parameter demands its literal's environment (BU-265, F's G230H-5
+    (i)); one whose literal's environment is not ready (an omitted parameter Type, or an entry whose source the pass has not
+    bound) rests and binds at its statement (BU-265's not-ready item; Edit 6's class).
+  - Moves (labels from SPEC before the runs; A5 oracle on the stack's head (5791a84df0): 1,764/1,764 rows, 0 record differences),
+    each acceptance move named (Q13 1). Valid programs newly accepted, dev's Language records removed (class 3): a_fwd_par,
+    a_two_par, a_clause, t4_q, t4_fwd_ok, acc_self, clo_cap, clo_cap_om and clo_par (the last three with BU-265), and F's G230H-10
+    twins clo_nest_cap (6:13), acc_clo (8:17) and clo_par_set (7:9): 12 (clo_par_inf keeps dev's acceptance, no move; M's C-583
+    (b)). Seven more of the 42 programs (M's C-583 (c); V by SPEC 9.3 and 15.3.4: a local function called before its declaration
+    names an enclosing local declared before it): ann_fwd (UB 4:5; an annotated local, 15.3.6), acc_fwd (UB 7:13; a getter body,
+    11.3.1), rf_fwd (UB 3:1; the root form, 6.1.1), rf_pre (IOB 9:20, Uns 10:29, Uns 10:53; an earlier root function's call,
+    `static` outliving k.at), nest2_fwd (UB 5:9; two levels), dflt_fwd (UB 4:5; a default, 7.2.3) and init_proof (UB 10:5; a
+    proven Constraint, 8.3). An invalid program newly rejected: t4_clause (dev accepted it; SPEC's UOR 7:62). t4_root, t4_fwd and
+    leak_clause give SPEC's one record; dup_let and dup_ann gain SPEC 9.1's duplicate; a_fwd_inv, a_clause_inv, init_proof_bad,
+    ann_bad and clo_par_inf_err move records within their I labels; rvd_hdr_let and rvd_hdr_set keep the header-free twins' O-400
+    (b) limit. clo_for_own, clo_for, clo_for_k and clo_inf_outer_cl keep dev's acceptance (C1, C2). F's G230H-12 C-c programs
+    (valid; the literal an argument under a Callable, which erases nothing, SPEC 10.5.2, 7.7.4): clo_ref_inf_cal and
+    clo_ref_ctrl_cal lose dev's UnprovenOriginRelation_Kd 7:18 (the header read the source, not the `@ref` entry's slot borrow)
+    and are accepted; clo_val_cl_cal keeps dev's acceptance; clo_inf_mid_cl keeps dev's acceptance; cyc_read is on its label.
+    C-a's rows keep dev's outcome (SPEC 15.8.2): hdr_res_early and hdr_res_late UnprovenOriginRelation_Kd 4:16 (early fails
+    before: accepted on b286925041), hdr_par_early and hdr_par_late accepted, hdr_dup_par DuplicateBinding_Kd 3:13 (SPEC 9.3) and
+    env_inner accepted (an inner literal in the body captures the environment binding, 7.7.2). Record added (C-b, SPEC 23.1.2,
+    7.7.2): thdr_inf gains DuplicateBinding_Kd 2:27 beside dev's TypeMismatch_Kd 2:18 (dev's transitional branch lost the repeat);
+    thdr keeps dev's TypeMismatch_Kd 2:14 alone (N2: the header fails first and no entry forms). Dependent records added (class 4,
+    G230H-11 (b), beside G230H-7's cyc_init row): cyc_two's PrerequisiteUnavailable_Kd 2:5 (`let r`, reading pick's failed
+    signature) and 3:5 (`let s`, reading r), beside dev's IOB 4:33 and 4:54; SPEC 23.1.2 leaves them to the implementation. A
+    record moved within its I label (M's C-583 C1, class 4, Edit 9's row): it.c-annotated (`let r: ref/i32 = pick(p)` before `func
+    pick(v: ref/i32 during r) -> ref/i32 during r => v`) trades dev's located Unsupported_Kd 3:33 and 3:54 for one
+    PrerequisiteUnavailable_Kd at the initializer 2:22, without the cycle's record at pick's first `r` (G230H-7 (b)); both reject
+    it.
+  - Rejected: (b) a header left open until its local binds (dup_ann loses 9.1's record, rf_pre reads an open header, more code); (c) a
+    name of a local's region by position (G1369's (iv); `during w` of a non-borrow cannot be judged at the header, D-990's rejected
+    (c)); fixes of the early read inside G1369 (G1369-18's (A), (B)).
+- **BU-265 A Closure literal's environment is formed once in the pass, by its binding or by a demand from its body that comes
+  first (PLAN G230-H (i))** (Front, 2026-11-26; Binding; Q-806, D-1310; Major, with BU-264; F's ruling G230H-5) SPEC 7.7.1, 7.7.2,
+  15.3.4, 23.1.2. Extends BU-258's rule (a named function's declaring body is the index walk's) to Closure literals.
+  - Cause: under BU-264 a nested header demands a Closure-body local before the literal binds (the header loop runs first, R4-M101
+    E3). What the body reads of the literal, its environment bindings, its plan and its parameter Types, was formed only by the
+    literal's binding. So the local read an unbound capture: clo_cap's Capture record, clo_cap_om's NullReferenceException at the
+    plan, and clo_par's untyped parameter.
+  - Rule: a fifth DeclQuery kind, `Environment` (owner `FormEnvironment`, `Binding.Closures.cs`), forms the literal's evaluating body's
+    own environment (where that body is a Closure's), its written parameter Types and its written entries. Each entry's source is
+    demanded first (`QueryValueType`, in `CaptureEntries`). It is demanded by the literal's binding right after its header, by a local
+    of its body that binds first (`BindVariable` through `BodyEnvironment`), and by a header bound in its body (`OriginCandidate`'s one
+    ask where a name's candidate is found, `AheadOfEnvironment`: whether that scope's literal, another than the header's function, has
+    an environment not ready; G230H-8 (1), G230H-11 C-2). An omitted list's capture is formed by its use as before (`Capture`, which
+    creates the plan when absent).
+  - Not ready (F's G230H-6, G230H-10 C1): one criterion, the environment cannot form before what it reads binds: an omitted parameter
+    Type (SPEC 7.7.1: only the literal's expected Function Type gives it, at the literal's binding), an evaluating body whose
+    environment is not ready, and an entry whose source is pending (a `for` or Pattern binding the pass has not bound, a retry with no
+    recorded failure, its TypeSource not Invalid, or a source resting on another's reported record, whose record the literal's then
+    derives through `CompleteDependent`, rule W). The written entries are formed before the expected input is read (F's G230H-11 C-1):
+    each entry's Type reads only its own source and the outer environment, never the literal's parameters, so no entry form needs the
+    header and none is a located limit. The query is abandoned (`AbandonQuery`): nothing is recorded, the entries formed so far are
+    kept and read again, a pending source has the literal rest on it (at the literal's binding, as dev's binding did), a demanding
+    local rests unbound and binds at its statement, and the header's names rest (below). Only a recorded failure (Invalid) of an
+    entry's source, or an entry's own record, makes the query Error (clo_for_own, clo_for, clo_for_k keep dev's acceptance;
+    clo_for_ctrl is the control). No new state, no mode.
+  - The header's reach (F's G230H-10 C2, G230H-11 C-1 and C-2): a header bound ahead of a not-ready environment rests only on a name
+    the not-ready literal itself declares (its parameters, a body local, local set or Origin, and a written entry not yet formed),
+    outside the header's own function; a name of an enclosing named function's scope (a parameter or Origin of the function, or of a
+    named function in the literal's body) is selected normally (SPEC 9.3: naming an outer Origin in a signature is not a capture;
+    15.3.4 looks names up inside out). A formed written entry's name in the literal's body (a local's annotation, a nested function's
+    header or clause) selects its environment binding, with the Type its entry fixes (`CaptureEntry`; SPEC 7.7.2, 15.4.4), on every
+    program: clo_ref_inf_cal (a `@ref` entry, `k` omitted) and clo_ref_ctrl_cal (`k` written) both read the slot borrow's Origin, and
+    clo_val_cl_cal's clause names a value entry's. The literal's own header (its parameter Types, result Type and Origin declaration)
+    never selects an environment binding, in either order (SPEC 15.8.2: its annotation names resolve among the parameters and
+    enclosing scopes; F's G230H-12 C-a): an environment binding is visible only at a use inside its literal's body, one row of
+    `VisibleAt` (the one visibility rule of a value lookup, a written Origin name and a literal's capture test; F's G230H-13 (c)), one
+    comparison with the body's start. `OriginCandidate`'s copies of the local-position rule are that call, beside SPEC 15.4.4's
+    Origin-name rule (a local's own clauses and annotation name its declared Type's slots, a local's only). No scope is added, so SPEC
+    9.3's one space stays (a body local repeating a parameter is DuplicateBinding_Kd 3:13, hdr_dup_par), and an inner literal in the
+    body still captures the binding (env_inner). hdr_res_early and hdr_res_late give UnprovenOriginRelation_Kd 4:16 (the result
+    names f's `p`), hdr_par_early and hdr_par_late are accepted. clo_inf_outer_cl and clo_inf_mid_cl keep dev's acceptance;
+    clo_par_inf_cl keeps dev's IOB 5:31 (Q-B's class, a clause naming a body local).
+  - Invariant (once only): the plan's Storage and Carried are cleared once per pass, by the index walk's reset
+    (`BoundClosure.ResetPass` from `ResetRow`), before any binding or demand, and never per binding. They live as long as the scope's
+    environment bindings (`BindingScope.Reset`). The query's NotStarted run alone forms entries and writes their records; an abandoned
+    run (not ready) records nothing and a later run re-reads the entries it formed. Done and a re-entry read the formed entries. Error
+    rests: the literal's binding fails with the entry's recorded failure, and the demanding local completes as dependent on the
+    literal, as body order binds no body after a failed entry (SPEC 23.1.2; clo_bad_entry_hdr's two independent records, the entry's
+    InvalidCaptureBinding_Kd 2:13 and the early header's own MissingOriginBinding_Kd 4:20). An entry's record that a body header's
+    demand made first is no input of the literal's header fit, so `FailClosureHeader`'s transitional branch (a header's earlier located
+    limit) does not count the Environment query's failure (`QueryRecord`) and the mismatch is its own record beside it (SPEC 23.1.2;
+    F's G230H-12 C-b: thdr_inf TypeMismatch_Kd 2:18 and DuplicateBinding_Kd 2:27).
+  - Evaluating body: the index walk writes a Closure symbol's `DeclaringBody` (`IndexNode`), as BU-258's rule does for a named
+    function. `ClosureHeaderScope`'s write is removed (its one writer before), so a demand from the body reads the body before the
+    literal binds.
+  - No located limit (G230H-6, dev accepting clo_par_inf): the prototype's located `Unsupported_Kd` at an omitted parameter is
+    removed; the not-ready item replaces it, and its remaining Language records on valid programs are Edit 6's PLAN row (class 3, the
+    removal conditions there).
+  - Rejected:
+    - (ii) Demand the literal's evaluating statement: its body binds the demanding header's call while the header is Running, so
+      clo_cap gets a record again.
+    - (iii) Bind a Closure-body function's header in body order: such headers miss `ValidateSignatures` and `RecordDuplicateGroups`
+      unless those run per Closure (Q-A (b)'s exposure).
+    - (iv) No demand while the Closure is unbound (Q-B's class): a form test that keeps clo_cap's N1 record. F's G230H-5 excludes it.
+    - Resting every name outside the header's own scopes while the environment is not ready (the head before C2): an enclosing
+      function's Origin, which no demand involves, failed in a clause (clo_inf_outer_cl, F's G230H-10 C2).
+    - Error on any entry source without a Type (the head before C1): a source pending only in the pass made the query Error for the
+      pass, so the literal failed with no record after the source bound (clo_for_own's UnresolvedBinding_Kd 5:9; F's C1).
+    - Selecting a written entry's source past a not-ready literal, and resting every scope up to the outermost not-ready literal
+      (the head before C-1 and C-2, 51275cf74): a second path, as an `@ref` entry's Type is not its source's, so the outcome
+      depended on readiness (twins-c1c4's clo_ref_inf: UnprovenOriginRelation_Kd 4:18, absent on clo_ref_ctrl), and an enclosing
+      named function's parameter failed in a clause (clo_inf_mid_cl's InvalidOriginBinding_Kd 5:24; F's G230H-11). Resting every
+      entry name instead fails a clause naming a value entry on a valid program (clo_val_cl, IOB 4:20).
+    - Keeping `BindConcreteClosure`'s per-binding `Storage.Clear()`: it re-forms an entry the demand formed (a second environment
+      binding, slot and record).
+    - `OriginCandidate` skipping a `Capture` binding when the use is the literal's own header: a second copy of a visibility rule
+      outside its owner (F's G230H-12 C-a); the row is VisibleAt's, and OriginCandidate's own position copy is removed (G230H-13).
+    - A body scope as the header scope's child (F's G230H-12 form, withdrawn in G230H-13): it splits SPEC 9.3's one space, so
+      hdr_dup_par would be accepted; a cross-scope duplicate rule (a second copy of 9.3's), a per-form declaration clause, or the
+      parameters declared in the body scope (restructures every `scopes[literal]` reader for no SPEC difference) (G230H-13 (a), (b),
+      (d)).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -32887,6 +33132,21 @@ Closure row of `MirCases.Branch`).
     c20, z3v, r18 are accepted (PLAN G1105 closed); nf_lift stays accepted (class 1) until PLAN G230 (A), since its `=> v` forms no
     relation over r's region (its Closure form a_nf_lift_clo is rejected by A1's rule); D-862 (PLAN G1099) closes for e-owsin,
     e-owpin, e-owsinv and e-ownf.
+  - Amended by BU-262 (PLAN G1369; B's consent C-541, C-548 and C-554, 2026-11-25): a slot a local's equality fixes, `let` or
+    `var`, is a region whose value is the equality's other end, a third source of a value beside the initializer's Origin and the solved
+    candidate (SPEC 15.3.6, 15.4.4); "A `var` region publishes no value" becomes "a `var` region publishes no value unless its slot is
+    fixed by equality (SPEC 15.3.6)"; the typed borrow's identity test (13.5.6) joins the reader list. A region publishes its value as an
+    inclusion (a `let` region: the value outlives the region) or, where its slot is fixed by equality, as an equality (both bounds); O-400
+    (b)'s limit (`ReadsLetValue`) reads only an inclusion, so a region equal to its value is not a `let` region for it (PLAN G1369,
+    C-548). An equality whose end holds a region of the body published as an inclusion publishes an inclusion, the slot's region being
+    that end; with a region published as an equality the equality composes (C-554). O-400 (b)'s "with one predicate, `ReadsLetValue`,
+    for `LeavesBodyRows`' gate and the limit" becomes two predicates over the one published relation: `ReadsLetValue`, an end holding a
+    region published as an inclusion (the limit, and `FixedRegion`'s reading of an equality's end), and `ReadsAsValue`, an end holding a
+    region with any published value (`LeavesBodyRows`' gate). (ii)'s fact (a) "the recursion ends because a published value holds no
+    region of its own body, so each step moves at least one body outward" becomes "the recursion ends because a published value holds no
+    region of its own body that publishes a value; a `var` region of its own body that it holds (a `let` initializer, or an equality,
+    naming a `var` local) is read by its candidate, whose `var` regions that do not reach back descend the body's order of definitions,
+    so each step moves down that body's definitions or at least one body outward" (C-554).
 - **R8-M57 A fixed array without an element destroys nothing: the destruction walk's Type fact (SPEC 4.1)** (Back, 2026-11-22;
   R8-X1 U3, Q-654; the owner's O-486 part 4 (a), verbatim 「3a 4a（推奨）」; Major: a Type fact of Mir changes its contract, with
   acceptance moves in A4 and A5; the Middle's consent C-454 with C1-C3, and RP17).
