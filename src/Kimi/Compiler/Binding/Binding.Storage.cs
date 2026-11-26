@@ -554,17 +554,37 @@ public sealed partial class Binding
                 shape.Types.Add(syntax);
             }
 
-            for (var i = 0; i < container.Members.Count; i++)
+            var members = new StoredSyntax(container);
+            while (members.MoveNext())
             {
-                var member = container.Members[i];
-                if (member is PropertyKoto field && IsStoredVariable(field))
+                var member = members.Member;
+                if (members.Syntax is not { } syntax)
+                {
+                    if (member is FunctionKoto { IsDestructor: true } destructor)
+                    {
+                        shape.DestructorKoto ??= destructor;
+                        if (container is EnumKoto)
+                        {
+                            this.Fail(member, BindingFailure.InvalidTypeFormation);
+                        }
+                    }
+                    else if (container is EnumKoto && member is not (FunctionKoto { IsConstructor: false, IsDestructor: false } or IsKoto or EffectBoundKoto or
+                        SyntaxFormKoto { Akind: KotoKind.ConditionalConformance or KotoKind.AssociatedType }))
+                    {
+                        // An effect item is judged by its owner alone (Binding.Misplaced); it leaves the enum's formation valid.
+                        this.Fail(member, BindingFailure.InvalidTypeFormation);
+                    }
+
+                    continue;
+                }
+
+                if (member is PropertyKoto field)
                 {
                     if (container is EnumKoto)
                     {
                         this.Fail(member, BindingFailure.InvalidTypeFormation);
                     }
 
-                    var syntax = field.TypeKoto ?? field;
                     if (field.TypeKoto is not null)
                     {
                         this.BindType(syntax, scope);
@@ -574,36 +594,15 @@ public sealed partial class Binding
                         this.BindNode(field, scope);
                     }
 
-                    shape.Types.Add(syntax);
                     this.storedFields.Add(field);
                 }
-                else if (TryEnumPayload(member, out var payload))
+                else if (syntax.BoundType is { } type && this.InaccessibleType(type, container.BoundSymbol!, container.BoundSymbol!) is { } inaccessible)
                 {
-                    // The Case and its payload Types were prepared before the headers (PrepareCases).
-                    for (var j = 0; j < payload.Operands.Length; j++)
-                    {
-                        var syntax = payload.Operands[j];
-                        shape.Types.Add(syntax);
-                        if (syntax.BoundType is { } type && this.InaccessibleType(type, container.BoundSymbol!, container.BoundSymbol!) is { } inaccessible)
-                        {
-                            this.RecordAccess(member, inaccessible, syntax);
-                        }
-                    }
+                    // A Case payload operand: the Case and its payload Types were prepared before the headers (PrepareCases).
+                    this.RecordAccess(member, inaccessible, syntax);
                 }
-                else if (member is FunctionKoto { IsDestructor: true } destructor)
-                {
-                    shape.DestructorKoto ??= destructor;
-                    if (container is EnumKoto)
-                    {
-                        this.Fail(member, BindingFailure.InvalidTypeFormation);
-                    }
-                }
-                else if (container is EnumKoto && member is not (FunctionKoto { IsConstructor: false, IsDestructor: false } or IsKoto or EffectBoundKoto or
-                    SyntaxFormKoto { Akind: KotoKind.ConditionalConformance or KotoKind.AssociatedType }))
-                {
-                    // An effect item is judged by its owner alone (Binding.Misplaced); it leaves the enum's formation valid.
-                    this.Fail(member, BindingFailure.InvalidTypeFormation);
-                }
+
+                shape.Types.Add(syntax);
             }
 
             if (container is EnumKoto && shape.Cases.Length == 0)
@@ -847,5 +846,55 @@ public sealed partial class Binding
             CallResultSlot => result,
             _ => null,
         };
+    }
+
+    // A container's members in declaration order with the syntax each stores (SPEC 11.7: layout, Copy derivation and destruction use
+    // only stored Fields and base components; SPEC 15.2.3: the payloads of every Case): a stored Property once, with its annotation or,
+    // inferred, itself; a Case payload once per operand (none for an empty payload); any other member once, storing nothing (Syntax
+    // null). The one enumeration of a container's stored syntax: PrepareStorage forms the shape from it. Base clauses are no members.
+    private ref struct StoredSyntax(DeclarationContainerKoto container)
+    {
+        private readonly DeclarationContainerKoto container = container;
+        private int member = -1;
+        private int operand = -1;
+        private SyntaxFormKoto? payload;
+
+        public Koto Member { readonly get; private set; } = null!;
+
+        public Koto? Syntax { readonly get; private set; }
+
+        public bool MoveNext()
+        {
+            if (this.payload is { } open && ++this.operand < open.Operands.Length)
+            {
+                this.Syntax = open.Operands[this.operand];
+                return true;
+            }
+
+            this.payload = null;
+            while (++this.member < this.container.Members.Count)
+            {
+                this.Member = this.container.Members[this.member];
+                if (this.Member is PropertyKoto field && IsStoredVariable(field))
+                {
+                    this.Syntax = field.TypeKoto ?? field;
+                    return true;
+                }
+
+                if (!TryEnumPayload(this.Member, out var found))
+                {
+                    this.Syntax = null;
+                    return true;
+                }
+
+                if (found.Operands.Length != 0)
+                {
+                    (this.payload, this.operand, this.Syntax) = (found, 0, found.Operands[0]);
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }
