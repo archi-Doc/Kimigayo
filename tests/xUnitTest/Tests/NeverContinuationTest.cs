@@ -315,7 +315,6 @@ public class NeverContinuationTest
     [InlineData("let t = if c => [(a, a)] else => [(a, (return 1)), (a, true)]")]
     [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1)), \"j\": (a, true)]")]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))@move")]
-    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move")]
     [InlineData("let t = if c => (a, (return 1)) else => (c, a)")]
     [InlineData("let t = if c => (a, (return 1)) else => ((return 2), a, a)")]
     [InlineData("let t = if c => (a, (return 1)) else => [a, (return 2)]")]
@@ -329,6 +328,16 @@ public class NeverContinuationTest
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Contains(c.Binding.Issues, static x => x.Node is IfKoto && x.Failure == BindingFailure.TypeMismatch);
+    }
+
+    // With a declared Type, such a source that does not fit it is its own record, at its delivery form (here the @move operand), and the
+    // join rests on it (SPEC 14.9.2 step 4; F's G844-15 and G844-16, Q13: the record was the join's).
+    [Fact]
+    public void ANeverElementLiteralThatDoesNotFitTheDeclaredTypeIsItsOwnMismatch()
+    {
+        var c = MirBuildTest.Compile(Joins + "let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move\n    return 0\n");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(("(a, (return 1))@move", BindingFailure.TypeMismatch), (issue.Node.ToString(), issue.Failure));
     }
 
     // SPEC 23.1.2: a conflict in a join formed part by part is one record, at the join whose sources conflict, also when a later use

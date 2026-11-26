@@ -390,7 +390,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     [InlineData("func f<T>(h: ref/HAd<T>) -> T\n    T is Addable<T>\n    return h.x\n", "let h = HAd<i32>.init(x: 3)\n    let v = f(h@ref)", "return h.x")]
     [InlineData("func f<T>(h: uniq/HAd<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x = true\n    return\n", "var h = HAd<i32>.init(x: 1)\n    f(h@uniq, 2)", "h.x = true")]
     [InlineData("func f<T>(a: T) -> EW<T>\n    T is PrimitiveInteger\n    return EW<T>.A(true)\n", "let v = f(3@i32)", "EW<T>.A(true)")]
-    [InlineData("func f<T>(e: EW<T>, a: T) -> bool\n    T is PrimitiveInteger\n    return match e@move\n        .A(let v) => v\n        .B => true\n", "let v = f(EW<i32>.A(3), 1)", "match e@move")]
+    [InlineData("func f<T>(e: EW<T>, a: T) -> bool\n    T is PrimitiveInteger\n    return match e@move\n        .A(let v) => v\n        .B => true\n", "let v = f(EW<i32>.A(3), 1)", "v")] // F's G844-16, Q13: was `match e@move` (SPEC 14.9.2 step 4: the arm's)
     [InlineData(ConditionalInit + "        self.x = true\n        self.y = a\n", "let h = HC<i32>.init(a: 3)", "self.x = true")]
     public void AStoredPartIsReadInItsUseScope(string declarations, string use, string mismatch, params string[] problems)
     {

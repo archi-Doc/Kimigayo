@@ -298,13 +298,21 @@ public sealed partial class Binding
         return holds;
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a delivering form's operand; a
-    // result target by its published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary
-    // literal by its own failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its
-    // call (IsCheckedCall), with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part
-    // bound with a Type that failed with its own BindingFailure, recorded or derived (Invalid), is failed.
+    // SPEC 23.1.2 (DECISIONS BU-43): whether a part's own binding failed, read from who decides it: a transfer's operand first by its
+    // jump's own recorded failure where its target was given its Target Result Type (not Inferred): the jump checks it at that Type,
+    // SPEC 14.9.2 step 4's check, its misfit written at the jump (F's G844-16); a delivering form's operand; a result target by its
+    // published outcome (JoinOutcome.Conflict or Dependent) or its own failure; a Tuple, array, fill or dictionary literal by its own
+    // failure only, its parts being judged at their positions; any other part unbound, not a part waiting for its call (IsCheckedCall),
+    // with a cause Binding recorded (HasFailureCauses: a failure, a recovery or a failed prerequisite), and a part bound with a Type that
+    // failed with its own BindingFailure, recorded or derived (Invalid), is failed.
     private bool PartFailed(Koto part)
     {
+        if (part.Parent is JumpKoto { BindingFailure: not BindingFailure.None } jump && ReferenceEquals(jump.Expression, part) &&
+            TransferTarget(jump) is { } target && this.resultContexts.TryGetValue(target, out var given) && !given.Inferred)
+        {
+            return true;
+        }
+
         if (DeliveredOperand(part) is { } operand)
         {
             return this.PartFailed(operand);
@@ -439,6 +447,7 @@ public sealed partial class Binding
 
         if ((context.Expected = ResultExpectation(node, expected)) is { } type)
         {
+            context.Inferred = false; // SPEC 14.9.2 step 1: its position fixed its Target Result Type, the caller's expected Type.
             this.BindWaitedSources(node, context, type);
         }
 
@@ -546,12 +555,14 @@ public sealed partial class Binding
     // supplies the fit's longer end (the use-site fit; R7-O1; H11b D5), a structural Unit at the join. A Closure or Function Item that
     // its late Type did not convert is judged by its erasure here (ErasesToFunction, DECISIONS R4-M161), whose row the record of its
     // misfit reads; a failed Owned part or condition is the value's own record (BU-107), on which the join rests. A failed source is its
-    // own record (ResultCandidates) and a source that waited unbound BindWaitedSources'. Step 4's check has one record place, the
-    // join's, and every source that does not fit keeps its record (SPEC 23.1.2; PLAN G844, F's G844-4 C3): the first and its failure
-    // are returned, the join's explained one (its Conflict), and each further one is a record of the join at that source. The join's
-    // outcome decides, as its recorded rest (ResultContext.Rests) gives it before the verdict: a resting join is the one whose verdict
-    // rule W suppresses (DECISIONS BU-79), so there each source that does not fit is its own record at itself; a Conflict join's own
-    // record stands for its sources.
+    // own record (ResultCandidates) and a source that waited unbound BindWaitedSources'. Step 4's check against the Target Result Type
+    // the join was given (not ResultContext.Inferred: SPEC 14.9.2 step 1, in any context) is the source's own (SPEC 23.1.2; F's G844-15
+    // and G844-16): each source that does not fit is its own record, at its delivery form (FailMismatch), and the join rests on the first
+    // (Dependent), so its other paths are built and their records stand; so is each source of a resting join (ResultContext.Rests, the
+    // join whose verdict rule W suppresses, DECISIONS BU-79). Without a Target Result Type, `type` is step 2's (the survey's or the
+    // formed), so a source that does not fit means its sources have no common Type: the first and its failure are returned, the join's
+    // own Conflict, as is an implicit Unit's misfit, and each further one is a record of the join at that source (G844-4 C3); a Conflict
+    // join's own record stands for its sources.
     private BoundType? AdaptBoundSources(Koto node, ResultContext context, BoundType type, out ComparisonFailure failure)
     {
         BoundType? failed = null;
@@ -605,9 +616,10 @@ public sealed partial class Binding
                 }
             }
 
-            if (source is not null && context.Rests)
+            if (source is not null && (context.Rests || (!context.Inferred && context.Outcome != JoinOutcome.Conflict)))
             {
                 this.FailMismatch(source, source, actual, type, fit);
+                context.RestOn(source);
             }
             else if (failed is null)
             {

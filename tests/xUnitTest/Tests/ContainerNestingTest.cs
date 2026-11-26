@@ -296,7 +296,7 @@ public class ContainerNestingTest
     [InlineData(NestedEnum + "func f(v: i32)\n    let k = Outer<i32>.Mid.K.C(v, 2@i64, true)\n", "InvalidTypeFormation_Kd Outer<i32>.Mid")]
     [InlineData(NestedEnum + "func f(v: i32)\n    let e = Outer.E<i64>.A(v, 1)\n", "InvalidTypeFormation_Kd Outer")]
     [InlineData(NestedEnum + "func f(e: Outer<i32>.E<i64>) -> i32\n    return match e\n        Outer<i32>.E.A(let a, let b) => a\n        .N => 0\n", "")]
-    [InlineData(NestedEnum + "func f(e: Outer<i32>.E<i64>) -> i32\n    return match e\n        Outer<i32>.E.A(let a, let b) => b\n        .N => 0\n", "TypeMismatch_Kd match e\n    Outer<i32>.E.A(let a, let b) => b\n    .N => 0")]
+    [InlineData(NestedEnum + "func f(e: Outer<i32>.E<i64>) -> i32\n    return match e\n        Outer<i32>.E.A(let a, let b) => b\n        .N => 0\n", "TypeMismatch_Kd b")] // F's G844-16, Q13: was at `match e` (SPEC 14.9.2 step 4: the arm's)
     [InlineData(NestedEnum + "func mk<X>(x: X) -> Outer<X>.E<i64>\n    return Outer<X>.E.A(x@move, 1@i64)\n", "")]
     [InlineData(NestedEnum + "func mk<X>(x: X) -> Outer<X>.E<i64>\n    let e = Outer<X>.E.A(x@move, true)\n    return e\n", "TypeMismatch_Kd return e")]
     [InlineData(NestedEnum + "func f(n: ref/i32, r: ref/i64)\n    let e = Outer<i32>.R.B(n, r)\n", "")]

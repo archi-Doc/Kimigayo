@@ -127,18 +127,16 @@ public partial class OriginRelationDiagnosticTest
     public void AJoinArgumentWaitsForItsCallOnBothCallKinds(string form, string body)
         => AssertRecords(form, body, string.Empty, null);
 
-    // The invalid twins: a join source that does not fit the selected parameter Type is a Language error, on both call kinds (SPEC 10.1:
-    // a waiting argument is checked after selection, not per candidate; 14.9.2 step 4), at that source, or at a value call at the join
-    // where a typed source is the first misfit of the join's one per-source step (b5k_n, b7k_n, pb1h, pb1h_n; PLAN G844, F's G844-3: a
-    // location move, DECISIONS Q13), and B6's forms in an unannotated `let` (a mismatch, a wrong arity, an unresolved payload name, a
-    // value call, references, and anonymous functions, which fault on dev too) keep their Language errors. SPEC 23.1.2 leaves dependent
-    // records implementation-defined, so the row requires the failing part's record (`required`, `Code text`; empty: any record) and
-    // allows further records, never Unsupported_Kd or a fault of the check. b6fn's location is open: SPEC 10.5.4 lets an anonymous
-    // function's header filter candidates, which a join of them may or may not do. pb1h and pb1h_n: a bare Place Subject is borrowed
-    // (SPEC 15.1.6, 14.8.1: `x` is `ref/i32`), so the qualified `Option.Some(x)` keeps its own Type (10.5.1). At the value call `g` it
-    // does not adapt to the value's parameter Type (10.1 step 5, 10.2: a value call has no candidate set), which is the join's
-    // TypeMismatch_Kd (its step's first misfit; pb1b_n's contextual `.Some` keeps its own); at the declared function `h` (pb1h_h) it
-    // leaves the one candidate inapplicable (10.5.1, 10.1; PLAN G924 AF-3b, ArgFlow ruling 123).
+    // The invalid twins: a join source that does not fit the selected parameter Type is a Language error at that source, on both call
+    // kinds (SPEC 10.1: a waiting argument is checked after selection, not per candidate; 14.9.2 step 4), and B6's forms in an unannotated
+    // `let` (a mismatch, a wrong arity, an unresolved payload name, a value call, references, and anonymous functions, which fault on dev
+    // too) keep their Language errors. SPEC 23.1.2 leaves dependent records implementation-defined, so the row requires the failing part's
+    // record (`required`, `Code text`; empty: any record) and allows further records, never Unsupported_Kd or a fault of the check. b6fn's
+    // location is open: SPEC 10.5.4 lets an anonymous function's header filter candidates, which a join of them may or may not do. pb1h and
+    // pb1h_n: a bare Place Subject is borrowed (SPEC 15.1.6, 14.8.1: `x` is `ref/i32`), so the qualified `Option.Some(x)` keeps its own
+    // Type (10.5.1). At the value call `g` it does not adapt to the value's parameter Type (10.1 step 5, 10.2: a value call has no
+    // candidate set), which is that source's own TypeMismatch_Kd, as pb1b_n's; at the declared function `h` (pb1h_h) it leaves the one
+    // candidate inapplicable (10.5.1, 10.1; PLAN G924 AF-3b, ArgFlow ruling 123).
     [Theory]
     [InlineData("pb1b_n", PbValue + "    return g(match o\n        .Some(let x) => .Some(x == 0)\n        .None => .None\n    )\n", "TypeMismatch_Kd .Some(x == 0)")]
     [InlineData("pb1c_n", PbH + PbOption + "    return h(match o\n        .Some(let x) => .Some(true)\n        .None => .None\n    )\n", "NoApplicableOverload_Kd h(match o")]
@@ -148,7 +146,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(
         "pb1h",
         PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x)\n        .None => .None\n    )\n",
-        "TypeMismatch_Kd match o")]
+        "TypeMismatch_Kd Option.Some(x)")]
     [InlineData(
         "pb1h_h",
         PbH + PbOption + "    return h(match o\n        .Some(let x) => Option.Some(x)\n        .None => .None\n    )\n",
@@ -156,14 +154,14 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(
         "pb1h_n",
         PbValue + "    return g(match o\n        .Some(let x) => Option.Some(x == 0)\n        .None => .None\n    )\n",
-        "TypeMismatch_Kd match o")]
+        "TypeMismatch_Kd Option.Some(x == 0)")]
     [InlineData("b5g_n", RunG + "    return g(if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("b5go_n", RunG + "    return g(if c => Option.None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("b5k_n", RefOne + RefThree + RunK + "    return k(if c => one else => three)\n", "TypeMismatch_Kd if c => one else => three")]
+    [InlineData("b5k_n", RefOne + RefThree + RunK + "    return k(if c => one else => three)\n", "TypeMismatch_Kd three")]
     [InlineData("b5h_n", OptionH + RunHead + "    return h(if c => .None else => .Some(true))\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(true))")]
     [InlineData("b5ho_n", OptionH + RunHead + "    return h(if c => Option.None else => .Some(true))\n", "NoApplicableOverload_Kd h(if c => Option.None else => .Some(true))")]
     [InlineData("b5ap_n", RefOne + RefThree + ApFunc + RunHead + "    return ap(if c => one else => three)\n", "NoApplicableOverload_Kd ap(if c => one else => three)")]
-    [InlineData("b7k_n", RefOne + RefThree + RunK + "    return k(match c\n        true => one\n        false => three\n    )\n", "TypeMismatch_Kd match c")]
+    [InlineData("b7k_n", RefOne + RefThree + RunK + "    return k(match c\n        true => one\n        false => three\n    )\n", "TypeMismatch_Kd three")]
     [InlineData("b7ap_n", RefOne + RefThree + ApFunc + RunHead + "    return ap(match c\n        true => one\n        false => three\n    )\n", "NoApplicableOverload_Kd ap(match c")]
     [InlineData("b6h", OptionH + RunHead + "    let a = h(if c => .None else => .Some(true))\n    return a\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(true))")]
     [InlineData("b6ar", OptionH + RunHead + "    let a = h(if c => .None else => .Some(1), 2)\n    return a\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(1), 2)")]

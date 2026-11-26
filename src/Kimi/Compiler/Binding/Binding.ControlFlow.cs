@@ -351,7 +351,7 @@ public sealed partial class Binding
         }
         else if (common is not null && this.AdaptBoundSources(node, context, common, out failure) is { } misfit)
         {
-            context.Conflict(); // SPEC 14.9.2 step 4: the first source that does not fit is the explained one.
+            context.Conflict(); // SPEC 14.9.2: the join's own record, no common Type (step 2) or an implicit Unit (G844-15, G844-16).
             failed = misfit;
         }
 
