@@ -250,17 +250,17 @@ public sealed partial class Binding
 
     // Files a closed root for the publication (CloseRoot's one writer of the filing; G1406-11 C2, G1406-16 B1, C2) and returns the
     // closure of `entry`, closed to `key` by the open request (its last round: enumerateIdentities' rows, enumerateClasses' table,
-    // enumerateCompletion) after spending `spent` of its one budget, `own` of it in the key's own rounds (G1406-19). A restart onto a
+    // enumerateCompletion) under the reading's `serial` after spending `spent` of its one budget (G1406-19). A restart onto a
     // filed key reads that filing, so the entry spends what the key spent as well. An entry other than its key past
     // PremiseClosureLimit is filed alone, Limited, with no rows, and its key is not filed: the key's own closure has its own budget, so
     // what is filed is a function of (entry, G) whichever reader closes first (SPEC 8.3.3). Otherwise the key, unless filed, is filed
-    // with E, its last round's rows that join its class in that round's table (R3.1: a prefix closure's E is empty), and its own
-    // spending, Limited past the budget; a Limited closure is filed for the publication as a Complete one is (G1406-19). An entry
-    // other than the key is filed with the key's rows and the pair row `entry is key`, read with the request's Completion: the link its
-    // re-rootings rest on, which the restart's cleared rows held (SPEC 8.3.3: the identities obtained before it are kept).
-    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, int spent, int own, Completion completion)
+    // with E, its last round's rows that join its class in that round's table (R3.1: a prefix closure's E is empty), and its spending
+    // (an unfiled key is the entry itself: CloseRoot closes a key other than its root first), Limited past the budget; a Limited
+    // closure is filed for the publication as a Complete one is (G1406-19). An entry other than the key is filed with the key's rows and
+    // the pair row `entry is key`, read with the request's Completion: the link its re-rootings rest on, which the restart's cleared rows
+    // held (SPEC 8.3.3: the identities obtained before it are kept).
+    private int FileClosure(BindingScope scope, BoundType entry, BoundType key, int spent, int serial, Completion completion)
     {
-        var serial = SerialOf(scope);
         var known = this.identityRoots.TryGetValue((scope, key), out var closure);
         spent += known ? this.identityClosures[closure].Spent : 0;
         if (spent > PremiseClosureLimit && !ReferenceEquals(entry, key))
@@ -279,7 +279,7 @@ public sealed partial class Binding
                 }
             }
 
-            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, own, own > PremiseClosureLimit, serial, this.enumerateCompletion));
+            closure = File(key, new(key, -1, start, this.identityClosed.Count - start, spent, spent > PremiseClosureLimit, serial, this.enumerateCompletion));
         }
 
         if (ReferenceEquals(entry, key))

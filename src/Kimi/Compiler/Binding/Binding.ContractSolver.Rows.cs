@@ -269,9 +269,11 @@ public sealed partial class Binding
 
             key = this.extendRoots[0];
             completion = this.enumerateCompletion;
-            if (ReferenceEquals(key, root) || this.identityRoots.ContainsKey((scope, key)))
+
+            // Rooted 0: no re-rooting, so the key is the root.
+            if (closure.Rooted == 0 || this.identityRoots.ContainsKey((scope, key)))
             {
-                return this.FileClosure(scope, root, key, closure.Spent, closure.Spent - closure.Rooted, completion);
+                return this.FileClosure(scope, root, key, closure.Spent, serial, completion);
             }
         }
         finally
@@ -280,7 +282,7 @@ public sealed partial class Binding
         }
 
         this.CloseRoot(scope, serial, key); // 5e': an unfiled key's own closure, with its own budget: a function of (key, G)
-        return this.FileClosure(scope, root, key, closure.Spent, 0, completion);
+        return this.FileClosure(scope, root, key, closure.Spent, serial, completion);
     }
 
     // A request's own entry (a closure's round, ExtendRound; a request over a Limited reading, EnterRows): the view's entry reopened as the request's
