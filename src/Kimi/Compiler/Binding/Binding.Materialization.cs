@@ -13,10 +13,12 @@ namespace Kimi.Compiler;
 // - Outputs: Materialization, U, or null where the part is no such temporary; TemporaryBorrow, the Type of its one shared borrow.
 // - Invariants: a value is an owner value of a literal form: a Tuple literal with elements, an array literal or fill, a mixed range or
 //   a Dictionary literal (IsAggregateArgument), an untyped literal or a literal-only expression (12.3); or a value join, an unbound
-//   selection, `do` or `loop` with such a source at any depth (its survey's Literal or Value) or one its call classifies by its
-//   aggregate or waiting results (PartKind.Join), whose value is its selected source's, every source fitted to U (one temporary at the
-//   join's position; a temporary inside a source stays the source's, 14.2.1). A join of Places and references only is no value. The
-//   part is fitted to U as at an expected U, so a misfit is its own record at U; a call's fit tests it (FitLiteral, FitComposite). A
+//   selection, `do` or `loop` with a source at any depth that is an owner value (its survey's Owner, SPEC 14.9.2 step 3: a literal, a
+//   source of such a form, a bound source that is neither a Place nor a borrow value, or one that awaits its call and is an owner value
+//   at the position's Type; PLAN G844), whose value is its selected source's, every source fitted to U (one temporary at the join's
+//   position; a temporary inside a source stays the source's, 14.2.1). A join whose sources other than Never are Places and borrow
+//   values only is no value, whether or not it waits for its call (PartKind.Join says only that it waits): it fits `ref/U` source by
+//   source. The part is fitted to U as at an expected U, so a misfit is its own record at U; a call's fit tests it (FitLiteral, FitComposite). A
 //   form that delivers its operand (a label, an expression body) passes the position to it. A call or a construction is no part of
 //   this list: its own binding lowers its expected result at `ref/U` (SPEC 10.2.2 item 2, 10.8.1: TryCandidateCore by OwnerResult,
 //   the one test of "no borrow value" for a result, SPEC 3.4.1; a Case construction, always an owner value, in the enum binder), and
@@ -46,8 +48,8 @@ public sealed partial class Binding
             return null;
         }
 
-        return IsAggregateArgument(core) || core is DictionaryLiteralKoto || IsUnfittedLiteral(core) || (ControlFlowExpression(core) is { } join &&
-            (this.KindOf(core) == PartKind.Join || (core.BoundType is null && this.SurveyResult(join, scope) is { Literal: true } or { Value: true })))
+        return IsAggregateArgument(core) || core is DictionaryLiteralKoto || IsUnfittedLiteral(core) ||
+            (ControlFlowExpression(core) is { } join && core.BoundType is null && this.SurveyResult(join, scope, type) is { Owner: true })
             ? referent : null;
     }
 }

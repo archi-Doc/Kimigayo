@@ -126,6 +126,18 @@ public class ErasureOwnedDiagnosticTest
         Assert.Equal((id, records), (id, string.Join("; ", diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}"))));
     }
 
+    // SPEC 14.9.2 step 4, 7.7.4, 23.1.2 (DECISIONS R4-M161, BU-107; PLAN G844, G844-5): a call argument join's arm bound at the
+    // parameter's Function Type is erased once, in the join's one per-source step, so its failed Owned part is one record (e3), never
+    // InternalInvariant_Kd (a join record with no erasure row is one).
+    [Theory]
+    [InlineData("e3", "    let v = 1\n    let r = v@ref\n    return call(if c => func [r] () -> i32 => 0 else => func [] () -> i32 => 1)\n", "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0")]
+    public void AnArmBoundAtTheParameterTypeIsErasedOnce(string id, string statements, string records)
+    {
+        var source = "func call(action: () -> i32) -> i32 => action()\n\n" + Main + "    require g(true) == 0 else => $abort(\"g\")\n\nfunc g(c: bool) -> i32\n" + statements;
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
+        Assert.Equal((id, records), (id, string.Join("; ", diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}"))));
+    }
+
     // A bound Type parameter that is not proven Owned leaves the proof Unknown; its member is the Item's bound Type argument, with no
     // Origin. A default and a let annotation agree.
     [Theory]

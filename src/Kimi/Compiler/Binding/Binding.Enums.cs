@@ -386,7 +386,7 @@ public sealed partial class Binding
             }
 
             var (selection, below) = this.UnprovenWaiting() is { } unproven ? (CallSelection.Unproven, unproven.Unproven) : default;
-            return new(null, this.CheckedClass(expected, ownerResult: true), reference is MemberAccessKoto ? found.Owner : null, selection, below);
+            return new(null, this.CheckedClass(expected, ownerResult: true), reference is MemberAccessKoto ? found.Owner : null, selection, below, OwnsResult: true);
         }
         finally
         {

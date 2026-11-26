@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 //   Tuple or array literal or a mixed range, whose parts are classified instead. Join: a control-flow part its call completes, one
 //   whose source call the probe deferred (P3) and one whose join supplies no candidate and has Tuple or array results or results that
 //   hold a part awaiting its call (ClassifiedByCall; DECISIONS BU-43), whose results are classified position by position
-//   (Binding.ArgumentKinds.Positions.cs), one whose typed parts have no common Type (ConflictWaits, U1.6g), and a typed one that holds
+//   (Binding.ArgumentKinds.Positions.cs), one whose typed parts have no common Type (ConflictWaits, U1.6g) or that is no value with a
+//   step-2 Type a source reaches only by an implicit operation (AwaitsParameterType, G844), and a typed one that holds
 //   a failed source (ClassifiedByCall, G368 (1)). Function: an anonymous function. Reference: a function reference that needs S, at a
 //   call argument (P1) or at a result of the probe's control flow (P2);
 //   a name there that needs none is bound as its Function Item, a typed part (SPEC 10.5.3, 14.9.2 step 2; the owner's reading).
@@ -315,20 +316,76 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1, 14.9.2 step 2 (U1.6g (a); supersedes BU-43's "fails it at once" for call arguments): a join under the argument probe
-    // that classifies its call's argument, whose typed parts have no common Type, fixes no complete Type without its call's expectation,
-    // so it waits: P4 records it as a Join, which its call completes at the selected candidate's Type, an enclosing join holding it as
-    // a waiting source. Once its call has selected and taken the argument (TakenByCall), as when DecideTaken decides it again, no
-    // expectation is left to wait for (the owner's answer, 2026-10-31: (i)); there, as outside a call argument, the conflict is the
-    // join's own record. A part a nested join's step 3 bound (SPEC 14.9.2: no call involved) leaves the argument untaken.
+    // that classifies its call's argument fixes no complete Type without its call's expectation, so it waits, when its typed parts have
+    // no common Type (U1.6g (a)), when it is no value and its step-2 Type needs a source's implicit operation (AwaitsParameterType), or
+    // when a source is such a join (HoldsWaitingJoin): P4 records it as a Join, which its call completes at the selected candidate's
+    // Type, an enclosing join holding it as a waiting source, so the enclosing join waits too, at every depth. Once its call has selected
+    // and taken the argument (TakenByCall), as when DecideTaken decides it again, no expectation is left to wait for (the owner's
+    // answer, 2026-10-31: (i)); there, as outside a call argument, the conflict is the join's own record. A part a nested join's step 3
+    // bound (SPEC 14.9.2: no call involved) leaves the argument untaken.
     private bool ConflictWaits(Koto join)
     {
-        if (!this.UnderArgumentProbe(join) || this.TakenByCall(this.argumentProbe!))
+        if (!this.CallDecides(join))
         {
             return false;
         }
 
         this.RecordPart(join, PartKind.Join);
         return true;
+    }
+
+    // SPEC 14.9.2 steps 1-3, 3.8, 10.5.1 (PLAN G844): the other join that fixes no Type without its call (ConflictWaits): a join of
+    // borrow values (step 3's last sentence: every source other than Never a Place or a borrow value, its survey's Owner false, and
+    // every typed source's Type a borrow value's) whose step-2 Type `common`, formed over its typed sources' Types `types` (Never
+    // excluded by both callers: ResultCandidates, SourceEvidence), a source reaches only by an implicit operation (its structure
+    // differs: rule A's value read), which would make the join an owner value. At a call argument the parameter Type is its Target
+    // Result Type (step 1), which it fits source by source; the survey withholds such a Type too (InferResultExpected). A value join is
+    // one value at its `U` (step 3) and keeps its step-2 Type, as does a join holding a Place of an owner Type (OwnerResult): its
+    // borrow is named by that Place at the source's core, which the late step does not form, so step 2's one temporary decides (dev's
+    // decision; G844-10). Removal: PLAN G844's open issue (a typed source's position operation formed once) deletes that line.
+    private bool AwaitsParameterType(Koto join, List<BoundType> types, BoundType common, BindingScope scope)
+    {
+        if (!this.CallDecides(join))
+        {
+            return false;
+        }
+
+        var operation = false;
+        for (var i = 0; i < types.Count; i++)
+        {
+            if (OwnerResult(types[i]))
+            {
+                return false; // A Place of an owner Type (PLAN G844): step 2 decides.
+            }
+
+            operation |= !this.SameStructure(types[i], common);
+        }
+
+        return operation && !this.SurveyResult(join, scope).Owner;
+    }
+
+    // Whether a join's call is still to decide it: it is under the argument probe, which its call has not taken (TakenByCall).
+    private bool CallDecides(Koto join) => this.UnderArgumentProbe(join) && !this.TakenByCall(this.argumentProbe!);
+
+    // SPEC 10.5.1, 14.9.2 step 3 (PLAN G844): whether a join its call is still to decide (CallDecides) has a source that is a join
+    // waiting for that call, by its producer's record (AwaitedKind Join: ConflictWaits). The Type its other sources form is then no
+    // Target Result Type: the waiting source is not in it.
+    private bool HoldsWaitingJoin(Koto join, ResultContext context)
+    {
+        if (!this.CallDecides(join))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < context.SourceNodes.Count; i++)
+        {
+            if (context.SourceNodes[i] is { } source && this.AwaitedKind(source) == PartKind.Join)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other

@@ -16,10 +16,12 @@ namespace Kimi.Compiler;
 //   as the trial's fact (LeaveChecked, CheckedPartFailure) and its components (argumentMisfit); otherwise Waiting with the class its
 //   resolution gives (CheckedClass), a Pending premise, a nested declaration or signature failure and a correlation failure included
 //   (O-335 (a): a refusal read in a losing candidate's trial never decides the call; the selected candidate's completion binds the
-//   part at E and reports them), the part kept (waitingParts) with its selection there (Unproven: an obligation, SPEC 10.1).
+//   part at E and reports them), the part kept (waitingParts) with its selection there (Unproven: an obligation, SPEC 10.1); and
+//   whether its resolution at E returns an owner value (OwnsResult, SPEC 3.4.1: the selected candidate's result, a Case's always).
 // - Readers (ArgFlow ruling 146, one judge): a candidate trial reads Inapplicable and the failed check (SPEC 10.5.1, R1.7); a value
 //   call's run on BU-240's split, whose Item is the selected candidate, reads the same failure and the kept parts' Unproven as the
-//   run's failure at that part (RunFitFails); neither judges the part again.
+//   run's failure at that part (RunFitFails); neither judges the part again. A join's survey reads OwnsResult as its source's
+//   one-value fact (SPEC 14.9.2 step 3; SurveyResult's Owner, PLAN G844).
 // - Invariants: dependentChecks keys a part by its core's syntax identity (SourceRef, argumentParts' key) and E by reference (an
 //   interned Type); it lives for one pass (ResetPass) and a query starts only on a miss, so each part is checked once per distinct E;
 //   the queries one outermost resolution starts are counted (resolutionWork; BeginResolution: a named call's selection with every run
@@ -164,9 +166,11 @@ public sealed partial class Binding
     // (BindEnumConstruction). Selection is the resolution's own classification before Rd6' compares unproven candidates (SelectCallAt):
     // Unproven where the selected candidate's obligation is unproven (SPEC 10.1), a construction's where a part below it is; Misfit the
     // components from the part down to its failure or to that unproven part (ComponentPath: AtShape where the Case does not resolve or
-    // take its arguments at the Type; a payload's within its slot of the enum; none where the failure is the part's own).
+    // take its arguments at the Type; a payload's within its slot of the enum; none where the failure is the part's own). OwnsResult:
+    // its resolution there returns an owner value (SPEC 3.4.1; a selected call's OwnerResultAt, a Case construction's always).
     private readonly record struct CheckedVerdict(
-        CallSelection? Failure, ArgumentAdaptation Class, BoundType? Owner = null, CallSelection Selection = CallSelection.Selected, ComponentPath Misfit = default);
+        CallSelection? Failure, ArgumentAdaptation Class, BoundType? Owner = null, CallSelection Selection = CallSelection.Selected, ComponentPath Misfit = default,
+        bool OwnsResult = false);
 
     // SPEC 10.5.1 (design-af3 R1.5): the part checked against its expected Type that made a candidate inapplicable, that Type and its own
     // resolution's outcome there (NoneApplicable or Ambiguous), diagnostic payload only (the record's Checked fact, CheckedFact).

@@ -384,7 +384,8 @@ public sealed partial class Binding
         var selection = probed is { Kind: CallSelection.Unproven, Premised: { } premised } ? (premised < 0 ? CallSelection.Ambiguous : CallSelection.Selected) : probed.Kind;
         return selection switch
         {
-            CallSelection.Selected when probed.Winner >= 0 || probed.Premised >= 0 => new(null, this.CheckedClass(expected, probed.OwnsResult), Selection: probed.Kind),
+            CallSelection.Selected when probed.Winner >= 0 || probed.Premised >= 0 =>
+                new(null, this.CheckedClass(expected, probed.OwnsResult), Selection: probed.Kind, OwnsResult: probed.OwnsResult),
             CallSelection.NoneApplicable or CallSelection.Ambiguous => new(selection, default, Selection: probed.Kind),
             _ => new(null, ArgumentAdaptation.ExpectedTypeFitting, Selection: probed.Kind),
         };

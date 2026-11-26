@@ -62,6 +62,9 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
+    private const string JoinOwners = "func kw(x: ref/i64) -> i32 => 0\nfunc kw2(x: ref/i64) -> i32 => 0\nfunc kw2(x: ref/i32) -> i32 => 1\nfunc kwu(x: uniq/i64) -> i32 => 0\nfunc first1(x: ref/i64) -> i32 => 0\nfunc kr(x: ref/i64) -> ref/i64 => x\nfunc kd(x: ref/Dictionary<string, i32>) -> i32 => 0\nfunc mkd() -> Dictionary<string, i32> => [\"a\": 1]\nfunc mo(x: i64) -> i64 => x\nfunc mo(x: bool, r: ref/i64) -> ref/i64 => r\nfunc idf<T>(value: T) -> T => value@move\nfunc keep<T>(value: T) -> i32 => 0\nfunc kgo<T>(x: ref/T) -> i32 => 0\nfunc kg<T>(x: ref/T) -> i32 => 0\nfunc kg(x: ref/i64) -> i32 => 1\n" +
+        "func t(c: bool, d: bool, wr: ref/i64, wr2: ref/i64, wb: ref/bool, w32: ref/i32, dmr: ref/Dictionary<string, i32>) -> i32\n    var x: i64 = 1\n    var y: i64 = 2\n    var z: i32 = 3\n    var b: bool = true\n    var d1: Dictionary<string, i32> = [\"a\": 1]\n    var d2: Dictionary<string, i32> = [\"b\": 2]\n    var e: Dictionary<string, i64> = [\"c\": 3]\n";
+
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
     // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
     // guard: the row runs today and must keep passing. Any other unit is the plan's unit that makes the row pass: the row is Explicit
@@ -755,4 +758,45 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("g586h6", Sources + SourcesBody + "    let j = if c => (identity(1), u@ref) else => (2, y)\n    return r\n", "Unsupported_Kd: let j = if c => (identity(1), u@ref) else => (2, y)")]
     public void ALateSourceDifferingInOriginsAloneIsUnsupportedUntilG443(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
+
+    // SPEC 14.9.2 steps 2-4, 10.2 rows 2 and 3 (PLAN G844, G973): a call argument join whose sources need an implicit operation to the
+    // decided Type takes it source by source, in the join's one per-source step. A join with an owner-value source (a value call's
+    // result) is one value at U, each Place or borrow source value-read there (b-i2, b5, their nested and overloaded forms); a join of
+    // borrow values is no value and fits `ref/U` source by source (a1, the generic forms f6, rv-v7, r1-v5, a1-4), at each depth of a
+    // nested join (rv-v1, rv-v1b). These were InternalInvariant_Kd, a MirValidator finding at each unadapted source. A join holding a
+    // Place of an owner Type beside borrows keeps step 2's one temporary, as on dev (a1-3, and b9 as written or parenthesized: S-1's
+    // regression rows; PLAN G844's open issue, F's G844-10). Each invalid twin keeps its Language record (a5's one record; a1-2i: the borrow
+    // `kr` returns keeps the Loan of `y`, which the write conflicts with; c6-1i: BU-156's located Unsupported_Kd at the literal until
+    // G443). The borrow-typed Dictionary joins (c6) keep dev's NoApplicableOverload_Kd under PLAN G844's open issue and are not pinned.
+    [Theory]
+    [InlineData("G844", "b-i2", JoinOwners + "    return kw(if c => mo(5@i64) else => wr)\n", "")]
+    [InlineData("G844", "b5", JoinOwners + "    return kw(if c => wr else => mo(5@i64))\n", "")]
+    [InlineData("G844", "a1", JoinOwners + "    return first1(if c => x@ref else => y@uniq)\n", "")]
+    [InlineData("G844", "f6", JoinOwners + "    return keep(if c => x@ref else => y@uniq)\n", "")]
+    [InlineData("G844", "rv-v7", JoinOwners + "    return kgo(if c => x@ref else => y@uniq)\n", "")]
+    [InlineData("G844", "r1-v5", JoinOwners + "    return first1(idf(if c => x@ref else => y@uniq))\n", "")]
+    [InlineData("G844", "b2-1", JoinOwners + "    return kw2(if c => mo(5@i64) else => wr)\n", "")]
+    [InlineData("G844", "b2-2", JoinOwners + "    return kw(if c => (if d => mo(5@i64) else => wr) else => wr2)\n", "")]
+    [InlineData("G844", "b2-3", JoinOwners + "    return kd(if c => mkd() else => d2@move)\n", "")]
+    [InlineData("G844", "b5-1", JoinOwners + "    return kw(if c => wr else => (if d => wr2 else => mo(5@i64)))\n", "")]
+    [InlineData("G844", "a1-2", JoinOwners + "    let n = first1(if c => x@ref else => y@uniq)\n    y = 5\n    x = 6\n    return n\n", "")]
+    [InlineData("G844", "a1-3", JoinOwners + "    return first1(if c => x else => y@uniq)\n", "")]
+    [InlineData("G844", "a1-4", JoinOwners + "    return kg(if c => x@ref else => y@uniq)\n", "")]
+    [InlineData("G844", "b9-local", JoinOwners + "    let v = 5@i64\n    return kw(if c => v else => wr)\n", "")]
+    [InlineData("G844", "b9-var", JoinOwners + "    var v: i64 = 5\n    return kw(if c => v else => wr)\n", "")]
+    [InlineData("G844", "b9-paren", JoinOwners + "    let v = 5@i64\n    return kw(if c => (v) else => wr)\n", "")]
+    [InlineData("G844", "rv-v1", JoinOwners + "    var w: i64 = 3\n    return first1(if c => (if d => x@ref else => y@uniq) else => w@ref)\n", "")]
+    [InlineData("G844", "rv-v1b", JoinOwners + "    var w: i64 = 3\n    let r = kr(if c => (if d => x@ref else => y@uniq) else => w@ref)\n    return first1(r)\n", "")]
+    [InlineData("G844", "a5", JoinOwners + "    return kwu(if c => x@ref else => y@uniq)\n", "NoApplicableOverload_Kd: return kwu(if c => x@ref else => y@uniq)")]
+    [InlineData("G844", "b2-1i", JoinOwners + "    return kw2(if c => mo(5@i64) else => w32)\n", "NoApplicableOverload_Kd: return kw2(if c => mo(5@i64) else => w32)")]
+    [InlineData("G844", "b2-2i", JoinOwners + "    return kw(if c => (if d => mo(5@i64) else => wr) else => wb)\n", "*: return kw(if c => (if d => mo(5@i64) else => wr) else => wb) | ...")]
+    [InlineData("G844", "b2-3i", JoinOwners + "    return kd(if c => mkd() else => dmr)\n", "*: return kd(if c => mkd() else => dmr) | ...")]
+    [InlineData("G844", "b5-1i", JoinOwners + "    return kw(if c => wr else => (if d => wb else => mo(5@i64)))\n", "*: return kw(if c => wr else => (if d => wb else => mo(5@i64))) | ...")]
+    [InlineData("G844", "a1-2i", JoinOwners + "    let r = kr(if c => x@ref else => y@uniq)\n    y = 5\n    return first1(r)\n", "ComparisonLoanConflict_Kd: y = 5")]
+    [InlineData("G844", "a1-3i", JoinOwners + "    return kd(if c => d1 else => mkd())\n", "*: return kd(if c => d1 else => mkd()) | ...")]
+    [InlineData("G844", "a1-4i", JoinOwners + "    return kg(if c => x@ref else => b@uniq)\n", "*: return kg(if c => x@ref else => b@uniq) | ...")]
+    [InlineData("G844", "c6-1i", JoinOwners + "    return kd(if c => dmr else => [\"b\": 2])\n", "Unsupported_Kd: return kd(if c => dmr else => [\"b\": 2])")]
+    [InlineData("G844", "c6-4i", JoinOwners + "    return kg(if c => d1@ref else => e@uniq)\n", "*: return kg(if c => d1@ref else => e@uniq) | ...")]
+    public void AJoinArgumentTakesTheDecidedTypeSourceBySource(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 }

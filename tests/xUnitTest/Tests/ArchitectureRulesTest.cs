@@ -379,7 +379,6 @@ public class ArchitectureRulesTest
         "Binding.ResultPremises.cs:SolveValueCallOrigins=1 kind",
         "Binding.ResultPropagation.Parts.cs:AddResultPart=1 kind",
         "Binding.ResultPropagation.Parts.cs:AddResults=1 kind",
-        "Binding.ResultPropagation.cs:BindWaitedSources=1 kind",
         "Binding.ResultPropagation.cs:DefaultWaitingPart=1 kind",
         "Binding.ResultPropagation.cs:FittedTupleType=1 kind",
         "Binding.ResultPropagation.cs:LateAdaptation=1 unchanged",

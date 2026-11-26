@@ -399,8 +399,9 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 (DECISIONS BU-43): a result target that waited for its position is decided when its position binds it, honouring
-    // the outcome it has: judged by its root as a Conflict, it binds its waited sources at the Type its position decided (none without
-    // one) and fails at itself, its own record; as Dependent, it binds them so and rests on its cause (SPEC 23.1.2: their own records
+    // the outcome it has (the one step reads it): judged by its root as a Conflict, its bound sources take the Type its position
+    // decided (AdaptBoundSources), it binds its waited sources at that Type (none without one) and fails at itself, its own record; as
+    // Dependent, its sources take and bind it so, each misfit its own record, and it rests on its cause (SPEC 23.1.2: their own records
     // are independent of it). Still Waiting, bound with no Type by the pass of the join it waited for (PositionTarget) once that join
     // failed, it rests on that join's record or cause (SPEC 23.1.2: the root judged its parts).
     // Otherwise its sources take the Type the position supplies, as a Target Result Type fixed by an outer expectation, or, without
@@ -417,7 +418,13 @@ public sealed partial class Binding
 
         if (context.Outcome is JoinOutcome.Conflict or JoinOutcome.Dependent)
         {
-            this.BindWaitedSources(node, context, ResultExpectation(node, expected));
+            var decided = ResultExpectation(node, expected);
+            if (decided is not null)
+            {
+                this.AdaptBoundSources(node, context, decided, out _); // Its outcome stands; the step reads it for its sources' records.
+            }
+
+            this.BindWaitedSources(node, context, decided);
             return context.Outcome == JoinOutcome.Conflict ? this.Fail(node, BindingFailure.TypeMismatch) : this.CompleteDependent(node, context.Cause!);
         }
 
@@ -475,12 +482,10 @@ public sealed partial class Binding
             context.Conflict();
         }
 
-        types.Clear(); // A nested result decided above reused the lists.
-        this.resultValues.Clear();
+        types.Clear(); // A nested result decided above reused the list.
         if (common is not null && context.Outcome == JoinOutcome.Undecided)
         {
             types.Add(common);
-            this.resultValues.Add(null);
         }
         else
         {
@@ -495,11 +500,10 @@ public sealed partial class Binding
         => this.BindNode(source, this.ConstraintScope(source), type) is null ? null : this.SuppliedType(source);
 
     // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
-    // by its late Type (BindWaitedSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either;
-    // a failed source (PartFailed), unbound or typed, is no candidate and is the join's cause, on which it rests at its verdict (SPEC
-    // 23.1.2; rule W, DECISIONS BU-79), and any other unbound source makes the join pending. Each candidate's source node is `values`'
-    // element at its index. Returns whether a source awaits.
-    private bool ResultCandidates(ResultContext context, List<BoundType> types, List<Koto?> values)
+    // by its late Type (AdaptBoundSources), with or without a fixed Target Result Type; a source that waited unbound supplies none
+    // either; a failed source (PartFailed), unbound or typed, is no candidate and is the join's cause, on which it rests at its verdict
+    // (SPEC 23.1.2; rule W, DECISIONS BU-79), and any other unbound source makes the join pending. Returns whether a source awaits.
+    private bool ResultCandidates(ResultContext context, List<BoundType> types)
     {
         var awaiting = false;
         for (var i = 0; i < context.Sources.Count; i++)
@@ -525,7 +529,6 @@ public sealed partial class Binding
                 else if (!awaits)
                 {
                     types.Add(source);
-                    values.Add(context.SourceNodes[i]);
                     context.HasTyped = true;
                 }
             }
@@ -534,20 +537,105 @@ public sealed partial class Binding
         return awaiting;
     }
 
-    // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once. Step 3 at every
-    // position comes first when a Type is decided and the join has not failed (BindStepThree); the loop is that walk's Literal, Call and
-    // whole-aggregate row, not a second binder: a source the walk bound waits no more, and an aggregate source adapts the parts it bound
-    // to its element Type. At `type`, the Target Result Type the join or its position decided (a failed join's too): a source that
-    // waited unbound is bound at it, which checks its literals, and fits it, except that one whose Type there fits its structural part
-    // (SPEC 15.6.1) and misfits by Origins alone is the located Unsupported_Kd at itself, the join resting on it, and no misfit: SPEC
-    // 14.9.2 step 2 makes it valid, but the step-2 Type keeps one typed source's own Origins (PLAN G443). This interim is DECISIONS BU-156,
-    // removed by G443's unit (R7-I2 d), which forms the common Type's Origins over every source. A bound one that awaits, or does not fit
-    // as it is, takes it when its late Type fits (U1.6g (b)), a bound one that does not await failing at itself otherwise (the join
-    // resting on it). With no Type, the join having failed (Conflict, Dependent) or formed nothing: a waited source holding a literal
-    // takes its defaults, and one holding a join that waited (HoldsWaitedResult) is bound so that the join honours its outcome
-    // (DecideWaiting); under a failed join, a source holding neither rests on the join's record or cause (CompleteDependent). The first
-    // misfit is returned. A typed position inside the sources at a borrowed element is the sources' own (SPEC 3.6, 14.2.1; PLAN G924 R8):
-    // each source adapts its part there, and a value join at `ref/U` is decided at U by its expected Type (Materialization).
+    // SPEC 14.9.2 steps 3 and 4, 10.2, 7.7.4, 23.1.2 (PLAN G844): the one per-source step of a decided join. Each bound source takes
+    // `type`, the Target Result Type that step 1 fixed (a declared or the parameter's Type) or that step 2 formed: where it does not fit
+    // as it is, by its one implicit operation, a Closure or Function Item by its erasure (TryPropagate: LateAdaptation, applied by
+    // AdaptAtPosition), the first conversion that fails its own record, on which the join rests; a source that awaits its position by
+    // its late Type, the same way. Each source that does not await then fits `type` at its value: CheckTypeUse where a region is on
+    // either side, FitsValueAt otherwise, its Origin positions rows of the body that A5 judges at the source's value, the value that
+    // supplies the fit's longer end (the use-site fit; R7-O1; H11b D5), a structural Unit at the join. A Closure or Function Item that
+    // its late Type did not convert is judged by its erasure here (ErasesToFunction, DECISIONS R4-M161), whose row the record of its
+    // misfit reads; a failed Owned part or condition is the value's own record (BU-107), on which the join rests. A failed source is its
+    // own record (ResultCandidates) and a source that waited unbound BindWaitedSources'. Step 4's check has one record place, the
+    // join's, and every source that does not fit keeps its record (SPEC 23.1.2; PLAN G844, F's G844-4 C3): the first and its failure
+    // are returned, the join's explained one (its Conflict), and each further one is a record of the join at that source. The join's
+    // outcome decides, as its recorded rest (ResultContext.Rests) gives it before the verdict: a resting join is the one whose verdict
+    // rule W suppresses (DECISIONS BU-79), so there each source that does not fit is its own record at itself; a Conflict join's own
+    // record stands for its sources.
+    private BoundType? AdaptBoundSources(Koto node, ResultContext context, BoundType type, out ComparisonFailure failure)
+    {
+        BoundType? failed = null;
+        failure = default;
+        for (var i = 0; i < context.Sources.Count; i++)
+        {
+            var source = context.SourceNodes[i];
+            if (context.Sources[i] is not { } actual || (source is not null && this.PartFailed(source)))
+            {
+                continue; // A Never source fits by LateType's Never row and every fit's NeverFits (SPEC 3.8).
+            }
+
+            var (awaits, fits) = (false, false);
+            if (source is not null)
+            {
+                awaits = this.AwaitsPosition(source);
+                fits = this.TryPropagate(source, type, node, out var failedConversion);
+                if (failedConversion is not null)
+                {
+                    context.RestOn(failedConversion);
+                    continue;
+                }
+
+                actual = this.SuppliedType(source) ?? actual;
+                context.Sources[i] = actual;
+            }
+
+            var fit = default(ComparisonFailure);
+            if (!awaits)
+            {
+                var value = source ?? node;
+                fits = this.RegionalAt(actual, type, value) ? this.CheckTypeUse(actual, type, value, out fit) : this.FitsValueAt(actual, type, node, value, out fit);
+            }
+
+            if (fits)
+            {
+                continue;
+            }
+
+            if (source is not null && !awaits && actual.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type.Kind == BoundTypeKind.Function)
+            {
+                if (this.ErasesToFunction(source, actual, type))
+                {
+                    this.Fail(source, BindingFailure.Internal); // TryPropagate failed this erasure: one holding here leaves the join on no record.
+                }
+
+                if (this.RecordedFailure(source) != BindingFailure.None)
+                {
+                    context.RestOn(source);
+                    continue;
+                }
+            }
+
+            if (source is not null && context.Rests)
+            {
+                this.FailMismatch(source, source, actual, type, fit);
+            }
+            else if (failed is null)
+            {
+                (failed, failure) = (actual, fit);
+            }
+            else if (context.Outcome != JoinOutcome.Conflict)
+            {
+                this.FailMismatch(node, source ?? node, actual, type, fit);
+            }
+        }
+
+        return failed;
+    }
+
+    // SPEC 14.9.2 steps 3 and 4, 23.1.2 (DECISIONS BU-43): the one pass that binds a join's waited sources, each once; its bound sources
+    // took the Type at its decision (AdaptBoundSources). Step 3 at every position comes first when a Type is decided and the join has
+    // not failed (BindStepThree); the loop is that walk's Literal, Call and whole-aggregate row, not a second binder: a source the walk
+    // bound waits no more, and an aggregate source adapts the parts it bound to its element Type. At `type`, the Target Result Type the
+    // join or its position decided (a failed join's too): a source that waited unbound is bound at it, which checks its literals, and
+    // fits it, except that one whose Type there fits its structural part (SPEC 15.6.1) and misfits by Origins alone is the located
+    // Unsupported_Kd at itself, the join resting on it, and no misfit: SPEC 14.9.2 step 2 makes it valid, but the step-2 Type keeps one
+    // typed source's own Origins (PLAN G443). This interim is DECISIONS BU-156, removed by G443's unit (R7-I2 d), which forms the common
+    // Type's Origins over every source. With no Type, the join having failed (Conflict, Dependent) or formed nothing: a waited source
+    // holding a literal takes its defaults, and one holding a join that waited (HoldsWaitedResult) is bound so that the join honours its
+    // outcome (DecideWaiting); under a failed join, a source holding neither rests on the join's record or cause (CompleteDependent).
+    // The first misfit is returned. A typed position inside the sources at a borrowed element is the sources' own (SPEC 3.6, 14.2.1;
+    // PLAN G924 R8): each source adapts its part there, and a value join at `ref/U` is decided at U by its expected Type
+    // (Materialization).
     private BoundType? BindWaitedSources(Koto node, ResultContext context, BoundType? type)
     {
         BoundType? failed = null;
@@ -562,65 +650,26 @@ public sealed partial class Binding
 
         for (var i = 0; i < context.Sources.Count; i++)
         {
-            if (context.SourceNodes[i] is not { } source || ReferenceEquals(context.Sources[i], BoundType.Never))
+            if (context.Sources[i] is not null || context.SourceNodes[i] is not { } source)
             {
-                continue;
+                continue; // A bound source, Never among them.
             }
 
-            var waited = context.Sources[i] is null;
-            if (waited && source.BoundType is not null && !this.Deferred(source))
+            if (source.BoundType is not null && !this.Deferred(source))
             {
                 context.Sources[i] = this.SuppliedType(source); // Bound by step 3 above (a match arm's or an exit's literal): its Type.
                 continue;
             }
 
-            var held = waited && this.HoldsWaitedResult(source);
-            var awaits = !waited && type is not null && this.AwaitsPosition(source);
-            var fit = default(ComparisonFailure);
-            if (waited ? !held && !this.Deferred(source) : type is null || (!awaits && this.FitsTypeAt(context.Sources[i]!, type, node, out fit, this.rawFits)))
+            var held = this.HoldsWaitedResult(source);
+            if (!held && !this.Deferred(source))
             {
                 continue;
             }
 
             bool fits;
             BoundType? late = null; // The Type a source that waited took at `type`.
-            if (!waited)
-            {
-                // U1.6g (b), SPEC 7.7.4, 23.1.2: a bound part that does not fit takes the Type through its late adaptation (an Item by
-                // erasure); one that cannot is its own record, at the part, on which the join rests, as a waited part's misfit is. A
-                // Closure or Function Item converts to a Function Type only by its erasure, whose outcome is that record's fact
-                // (ErasePart, R4-M161): a late Type that fits applies its conversions (TryPropagate), and the first that fails, its
-                // Origin and Loan contract judged there alone (SPEC 15.6.1), is the record the join rests on; one that does not fit
-                // structurally is converted here for its record. A resting join's bound parts keep their records (DecideWaiting's
-                // contract, rule W: DECISIONS BU-79, G368 (1)); a Conflict join's own record stands for its sources.
-                // R7-O1: a part whose only misfit is Origin positions fits, its positions rows of the body that A5 judges once: at a
-                // Target Result Type that step 1 fixed (context.Expected: a declared or the parameter's Type) at the source's value, by
-                // step 4's check of every source (DecideResult), so here by its structure alone; at step 2's common Type at the join, as
-                // the join's own fit forms them (CheckTypeUse at `node`: one row per relation).
-                fits = this.TryPropagate(source, type!, node, out var failedConversion) || (!awaits && (context.Expected is not null
-                    ? this.FitsStructurallyAt(context.Sources[i]!, type!, node) : this.CheckTypeUse(context.Sources[i]!, type!, node, out fit)));
-                if (failedConversion is not null)
-                {
-                    context.RestOn(failedConversion);
-                }
-                else if (!fits && !awaits && context.Outcome != JoinOutcome.Conflict)
-                {
-                    if (context.Sources[i]!.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type!.Kind == BoundTypeKind.Function)
-                    {
-                        if (this.ErasePart(source, context.Sources[i]!, type))
-                        {
-                            this.Fail(source, BindingFailure.Internal); // TryPropagate failed this erasure: one holding here leaves the join on no record.
-                        }
-                    }
-                    else
-                    {
-                        this.FailMismatch(source, source, context.Sources[i]!, type!, fit);
-                    }
-
-                    context.RestOn(source);
-                }
-            }
-            else if (type is not null)
+            if (type is not null)
             {
                 late = this.BindWaiting(source, type);
                 fits = late is not null && this.FitsTypeAt(late, type, node, out _, this.rawFits);
@@ -646,9 +695,12 @@ public sealed partial class Binding
 
             context.Sources[i] = this.SuppliedType(source);
             context.Pending |= context.Sources[i] is null;
-            if (waited && context.Sources[i] is null && this.PartFailed(source))
+            if (this.PartFailed(source))
             {
-                context.RestOn(source); // U1.6h site 6: a waited source that fails when its join decides is the join's cause.
+                // U1.6h site 6, rule W (DECISIONS BU-79): a waited source that fails by its own record when its join decides, whatever
+                // Type it supplies, is the join's cause, never its misfit.
+                context.RestOn(source);
+                continue;
             }
 
             failed ??= fits ? null : context.Sources[i];

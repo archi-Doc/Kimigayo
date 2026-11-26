@@ -65,7 +65,8 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.1, 10.5.1: the survey of a control-flow expression's result sources without binding them, for its argument or operand
-    // kind; with `fit`, whether every literal source fits it (SPEC 12.3). Its context is released unless a nested result took the next.
+    // kind; at `fit`, its position's Type, whether every literal source fits it (SPEC 12.3) and whether a source that awaits its call
+    // returns an owner value there (Owner). Its context is released unless a nested result took the next.
     private ResultSurvey SurveyResult(Koto target, BindingScope scope, BoundType? fit = null)
     {
         var cursor = this.resultCursor;
@@ -73,8 +74,9 @@ public sealed partial class Binding
         context.LiteralFit = fit;
         this.resultLocalEvidence.Clear();
         this.FindResultEvidence(target, scope, context);
+        var owner = context.HasLiteral || context.HasValue || context.HasOwner;
         var survey = new ResultSurvey(
-            context.HasLiteral, context.HasValue, context.Evidence.Count > 0, context.PartialEvidence, context.HasNever, !context.LiteralMisfit, context.LiteralDefault);
+            context.HasLiteral, context.HasValue, owner, context.Evidence.Count > 0, context.PartialEvidence, context.HasNever, !context.LiteralMisfit, context.LiteralDefault);
         if (this.resultCursor == cursor + 1)
         {
             this.resultCursor = cursor;
@@ -122,10 +124,13 @@ public sealed partial class Binding
         }
 
         context.Expected = this.SelectCommonType(context.Evidence, scope, target, out var conflict);
-        if ((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesAnyOrigin: true })
+        if (((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesAnyOrigin: true }) ||
+            (context.Expected is { } common && this.AwaitsParameterType(target, context.Evidence, common, scope)))
         {
             // SPEC 14.9.2, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
-            // of a later body-local Borrow.
+            // of a later body-local Borrow. Under the argument probe, the step-2 Type of a join of borrow values that a source reaches
+            // only by an implicit operation is not its Target Result Type either: its call's parameter Type is (step 1;
+            // AwaitsParameterType).
             context.Expected = null;
         }
 
@@ -405,8 +410,10 @@ public sealed partial class Binding
 
         context.HasValue |= IsAggregateArgument(expression) || expression is DictionaryLiteralKoto;
 
+        // SPEC 3.8: a source is Never by its own Type, or, unbound, by its evidence: decided once, for its evidence and its owner fact.
         var evidence = this.ResultEvidence(expression, scope, context.HasLiteral);
-        if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
+        var never = ReferenceEquals(expression.BoundType ?? evidence, BoundType.Never);
+        if (evidence is not null && !never)
         {
             context.Evidence.Add(evidence);
         }
@@ -425,6 +432,20 @@ public sealed partial class Binding
         {
             context.HasNever = true; // SPEC 14.9.2, 10.5.1: a Never source supplies no candidate and is no Literal.
         }
+
+        // SPEC 14.9.2 step 3, 3.4.1 (PLAN G844): the source's one-value fact. A bound source is an owner value when it is neither a Place
+        // nor, by its own Type (before its position's adaptation), a borrow value; one that awaits its call is when it is a Call or Case
+        // whose resolution at the surveyed Type returns one (CheckedVerdict.OwnsResult), or an anonymous function or a function
+        // reference. A source the survey does not know yet, and a Never source, supply none.
+        context.HasOwner |= !never && (expression.BoundType is { } own
+            ? !this.IsBarePlace(expression) && OwnerResult(own)
+            : this.AwaitedKind(expression) switch
+            {
+                { } kind and (PartKind.Call or PartKind.Case) =>
+                    context.LiteralFit is { } at && this.CheckedAt(expression, kind, at, this.ConstraintScope(expression)).OwnsResult,
+                PartKind.Function or PartKind.Reference => true,
+                _ => false,
+            });
     }
 
     private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
@@ -464,12 +485,13 @@ public sealed partial class Binding
         this.resultChildren.RemoveRange(start, end - start);
     }
 
-    // A survey of result sources (SPEC 14.9.1): whether one is a literal, whether one is an owner value of a literal form (Value,
-    // Materialization's join row), whether one is typed, whether one is not known without
+    // A survey of result sources (SPEC 14.9.1): whether one is a literal, whether one is an owner value of a literal form (Value),
+    // whether one is an owner value (Owner, SPEC 14.9.2 step 3: the join is one value, Materialization's join row; a literal, a Value
+    // source or HasOwner's), whether one is typed, whether one is not known without
     // binding, whether one is Never, whether every literal fits the surveyed Type, and the first literal's default. SPEC 10.5.1's
     // Literal control flow is every source other than Never a literal (the owner, 2026-10-26: Never supplies nothing at any position);
     // AllLiteral, an arithmetic operand's Literal control flow (SPEC 12.3.3, 13.3.4), is every source a literal.
-    private readonly record struct ResultSurvey(bool Literal, bool Value, bool Typed, bool Unknown, bool Never, bool Fits, BoundType? Default)
+    private readonly record struct ResultSurvey(bool Literal, bool Value, bool Owner, bool Typed, bool Unknown, bool Never, bool Fits, BoundType? Default)
     {
         internal bool AllLiteral => this.Literal && !this.Typed && !this.Unknown && !this.Never;
     }

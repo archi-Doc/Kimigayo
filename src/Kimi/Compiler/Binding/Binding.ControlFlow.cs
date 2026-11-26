@@ -11,7 +11,6 @@ public sealed partial class Binding
 
     private readonly List<ResultContext> resultPool = new();
     private readonly List<BoundType> resultTypes = new();
-    private readonly List<Koto?> resultValues = new(); // The source node of each of resultTypes (ResultCandidates), null for a formed Type.
     private StructuralCompletion? resultStructure;
     private int resultCursor;
 
@@ -309,10 +308,9 @@ public sealed partial class Binding
     // SPEC 14.9.2: the Target Result Type of the collected sources, each source checked against it, and the Expression Type.
     private BoundType? DecideResult(Koto node, ResultContext context)
     {
-        var (types, values) = (this.resultTypes, this.resultValues);
+        var types = this.resultTypes;
         types.Clear();
-        values.Clear();
-        var awaiting = this.ResultCandidates(context, types, values);
+        var awaiting = this.ResultCandidates(context, types);
         if (context.Expected is null && types.Count == 0 && awaiting && this.AwaitsWithoutCandidate(node, context, types))
         {
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
@@ -328,36 +326,20 @@ public sealed partial class Binding
         BoundType? failed = null;
         var failure = default(ComparisonFailure);
         var conflict = false;
-        if (common is null)
+        var formed = common is null;
+        if (formed)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), node, out conflict);
         }
-        else
-        {
-            // SPEC 15.6.1, 14.9: each result source fits the expected Type, its Origin positions rows of the body that A5 judges at the
-            // source's value, the value that supplies the fit's longer end (the use-site fit; R7-O1; H11b D5), a structural Unit at the
-            // join; the first that does not fit otherwise is the explained one. A region on either side leaves rows, a regional target its
-            // source edges too.
-            for (var i = 0; i < types.Count; i++)
-            {
-                ComparisonFailure fit;
-                var value = values[i] ?? node;
-                if (!(this.RegionalAt(types[i], common, value) ? this.CheckTypeUse(types[i], common, value, out fit) : this.FitsValueAt(types[i], common, node, value, out fit)))
-                {
-                    context.Conflict();
-                    if (failed is null)
-                    {
-                        (failed, failure) = (types[i], fit);
-                    }
-                }
-            }
-        }
 
         // SPEC 10.5.1, 23.1.2: a typed join fixes no complete Type without its call when its typed parts have no common Type (U1.6g
-        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended), or an aggregate
-        // source awaits its position (PLAN G924 B2: its sources meet at the parameter's places, 10.5.1 ¶1, 4.3.1); under its call's
-        // argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
-        if (conflict ? this.ConflictWaits(node) : this.WaitsForItsCall(node, context, awaiting))
+        // (a)), or, no value, its step-2 Type needs a source's implicit operation (AwaitsParameterType, PLAN G844), or a source is a join
+        // that waits for the call (HoldsWaitingJoin), these three ConflictWaits'; or, holding a typed part (HasTyped), it holds a failed
+        // source (G368 (1), DECISIONS BU-78 as amended), or an aggregate source awaits its position (PLAN G924 B2: its sources meet at the
+        // parameter's places, 10.5.1 ¶1, 4.3.1); under its call's argument probe it waits, and its call classifies it and binds it at the
+        // selected candidate's Type.
+        if (conflict || (formed && common is not null && this.AwaitsParameterType(node, types, common, this.ConstraintScope(node))) ||
+            this.HoldsWaitingJoin(node, context) ? this.ConflictWaits(node) : this.WaitsForItsCall(node, context, awaiting))
         {
             context.Wait(this.SourcesAwait(context));
             return Complete(node, null);
@@ -367,16 +349,20 @@ public sealed partial class Binding
         {
             context.Conflict();
         }
+        else if (common is not null && this.AdaptBoundSources(node, context, common, out failure) is { } misfit)
+        {
+            context.Conflict(); // SPEC 14.9.2 step 4: the first source that does not fit is the explained one.
+            failed = misfit;
+        }
 
-        // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
-        if (awaiting && common is not null && this.BindWaitedSources(node, context, common) is { } misfit)
+        // SPEC 14.9.2 step 3: each source that waited for its position takes the Target Result Type, by its late Type (no Never fitting).
+        if (awaiting && common is not null && this.BindWaitedSources(node, context, common) is { } late)
         {
             context.Conflict();
-            failed ??= misfit;
+            failed ??= late;
         }
 
         types.Clear();
-        values.Clear();
         if (context.Outcome == JoinOutcome.Conflict)
         {
             return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure)
@@ -474,6 +460,10 @@ public sealed partial class Binding
         // Dictionary literal, at any depth of nested control flow; an untyped literal is HasLiteral's.
         internal bool HasValue { get; set; }
 
+        // Whether a source the survey knows is an owner value of another form (SPEC 14.9.2 step 3, 3.4.1; PLAN G844): neither a Place nor
+        // a borrow value; the survey's Owner with HasLiteral and HasValue (SourceEvidence).
+        internal bool HasOwner { get; set; }
+
         // Whether the join holds a typed part (G368 (1)): its survey found one at any depth (its evidence, ResultSurvey.Typed), kept
         // after the survey drops its evidence and whatever Expected it chose, or a collected source is one (ResultCandidates).
         internal bool HasTyped { get; set; }
@@ -491,7 +481,7 @@ public sealed partial class Binding
 
         internal void Clear(BoundType? expected)
         {
-            this.HasLiteral = this.HasValue = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.HasLiteral = this.HasValue = this.HasOwner = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;
@@ -534,10 +524,14 @@ public sealed partial class Binding
             }
         }
 
+        // U1.6h (DECISIONS BU-79): whether the join rests on its recorded cause: one is recorded and the join found no conflict. Its step
+        // reads it before the verdict (AdaptBoundSources), which writes it as Dependent (DecideRest).
+        internal bool Rests => this.Outcome != JoinOutcome.Conflict && this.Cause is not null;
+
         // U1.6h: the verdict, the one writer of Dependent: when the join decides, it rests on its recorded cause unless it found a conflict.
         internal void DecideRest()
         {
-            if (this.Outcome != JoinOutcome.Conflict && this.Cause is not null)
+            if (this.Rests)
             {
                 this.Outcome = JoinOutcome.Dependent;
             }

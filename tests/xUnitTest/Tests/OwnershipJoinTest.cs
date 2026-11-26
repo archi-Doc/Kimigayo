@@ -131,6 +131,21 @@ public class OwnershipJoinTest
         Assert.Contains(invalid.Problems, static issue => issue.Code.IsLoanConflict());
     }
 
+    // SPEC 14.9.2 step 2 (rule A; PLAN G844): a join with no written Type whose reference sources differ forms their read Type, at which
+    // each source is value-read in the join's one per-source step, so `r: i64` holds no Loan and a later write of either owner is valid
+    // (c2, c2-2; c2 was InternalInvariant_Kd at both sources). Shared borrows of one Type keep it and their Loans (c2-1i, SPEC 14.9.2's
+    // example: one record, at the write), and sources with no common Type are the join's mismatch (c2-2i).
+    [Theory]
+    [InlineData("c2", "let r = if c => x@ref else => y@uniq\n    y = 5\n    x = 6", "")]
+    [InlineData("c2-2", "let r = if c => x@ref else => y\n    y = 5\n    x = 6", "")]
+    [InlineData("c2-1i", "let r = if c => x@ref else => y@ref\n    x = 6", "ComparisonLoanConflict_Kd: x = 6")]
+    [InlineData("c2-2i", "let r = if c => x@ref else => b", "TypeMismatch_Kd: let r = if c => x@ref else => b")]
+    public void ALetJoinOfDifferingReferencesTakesTheirReadType(string form, string join, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(
+            form,
+            "func first1(x: ref/i64) -> i32 => 0\nfunc t(c: bool) -> i32\n    var x: i64 = 1\n    var y: i64 = 2\n    var b: bool = true\n    " + join + "\n    return first1(r)\n()",
+            records);
+
     // SPEC 15.4.4, 15.6.5: the declaration owns one inferred slot; each assigned value retains its own Loan.
     [Fact]
     public void ReassigningABorrowLocalToAnotherBorrowRuns()
