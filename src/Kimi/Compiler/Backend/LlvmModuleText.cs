@@ -1,9 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14), one per target row (Frame, built once per
-// row on first use): the header with the pooled constants (the row's float marker where it has one), the runtime, composed of the row's
-// platform layer (its RuntimeLayer's template; windows-x64's WindowsPlatform.ll.in owns every kernel32 call of the runtime in a program
-// module, linux-x64's LinuxPlatform.ll.in every system call), the common part (Runtime.ll.in) and Kimi's allocator (HeapRuntime.ll.in)
+// row of the target table on first use): the header with the pooled constants (the row's float marker where it has one), the runtime,
+// composed of the row's platform layer (its RuntimeLayer's template; windows-x64's WindowsPlatform.ll.in owns every kernel32 call of the
+// runtime in a program module, linux-x64's LinuxPlatform.ll.in every system call, x86_64-unknown-none's NonePlatform.ll.in Limine's boot
+// data and the platform's routines over the program's adapters, which ModuleCodegen's frame defines), the common part (Runtime.ll.in) and
+// Kimi's allocator (HeapRuntime.ll.in)
 // and expanded in one scan, with the layer's ABI definitions spliced in and the row's constants written, and its test variant (none for
 // a layer naming no test runtime, where a test build is a broken contract), each with the row's runtime declarations it declares (its
 // imports, which the generation result publishes for the link; LinkAmbiguity), the memory part every module defines after it
@@ -131,15 +133,15 @@ internal static partial class LlvmModuleText
         [RuntimeAbi.TransferBytes],
         []);
 
-    // The rows' frames, each built on its first use (Frame), in TargetProfile.Rows' order.
-    private static readonly Lazy<ModuleFrame>[] Frames = Array.ConvertAll(TargetProfile.Rows, static row => new Lazy<ModuleFrame>(() => new(row)));
+    // The frames of the target table's rows, each built on its first use (Frame), in TargetProfile.AllRows' order.
+    private static readonly Lazy<ModuleFrame>[] Frames = Array.ConvertAll(TargetProfile.AllRows, static row => new Lazy<ModuleFrame>(() => new(row)));
 
     /// <summary>Gets a target row's module frame, built once, on the row's first use.</summary>
-    /// <param name="row">A row of TargetProfile.Rows; another is a broken contract.</param>
+    /// <param name="row">A row of the target table; another is a broken contract.</param>
     /// <returns>The row's frame.</returns>
     internal static ModuleFrame Frame(TargetProfile row)
     {
-        var index = Array.IndexOf(TargetProfile.Rows, row);
+        var index = Array.IndexOf(TargetProfile.AllRows, row);
         return index >= 0 ? Frames[index].Value : throw new ArgumentException("The row must be a row of the target table.", nameof(row));
     }
 
@@ -178,22 +180,29 @@ internal static partial class LlvmModuleText
             }
 
             output.Write(external.DllImport ? "declare dllimport " : "declare ");
-            output.Write(abi.Result);
-            output.Write(" @");
-            output.Write(abi.Name);
-            output.Write('(');
-            for (var i = 0; i < abi.Parameters.Length; i++)
-            {
-                if (i != 0)
-                {
-                    output.Write(", ");
-                }
+            WriteDeclaration(output, abi);
+        }
+    }
 
-                output.Write(abi.Parameters[i].Type);
+    // The one writer of a function's declaration after its `declare` and linkage words: its result, its name and its parameter Types,
+    // without names or attributes (an external's every call writes its own, AbiParameter.Attributes).
+    internal static void WriteDeclaration(TextWriter output, FunctionAbi abi)
+    {
+        output.Write(abi.Result);
+        output.Write(" @");
+        output.Write(abi.Name);
+        output.Write('(');
+        for (var i = 0; i < abi.Parameters.Length; i++)
+        {
+            if (i != 0)
+            {
+                output.Write(", ");
             }
 
-            output.Write(")\n");
+            output.Write(abi.Parameters[i].Type);
         }
+
+        output.Write(")\n");
     }
 
     // A runtime template (a row's runtime, the memory part, the erased writer, the formatting parts and the test runtime) expanded in one

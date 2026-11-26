@@ -546,7 +546,7 @@ public sealed partial class Binding
 
     // The first Borrow in a value whose Origin supplies an atom (LocalBorrow), in source order: an explicit Borrow, or a call's implicit
     // Borrow of an argument (SPEC 15.6.1: `take(local)`), found as that argument. A call's plan is read as this pass recorded it, also at
-    // a value its own record failed afterwards (a pending relation's record is at its value, R4-M133), where CallOf reads none.
+    // a value its own record failed afterwards, where CallOf reads none.
     private sealed class LocalBorrowFinder(Binding binding, BoundOrigin supplier) : KotoVisitor
     {
         internal Koto? Found { get; private set; }
