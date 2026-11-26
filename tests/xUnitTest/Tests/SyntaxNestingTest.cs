@@ -119,6 +119,18 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.True(deep.Depth <= L, $"depth {deep.Depth}");
     }
 
+    // A chain the parser reads in a loop, 100,000 prefix operators or Function Type links, is one cut. Fail-before: dev's parser
+    // recursed once per link and overflowed the compile stack.
+    [Theory]
+    [InlineData("prefix")]
+    [InlineData("function type")]
+    public void AHundredThousandLinkChainIsOneCut(string shape)
+    {
+        var deep = this.Compile(Source(shape, 100_000));
+        Assert.Equal(nameof(DiagnosticCode.NestingLimit_Kd), Assert.Single(deep.Records).Code);
+        Assert.True(deep.Depth <= L, $"depth {deep.Depth}");
+    }
+
     // The depth of a tree, its root at 0 (SyntaxNesting's measure, also KimiLibraryShapeTest's), by an explicit stack: the test thread has the default stack.
     internal static int Depth(Koto root)
     {
@@ -147,6 +159,8 @@ public class SyntaxNestingTest(ITestOutputHelper output)
             "plus" => $"func f(c: bool) -> i32\n    return {Plus(levels)}\n",
             "type" => $"func f(x: {string.Concat(Enumerable.Repeat("Option<", levels))}i32{new string('>', levels)}) -> i32 => 0\n",
             "groups" => Groups(levels),
+            "prefix" => $"func f(c: bool) -> i32\n    return {string.Concat(Enumerable.Repeat("- ", levels))}1\n",
+            "function type" => $"func f(g: {string.Concat(Enumerable.Repeat("() -> ", levels))}i32) => ()\n",
             _ => CompilationEntryTest.LabeledDos(levels),
         };
 
