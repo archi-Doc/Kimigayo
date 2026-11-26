@@ -1,15 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns Parsing's syntax nesting limit L (IMPL A.4, 21.3.2; DECISIONS BU-112): the depth of every tree a parse publishes.
-// Input: a module's tree right after one document's parse, and that document. Output: the same tree, in which a node at depth L (its
+// Input: a module's tree right after one document's parse, and that document; or a detached tree a parse-time walk reads first (a
+// directive's Condition, a runtime type test's target), at the reader's count. Output: the same tree, in which a node at depth L (its
 // distance from the module root) that has a child is cut: replaced in its slot by an ErrorKoto, or, where its slot holds only its own
-// form (a body, a name, an attribute), its parent is cut instead; one NestingLimit_Kd record per cut, at the cut's span, which the
-// ErrorKoto rests on.
+// form (a body, a name, an attribute), its parent is cut instead; a declaration container at depth L, whose slot takes only
+// containers, is emptied in place (DeclarationContainerKoto.ClearChildren) and becomes a recovery. One NestingLimit_Kd record per cut,
+// at the cut's span, which the ErrorKoto or the emptied container rests on; this walk is the one writer of that record.
 // Invariants: a published tree has depth at most L, so every later walk recurses at most L levels and needs no guard of its own;
 // nothing under a cut is walked or recorded; the walk itself recurses at most L + 1 levels; nodes of earlier documents are walked
-// only at the module's merge points (declaration containers, the generated function and its body). One exception: declaration
-// containers nested past L keep their depth (no slot above them takes an ErrorKoto) and are recorded where they stand. The library's
-// trees (KimiLibrarySources) are checked by KimiLibraryShapeTest, not walked at run time: compiler-owned source fixed at build time.
+// only at the module's merge points (declaration containers, the generated function and its body). The parser reads past L without
+// nodes (TokenReader.Depth), leaving ErrorKoto.IsSkip marks, which lie under a cut: a mark met at depth <= L is InternalInvariant_Kd.
+// A child left in a slot typed to one form of a container (a constraint, a generic parameter) is recorded where it stands at the
+// root, as before. The library's trees (KimiLibrarySources) are checked by KimiLibraryShapeTest, not walked at run time.
 // Must not decide anything but depth, and must not be bypassed by another parse entry that publishes syntax to later phases.
 
 using Kimi.Diagnostics;
@@ -51,12 +54,23 @@ internal sealed class SyntaxNesting : KotoVisitor
             return;
         }
 
+        if (node is ErrorKoto { IsSkip: true })
+        {
+            throw new InvalidOperationException($"A skip mark at depth {this.depth} lies under no cut (InternalInvariant; DECISIONS BU-112).");
+        }
+
         var made = this.cuts?.Count ?? 0;
         var first = this.waiting?.Count ?? 0;
         this.depth++;
         node.VisitChildren(this);
         this.depth--;
-        if (this.deeper)
+        if (this.deeper && node is DeclarationContainerKoto container)
+        {
+            this.deeper = false; // No slot above a nested container takes an ErrorKoto: the container is emptied where it stands.
+            container.ClearChildren();
+            (this.cuts ??= []).Add(container);
+        }
+        else if (this.deeper)
         {
             this.deeper = false;
             (this.waiting ??= []).Add(new(node, made, made));
@@ -70,12 +84,32 @@ internal sealed class SyntaxNesting : KotoVisitor
     /// <summary>Cuts the nodes of one parse that lie deeper than <see cref="Limit"/> and records each cut.</summary>
     /// <param name="parse">The context of the parse, whose document's nodes are bounded.</param>
     internal static void Bound(CodeContext parse)
+        => new SyntaxNesting(parse.SourceDocument, parse.Kotonoha.GeneratedFunction).Walk(parse.Kotonoha.RootKoto, 0);
+
+    /// <summary>Cuts and records a tree before a parse-time walk reads it, ahead of the module's walk: a directive's Condition or a
+    /// runtime type test's target (DECISIONS BU-112). The module's walk finds the cut's ErrorKoto childless and records nothing more.</summary>
+    /// <param name="tree">The tree, not yet attached.</param>
+    /// <param name="depth">The depth of its root: the reader's count, at most the root's depth in the module.</param>
+    /// <returns>The tree, or the ErrorKoto that replaces it where its root is cut.</returns>
+    internal static Koto Bound(Koto tree, int depth)
+        => new SyntaxNesting(tree.CodeContext.SourceDocument, null).Walk(tree, depth);
+
+    private Koto Walk(Koto tree, int depth)
     {
-        var walk = new SyntaxNesting(parse.SourceDocument, parse.Kotonoha.GeneratedFunction);
-        walk.Visit(parse.Kotonoha.RootKoto);
-        if (walk.cuts is not { } cuts)
+        this.depth = depth;
+        this.Visit(tree);
+        if (this.waiting is [var (root, from, to)])
         {
-            return;
+            // The root of a detached tree waits for a parent it does not have: the tree itself is cut.
+            tree = new ErrorKoto(root.CodeContext, root.Span);
+            var made = this.cuts ??= [];
+            made.RemoveRange(from, to - from);
+            made.Insert(from, tree);
+        }
+
+        if (this.cuts is not { } cuts)
+        {
+            return tree;
         }
 
         foreach (var cut in cuts)
@@ -85,7 +119,13 @@ internal sealed class SyntaxNesting : KotoVisitor
             {
                 error.Cause = cut.DiagnosticCollection?.LastError;
             }
+            else if (cut.DiagnosticCollection?.LastError is { } key)
+            {
+                cut.CodeContext.RecordRecovery(cut, key); // An emptied container.
+            }
         }
+
+        return tree;
     }
 
     // Replaces each child of node that waits for its cut, the last first so the earlier ranges stay put; a cut drops the cuts made

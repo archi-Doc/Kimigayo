@@ -50,7 +50,7 @@ public sealed partial class Binding
             return false;
         }
 
-        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported, default, default, default, null, null));
+        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported, default, default, default, null, null, null));
         return true;
     }
 
@@ -164,7 +164,7 @@ public sealed partial class Binding
     // The walk's refusal at the Name (as Supported refuses a component): its Unsupported step, which PublishPath publishes as its failure.
     private ResolvedPath ImportLimit(Koto use)
     {
-        this.nameSteps.Add(new(NameStepKind.Unsupported, use, null, null, default, default, default, null, null));
+        this.nameSteps.Add(new(NameStepKind.Unsupported, use, null, null, default, default, default, null, null, null));
         return new(PathEnd.Unresolved, null, use);
     }
 

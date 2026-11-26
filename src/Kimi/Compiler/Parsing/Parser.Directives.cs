@@ -348,7 +348,7 @@ public static partial class Parser
         reader.IsParsingCompileTimeCondition = true;
         try
         {
-            return ParseHeaderExpression(ref reader);
+            return SyntaxNesting.Bound(ParseHeaderExpression(ref reader), reader.Depth); // Evaluated before the module's walk.
         }
         finally
         {

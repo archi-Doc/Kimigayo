@@ -213,6 +213,9 @@ public sealed partial class Binding
                 return null;
         }
 
+        // SPEC 23.1.2 (G144-8): the Type path reads its left as the value path does (ValueSideMember), so a left that did not resolve
+        // is the access's prerequisite (Consulted's filter).
+        this.Consulted(UseNode(member.Left));
         var qualifier = qualifierPath.Symbol;
         if (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.BindAssociatedProjection(projection, scope) is { } projected)
         {
@@ -377,6 +380,12 @@ public sealed partial class Binding
             else if (restsOn is not null)
             {
                 this.CompleteDependent(member, restsOn); // A failed clause of the bound's supply might give it: the use rests on it.
+            }
+            else if (qualifier?.Declaration is { } searched && this.RecordedFailure(member) == BindingFailure.None && this.IsUnresolvedPrerequisite(searched))
+            {
+                // SPEC 23.1.2 (G144-6): the value lookup read the qualifier's container, so one left unresolved or kept as a recovery
+                // (DECISIONS BU-112) is the missing member's one read, in FailBaseRule's form (a Type path's: PublishUse).
+                this.RecordRead(member, searched);
             }
 
             return null;

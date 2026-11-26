@@ -153,7 +153,7 @@ public sealed class CodeContext
             tokenizer.ReadAll();
             // Nodes retain this immutable snapshot context; the source-less entry point can be reused.
             var sourceContext = new CodeContext(this.Kotonoha, diagnostics, sourceDocument) { Documentation = tokenizer.Documentation };
-            var reader = new TokenReader(sourceContext, ref tokenizer);
+            var reader = new TokenReader(sourceContext, ref tokenizer) { Depth = Depth(parentKoto) };
             parentKoto.Parse(ref reader);
             SyntaxNesting.Bound(sourceContext);
             sourceContext.Documentation?.SetLocation(this.Kotonoha.LogicalName(sourceDocument), producingModId, additionOrder);
@@ -234,4 +234,16 @@ public sealed class CodeContext
     /// <summary>Detaches a context of the frozen library (PLAN G949 Stage 2 U2b; design 5.2, D-C2): a later read of its diagnostic
     /// collection is the internal-invariant form.</summary>
     internal void Detach() => this.diagnosticCollection = null;
+
+    // A destination's depth below its module root, on its Parent chain (at most L in a bounded tree): where its members' count starts.
+    private static int Depth(Koto destination)
+    {
+        var depth = 0;
+        for (var parent = destination.Parent; parent is not null; parent = parent.Parent)
+        {
+            depth++;
+        }
+
+        return depth;
+    }
 }

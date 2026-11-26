@@ -537,9 +537,10 @@ public static partial class Parser
         var token = reader.Read();
         var items = default(TemporaryKotoList);
         var comma = false;
+        reader.Depth++; // The Patterns lie one level below their group (DECISIONS BU-112).
         while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
         {
-            items.Add(ParsePattern(ref reader));
+            items.Add(reader.PastLimit ? reader.SkipPastLimit() : ParsePattern(ref reader));
             if (!reader.TryConsume(TokenKind.Comma))
             {
                 break;
@@ -547,6 +548,8 @@ public static partial class Parser
 
             comma = true;
         }
+
+        reader.Depth--;
 
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
         var children = items.ToArray();
@@ -625,14 +628,17 @@ public static partial class Parser
         }
 
         var patterns = default(TemporaryKotoList);
+        reader.Depth++; // The payload's Patterns lie below the Case Pattern (DECISIONS BU-112).
         while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
         {
-            patterns.Add(ParsePattern(ref reader));
+            patterns.Add(reader.PastLimit ? reader.SkipPastLimit() : ParsePattern(ref reader));
             if (!reader.TryConsume(TokenKind.Comma))
             {
                 break;
             }
         }
+
+        reader.Depth--;
 
         if (patterns.Count == 0)
         {

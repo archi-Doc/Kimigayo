@@ -306,10 +306,11 @@ public static partial class Parser
         var typeList = default(TemporaryKotoList);
         var end = reader.CurrentTokenRange.End;
         Koto type;
+        reader.Depth++; // The Type arguments lie one level below their generic node (DECISIONS BU-112).
         while (true)
         {
             // A line boundary ends an unrecognized list: the tokenizer joins the lines of a recognized one (SPEC F.4.1).
-            type = ParseType(ref reader, TypeContext.Argument);
+            type = reader.PastLimit ? reader.SkipPastLimit(typeArguments: true) : ParseType(ref reader, TypeContext.Argument);
             typeList.Add(type);
             end = type.Span.End;
             if (!reader.TryConsume(TokenKind.Comma) || IsTypeClose(reader.CurrentTokenKind))
@@ -317,6 +318,8 @@ public static partial class Parser
                 break;
             }
         }
+
+        reader.Depth--;
 
         // The closer is checked only after a complete last argument; a failed argument explains an absent closer (DIAGNOSTICS.md §4.3).
         if (reader.TryConsumeTypeClose(out var range, report: type is not ErrorKoto))
@@ -354,9 +357,10 @@ public static partial class Parser
         Koto? firstElement = null;
         var lastEnd = openRange.End;
         var hasComma = false;
+        reader.Depth++; // The elements lie one level below their group (DECISIONS BU-112).
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Separator or TokenKind.EndBlock))
         {
-            var element = ParseType(ref reader, TypeContext.Element);
+            var element = reader.PastLimit ? reader.SkipPastLimit() : ParseType(ref reader, TypeContext.Element);
             firstElement ??= element;
             lastEnd = element.Span.End;
             elements.Add(element);
@@ -376,6 +380,7 @@ public static partial class Parser
             }
         }
 
+        reader.Depth--;
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var closeRange);
         var end = Math.Max(Math.Max(openRange.End, lastEnd), closeRange.End);
 

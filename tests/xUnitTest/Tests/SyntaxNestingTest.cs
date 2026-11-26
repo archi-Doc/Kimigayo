@@ -84,12 +84,13 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.False(cut.Accepted);
     }
 
-    // Declaration containers nested past L: no slot above a nested container takes an ErrorKoto, so the chain keeps its depth and is
-    // recorded once, at the outermost container, also when a later document's parse walks the chain again (PLAN G444 U2b bounds it).
+    // Declaration containers nested past L: no slot above a nested container takes an ErrorKoto, so the container at depth L is emptied
+    // where it stands and recorded once, also when a later document's parse walks the chain again. Fail-before: dev kept the chain's
+    // depth and recorded it at the outermost container.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void ContainersNestedPastTheLimitAreRecordedOnceAtTheOutermost(bool secondDocument)
+    public void ContainersNestedPastTheLimitAreEmptiedOnceAtTheLimit(bool secondDocument)
     {
         var levels = LevelsWithin("groups");
         Assert.DoesNotContain(this.Compile(Source("groups", levels)).Records, static x => x.Code == nameof(DiagnosticCode.NestingLimit_Kd));
@@ -103,13 +104,15 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         }
 
         var record = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.NestingLimit_Kd), 0, 0), (record.Code, record.Source, record.Span?.Start));
-        Assert.True(Depth(c.Kotonoha.RootKoto) > L);
+        var limit = Groups(L).IndexOf($"group G{L - 1}\n", StringComparison.Ordinal);
+        Assert.Equal((nameof(DiagnosticCode.NestingLimit_Kd), 0, limit), (record.Code, record.Source, record.Span?.Start));
+        Assert.Equal(L, Depth(c.Kotonoha.RootKoto));
     }
 
-    // Ten times L: one cut, linear (the parser loops on a chain and the walk stops at L), and every phase after parsing walks at most
-    // L levels. Parentheses join when the parser's own recursion is bounded (PLAN G444 U2b).
+    // Ten times L: one cut, linear (the parser loops on a chain, reads past L without nodes, and the walk stops at L), and every phase
+    // after parsing walks at most L levels.
     [Theory]
+    [InlineData("parentheses")]
     [InlineData("plus")]
     [InlineData("labeled do")]
     public void TenTimesTheLimitIsOneCut(string shape)
@@ -129,6 +132,44 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         var deep = this.Compile(Source(shape, 100_000));
         Assert.Equal(nameof(DiagnosticCode.NestingLimit_Kd), Assert.Single(deep.Records).Code);
         Assert.True(deep.Depth <= L, $"depth {deep.Depth}");
+    }
+
+    // PLAN G444 U2b's twins (design artifacts/units/g144 R1.5; runner D's dev rows, F's G144-3): each program's records by code. The
+    // parser reads past L without nodes (TokenReader.Depth), so a record past the cut is never made (deepsyn) and a record above it
+    // stays (ch-pre-y's y, deeptype's TypeMismatch_Kd). Fail-before: dev overflowed on parentheses, calls, ch-pre-y at 100,000 in a
+    // Debug host, or and interp; deepsyn kept its ExpectedSyntax_Kd below the cut.
+    [Theory]
+    [InlineData("parentheses-100k", "NestingLimit_Kd")]
+    [InlineData("calls-100k", "NestingLimit_Kd")]
+    [InlineData("ch-pre-y-100k", "NestingLimit_Kd UnresolvedBinding_Kd")]
+    [InlineData("deepsyn-1500-I", "NestingLimit_Kd")]
+    [InlineData("deeptype-1500-I", "NestingLimit_Kd TypeMismatch_Kd")]
+    [InlineData("or-100k-V", "NestingLimit_Kd")]
+    [InlineData("interp-120x1000-V", "NestingLimit_Kd")]
+    [InlineData("arrow-100k-V", "NestingLimit_Kd")]
+    [InlineData("dc-1100", "NestingLimit_Kd")]
+    [InlineData("oR2-missing-I", "UnresolvedBinding_Kd")]
+    [InlineData("oR2-syntax-I", "MissingSyntax_Kd UnresolvedBinding_Kd")]
+    [InlineData("missing-qualifier-I", "UnresolvedBinding_Kd")]
+    public void EachTwinKeepsItsRecords(string twin, string codes)
+        => Assert.Equal(codes.Split(' ').Order(), this.Compile(Twin(twin)).Records.Select(static x => x.Code).Order());
+
+    // G144-5 (O-R2, SPEC 18.2.1, 9.6, 23.1.2): a qualified use reached through an opening alias that names a member of the container
+    // emptied at L reads that container, a recovery, so its failure is derived (rule W): one record, at G1023. Its five-level twin is
+    // accepted; a missing member of an ordinary container (oR2-missing-I), with a syntax error in that container's body too
+    // (oR2-syntax-I), and a missing qualifier outside any recovery (missing-qualifier-I, G144-8) keep their records. Fail-before:
+    // commit 2's head added UnresolvedBinding_Kd at the callee `G600...G1099.m`.
+    [Fact]
+    public void AUseBelowTheEmptiedContainerRestsOnItsRecord()
+    {
+        Assert.True(this.Compile(Aliased(5, 2)).Accepted);
+        var source = Aliased(1100, 600);
+        var record = Assert.Single(this.Compile(source).Records);
+        Assert.Equal((nameof(DiagnosticCode.NestingLimit_Kd), source.IndexOf("group G1023\n", StringComparison.Ordinal)), (record.Code, record.Span.Start));
+
+        var value = Aliased(L, 600); // oR2-value-1100-V: `m` declared in G1023 itself, a value member the emptied container lost.
+        var only = Assert.Single(this.Compile(value).Records);
+        Assert.Equal((nameof(DiagnosticCode.NestingLimit_Kd), value.IndexOf("group G1023\n", StringComparison.Ordinal)), (only.Code, only.Span.Start));
     }
 
     // The depth of a tree, its root at 0 (SyntaxNesting's measure, also KimiLibraryShapeTest's), by an explicit stack: the test thread has the default stack.
@@ -161,8 +202,54 @@ public class SyntaxNestingTest(ITestOutputHelper output)
             "groups" => Groups(levels),
             "prefix" => $"func f(c: bool) -> i32\n    return {string.Concat(Enumerable.Repeat("- ", levels))}1\n",
             "function type" => $"func f(g: {string.Concat(Enumerable.Repeat("() -> ", levels))}i32) => ()\n",
+            "calls" => CompilationEntryTest.Calls(levels),
+            "or" => $"#if {string.Join(" or ", Enumerable.Repeat("true", levels))}\nfunc f() => ()\n",
+            "arrow" => $"func f()\n    let g = {string.Concat(Enumerable.Repeat("func [] () => ", levels))}1\n",
+            "interpolations" => $"func f() -> string\n    return {Interpolations(levels / L, L)}\n", // levels / L interpolations of L parentheses.
             _ => CompilationEntryTest.LabeledDos(levels),
         };
+
+    private static string Twin(string name)
+        => name switch
+        {
+            "parentheses-100k" => Source("parentheses", 100_000),
+            "calls-100k" => Source("calls", 100_000),
+            "ch-pre-y-100k" => $"func f(x: i32) -> i32\n    return {string.Concat(Enumerable.Repeat("- ", 100_000))}x + y\n",
+            "deepsyn-1500-I" => $"func f(c: bool) -> i32\n    return {new string('(', 1499)}(1 +){new string(')', 1499)}\n",
+            "deeptype-1500-I" => $"func f(c: bool) -> i32\n    return {new string('(', 1500)}g(){new string(')', 1500)}\nfunc g() -> i32\n    let s: string = 1\n    return 1\n",
+            "or-100k-V" => Source("or", 100_000),
+            "interp-120x1000-V" => $"func f() -> string\n    return {Interpolations(120, 1000)}\n",
+            "oR2-missing-I" => "alias G0\ngroup G0\n    internal group G1\n        internal func m() -> i32 => 1\n\nfunc f() -> i32 => G1.n()\n",
+            "oR2-syntax-I" => "alias G0\ngroup G0\n    internal group G1\n        internal func k() -> i32 => 1 +\n        internal func m() -> i32 => 1\n\nfunc f() -> i32 => G1.n()\n",
+            "missing-qualifier-I" => "func f() -> i32 => Missing.m()\n",
+            "arrow-100k-V" => Source("arrow", 100_000),
+            _ => string.Concat(Enumerable.Range(0, 1100).Select(static i => $"{new string(' ', 4 * i)}struct C{i}\n")) + $"{new string(' ', 4 * 1100)}func m() -> i32 => 1\n",
+        };
+
+    // `levels` interpolations, each around `parentheses` parentheses: design R1.4's interp twin.
+    private static string Interpolations(int levels, int parentheses)
+    {
+        var expression = "1";
+        for (var i = 0; i < levels; i++)
+        {
+            expression = $"\"\\({new string('(', parentheses)}{expression}{new string(')', parentheses)})\"";
+        }
+
+        return expression;
+    }
+
+    // `alias G0...G{opened - 1}`, `levels` nested groups around `m`, and a use of `m` qualified from G{opened} (gen3-oR2.py's twin).
+    private static string Aliased(int levels, int opened)
+    {
+        var source = new System.Text.StringBuilder("alias ").AppendJoin('.', Enumerable.Range(0, opened).Select(static i => $"G{i}")).Append('\n');
+        for (var i = 0; i < levels; i++)
+        {
+            source.Append(' ', 4 * i).Append(i == 0 ? "group" : "internal group").Append($" G{i}\n");
+        }
+
+        source.Append(' ', 4 * levels).Append("internal func m() -> i32 => 1\n\nfunc f() -> i32 => ");
+        return source.AppendJoin('.', Enumerable.Range(opened, levels - opened).Select(static i => $"G{i}")).Append(".m()\n").ToString();
+    }
 
     // `levels` nested groups around one static.
     private static string Groups(int levels)
@@ -212,4 +299,33 @@ public class SyntaxNestingTest(ITestOutputHelper output)
     }
 
     private readonly record struct DiagnosticEntryView(string Code, DiagnosticCategory Category, string Message, SourceSpan Span);
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // The parse-work row (design artifacts/units/g144 R1.5 C6, F's G144-4): past L the parser reads a construct without nodes
+        // (TokenReader.Depth) and a chain in a loop, so a document's parse allocates linearly in its levels at 4, 8 and 16 x L on each
+        // deep row that opens no generics (a Type argument's `<` costs the tokenizer's forward scan, quadratic on dev too: PLAN's row).
+        [Theory]
+        [InlineData("parentheses")]
+        [InlineData("calls")]
+        [InlineData("prefix")]
+        [InlineData("function type")]
+        [InlineData("or")]
+        [InlineData("arrow")]
+        [InlineData("interpolations")]
+        public void AParsePastTheLimitAllocatesLinearly(string shape)
+        {
+            var bytes = AllocationMeasurement.MeasureSeries(3, i =>
+            {
+                var c = Compilation.CreateForTest();
+                Assert.True(c.Prepare(TargetProfile.Windows.Target));
+                var document = new SourceDocument("Deep.kimi", Source(shape, (4 << i) * L));
+                return () => c.Kotonoha.AddSource(document);
+            });
+            output.WriteLine($"{shape} at 4, 8 and 16 x L: bytes {string.Join(", ", bytes)}");
+            Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
+        }
+    }
 }

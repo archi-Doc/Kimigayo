@@ -590,8 +590,8 @@ public class UseLookupTest
     {
         var (binding, qualifier, published, selected) = PublishedQualifier();
         var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        publish.Invoke(binding, [qualifier, published, selected, qualifier]);
-        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, PathEnd.Unresolved, selected, qualifier]));
+        publish.Invoke(binding, [qualifier, published, selected, qualifier, null]);
+        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, PathEnd.Unresolved, selected, qualifier, null]));
         Assert.Contains("InternalInvariant", Assert.IsType<InvalidOperationException>(thrown.InnerException).Message);
     }
 
@@ -604,7 +604,7 @@ public class UseLookupTest
         HirTables.WriteSymbol(qualifier, selected);
         Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => HirTables.WriteSymbol(qualifier, null)).Message);
         var publish = typeof(Binding).GetMethod("PublishUse", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, published, null, qualifier]));
+        var thrown = Assert.Throws<TargetInvocationException>(() => publish.Invoke(binding, [qualifier, published, null, qualifier, null]));
         Assert.Contains("InternalInvariant", Assert.IsType<InvalidOperationException>(thrown.InnerException).Message);
         Assert.Same(selected, HirTables.Symbol(qualifier));
     }

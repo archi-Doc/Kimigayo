@@ -196,6 +196,15 @@ public ref partial struct TokenReader
 
     internal int DocumentationExcludedStart { get; set; }
 
+    /// <summary>Gets or sets a lower bound of the syntax depth of the node read next, below its module root (DECISIONS BU-112): each
+    /// recursive cycle of the parser raises it once, at a child slot of a node the cycle makes. Past <see cref="SyntaxNesting.Limit"/>
+    /// a delimited construct is read without nodes, as one <see cref="ErrorKoto.IsSkip"/> mark under SyntaxNesting's cut.</summary>
+    internal int Depth { get; set; }
+
+    /// <summary>Gets a value indicating whether the node read next lies past <see cref="SyntaxNesting.Limit"/>: a child slot then reads
+    /// its construct with <see cref="SkipPastLimit"/>.</summary>
+    internal readonly bool PastLimit => this.Depth > SyntaxNesting.Limit;
+
     /// <summary>Gets or sets the number of excluded-syntax regions enclosing the current position (SPEC 19.4).</summary>
     /// <remarks>Excluded syntax is parsed and source-checked, but nothing inside it selects, registers or associates documentation.</remarks>
     internal int ExclusionDepth { get; set; }
@@ -868,6 +877,25 @@ public ref partial struct TokenReader
 
             this.SkipOne();
         }
+    }
+
+    /// <summary>
+    /// Reads past <see cref="SyntaxNesting.Limit"/> without nodes (DECISIONS BU-112): the rest of the list, line or grouping content
+    /// the reader is in, through its commas and a parameter list's '!', to the end of its grouping content (<see cref="ExpectCloser"/>)
+    /// or, in a Type argument list, the '&gt;' at its level. The caller then reads what follows, as after any item.
+    /// </summary>
+    /// <param name="typeArguments">Whether the list is a Type argument or parameter list, which a '&gt;' at its level closes.</param>
+    /// <returns>The one mark the construct leaves; the cut of <see cref="SyntaxNesting"/> above it writes the record.</returns>
+    internal ErrorKoto SkipPastLimit(bool typeArguments = false)
+    {
+        var start = this.InsertionSpan.Start;
+        do
+        {
+            this.SkipListItem(typeArguments);
+        }
+        while (this.TryConsume(TokenKind.Comma) || this.TryConsume(TokenKind.Exclamation));
+
+        return new ErrorKoto(ref this, SourceSpan.FromBounds(start, Math.Max(start, this.PreviousEnd))) { IsSkip = true };
     }
 
     /// <summary>Records the completed part of a pending exclusion without allocating a stack of directive prefixes.</summary>

@@ -49,6 +49,7 @@ public static partial class Parser
             target = ParseGenericsPostfix(ref reader, target);
         }
 
+        target = SyntaxNesting.Bound(target, reader.Depth); // WrittenOrigin walks it before the module's walk.
         if (WrittenOrigin(target) is { } written)
         {
             RecoverItem(ref reader, target, written.Unexpected(SyntaxForm.RuntimeTypeTestOrigin));
