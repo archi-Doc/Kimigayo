@@ -409,6 +409,15 @@ public partial class KimiLibraryShapeTest
             ["Binding.identityClasses"] = Rule.Epoch, // A view's identity tables (ResetIdentityClasses, from ResetCapabilities).
             ["Binding.identityLent"] = Rule.Epoch, // The tables lent to them, returned to identityPool at the epoch's end.
 
+            // e2-7's closure stores, which ResetIdentityClasses empties with them: program-pass memos over library keys (BU-220).
+            ["Binding.identityGrounds"] = Rule.Epoch, // A view's T(G), a closure's first round (ExtendedClassesOf).
+            ["Binding.identityRoots"] = Rule.Epoch, // The closed parts by view scope and part as asked (FileClosure).
+            ["Binding.identityClosures"] = Rule.Epoch, // their closures
+            ["Binding.identityClosed"] = Rule.Epoch, // and the closures' rows
+            ["Binding.identityReadingHeads"] = Rule.Epoch, // A view scope's last reading (ReadingOf's chain).
+            ["Binding.identityReadings"] = Rule.Epoch, // the readings' kept tables
+            ["Binding.identityReadingClosures"] = Rule.Epoch, // and their closure sets
+
             // Numbers: Tarjan's visit order. A scope's view serial and the chain state it names, and an Origin requirement work's
             // Consumer mark, compare by value (PLAN G949 S1-1, ruling 205 C2): the library pass settles every library scope's serial
             // (SettleViewSerials) and a frozen work is never active, so a later step's write to a library one is a difference.
