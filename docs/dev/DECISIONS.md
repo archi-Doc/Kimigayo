@@ -9805,8 +9805,7 @@ resumed by R4-M86 (2026-10-20).
   layers)` (the reference's layers, then, unless one is shared, the holder's). Every naming site reads them: written Borrows;
   AdaptInput's Reborrow and its read through several layers; AdaptObjectBorrow's view Reborrow (R4's C2); PairOrigin; PlaceOrigin's
   follow branches and its exclusive-layer branch (G204: the layer met with the reaching ones, in place of the layer alone);
-  AcquireSubject in both modes (the exclusive Subject was `borrow = type`), whose name a Subject borrowed in place carries as its
-  region's value (BU-270); SharedElement; the runtime Type test's shared view; a value
+  AcquireSubject in both modes (the exclusive Subject was `borrow = type`); SharedElement; the runtime Type test's shared view; a value
   call's exclusive callee, whose Reborrow `AcquireValueCallee` publishes as the receiver operation's AdaptedType. PlaceOrigin keeps "a
   reference read in place is its referent" and its other branches (only the walks are replaced). Deleted: `SignatureOrigin`
   (0a106d62f's exemption of body-local and inferred layers, the rule before S1), PathReborrowOrigin's own walk, FollowedOrigin, the
@@ -9836,8 +9835,7 @@ resumed by R4-M86 (2026-10-20).
   `var cur = a@follow@uniq` returned as the inner Origin, so G192 closes). R1 also accepts the valid programs that read such a source as a Copy value before (`TransferRequired_Kd`: a stored `uniq` as
   an `if`, `match`, `do` or `loop` result source or a jump's operand, a bare `objuniq` at any bare acquisition position) and names
   their leaks. Rejected: the outermost layer alone (equal under 15.6.1 only where well-formedness is a premise); a fresh region per
-  Borrow with containment rows from Binding (a second copy of A5's E4 edges; BU-270's Subject region is not one: it is one region per
-  Subject Place, valued at this name, so containment still comes from the one name and Binding adds no containment row); MirOrigins skipping a containment edge whose head is
+  Borrow with containment rows from Binding (a second copy of A5's E4 edges); MirOrigins skipping a containment edge whose head is
   Binding's name (R4's STOP option (B): a symptom fix that keeps `leak` accepted); judging containment for Refuted only until G226
   (STOP (C), temporary); A's generalized `ErasedTypes` column and a Reborrow-only column (OQ-2: a closed column of a due file, two
   rules for a Ref's Type in one function). Open: R4's C3 (a Borrow through a capture is not met with the Closure's call receiver, SPEC
@@ -15857,11 +15855,8 @@ resumed by R4-M86 (2026-10-20).
     bindings (no observable difference).
   - Superseded in part by R8-M56 (PLAN G492-a (ii), 2026-11-19): "A `let` binding keeps the bound value's Type" no longer holds for
     locals, and the rejected "region slots for `let` bindings" is adopted: its reason, "no observable difference", no longer holds
-    (PLAN G492's class 1 is the difference). An immutable Pattern binding keeps its stored Type
-    (SPEC 14.8.3). Superseded in part by BU-269 (PLAN G922 R1.3, 2026-11-26): `IsRegionOwner` is every body local, and a `let`
-    binding's added layer is its own region. The old set's one reader, `LocalBorrowType`'s guard, is `InfersStoredType`. Superseded in
-    part by BU-270 (PLAN G922 tws, 2026-11-26): the set also holds a Subject borrowed in place, whose binder is its match or `for`
-    construct.
+    (PLAN G492's class 1 is the difference). `IsRegionOwner`'s set is unchanged, and an immutable Pattern binding keeps its stored Type
+    (SPEC 14.8.3).
 
 - **BU-198 A callable value's Owned parts are its environment's atoms as it is formed, read from its declaration, under one numbering
   with Origin parts** (2026-11-13; PLAN G826, G811-o; F's rulings 5-9; the owner's O-245 (a)) SPEC 15.2.3, 15.3.4, 7.7.4, 7.7.2, 6.1.3,
@@ -19722,127 +19717,6 @@ resumed by R4-M86 (2026-10-20).
     own Types through `SettleWaiting` (`InferWaiting` infers with `late: false`, so a mode); forming the original under a bound
     binder for a nested call's own Type (C2: contradicts 8.1.1 under reading (b)); making a part wait in the late walk until the
     gathered own Types are inferred (G1266-3 condition 1: it reads the same exactness, so it leaves Va3b failing or reopens Ra1).
-- **BU-269 A `let` Pattern binding or for slot reached through a reference owns the region of the layer its reach adds (PLAN G922
-  R1.3)** (2026-11-26; Front, Binding; Major; design `artifacts\units\g922\design.md` Revision 1 (R1.3), its independent read
-  `review-rev1.md` (C1-C5) and F's rulings G922-1, G922-2; the A5 corpus oracle 0 differences; the Middle's RP17 consent <C-n>) SPEC
-  14.6.1, 14.8.2, 14.8.3, 15.1.6, 15.4.4, 15.6.5. Supersedes in part R8-M56's and BU-197's sentence "`IsRegionOwner`'s set is
-  unchanged".
-  - **Cause.** `IsRegionOwner` (a VariableKoto or a reassignable declaration) excluded a `let` Pattern binding and a `let` for slot,
-    so `BindingTypeOf` gave the layer a shared or exclusive reach adds the reach's Origin, the Subject's one dependency, and every
-    binding of one Subject named one Origin: a nested signature relating two of them was accepted (pbn, pbca1, pbf, tsu, tpr, tnw).
-  - **Rule.** Every body local owns its regions (14.8.2), and what it stores decides which. A `let` binding reached with shared or
-    exclusive access stores ref/T or uniq/T of its Place, T unchanged (14.8.3, 15.1.6): the added layer's Origin is the binding's
-    region `LocalRegionSlot(declaration, -1, Covariant)`, valued at the reach's Origin. A by-value `let` binding stores T and owns
-    nothing new. A local and a reassignable binding keep `LocalBorrowType`'s whole opening (R8-M56, BU-197).
-    - `IsRegionOwner` is every body local: a VariableKoto, every `BindingPattern` form and every name a `ForKoto` declares (never its
-      Iterable). Its readers (`IsLocalRegion`, `SlotRegion`, `OmittedAt` and the record adapter's local-region name) see a binding's
-      region as local, named by the binding.
-    - The old set keeps its one reader under its meaning: `InfersStoredType` (a local and a reassignable binding, whose whole stored
-      Type is inferred per part) guards `LocalBorrowType`.
-    - `ValuedRegion` (`Binding.LocalRegions.cs`) is the one mint and publish of a region whose value its declaration fixes:
-      `LocalBorrowType`'s `let` slots, `InferLocalOrigins`' solved slots and `BindingTypeOf`'s added layer call it. A later producer at
-      `LocalRegionSlot(node, -1, Covariant)` calls it too (G922-4, G922-8).
-    - `RecordAcquisition` (`Binding.RawOrigins.Borrows.cs`) is the one filing of a by-reference binding's acquisition Borrow: under
-      the binding region's value where one is published, otherwise under the reach's outer Origin. `BindingBorrows` and
-      `PublishedBindings` call it, and the census counts it (G922-14, G922-16).
-  - **Cost.** One atom and one region value per borrowed `let` binding, O(1); T is not walked.
-    `TypeDagScalingTest.InstanceChainWalksAreLinearInDistinctParts`' "ref" form binds a `match` and a `for` decomposition of its
-    2^39-leaf Tuple tree through a reference and carries the bindings in a Closure.
-  - **Moves** (against dev 0ed650c96). Class 1, invalid programs newly rejected (`UnprovenOriginRelation_Kd` at the nested
-    signature's result): pbn, pbn0, pbnv, pbs, pbnb, pbnn, pbnc, pbca1, pbf, tsu, tpr, tnw, tux and tgl. Record move toward SPEC: tus
-    (valid) `UnprovenOriginContract_Kd` -> the located `Unsupported_Kd` at the same site (O-400 (b)'s limit). No valid program is newly
-    rejected, no invalid program is newly accepted, and no `InternalInvariant_Kd` arises.
-  - **Outside the rule.** tws and tfs (the Subject's Reborrow Origin; G922-4's unit), tms (one atom per Place; G922-7), pbm's by-value
-    family (O-R1) and rcp (valid; G922-9).
-  - **Rejected:** the mint and publish copied into `BindingTypeOf` (two copies of one step; C1); the Koto kinds
-    `IsMutableDeclaration` names, without its mutability test, as the owner set (it admits every `SyntaxFormKoto` and a for loop's
-    Iterable name; C1).
-- **BU-270 A Subject borrowed in place owns its Borrow's region (PLAN G922 tws)** (2026-11-26; Front, Binding with HIR's and MIR's
-  `for`; Major; design `artifacts\units\g922\design-tws.md`, its independent review `review-tws.md` and F's rulings G922-4, G922-6,
-  G922-9; the Middle's C2 (`m-read-c2.md` section 5) and C2a-C2d; the A5 corpus oracle <runner>; the Middle's RP17 consent <C-n>)
-  SPEC 14.6.2, 15.1.6, 15.6.3, 15.6.5, 23.1. Supersedes in part, with BU-269, R8-M56's and BU-197's sentence "`IsRegionOwner`'s set
-  is unchanged", BU-27's AcquireSubject naming, and G224's sentence "An iteration entry's implicit static receiver Borrow retains
-  BU-25's located Unsupported" (the entry's receiver is the Subject Place, so that Borrow no longer exists).
-  - **Cause.** `AcquireSubject` named a bare Place's Subject by the Origin of what contains it, never by an Origin of its own: a
-    stored `ref` was returned as it is, a stored `uniq` was rebuilt at `ReferentOrigin`'s meet (BU-27), and an owned Place at
-    `PlaceOrigin`'s. `BindIteration` skipped `AcquireSubject`: it repeated `PairSubject` and `SubjectModeOf`, and its entry call's
-    input was the iterable itself. So a nested signature relating a binding of the Subject (a match's `let w`, a loop's element) to
-    the Subject's container proved `U outlives U`. tws, tfs and their family were accepted.
-  - **Rule.** A Subject borrowed in place (a bare Place, never a value Subject) is held in its Subject Place, a body slot holding the
-    Borrow its acquisition forms (15.1.6). That Borrow's Origin is the slot's region `LocalRegionSlot(construct, -1, Covariant)`,
-    whose binder is the match or `for` construct. The three sources become the region's value: the Origin `AcquireSubject` named the
-    Subject by is published as the region's value (`ValuedRegion`, BU-269's one mint and publish). Body readers read the value, so
-    body judgments stay. A nested signature reads the region with no premise (15.6.5), and a carrying Closure reads its value.
-    - **Owner:** `AcquireSubject` (`Binding.Patterns.cs`, with `BorrowsInPlace` and `SubjectRegion`), called by `BindMatch` and
-      `BindIteration`. It also records the Subject's Borrow (`RecordBorrow`) for both.
-    - **`SubjectBorrow` keeps the Borrow's Type at the named Origin, and `BoundMatch.Reset` keeps it.** Only the slot Type that the
-      Pattern readers read is rebuilt at the region. So `SubjectBorrow`'s readers see no change, and Loans are unchanged. They are
-      `Binding.RawOrigins.Borrows`' `RecordBorrow` (in `AcquireSubject`, and the MatchKoto and ForKoto rows), HIR's Subject row
-      (`Binding.Hir.Patterns.cs`) and MIR's `HoldSubject` (`MirBuilder.Match`, `MirBuilder.For`).
-    - **`for`:**
-      - A Subject borrowed in place is the synthetic local `$for.subject` (`BoundIteration`, `BindIterationSubject`), shaped as
-        `$for.iterator` and of the slot Type. It is the entry call's receiver or first argument, and the entry call is bound in the
-        loop's scope, as `next` is. A value Subject keeps `source.Iterable`.
-      - HIR's ForKoto Adjust row is `Subject(loop.Iterable, plan.SubjectBorrow)`, as match's, and the publisher visits
-        `$for.subject`. RawOrigins' ForKoto row records `SubjectBorrow`.
-      - `MirBuilder.For` holds the Subject through `HoldSubject` (Match's Hold, Assign and Made) and binds `$for.subject` to it
-        before the entry call. It reads the input from `CallPlan.Of(loop)`.
-    - **Region owners and records:** `IsRegionOwner` (BU-269's body locals) gains the Subject Place (a MatchKoto or ForKoto binder).
-      The record adapter names the region "the borrow <Subject>" (`SubjectOf`; O-T4) and relates it at the Subject (23.1).
-  - **Cost.**
-    - One atom, row and value per in-place Subject, O(1), with no walk change and no scaling row (G922-6 C5).
-    - MIR adds one Subject local and one Copy or Reborrow per loop over a bare Place. The MirDumpTest goldens collections, generics
-      and iterations move.
-    - O2 A/B <runner>; library compile and allocation A/B <runner>.
-  - **Moves** (against dev 0ed650c96; labels from SPEC before the run, `probes\tws-impl\labels.md`):
-    - Class 1, invalid programs newly rejected (`UnprovenOriginRelation_Kd` at the nested signature's result): tws, tfs, twn, tff,
-      tmf, tgs, twu, rnp, rfh, rfs, rmh and sclu (a non-capturing `func []` naming `during w -> during u` under the Subject:
-      accepted on dev, at 4:140 on the head; the implementation review's twin).
-    - Record moves (Q13), code and site unchanged: tfl and twl, "the omitted Origin of r" becomes "the borrow r", related at the
-      Subject; plg and pmg (rejected on dev) move only their related origin to the Subject (3:14, 3:11), the same cause.
-    - Record moves (Q13) on `for` Subjects of a `let` static, rejected on dev and on the head: sef and sefo. The verdict is unchanged;
-      the records move as follows (sefom, the match form, is the control):
-      - sef (in `func g() -> ref/i32 during static`, `for v in State.fixedv` / `return v` / `return State.one@ref`): dev gives the
-        `Unsupported_Kd` at the Subject (7:14), `UnsatisfiedOriginRelation_Kd` at the return (8:16) and `Unsupported_Kd` at
-        `State.one@ref` (9:12). The head gives the same `UnsatisfiedOriginRelation_Kd` with its borrow related at the Subject (7:14),
-        and the `Unsupported_Kd` at 9:12.
-      - sefo (sef with `$abort("none")` in place of the written Borrow): dev gives the `Unsupported_Kd` at the Subject (2:14) and
-        `UnsatisfiedOriginRelation_Kd` at the return (3:16). The head gives the `UnsatisfiedOriginRelation_Kd` alone, its borrow related
-        at the Subject (2:14).
-      - The Subject's `Unsupported_Kd` goes with G224's sentence, superseded above: the entry's receiver is `$for.subject`, as for sv1,
-        sv2 and se. It is no rule W removal.
-      - The `UnsatisfiedOriginRelation_Kd` keeps its code and site. It is G197's residual (PLAN G197): Binding's static `PlaceOrigin`
-        lacks SPEC 11.8's Origins, so a match or `for` Subject's binding of a `let` static returned `during static` is rejected though
-        valid. sefom gives it identically on dev and on the head (3:32, its borrow related at 2:11).
-    - The whole suite's moves (Ready runner 11-26, `tws-suite\labels.md`; 226ff31390 and the merged head agree on every row, dev
-      ae1c44b4e differs exactly there):
-      - Class 3, a valid static Subject loop accepted (SPEC 15.1.6, 14.6.2, 11.8): `for v in State.values` and `for v in (values)` in
-        its group were the located `Unsupported_Kd` at the entry's static receiver Borrow (BU-25, kept by G224). The entry's receiver
-        is now `$for.subject`, so no static receiver Borrow remains; the Subject's own Borrow of the static is a `for` Subject's,
-        which BU-25 leaves to A5, as a match's. A5 rejects the invalid twins at their sites (a write of the static, a call writing it,
-        a write while an escaped item lives: `ComparisonLoanConflict_Kd`; dev gave only the `Unsupported_Kd`), and an escape `during
-        static` of mutable static storage is `UnsatisfiedOriginRelation_Kd`, as dev. `v@follow = 2` keeps its `SharedPathAccess_Kd`
-        alone, as the match form. Rows: SharedSubjectTest `StaticIterationBorrowsItsSubjectInPlace`, `StaticIterationKeepsItsSubjectLoan`.
-      - A removed `InternalInvariant_Kd`: `for v in (w.pos.items)` over a failed getter's use (PLAN G1076's `for` form) gives its
-        match form's records, since the loop acquires by the match's rule. PropertyBindingTest's row leaves the "open: G1076" pins.
-      - Q13, one dependent record added on rejected programs (ComparisonLoanConflict_Kd +6): b2x, b5x, b6x and their Range twins
-        (IntegerRangeTest) add the conflict at the Subject, where the Subject Place is now formed (the match form `match u` gives the
-        same record on dev); the entry's `CallActivationConflict_Kd` stays.
-    - Unchanged:
-      - the valid tfq, tfc, rvh, rvf, rvc, twr, twq, tcpn, twc and rcp;
-      - the pair-layer twins plf and plm (`InvalidOriginBinding_Kd`), and plq and plmq (accepted).
-    - No valid program is newly rejected, no invalid program is newly accepted, and no `InternalInvariant_Kd` or MirFinding arises
-      (Session <runner>).
-  - **Outside the rule.**
-    - Value Subjects (15.1.6 row 2) keep their producer's Origin: tex (BU-27's explicit Reborrow naming; G922-8, G922-9), tcv
-      (Revision 2's O-2), and their `for` forms vsr and vsp.
-    - tms and tml (one atom per Place; G922-7).
-    - rcp, valid and outside every rule (G922-9 O-X1).
-  - **Rejected:**
-    - minting in `SelectLayers` (a reader making the owner's fact);
-    - a region with no value (it moves body judgments to A5);
-    - regions for value Subjects (their producer owns the Origin);
-    - a side input to the entry call's selection, or an AdaptedType rewrite, in place of `$for.subject` (the Middle's C2).
 - **BU-271 The declaration judge owns the Origin clauses of every written Type formed in a declaration frame (hold-b, Hold class 1)**
   (2026-11-26; M's ruling on hold-b Revision 3; F's consent as R7-M80's owner) SPEC 15.3.3, 15.3.4, 15.6.1, 23.1.2.
   - Rule: the FormedTypes row of a node records the frame its producer formed it in (`FormationFrame`: Declaration or Body; None = no
@@ -20061,7 +19935,7 @@ resumed by R4-M86 (2026-10-20).
     executable statements that every body consumer would meet); reusing `ConstraintPrefix` or `EffectBound` for p11 (their phrases
     name other forms); keeping `CallableDuplicate` with its own Note (a second copy of the duplicate rule).
 
-- **G224 Static Field classification** (2026-10-24; superseded in part by BU-270: the iteration entry's static receiver sentence) SPEC 3.4 and 15.1.6 make standard static Fields bare Places.
+- **G224 Static Field classification** (2026-10-24) SPEC 3.4 and 15.1.6 make standard static Fields bare Places.
   `Binding.PlaceAuthority.IsBarePlace` includes `IsStaticField`; existing callee acquisition checks then reject an Exclusive call
   through a static `let`, and Subject acquisition borrows static Fields Shared. An iteration entry's implicit static receiver Borrow
   retains BU-25's located Unsupported. `BorrowableTemporary` no longer repeats the static exclusion. This supersedes BU-21's postponed
@@ -33625,9 +33499,8 @@ Closure row of `MirCases.Branch`).
     R7-O2's A1 reads the captured region at its candidate (PLAN G1105); A1 also accepts c20, z3v and r18. e-owsin, a nested signature's
     name read inside the Closure, stays invalid (PLAN G1099).
   - **Supersedes.** BU-197's sentence "A `let` binding keeps the bound value's Type" for locals, and its rejected "region slots for
-    `let` bindings": its reason, "no observable difference", no longer holds (PLAN G492's class 1 is the difference); An immutable Pattern binding keeps its stored Type (SPEC 14.8.3). BU-197's set
-    (`IsRegionOwner`) is unchanged here. BU-269 (PLAN G922 R1.3) makes it every body local, and BU-270 (PLAN G922 tws) adds a Subject
-    borrowed in place. In part BU-127's "Only A5
+    `let` bindings": its reason, "no observable difference", no longer holds (PLAN G492's class 1 is the difference); BU-197's set
+    (`IsRegionOwner`) is unchanged and an immutable Pattern binding keeps its stored Type (SPEC 14.8.3). In part BU-127's "Only A5
     reads it, since the bounds are complete once every body is bound": a `let` region in its own body has its value fixed by its
     declaration (15.4.4) and no later store adds a bound, so its body reads the value through the view and Binding judges the relation;
     BU-127 stands for a nested body, a `var` region and a Callable comparison's relation (O-363 (a)); its comparison sentence is
