@@ -119,7 +119,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void ALinuxManifestIsTheRows(bool ffi)
     {
         var source = ffi ? LinuxPair.Program("Ffi", "Ffi.kimi") : LinuxPair.Program("Hello", "Hello.kimi");
-        var paths = LinuxPair.Publish(this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
+        var paths = LinuxPair.Publish(TargetProfile.Linux, this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
         Assert.Same(TargetProfile.Linux, NativeToolchain.ValidateManifest(root));

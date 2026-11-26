@@ -11,13 +11,18 @@
 // linux-x64 row's: c, musl 1.2.6's startup files and C library (Tatara B7b4), read from the embedded Linux record
 // (src/backend/linux-x64/profile.json, the resource Kimi.LinuxBackendProfile.json), whose files are listed in link order; the staged
 // none-x64 row's: kimi_backend, compiler-rt 22.1.8's soft-float archive (Tatara B9e), read from the embedded none record in the Linux
-// record's form (src/backend/none-x64/profile.json, the resource Kimi.NoneBackendProfile.json; its packageId, abiVersion and
-// llvmVersion are carried for the none row's link manifest head, B9f).
+// record's form (src/backend/none-x64/profile.json, the resource Kimi.NoneBackendProfile.json). Each row's backend package (Packages,
+// SPEC 21.4.7: its package id, ABI version and archive hash, which the row's link manifest head states; the Tatara plan's B9f) and each
+// row's linker script (Scripts: the catalog's linkerScript, one file in SupplyFile's form held by the row, not by a supply, IMPL 20.4;
+// the Tatara plan's decision 31).
 // Input: the embedded records and libraries. Output: those values, for the native build, publication's manifest and toolchain verify's
 // self-check (P13), and each file's stored facts, the resource beside its own (SupplyFile.OpenFacts; SupplyFacts). Invariants: the
 // backend record matches the Windows row (its name; its library names a reserved supply, whose symbols are its provided symbols) and
 // pins a major.minor.patch LLVM version; the Linux and none records match their rows (ReadCatalog: the name; the library names a
-// reserved supply, whose symbols are the provided symbols) and place each file start, library or end (ReadFile); the supplies are
+// reserved supply, whose symbols are the provided symbols) and place each file start, library or end (ReadFile); a record of a row
+// with a package identity (PackageIdentities) states that identity and the pinned LLVM version, and a row has a package exactly when
+// it reserves the backend supply; a row's script is its catalog's linkerScript, named as its LinkerScript column, and a row has one
+// exactly when that column is not null; the supplies are
 // every row's reserved supplies (AllRows) in the rows' order, each row's in its order, else the type initializer throws
 // InvalidDataException; each resource's SHA-256 is its file's (NativeToolchainTest's catalog row; not checked at a start, stated by
 // toolchain verify); a file's facts' first line is its bytes' SHA-256 and their body Tatara's inspection of them (NativeToolchainTest's
@@ -32,9 +37,12 @@ namespace Kimi.Build;
 /// <summary>The pinned native-toolchain identity of the windows-x64 profile, from the compiler's embedded backend record.</summary>
 public static class ToolchainIdentity
 {
-    // Backend supply identity (SPEC 21.4.7).
-    internal const string BackendPackageId = "kimi-backend-windows-x64";
-    internal const int BackendAbiVersion = 3;
+    // Each backend package's identity (SPEC 21.4.7), by row: the package id and ABI version its record must state.
+    private static readonly (TargetProfile Row, string PackageId, int AbiVersion)[] PackageIdentities =
+    [
+        (TargetProfile.Windows, "kimi-backend-windows-x64", 3),
+        (TargetProfile.None, "kimi-backend-none-x64", 1),
+    ];
 
     public static string LlvmVersion { get; }
 
@@ -52,6 +60,14 @@ public static class ToolchainIdentity
     /// <summary>Gets the compiler's supplies, one per reserved supply of each row, in the rows' order and each row's.</summary>
     internal static CompilerSupply[] Supplies { get; }
 
+    /// <summary>Gets each backend package, one per row reserving the backend supply, in the rows' order: its row, package id, ABI version
+    /// and archive's SHA-256, the identity the row's link manifest head states.</summary>
+    internal static (TargetProfile Row, string PackageId, int AbiVersion, string ArtifactSha256)[] Packages { get; }
+
+    /// <summary>Gets each row's linker script, one per row whose <see cref="TargetProfile.LinkerScript"/> is not null, in the rows'
+    /// order: its catalog name, resource and SHA-256 (its place <see cref="SupplyPlace.Script"/>).</summary>
+    internal static (TargetProfile Row, SupplyFile File)[] Scripts { get; }
+
     static ToolchainIdentity()
     {
         using var stream = typeof(ToolchainIdentity).Assembly.GetManifestResourceStream("Kimi.WindowsBackendProfile.json")!;
@@ -63,8 +79,7 @@ public static class ToolchainIdentity
             throw new InvalidDataException("The embedded profile requires a major.minor.patch LLVM version.");
         }
 
-        if (root.GetProperty("packageId").GetString() != BackendPackageId || root.GetProperty("abiVersion").GetInt32() != BackendAbiVersion ||
-            root.GetProperty("profile").GetString() != TargetProfile.Windows.Name ||
+        if (!StatesPackage(root, TargetProfile.Windows) || root.GetProperty("profile").GetString() != TargetProfile.Windows.Name ||
             TargetProfile.Windows.Supply(root.GetProperty("library").GetString()) is not { } backend)
         {
             throw new InvalidDataException("The embedded native supply catalog does not match windows-x64-v1.");
@@ -84,8 +99,8 @@ public static class ToolchainIdentity
 
         // Each supply's material, keyed by (row, supply): the Windows row's kernel32 under the record's kernel32 member and its backend
         // under its library, each one file; the Linux row's c and the none row's kimi_backend, their catalogs' files.
-        var (musl, muslFiles) = ReadCatalog(TargetProfile.Linux, "Linux");
-        var (compilerRt, compilerRtFiles) = ReadCatalog(TargetProfile.None, "None");
+        var (musl, muslFiles, _) = ReadCatalog(TargetProfile.Linux, "Linux");
+        var (compilerRt, compilerRtFiles, noneScript) = ReadCatalog(TargetProfile.None, "None");
         (TargetProfile Row, string Name, (string Name, string Value)[] Entry, SupplyFile[] Files)[] material =
         [
             (
@@ -108,12 +123,28 @@ public static class ToolchainIdentity
         }
 
         Supplies = [.. supplies];
+        Scripts = noneScript is null ? [] : [(TargetProfile.None, noneScript)];
+        foreach (var row in TargetProfile.AllRows)
+        {
+            if (Array.Exists(PackageIdentities, x => x.Row == row) != (row.Supply(Backend.Name) is not null) || row.LinkerScript != Script(row)?.Name)
+            {
+                throw new InvalidDataException($"The embedded native supply catalog does not match {row.Name}'s backend package or linker script.");
+            }
+        }
+
+        Packages = [.. PackageIdentities.Select(static x => (x.Row, x.PackageId, x.AbiVersion, Of(x.Row, Backend.Name)!.Files.Single().Sha256))];
     }
 
-    /// <summary>Gets the compiler's supply of a row's reserved supply.</summary>
-    /// <param name="supply">A row's reserved supply, or null.</param>
-    /// <returns>The compiler's supply whose row's supply is <paramref name="supply"/>, or null for null.</returns>
-    internal static CompilerSupply? Of(TargetSupply? supply) => Array.Find(Supplies, x => x.Supply == supply);
+    /// <summary>Gets the compiler's supply of a row's reserved supply, keyed by (row, supply name).</summary>
+    /// <param name="row">A target row.</param>
+    /// <param name="name">A library name.</param>
+    /// <returns>The compiler's supply of the row's reserved supply of that name, or null when the row reserves none.</returns>
+    internal static CompilerSupply? Of(TargetProfile row, string name) => Array.Find(Supplies, x => x.Row == row && x.Supply.Name == name);
+
+    /// <summary>Gets a row's linker script.</summary>
+    /// <param name="row">A target row.</param>
+    /// <returns>The row's script, or null for a row linking in the linker's own layout.</returns>
+    internal static SupplyFile? Script(TargetProfile row) => Array.Find(Scripts, x => x.Row == row).File;
 
     /// <summary>Reads a file of a row catalog's supply: its catalog name, its resource (<c>Kimi.</c>, the catalog's stem, <c>.</c> and the
     /// name), its SHA-256 and its place, the one read of a place (T's ruling 79).</summary>
@@ -135,20 +166,38 @@ public static class ToolchainIdentity
     }
 
     // A row's catalog (src/backend/<row>/profile.json, the resource Kimi.<stem>BackendProfile.json; B7b4's form): its profile is the
-    // row's name and its library one of the row's reserved supplies, whose symbols are its providedSymbols, else InvalidDataException;
-    // its files are in link order, each resource Kimi.<stem>.<name> (ReadFile).
-    private static (TargetSupply Supply, SupplyFile[] Files) ReadCatalog(TargetProfile row, string stem)
+    // row's name, its library one of the row's reserved supplies, whose symbols are its providedSymbols, and its package the row's
+    // (StatesPackage), else InvalidDataException; its files are in link order, each resource Kimi.<stem>.<name> (ReadFile); its
+    // linkerScript, when present, is one file of that resource form placed Script.
+    private static (TargetSupply Supply, SupplyFile[] Files, SupplyFile? Script) ReadCatalog(TargetProfile row, string stem)
     {
         using var stream = typeof(ToolchainIdentity).Assembly.GetManifestResourceStream($"Kimi.{stem}BackendProfile.json")!;
         using var json = JsonDocument.Parse(stream);
         var root = json.RootElement;
         if (root.GetProperty("profile").GetString() != row.Name || row.Supply(root.GetProperty("library").GetString()) is not { } supply ||
-            !ArtifactFiles.SequenceEqual(root.GetProperty("providedSymbols"), supply.Symbols))
+            !ArtifactFiles.SequenceEqual(root.GetProperty("providedSymbols"), supply.Symbols) || !StatesPackage(root, row))
         {
             throw new InvalidDataException($"The embedded native supply catalog does not match {row.Name}.");
         }
 
-        return (supply, [.. root.GetProperty("files").EnumerateArray().Select(x => ReadFile(x, stem))]);
+        SupplyFile? script = null;
+        if (root.TryGetProperty("linkerScript", out var entry))
+        {
+            var name = entry.GetProperty("name").GetString()!;
+            script = new(name, $"Kimi.{stem}.{name}", entry.GetProperty("sha256").GetString()!, SupplyPlace.Script);
+        }
+
+        return (supply, [.. root.GetProperty("files").EnumerateArray().Select(x => ReadFile(x, stem))], script);
+    }
+
+    // Whether a record states its row's package identity (PackageIdentities) and the pinned LLVM version, or, for a row without one,
+    // no package id.
+    private static bool StatesPackage(JsonElement root, TargetProfile row)
+    {
+        var identity = Array.Find(PackageIdentities, x => x.Row == row);
+        return identity.Row is null ? !root.TryGetProperty("packageId", out _) :
+            root.GetProperty("packageId").GetString() == identity.PackageId && root.GetProperty("abiVersion").GetInt32() == identity.AbiVersion &&
+            root.GetProperty("llvmVersion").GetString() == LlvmVersion;
     }
 }
 
@@ -179,9 +228,9 @@ internal sealed record SupplyFile(string Name, string Resource, string Sha256, S
     internal Stream OpenFacts() => typeof(SupplyFile).Assembly.GetManifestResourceStream(this.Resource + ".facts")!;
 }
 
-/// <summary>A compiler's supply file's place on an ELF link line (design §3.11; the catalog's <c>start</c>, <c>library</c> and
-/// <c>end</c>): before the object, after the program's libraries, or last. A COFF file's is <c>Library</c>; a program library has
-/// none.</summary>
+/// <summary>A compiler's file's place on an ELF link line (design §3.11; the catalog's <c>start</c>, <c>library</c> and <c>end</c>):
+/// before the object, after the program's libraries, or last; a row's linker script's is <c>Script</c> (the catalog's
+/// <c>linkerScript</c>, -T's argument). A COFF file's is <c>Library</c>; a program library has none.</summary>
 internal enum SupplyPlace : byte
 {
     /// <summary>Before the object.</summary>
@@ -192,4 +241,7 @@ internal enum SupplyPlace : byte
 
     /// <summary>Last.</summary>
     End,
+
+    /// <summary>The linker script, -T's argument (a row's file, never a supply's).</summary>
+    Script,
 }

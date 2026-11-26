@@ -139,18 +139,26 @@ internal static partial class NativeToolchain
     // unreferenced sections removed and no build id, reproducible as COFF's /Brepro is; the inputs by place around the object (design
     // §3.11): the files placed Start, the object, the program's libraries (no place) in the manifest's order, the files placed Library,
     // then the files placed End (the C path: crt1.o crti.o <obj> <program libraries> libc.a crtn.o). With no start file the process
-    // starts at the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). The start path is one
+    // starts at the manifest's entry (-e; the libc-free path); a start file defines it (_start, LLD's default). A row's linker script
+    // (TargetProfile.LinkerScript, staged: script) is -T's argument, and a section it does not place is a link error
+    // (--orphan-handling=error, never the linker's silent placement; the Tatara plan's B9f); a row without one links in the linker's
+    // layout. The start path is one
     // fact read three ways: the module frame decides it (a module requiring a library starts through the row's CRuntime, entry main),
     // ValidateManifest holds the manifest to it (the entry is main exactly when the CRuntime is listed), and the line reads it as a file
     // placed Start (only the CRuntime's files are). The line is order-free for the dependency check, which runs before it
     // (LinkAmbiguity); the object's definition of the entry is Inspect's. ld.lld reads no LINK variable and detects no toolchain; it
     // still reads LLD_REPRODUCE (LC3 §10).
-    internal static string[] ElfLine(string entry, string obj, List<StagedLibrary> libraries, string executable)
+    internal static string[] ElfLine(string entry, string? script, string obj, List<StagedLibrary> libraries, string executable)
     {
         List<string> link = ["ld.lld", "-m", "elf_x86_64", "-static", "--no-dependent-libraries", "--gc-sections", "--build-id=none", "-o", executable];
         if (!libraries.Exists(static x => x.File?.Place == SupplyPlace.Start))
         {
             link.AddRange(["-e", entry]);
+        }
+
+        if (script is not null)
+        {
+            link.AddRange(["-T", script, "--orphan-handling=error"]);
         }
 
         Place(SupplyPlace.Start);
@@ -349,16 +357,18 @@ internal static partial class NativeToolchain
             // private file on every outcome (StagedHold). The object is held from its creation (Compile) to the build's end, so the
             // inspection and LLD read the object emit produced (Intermediates).
             var libraries = new List<StagedLibrary>();
+            FileStream? script = null;
             var executable = this.paths.PrivateExecutable(); // Private until the commit.
             try
             {
                 this.ResolveLibraries(libraries);
+                script = this.StageScript();
                 WriteRecord(this.paths.Record, this.record);
                 var declared = ReadExternalDeclarations(this.manifest);
                 using var obj = this.Compile(tatara);
                 var (undefined, module) = this.Inspect(tatara, obj.Name, declared);
                 this.CheckDependencies(tatara, module, libraries, declared);
-                this.Link(tatara, obj.Name, libraries, undefined, executable);
+                this.Link(tatara, obj.Name, script?.Name, libraries, undefined, executable);
                 this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
                 this.context.CancellationToken.ThrowIfCancellationRequested();
                 WriteRecord(this.paths.Record, this.record);
@@ -385,6 +395,7 @@ internal static partial class NativeToolchain
             }
             finally
             {
+                script?.Dispose();
                 foreach (var library in libraries)
                 {
                     library.Held.Dispose();
@@ -469,7 +480,7 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException("Invalid or duplicate native library.");
                 }
 
-                var supply = ToolchainIdentity.Of(this.row.Supply(name));
+                var supply = ToolchainIdentity.Of(this.row, name);
                 var first = libraries.Count;
                 if (supply is not null)
                 {
@@ -518,6 +529,21 @@ internal static partial class NativeToolchain
             }
 
             this.record["libraries"] = libraryIdentities;
+        }
+
+        // The row's linker script (ToolchainIdentity.Script; the Tatara plan's decision 31), staged as a supply's file is (StageSupply),
+        // held to the build's end and recorded as linkerScript (its path redacted as the libraries' are, its staged hash) only on a row
+        // with one, so a hosted row's record is unchanged; null on a row linking in the linker's layout.
+        private FileStream? StageScript()
+        {
+            if (ToolchainIdentity.Script(this.row) is not { } file)
+            {
+                return null;
+            }
+
+            var held = StageSupply(file, this.paths.Native, out var hash);
+            this.record["linkerScript"] = new JsonObject { ["path"] = Redact(held.Name, this.directory), ["sha256"] = hash };
+            return held;
         }
 
         // The object: the IR verified, for O2 optimized, its module paths redacted, written and verified again, then compiled and
@@ -645,12 +671,12 @@ internal static partial class NativeToolchain
         // before the commit publishes it, then the record's linked state, naming the private file's hash, which Run's commit publishes
         // before the file. LLD opens the held object and each held library by its path, for reading, which the holds admit (StagedHold,
         // Intermediates).
-        private void Link(Tatara tatara, string obj, List<StagedLibrary> libraries, string undefined, string executable)
+        private void Link(Tatara tatara, string obj, string? script, List<StagedLibrary> libraries, string undefined, string executable)
         {
             var line = this.row.Format switch
             {
                 "COFF" => this.CoffLine(obj, libraries, executable),
-                "ELF" => ElfLine(LinkManifest.Text(this.manifest, "entry"), obj, libraries, executable),
+                "ELF" => ElfLine(LinkManifest.Text(this.manifest, "entry"), script, obj, libraries, executable),
                 _ => throw new InvalidOperationException($"No link writer for the executable format '{this.row.Format}'."),
             };
             tatara.Link(this.context, line);
