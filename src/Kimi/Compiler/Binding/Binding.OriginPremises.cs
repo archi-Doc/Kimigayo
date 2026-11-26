@@ -483,11 +483,12 @@ public sealed partial class Binding
             this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
             !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? stored : null;
 
-    // R5's region: the region `node` is, when it is a slot of a local of the use's own body other than the one being declared; otherwise
-    // null. A nested body or signature has no such premise: there the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
+    // R5's region: the region `node` is, when it is a slot of a body local of the use's own body (a region owner, PLAN G922) other than the
+    // one being declared (the use is not within its DeclaringPart); otherwise null. A nested body or signature has no such premise: there
+    // the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
     private BoundOrigin? LocalRegionOf(OriginPremiseEnvironment environment, int node, Koto? body)
-        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: VariableKoto variable } region && IsLocalRegion(region) &&
-            !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? region : null;
+        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: { } owner } region && DeclaringPart(owner) is { } declared &&
+            IsLocalRegion(region) && !IsWithin(environment.Use, declared) && ReferenceEquals(PremiseSignature(owner), body) ? region : null;
 
     // A required signature's own well-formedness: its inputs' and its result's.
     private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
