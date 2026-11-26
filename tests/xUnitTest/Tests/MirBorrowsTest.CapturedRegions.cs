@@ -247,19 +247,15 @@ public sealed partial class MirBorrowsTest
     // the constructor call until its unit turned it accepted (Q13: a valid program rejected before).
     [Theory]
     [InlineData(ClauseAtConstructor + "    var r = p\n    let c = func [r] () => r\n    let b = P.init(c(), p)\n    see(b.x)\n" + Main)]
-    [InlineData(ClauseAtConstructor + "    var r = p\n    let c = func [r, p] () -> i32\n        let inner = func [r] () => r\n        let b = P.init(inner(), p)\n" +
-        "        see(b.x)\n        return 0\n    let n = c()\n" + Main)]
+    [InlineData(ClauseAtConstructor + "    var r = p\n    let c = func [r, p] () -> i32\n        let inner = func [r] () => r\n        let b = P.init(inner(), p)\n        see(b.x)\n        return 0\n    let n = c()\n" + Main)]
     public void AStructsClauseAtItsConstructorOverAnEnclosingRegionIsTheCallsRow(string source) => MirTargetSide.Check(source);
 
     // SPEC 15.6.4 step 3, 15.6.5: the invalid twins, a later local source (AnOwnedRegionWithALaterSourceIsUnproven's form), so r's region
     // holds q's Borrow, which the clause needs to outlive p: Refuted in the own body (t31n), not proven where the nested body carries r
     // (n21n, as AClauseOverAnEnclosingRegionIsARow's c1i); A5's record at the constructor call, relating the clause.
     [Theory]
-    [InlineData(ClauseAtConstructor + "    var q: i32 = 1\n    var r = p\n    let c = func [r] () => r\n    let b = P.init(c(), p)\n    see(b.x)\n" +
-        "    r = q@ref\n    see(r)\n" + Main, DiagnosticCode.UnsatisfiedOriginRelation_Kd, "P.init(c(), p)")]
-    [InlineData(ClauseAtConstructor + "    var q: i32 = 1\n    var r = p\n    let c = func [r, p] () -> i32\n        let inner = func [r] () => r\n" +
-        "        let b = P.init(inner(), p)\n        see(b.x)\n        return 0\n    r = q@ref\n    let n = c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd,
-        "P.init(inner(), p)")]
+    [InlineData(ClauseAtConstructor + "    var q: i32 = 1\n    var r = p\n    let c = func [r] () => r\n    let b = P.init(c(), p)\n    see(b.x)\n    r = q@ref\n    see(r)\n" + Main, DiagnosticCode.UnsatisfiedOriginRelation_Kd, "P.init(c(), p)")]
+    [InlineData(ClauseAtConstructor + "    var q: i32 = 1\n    var r = p\n    let c = func [r, p] () -> i32\n        let inner = func [r] () => r\n        let b = P.init(inner(), p)\n        see(b.x)\n        return 0\n    r = q@ref\n    let n = c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "P.init(inner(), p)")]
     public void AStructsClauseAtItsConstructorOverALaterLocalSourceIsA5s(string source, DiagnosticCode code, string context)
         => MirTargetSide.Check(source, (code, MirTargetSide.At(context, null)));
 
