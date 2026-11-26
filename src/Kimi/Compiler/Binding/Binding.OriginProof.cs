@@ -610,9 +610,15 @@ public sealed partial class Binding
     // CollectDeclarationRows); each other, a body chain included (a local's inferred Origin, which region inference reads), is an
     // obligation at the Type occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is
     // never a premise of the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered;
-    // a nested signature's written result, a Function Type's or an anonymous function's, is formed at its own occurrence (FormNestedResult;
-    // DECISIONS R4-M162).
+    // a nested signature's written result, a Function Type's or an anonymous function's, is formed at its own occurrence (DECISIONS
+    // R4-M162). Its callers: a local's entry (BindVariable), FormNestedResult, and the declaration judge's roots (ValidateOriginRelations).
+    // DECISIONS BU-19: one call is a query of `clauseParts`, its occurrence and frame fixed, so each distinct part is decided once. A part
+    // met again forms nothing new: its rows are a function of the part, the occurrence and the frame (the obligation set keeps one), and
+    // the premises at the occurrence only grow during the walk (a row adds a region bound), so a clause its first visit proved stays proven.
     private void AddTypeClauseObligations(BoundType type, Koto occurrence)
+        => this.ClauseObligationPart(type, occurrence, this.clauseParts.Begin(this.storageVersion));
+
+    private void ClauseObligationPart(BoundType type, Koto occurrence, uint query)
     {
         this.termWalks++;
         if (type.OriginArguments.Count != 0 && type.Symbol is { } symbol &&
@@ -638,7 +644,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddTypeClauseObligations(type.Components[i], occurrence);
+            if (FirstVisit(this.clauseParts, type.Components[i], query, 1))
+            {
+                this.ClauseObligationPart(type.Components[i], occurrence, query);
+            }
         }
     }
 
