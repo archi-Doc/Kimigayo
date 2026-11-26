@@ -94,55 +94,34 @@ public partial class TypeDagScalingTest
     // storage's Type with the output walk's bound, which is none, entering each state once, so one call's contract is decided at any number
     // of levels up to H. make's result is a Tuple chain over `ref/i32 during q` (D_n's chains: a written one is past the syntax depth),
     // each level a position whose fit may walk down to the leaf. Holds keeps its answers for one output's positions (G408B-10), so each of
-    // the call's two hold walks enters each level once: at most 2n + 4 steps (TermWalkWork) at n = 0, 1,024 and 8,190 levels (4, 2,052,
-    // 16,384; with the leaf's ref and i32, H = 8,192), with no stack failure. A fit walking the levels below each position anew reads
-    // (n + 1)(n + 2) + 2, 67.1 million at 8,190.
+    // the call's two hold walks enters each level once: at most 2n + 4 steps (the call's TermWalkWork, AssertOneCallsWork) at n = 0, 1,024
+    // and 8,190 levels (4, 2,052, 16,384; with the leaf's ref and i32, H = 8,192), with no stack failure. A fit walking the levels below
+    // each position anew reads (n + 1)(n + 2) + 2, 67.1 million at 8,190.
     [Fact]
     public void TheHoldFitsOfOneCallAreLinearInTheLevels()
-    {
-        var levels = new[] { 0, 1024, 8190 };
-        var steps = levels.Select(static n => Work(n)).ToArray();
-        var text = string.Join(' ', steps);
-        TestContext.Current.TestOutputHelper?.WriteLine(text);
-        Assert.True(steps[1] > steps[0] && steps.Zip(levels).All(static x => x.First <= (2L * x.Second) + 4), text);
-
-        static long Work(int levels)
-        {
-            var c = MirBuildTest.Compile(TypeHeightLimitTest.Doubling(12) +
+        => AssertOneCallsWork(
+            static (levels, call) => TypeHeightLimitTest.Doubling(12) +
                 $"func make(x: ref/i32 during q) -> {TypeHeightLimitTest.Chain(levels, "ref/i32 during q")} => $abort(\"x\")\n" +
-                "func g()\n    var x = 1\n    var d = make(x@ref)\n" + LayerMain);
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-            c.Analyze();
-            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
-            return c.Binding.TermWalkWork;
-        }
-    }
+                "func g()\n    var x = 1\n" + call + LayerMain,
+            "    var d = make(x@ref)\n",
+            2,
+            4);
 
     // SPEC 15.6.4, PLAN G408 (G408B-11, G408B-12): the same chain where x's own Type, `uniq/(i64, i32) during q`, fits no level, so each
     // position's fit asks Borrows whether it is a borrow formed through x's layer: down to the leaf `ref/i32 during q`, whose referent i32
     // is a part (i64, i32) holds by value. Borrows keeps its answers as Holds does, so each output's two walks enter each level once (Holds'
-    // no also the tuples' i32), with HoldsFrom's three entries in the referent and the two other entries: at most 4n + 14 steps at n = 0,
-    // 1,024 and 8,190 (14, 4,110, 32,774). A Borrows walk anew at each position reads n^2 + 5n + 12 (67,117,062 at 8,190).
+    // no also the tuples' i32), with HoldsFrom's three entries in the referent and the two other entries: at most 4n + 14 steps (the call's,
+    // AssertOneCallsWork) at n = 0, 1,024 and 8,190 (14, 4,110, 32,774). A Borrows walk anew at each position reads n^2 + 5n + 12
+    // (67,117,062 at 8,190).
     [Fact]
     public void TheBorrowFitsOfOneCallAreLinearInTheLevels()
-    {
-        var levels = new[] { 0, 1024, 8190 };
-        var steps = levels.Select(static n => Work(n)).ToArray();
-        var text = string.Join(' ', steps);
-        TestContext.Current.TestOutputHelper?.WriteLine(text);
-        Assert.True(steps[1] > steps[0] && steps.Zip(levels).All(static x => x.First <= (4L * x.Second) + 14), text);
-
-        static long Work(int levels)
-        {
-            var c = MirBuildTest.Compile(TypeHeightLimitTest.Doubling(12) +
+        => AssertOneCallsWork(
+            static (levels, call) => TypeHeightLimitTest.Doubling(12) +
                 $"func make(x: uniq/(i64, i32) during q) -> {TypeHeightLimitTest.Chain(levels, "ref/i32 during q")} => $abort(\"x\")\n" +
-                "func g(v: (i64, i32))\n    var x = v@move\n    var d = make(x@uniq)\n" + LayerMain);
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-            c.Analyze();
-            Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
-            return c.Binding.TermWalkWork;
-        }
-    }
+                "func g(v: (i64, i32))\n    var x = v@move\n" + call + LayerMain,
+            "    var d = make(x@uniq)\n",
+            4,
+            14);
 
     // SPEC 15.6.4, PLAN G408 (G408B-17; design section 4's s1, s2): a call's retention asks once, over all the subjects its walks left past
     // their bounds, whether one can carry a Loan or an address (one MayCarry query, one visited set), so the question is linear in the Types
@@ -320,5 +299,21 @@ public partial class TypeDagScalingTest
         c.Analyze();
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         return (c.Binding.TermWalkWork, watch.ElapsedMilliseconds);
+    }
+
+    // PLAN G408 (G408B-21): one call's steps are its program's TermWalkWork less its twin's, the same program without the call's
+    // statement, at n = 0, 1,024 and 8,190 levels. The twin holds the rest of the run, which is not the call's: the prelude's
+    // declarations, among them the declaration judge's clause walk at each written Type's root (Q-823: 6 + 12 x 10 entries over
+    // Doubling(12)). The twin's work is equal at every n, so no work that grows with n hides in it; the call's grows from n = 0 to 1,024
+    // and is at most perLevel * n + fixedSteps.
+    private static void AssertOneCallsWork(Func<int, string, string> program, string call, long perLevel, long fixedSteps)
+    {
+        int[] levels = [0, 1024, 8190];
+        var twins = levels.Select(n => RetentionWork(program(n, string.Empty)).Work).ToArray();
+        var steps = levels.Select((n, i) => RetentionWork(program(n, call)).Work - twins[i]).ToArray();
+        var text = $"{string.Join(' ', steps)}; twin {string.Join(' ', twins)}";
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        Assert.True(twins.All(x => x == twins[0]), text);
+        Assert.True(steps[1] > steps[0] && steps.Zip(levels).All(x => x.First <= (perLevel * x.Second) + fixedSteps), text);
     }
 }
