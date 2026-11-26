@@ -280,7 +280,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference at the call's
             // own Types and lengths (SPEC 8.6.3): the item keeps the call's substitution in the view, here alone its Self and its
-            // reference taking their case Types.
+            // reference taking their case Types, without the Origins A4 never reads (InView).
             var reference = subst.Declaring is { } declaring ? cases.Type(declaring) : null;
             this.Item(self, Requires, callee.Symbol, callee.Contract, types.InView(subst, self, reference));
         }

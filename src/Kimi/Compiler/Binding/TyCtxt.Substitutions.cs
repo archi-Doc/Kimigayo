@@ -176,10 +176,10 @@ internal sealed partial class TyCtxt
         => this.Intern(target, null, declaring, types, lengths, [], []);
 
     // A requirement call's substitution in a Semantics view (SPEC 8.15; A4's Requires item, for Witnesses): on the case Type of its Self
-    // through that of its Contract reference, which the view's owner gives (MirCases.Type); its own Types, lengths and Origins are the
-    // call's, so it is the call itself where the view changes neither.
+    // through that of its Contract reference, which the view's owner gives (MirCases.Type), at the call's own Types and lengths; without its
+    // Origins, which A4 never reads, so the calls of one requirement on one Self share one item and one witness answer (R4-M197).
     internal Subst InView(Subst call, BoundType self, BoundType? reference)
-        => this.Intern(call.Target, self, reference, call.Types, call.Lengths, call.Origins, call.Inputs);
+        => this.Intern(call.Target, self, reference, call.Types, call.Lengths, [], []);
 
     // A call of a requirement on a Self through a Contract reference that a compiler function or a requirement's function item makes (a
     // comparison's Requirement leaf, a compiler function's call of a user witness, an Item's call): a bound reference is its declaring Type

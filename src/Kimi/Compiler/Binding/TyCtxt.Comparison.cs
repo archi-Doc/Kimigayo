@@ -122,7 +122,7 @@ internal sealed partial class TyCtxt
             return new(self, kind, requirement, subst, []);
         }
 
-        return this.Witness(requirement, contract, subst) switch
+        return this.Witness(requirement, contract, subst, null) switch
         {
             { Kind: RequirementTargetKind.Body, Target: { } witness, Subst: { } instance }
                 => new(self, kind, witness, this.Intern(witness, null, instance.Declaring, instance.Types, instance.Lengths, [], []), []),
