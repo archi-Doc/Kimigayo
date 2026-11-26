@@ -35716,7 +35716,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     a broken-contract throw off a host with one (commit 2; C-575 B1: the public `Project.Run` became host-dependent); three counts of
     "one selected target" (C-575 N1); a new not-started reason for the host refusal (vocabulary; PLAN G1416).
 
-- **T-M52 Platform selection in the startup check** (Tatara, 2026-11-26; the plan's unit B9c1, Q-<n>; Major; design
+- **T-M52 Platform selection in the startup check** (Tatara, 2026-11-26; the plan's unit B9c1, Q-812; Major; design
   `artifacts\handoff\tatara\units\B9\design.md` Revision 2.1 §3.3, §5 rows 2-6 and 24-26; the owner's decision 29; T's rulings
   118, 119, 121, 123 and 125 and the B9-W1 briefs' D8 and O1-O5; the Front's C-586).
   - **Candidates:** `Binding.CheckStartup` reads, for an Application only, the root's `NestedContainers` (the parser's owning list
@@ -35742,7 +35742,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `Kotonoha.OmittedDeclarations` and from `platformUnresolved`'s causes where either is non-empty, otherwise direct. The hosted
     records and the two errors are never derived. A Self clause naming a Contract whose parent failed resolves, and no final-pass
     fact tells that Contract's failure from another (its verdict is `InvalidConstraint` either way; `HasUnresolvedParents` is set in
-    a provisional pass only), so the no-platform record stays direct beside the Contract's and the parent's records (PLAN G<n>).
+    a provisional pass only), so the no-platform record stays direct beside the Contract's and the parent's records (PLAN G1450).
   - **The missing startup form (the Front's F C2):** "no platform" does not read the startup form: a none-row Application with
     neither reports `MissingStartupBody_Kd` and the no-platform `Unsupported_Kd`, both at the root.
   - **No row** (`TargetProfile.Find` null): neither `Unsupported_Kd` (the target cannot be built, T-M34 G2); the two errors stand.
@@ -35762,7 +35762,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     second walk of the Contract's refinements; T's ruling 125).
 
 - **T-M53 Decision 45: a platform member accesses no static storage; the published platform** (Tatara, 2026-11-26; the plan's unit
-  B9c2, Q-<n>; Major; design `artifacts\handoff\tatara\units\B9\design.md` Revision 2.1 §3.3.1 and §4; C-458 M2, the owner's O-494
+  B9c2, Q-812; Major; design `artifacts\handoff\tatara\units\B9\design.md` Revision 2.1 §3.3.1 and §4; C-458 M2, the owner's O-494
   M2 (a) and O-495 (a) (decision 46); T's rulings 119, 121 N7, 123 C1 and 124; the Front's C-586; the Middle as A4's owner).
   - **A4's class `Static` (32):** a body may access static storage. Two forms set it:
     - The `staticEnsure` arm: a static Field's read, borrow, write, replacement, destruction or first-access initialization (SPEC
@@ -35825,7 +35825,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
       virtual witness would then carry no permission, as on commit 2, which accepts R4cf.
 
 - **T-M54 The platform a freestanding program supplies, and what the loader described** (Tatara, 2026-11-26; the plan's unit B9a,
-  decisions 29-31, Q-<K>, D-<K>; Major; design `artifacts\handoff\tatara\units\B9\design.md` Revision 2.1 §3.1; T's rulings 118,
+  decisions 29-31, Q-812, D-1316; Major; design `artifacts\handoff\tatara\units\B9\design.md` Revision 2.1 §3.1; T's rulings 118,
   119 and 121). Lands in window B9-W1 with B9b, B9c1 and B9c2 (all or none).
   - **The declarations:** `src/Kimi/Library/Platform.kimi`, with no Condition (declared on every target, SPEC 22.1), holds the static
     Contract `Platform` (`#Lang("Platform")`, `Self is Copy`) and the C-layout Copy struct `Boot` (`#Layout("C")`:
@@ -35854,7 +35854,7 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     `address` (`Platform`'s first requirement); a `KimiLibrary` member without a reader; `#Lang("Boot")` with a `KimiDeclarationId`
     member and a catalog entry (no C# reader: against R8-M45 and the owner's O-307 (a)); a Condition on `Platform.kimi`.
 
-- **T-M55 The x86_64-unknown-none row, staged** (Tatara, 2026-11-26; the plan's unit B9b, Q-<n>; Major; design
+- **T-M55 The x86_64-unknown-none row, staged** (Tatara, 2026-11-26; the plan's unit B9b, Q-812; Major; design
   `artifacts\handoff\tatara\units\B9\design.md` Revision 2.1 §2, §3.2, §0.2; the owner's decisions 22, 29, 32, 34 and 44 (O-494 M1
   (b)); T's rulings on the B9-W1 briefs D1-D4 and 118 R1-R4).
   - **The row:** `TargetProfile.None` (`Core/TargetProfile.cs`), `x86_64-unknown-none`, `none-x64-v1`, the pinned clang's layout for
