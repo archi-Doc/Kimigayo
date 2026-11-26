@@ -523,21 +523,42 @@ public sealed partial class Binding
 
     private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true, BindingSymbol? reference = null)
     {
+        var completion = Completion.Provisional; // these callers read no Completion (unthreaded); the supply's reader does (ContractSupply)
+        return this.ContractConstraint(constraint, scope, self, normalize, reference, ref completion);
+    }
+
+    // W4: `completion` meets each part's (InstantiatedContract; the reference's substitution and ContractTypeAnswer for each Type).
+    private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize, BindingSymbol? reference, ref Completion completion)
+    {
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.ContractConstraint(constraint.Left!, scope, self, normalize, reference));
+            return this.NegateConstraint(this.ContractConstraint(constraint.Left!, scope, self, normalize, reference, ref completion));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            return this.InternConstraint(new(constraint.Kind, left: this.ContractConstraint(constraint.Left!, scope, self, normalize, reference), right: this.ContractConstraint(constraint.Right!, scope, self, normalize, reference)));
+            var left = this.ContractConstraint(constraint.Left!, scope, self, normalize, reference, ref completion);
+            return this.InternConstraint(new(constraint.Kind, left: left, right: this.ContractConstraint(constraint.Right!, scope, self, normalize, reference, ref completion)));
         }
 
-        var contract = constraint.Contract is { } written ? this.InstantiatedContract(written, scope, self, normalize, reference) : null;
-        return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, Instantiate(constraint.Subject), constraint.RequiredType is { } required ? Instantiate(required) : null, contract, constraint.Mask));
+        var contract = constraint.Contract is { } written ? this.InstantiatedContract(written, scope, self, normalize, reference, ref completion) : null;
+        if (constraint.Subject is null)
+        {
+            return constraint;
+        }
 
-        BoundType Instantiate(BoundType type)
-            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference, out _), scope, self, normalize);
+        var subject = Instantiate(constraint.Subject, ref completion);
+        var required = constraint.RequiredType is { } stated ? Instantiate(stated, ref completion) : null;
+        return this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
+
+        BoundType Instantiate(BoundType type, ref Completion met)
+        {
+            var substituted = met;
+            var bound = reference is null ? type : this.SubstituteContractReference(type, reference, out substituted);
+            var (image, _, formed) = this.ContractTypeAnswer(bound, scope, self, normalize);
+            met = Meet(met, Meet(substituted, formed));
+            return image;
+        }
     }
 
     private void ValidateConformances(BindingMode mode, bool final)

@@ -22,10 +22,12 @@ public sealed partial class Binding
     private readonly List<(EvidenceView, BindingSymbol?)> enumerateOwned = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
-    // A Contract's head depth (the class header's Kept rows), emptied at each publication's start in the capability phase
-    // (ForgetKeptTables), by each outermost request's return before it and each pass (ClearClosure), capacity kept; the rows
-    // themselves are their entry's (ViewIndex.Rows).
+    // A Contract's head depth (HeadDepth) and the walk's Complete supply instances (SupplyOf, G1406-30), one lifetime (the class
+    // header's Kept rows): emptied at each publication's start in the capability phase (ForgetKeptTables), by each outermost request's
+    // return before it and each pass (ClearClosure), capacity kept (ForgetHeads); the rows themselves are their entry's (ViewIndex.Rows).
     private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(BoundContract Shape, BoundType Root, BindingScope Scope, BindingSymbol? Requirement), (int Start, int Count)> enumerateSupplies = new();
+    private readonly List<(int Ancestor, BoundContract Declaration, BoundConstraint? Conjunct, IsKoto? Clause)> enumerateSupplied = new(); // their ranges' items
     private readonly List<List<PremiseRow>> enumeratePool = new();
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<IdentityRow> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows, each with its source
@@ -568,7 +570,7 @@ public sealed partial class Binding
             this.enumeratePoolNext = 0;
             if (!this.KeepsAcrossRequests)
             {
-                this.enumerateHeads.Clear(); // Before the capability phase the head depths live for this request.
+                this.ForgetHeads(); // Before the capability phase the head depths and supplies live for this request.
             }
         }
     }
@@ -598,7 +600,7 @@ public sealed partial class Binding
         }
 
         this.ForgetIdentityClasses();
-        this.enumerateHeads.Clear();
+        this.ForgetHeads();
     }
 
     // The entry of the view value in Closure(view): when the view has none at its serial, its entry is formed in place with the written
@@ -695,7 +697,7 @@ public sealed partial class Binding
     }
 
     // The pass ended (ResetCapabilities, as the pass runs again): every entry of the pass goes back to the pass's pool, and the head
-    // depths go.
+    // depths and supplies go.
     private void ClearClosure()
     {
         foreach (var index in this.enumerateIndex.Values)
@@ -704,7 +706,15 @@ public sealed partial class Binding
         }
 
         this.enumerateIndex.Clear();
+        this.ForgetHeads();
+    }
+
+    // HeadDepth's and SupplyOf's tables go (their one lifetime, enumerateHeads), capacity kept.
+    private void ForgetHeads()
+    {
         this.enumerateHeads.Clear();
+        this.enumerateSupplies.Clear();
+        this.enumerateSupplied.Clear();
     }
 
     // The outermost request's view, under a parameter identity: each Contract fact as the view reads it (Reading, every reader's; a

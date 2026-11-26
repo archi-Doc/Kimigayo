@@ -403,6 +403,8 @@ public partial class KimiLibraryShapeTest
             ["Binding.programPart.EnumerateIndex"] = Rule.Epoch, // the same index, each pass's part's (PLAN G949 S1-r1b)
             ["Binding.Library.Layer.Part.EnumerateIndex"] = Rule.Epoch,
             ["Binding.enumerateHeads"] = Rule.Epoch,
+            ["Binding.enumerateSupplies"] = Rule.Epoch, // The walk's Complete supply instances (SupplyOf, G1406-30), the head depths' lifetime.
+            ["Binding.enumerateSupplied"] = Rule.Epoch, // their items
             ["Binding.readings"] = Rule.Epoch, // A view's readings (ResetCapabilities; G949 S1-1, w1 (ii)).
             ["Binding.identityClasses"] = Rule.Epoch, // A view's identity tables (ResetIdentityClasses, from ResetCapabilities).
             ["Binding.identityLent"] = Rule.Epoch, // The tables lent to them, returned to identityPool at the epoch's end.

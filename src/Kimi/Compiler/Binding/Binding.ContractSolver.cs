@@ -108,7 +108,9 @@
 //   ArchitectureRulesTest): NormalizeProofConstraint, NormalizeProofType (W1); ClassForm (as MemberOf: Complete without an identity
 //   premise in the view, else the view's table's W7; a re-entered build answers the Type itself, Provisional, and keeps nothing; forms
 //   are kept by their table alone; R7-C2c2 c2-4b, whose deletion of SubstituteIdentity and IdentityPremise left W7 for W2 and W3);
-//   ContractType, ContractPart, ContractTypeCore, ContractLength, ApplyContractEnvironment, SubstituteContractReference (W4);
+//   ContractType, ContractPart, ContractTypeCore, ContractLength, ApplyContractEnvironment, SubstituteContractReference, and
+//   InstantiatedContract and the ContractConstraint overload taking a `ref Completion`, each meeting its parts' into it (W4; G1406-31:
+//   the walk's supply memo keeps a Complete supply alone, SupplyOf, from ContractSupply's empty meet);
 //   ProjectionSpecification, ResolveAssociated(receiver), BuiltinArithmeticOutput's and FixedArrayIteratorType's gates (W5);
 //   AvailableConstraintFact and AvailableContractPremise (W6: the meet of every source state read; a read that consults a failure
 //   Provisional: a failed declaration context, a failed premise and a Refuted source read as the proof's limit); the identity
@@ -718,37 +720,30 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (ancestor, declaration, item, _) in new ContractSupply(this, shape, root, view.Premises))
+        var supply = this.SupplyOf(shape, root, view.Premises);
+        for (var i = supply.Start; i < supply.Start + supply.Count; i++)
         {
-            if (item is null)
+            var (ancestor, declaration, premise, _) = this.enumerateSupplied[i];
+            if (premise is null)
             {
                 if (ancestor >= 0 && (AssociatedIdentityMatches(root, subject) || this.SameClass(root, subject)))
                 {
                     AddRow(rows, 0, new(declaration.Symbol, source.Available) { Stated = source.Stated });
                 }
-
-                continue;
             }
-
-            var start = this.conjuncts.Count;
-            AddConjuncts(this.conjuncts, item);
-            for (var c = start; c < this.conjuncts.Count; c++)
+            else if (RowAtom(premise) is { Subject: { } stated } &&
+                ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
             {
-                var premise = this.conjuncts[c];
-                if (RowAtom(premise) is { Subject: { } stated } &&
-                    ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
-                {
-                    var contract = premise.Kind == ConstraintKind.Contract;
-                    var available = source.Available && (!contract || this.WalkAvailable(this.AvailableContractPremise(premise.Contract!, out var premiseRead), premiseRead));
-                    PremiseRow row = contract
-                        ? new(this.RowContract(premise, subject, states), available) { Stated = source.Stated }
-                        : new(null, available) { Clause = premise, Stated = source.Stated };
-                    AddRow(rows, 0, row);
-                }
+                var contract = premise.Kind == ConstraintKind.Contract;
+                var available = source.Available && (!contract || this.WalkAvailable(this.AvailableContractPremise(premise.Contract!, out var premiseRead), premiseRead));
+                PremiseRow row = contract
+                    ? new(this.RowContract(premise, subject, states), available) { Stated = source.Stated }
+                    : new(null, available) { Clause = premise, Stated = source.Stated };
+                AddRow(rows, 0, row);
             }
-
-            this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
         }
+
+        this.DropSupply(supply);
     }
 
     // e2-7 (G1406-12 (b), design-p0 C1; SPEC 8.2.3 grounds): a link's identity rows, recorded at its memo computation (Enumerate) while
@@ -774,28 +769,19 @@ public sealed partial class Binding
             }
 
             var at = this.enumerateClasses is { } round ? this.ClassKey(link, round) : link; // E27-BOUND (K): the instance at the link's class key
-            foreach (var (_, _, item, clause) in new ContractSupply(this, shape, at, view.Premises))
+            var supply = this.SupplyOf(shape, at, view.Premises);
+            for (var i = supply.Start; i < supply.Start + supply.Count; i++)
             {
-                if (item is null)
+                // A row the walk has not recorded (its pair and source; interned Types, by reference).
+                if (this.enumerateSupplied[i] is { Conjunct: { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } premise, Clause: var clause } &&
+                    this.enumerateIdentityKeys.Add((left, right, shape.Symbol)))
                 {
-                    continue;
+                    this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional));
+                    this.enumerateJoined += this.RowJoins(left, right) ? 1 : 0;
                 }
-
-                var start = this.conjuncts.Count;
-                AddConjuncts(this.conjuncts, item);
-                for (var c = start; c < this.conjuncts.Count; c++)
-                {
-                    // A row the walk has not recorded (its pair and source; interned Types, by reference).
-                    if (this.conjuncts[c] is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } premise &&
-                        this.enumerateIdentityKeys.Add((left, right, shape.Symbol)))
-                    {
-                        this.enumerateIdentities.Add(new(premise, null, shape.Symbol, clause, Completion.Provisional));
-                        this.enumerateJoined += this.RowJoins(left, right) ? 1 : 0;
-                    }
-                }
-
-                this.conjuncts.RemoveRange(start, this.conjuncts.Count - start);
             }
+
+            this.DropSupply(supply);
         }
     }
 
@@ -915,6 +901,63 @@ public sealed partial class Binding
     // R7-C2c2: the walk's identity: two Types of one class of the request's view (ClassKey).
     private bool SameClass(BoundType a, BoundType b)
         => this.enumerateClasses is { } classes && ReferenceEquals(this.ClassKey(a, classes), this.ClassKey(b, classes));
+
+    // e2-7 (G1406-30; SPEC 8.3.2): the walk's supply instance, what `root is shape` supplies in `scope` under the active requirement
+    // Contract, as a range of enumerateSupplied: ContractSupply's items in its order, each clause instance as its conjuncts
+    // (AddConjuncts, split once), a declaration item one entry with no conjunct. It is a function of (shape, root, scope, requirement)
+    // alone (ContractTypeCore, normalize off, reads the scope chain's ConformancePath, the Self and the requirement), so a Complete one
+    // is kept for HeadDepth's lifetime (enumerateSupplies, ForgetHeads). A Provisional one (W4: StoredType's null at a height refusal,
+    // the batched route) is formed again where it is read, so a refusal records at each open site. Every reader of a supply at a link
+    // reads it here and keeps its own filter (AddSupplyRows, RecordLinkIdentities; a mate's walk through Enumerate), so the rows and
+    // their order are ContractSupply's. An unkept range is its reader's to drop (DropSupply).
+    private (int Start, int Count, bool Kept) SupplyOf(BoundContract shape, BoundType root, BindingScope scope)
+    {
+        var key = (shape, root, scope, this.activeRequirementContract);
+        if (this.enumerateSupplies.TryGetValue(key, out var kept))
+        {
+            return (kept.Start, kept.Count, true);
+        }
+
+        var start = this.enumerateSupplied.Count;
+        var supply = new ContractSupply(this, shape, root, scope);
+        while (supply.MoveNext())
+        {
+            var (ancestor, declaration, item, clause) = supply.Current;
+            if (item is null)
+            {
+                this.enumerateSupplied.Add((ancestor, declaration, null, clause));
+                continue;
+            }
+
+            var first = this.conjuncts.Count;
+            AddConjuncts(this.conjuncts, item);
+            for (var c = first; c < this.conjuncts.Count; c++)
+            {
+                this.enumerateSupplied.Add((ancestor, declaration, this.conjuncts[c], clause));
+            }
+
+            this.conjuncts.RemoveRange(first, this.conjuncts.Count - first);
+        }
+
+        var count = this.enumerateSupplied.Count - start;
+        var complete = supply.Completion == Completion.Complete;
+        if (complete)
+        {
+            this.enumerateSupplies.Add(key, (start, count));
+        }
+
+        return (start, count, complete);
+    }
+
+    // A read supply's end (SupplyOf): an unkept range goes while it is the list's tail; one with a supply formed above it while it was
+    // read stays until the lifetime's end (ForgetHeads).
+    private void DropSupply((int Start, int Count, bool Kept) supply)
+    {
+        if (!supply.Kept && supply.Start + supply.Count == this.enumerateSupplied.Count)
+        {
+            this.enumerateSupplied.RemoveRange(supply.Start, supply.Count);
+        }
+    }
 
     // The deepest Self-rooted head among a Contract's and its ancestors' Self-dependent clauses; int.MaxValue when a clause's subject is
     // not rooted at Self (it may name any Type, so its prefix stays active).
@@ -1180,15 +1223,20 @@ public sealed partial class Binding
     // `self` and the shape make it (InstantiatedContract: the declaration's Self is `self`, the shape's arguments keep theirs; G180), each
     // first as itself (Premise null: its own facts, an ancestor's `self is A` and the arithmetic premises, AddContractPremises'), then each
     // of its clause constraints that is not closed (DependentConstraint with the Contract's Self) as `self`, `scope` and that reference
-    // make it (ContractConstraint, not normalized), evaluated when reached. Read by AddContractPremises, Enumerate's walk and SPEC
-    // 8.3.3's expanding recursion (CheckExpandingRecursion, Binding.Contracts.Expansion).
+    // make it (ContractConstraint, not normalized), evaluated when reached. Read by AddContractPremises, Enumerate's walk (SupplyOf)
+    // and SPEC 8.3.3's expanding recursion (CheckExpandingRecursion, Binding.Contracts.Expansion).
     private ref struct ContractSupply(Binding binding, BoundContract shape, BoundType self, BindingScope scope)
     {
         private int ancestor = -1;
         private int next; // The declaration's next item: 0 the declaration itself, i + 1 its clause i.
+        private Completion completion = Completion.Complete; // the empty meet, before the first instance
 
         // Clause: the clause Premise instantiates (its origin, a premise of the declaration's environment; R7-C3, ruling 282).
         public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise, IsKoto? Clause) Current { get; private set; }
+
+        // W4: the meet of the Completions of the instances formed so far (InstantiatedContract, ContractConstraint); what the walk keeps
+        // (SupplyOf: a Complete supply alone, G1406-30).
+        public readonly Completion Completion => this.completion;
 
         // The shape's declaration, whose ancestors are written in its own terms.
         private readonly BoundContract Origin => shape.Symbol.Declaration.BoundSymbol?.Contract ?? shape;
@@ -1201,7 +1249,7 @@ public sealed partial class Binding
             {
                 if (this.next == 0)
                 {
-                    var instantiated = this.ancestor < 0 ? shape : binding.InstantiatedContract(this.Origin.Ancestors[this.ancestor], scope, self, normalize: false, shape.Symbol).Contract!;
+                    var instantiated = this.ancestor < 0 ? shape : binding.InstantiatedContract(this.Origin.Ancestors[this.ancestor], scope, self, normalize: false, shape.Symbol, ref this.completion).Contract!;
                     (this.next, this.Current) = (1, (this.ancestor, instantiated, null, null));
                     return true;
                 }
@@ -1212,7 +1260,7 @@ public sealed partial class Binding
                     if (declaration.ClauseStorage[this.next - 1].BoundConstraint is { } constraint &&
                         binding.DependentConstraint(constraint, contractSelf: true))
                     {
-                        this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol), declaration.ClauseStorage[this.next - 1]);
+                        this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol, ref this.completion), declaration.ClauseStorage[this.next - 1]);
                         this.next++;
                         return true;
                     }

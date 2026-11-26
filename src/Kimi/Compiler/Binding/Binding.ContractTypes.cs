@@ -46,8 +46,9 @@ public sealed partial class Binding
     // `self`, itself where unchanged. With a bound `reference` (the premise supply's), the Self the declaration writes is `self` first and
     // the reference's arguments come after, so a Self they carry from the premise's context stays the context's (DECISIONS R4-M166). The
     // declaration's own reference (`MT<A>` written in MT: the declaration symbol) is its SelfType (ContractReferenceType), which the
-    // reference binds like any other (PLAN G837).
-    private BindingSymbol InstantiatedContract(BindingSymbol contract, BindingScope scope, BoundType? self, bool normalize, BindingSymbol? reference)
+    // reference binds like any other (PLAN G837). W4: `completion` meets the reference's substitution's and the image's
+    // (ContractTypeAnswer); a Contract without a Type is its own image and meets nothing.
+    private BindingSymbol InstantiatedContract(BindingSymbol contract, BindingScope scope, BoundType? self, bool normalize, BindingSymbol? reference, ref Completion completion)
     {
         if (contract.Type is null)
         {
@@ -55,8 +56,10 @@ public sealed partial class Binding
         }
 
         var type = this.ContractReferenceType(contract);
-        var image = reference is null ? this.ContractType(type, scope, self, normalize)
-            : this.ContractType(this.SubstituteContractReference(self is null ? type : this.WithConformingSelf(type, self), reference, out _), scope, null, normalize);
+        var substituted = completion;
+        var written = reference is null ? type : this.SubstituteContractReference(self is null ? type : this.WithConformingSelf(type, self), reference, out substituted);
+        var (image, _, formed) = this.ContractTypeAnswer(written, scope, reference is null ? self : null, normalize);
+        completion = Meet(completion, Meet(substituted, formed));
         return ReferenceEquals(image, type) ? contract : this.BoundContractReference(image);
     }
 

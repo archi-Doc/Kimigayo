@@ -622,7 +622,10 @@ public class ArchitectureRulesTest
     // R7-C2c2 c2-4b (design R3.3): ClassForm's Complete where the view has no identity premise (with one it gives the table's W7, as
     // MemberOf); SubstituteIdentity's and IdentityPremise's (TypeIdentity.cs's two; W2, W3, which W7 replaces, DECISIONS R7-M20) went
     // with those members (a removed subject, not a weakened rule).
-    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=2;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=2")]
+    // e2-7 (G1406-31, on G1406-30 OP-3): ContractSolver.cs's two of the walk's supply memo: ContractSupply's empty-meet start, a meet's
+    // identity (W6's kind, as an outermost walk's start) before its first instance's W4 parts (InstantiatedContract and the ContractConstraint
+    // `ref` overload, R7-M20's W4 list); and SupplyOf's admission test, the memo's OP-3 test (a Complete supply alone is kept).
+    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=2;Binding/Binding.ContractSolver.cs=6;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=2")]
     // R7-C2c2 c2-4a (design §4's Owner row, review-impl-c24a N4): an identity class's Member reaches the judgments only through
     // MemberOf, which the Contract judge, the capability judge, JudgeConstraintAtom's other arms and ContractTypeCore's (E) arm read;
     // IdentityClasses.Member's other reader is Refuted; R7-C3 C7: the capability works' key reads it once more (JudgedCapabilityKey, the
@@ -936,7 +939,8 @@ public class ArchitectureRulesTest
     // G1407: row (2)'s intake of one source row's supply (AddSupplyRows) is a member; the conjunct split it calls (AddConjuncts, in
     // Binding.Constraints.cs) only appends a constraint and its conjuncts. e2-7: a link's identity rows' recorder at its memo
     // computation (RecordLinkIdentities) is a member; its rows' (pair, source) keys compare references. O-533 (a): its join test
-    // (RowJoins, JoinRoot) reads class keys and numbers them, comparing no Types. R7-C2c2: the walk's class
+    // (RowJoins, JoinRoot) reads class keys and numbers them, comparing no Types. G1406-30: the walk's supply instances (SupplyOf,
+    // DropSupply) form ContractSupply's items (MoveNext) and split them (AddConjuncts) into a list kept by reference keys. R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
     // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
     [Fact]
@@ -945,16 +949,16 @@ public class ArchitectureRulesTest
         string[] walk =
         [
             "Enumerate", "EnumerateLink", "EnumerateMates", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
-            "RowContract", "RowAtom", "AddRow", "AddSupplyRows", "RecordLinkIdentities", "RowJoins", "JoinRoot", "HoldsOpenLink", "RowWeight",
+            "RowContract", "RowAtom", "AddRow", "AddSupplyRows", "RecordLinkIdentities", "RowJoins", "JoinRoot", "HoldsOpenLink", "RowWeight", "SupplyOf", "DropSupply",
         ];
         string[] allowed =
         [
             "Add", "AddConjuncts", "AddRow", "AddSupplyRows", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
             "AvailableContractPremise", "CauseOf", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
-            "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
-            "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "JoinRoot", "KeyOf", "Max", "Meet",
+            "DerivedFailure", "DropSupply", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
+            "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "JoinRoot", "KeyOf", "Max", "Meet", "MoveNext",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "RecordLinkIdentities", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
-            "RowAtom", "RowContract", "RowJoins", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
+            "RowAtom", "RowContract", "RowJoins", "RowWeight", "SameClass", "SetKey", "SubjectKey", "SupplyOf", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",
         ];
         var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }
