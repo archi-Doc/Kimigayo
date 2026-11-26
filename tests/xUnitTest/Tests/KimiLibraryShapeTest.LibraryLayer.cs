@@ -402,6 +402,9 @@ public partial class KimiLibraryShapeTest
             ["Binding.enumerateIndex"] = Rule.Epoch,
             ["Binding.programPart.EnumerateIndex"] = Rule.Epoch, // the same index, each pass's part's (PLAN G949 S1-r1b)
             ["Binding.Library.Layer.Part.EnumerateIndex"] = Rule.Epoch,
+            ["Binding.enumerateGrounds"] = Rule.Epoch, // e2-7 (i): a view's T(G) entry, its closures' first round (GroundsEntry)
+            ["Binding.programPart.GroundsIndex"] = Rule.Epoch,
+            ["Binding.Library.Layer.Part.GroundsIndex"] = Rule.Epoch,
             ["Binding.enumerateHeads"] = Rule.Epoch,
             ["Binding.enumerateSupplies"] = Rule.Epoch, // The walk's Complete supply instances (SupplyOf, G1406-30), the head depths' lifetime.
             ["Binding.enumerateSupplied"] = Rule.Epoch, // their items

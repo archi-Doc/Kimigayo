@@ -17,8 +17,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // Closure(view) (the class header's): the entries the outermost request formed (dropped when it returns unless Kept); the running
-    // pass's entry of each (view scope, requirement Contract) and its free entries, each with its lists and their capacity, are the
-    // pass's part's, handed over by EnterPass (enumerateIndex, enumerateIndexPool below; PassPart.EnumerateIndex).
+    // pass's entry of each (view scope, requirement Contract), its T(G) entry (GroundsEntry) and its free entries, each with its lists
+    // and their capacity, are the pass's part's, handed over by EnterPass (enumerateIndex, enumerateGrounds, enumerateIndexPool below;
+    // PassPart.EnumerateIndex, PassPart.GroundsIndex).
     private readonly List<(EvidenceView, BindingSymbol?)> enumerateOwned = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
@@ -37,6 +38,7 @@ public sealed partial class Binding
     private readonly List<BoundType> enumerateDeferred = new(); // PLAN G881b: the round's mates row (5) did not walk (a cycle)
     private readonly List<BoundType> extendRoots = new(); // c2-4b: a closure's roots (CloseRoot, ExtendRound), a request table (LeaveRows)
     private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
+    private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateGrounds; // e2-7 (i): the running pass's T(G) entries.
     private Stack<ViewIndex> enumerateIndexPool; // The running pass's free entries.
 
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
@@ -174,7 +176,8 @@ public sealed partial class Binding
     // whose rows join no two classes builds nothing (R3.4). When a round keys a root lower by Order, the root is that key and the closure starts
     // again with no rows, and a restart onto a root filed in the publication ends it (CloseRoot files the entry with what the filed
     // key spent, G1406-16 C2). Otherwise
-    // the round reopens the view's entry as the closure's (OwnEntry) and returns its table, and CloseRoot walks each root and its key.
+    // the round returns its table and the entry its walk reads: a root's first walk reads the view's T(G) entry (GroundsEntry,
+    // `grounds`), a later round `own`, a copy of it re-filed by the round's table (FileByTable); CloseRoot walks each root and its key.
     // e2-7 rows (b): a walk whose new rows join no two classes of its table (enumerateJoined unmoved; `closure.Joined`, its count at the
     // round's start, -1 before a root's first walk) leaves the next table's classes and keys as they are, so the next walk would
     // repeat it: the closure ends (null) with its rows, spending nothing. G1406-19: the closure has one budget,
@@ -189,8 +192,8 @@ public sealed partial class Binding
     // files it Limited, so the round refuses nothing: a reader of a Limited root refuses (ReadIdentityLimit: AnalysisLimit_Kd, the
     // premise closure's bound). So a closure builds at most PremiseClosureLimit round tables beside T(G), however often it re-roots,
     // each from at most `closure.Rows` rows, and keeps at most those and its last round's walk's.
-    // Returns the round's table, or null when the closure ended or the table's build answered none.
-    private IdentityClasses? ExtendRound(ref (int Joined, int Spent, int Rooted, int Rows) closure, BindingScope scope, int serial, EvidenceView view, ViewIndex index)
+    // Returns the round's table and the entry its walk reads, or null when the closure ended or the table's build answered none.
+    private (IdentityClasses Table, ViewIndex Entry)? ExtendRound(ref (int Joined, int Spent, int Rooted, int Rows) closure, BindingScope scope, int serial, EvidenceView view, ViewIndex grounds, ViewIndex own)
     {
         while (true)
         {
@@ -244,9 +247,14 @@ public sealed partial class Binding
             }
 
             this.enumerateMemo.Clear();
-            this.OwnEntry(index, view);
+            if (!first)
+            {
+                own.CopyFrom(grounds);
+                this.FileByTable(own, view); // a later round reads its own table alone
+            }
+
             this.IdentityRounds += first ? 0 : 1; // a root's first walk is no extension round
-            return extended;
+            return (extended, first ? grounds : own);
         }
     }
 
@@ -263,7 +271,8 @@ public sealed partial class Binding
     // earlier request's rows enter it. Every proof limit its frame writes (its tables' builds, its walks, its key's nested closure,
     // which joins first) is set aside from the enclosing proof until both filings are made, so its filing keeps the first (W6;
     // FileClosure), which each read of the filing joins (CloseAsked): the asker that closes it and one that reads its filing rest on
-    // the same cause (G1406-41's open point, G1406-43).
+    // the same cause (G1406-41's open point, G1406-43). Its first round walks the view's T(G) entry (GroundsEntry, kept per pass with
+    // its formation's limit), so a closure forms, re-files and un-Keeps no request's entry (G1406-42 (2) (i)).
     // Returns the closure.
     private int CloseRoot(BindingScope scope, int serial, BoundType root)
     {
@@ -271,7 +280,10 @@ public sealed partial class Binding
         try
         {
             var view = this.ViewOf(scope);
-            var (index, _, enclosing) = this.EnterRows(root, view, serial, null, false);
+            var enclosing = this.EnterRequest(null);
+            var grounds = this.GroundsEntry(scope, view, serial);
+            var own = this.enumerateIndexPool.Count != 0 ? this.enumerateIndexPool.Pop() : new(); // a later round's entry (ExtendRound)
+            this.StartWalk();
             (int Joined, int Spent, int Rooted, int Rows) closure;
             BoundType key;
             Completion completion;
@@ -280,10 +292,10 @@ public sealed partial class Binding
             {
                 this.extendRoots.Add(root);
                 closure = (Joined: -1, Spent: 0, Rooted: 0, Rows: 0);
-                while (this.ExtendRound(ref closure, scope, serial, view, index) is { } table)
+                while (this.ExtendRound(ref closure, scope, serial, view, grounds, own) is { } round)
                 {
                     var at = this.extendRoots[0];
-                    this.EnumerateClosed(at, this.ClassKey(at, table), view, index);
+                    this.EnumerateClosed(at, this.ClassKey(at, round.Table), view, round.Entry);
                 }
 
                 key = this.extendRoots[0];
@@ -298,6 +310,7 @@ public sealed partial class Binding
             finally
             {
                 this.LeaveRows(enclosing);
+                this.enumerateIndexPool.Push(own);
             }
 
             this.CloseRoot(scope, serial, key); // 5e': an unfiled key's own closure, with its own budget: a function of (key, G)
@@ -309,15 +322,62 @@ public sealed partial class Binding
         }
     }
 
-    // A request's own entry (a closure's round, ExtendRound; a request over a Limited reading, EnterRows): the view's entry reopened as the request's
-    // (not Kept, dropped when it returns), the class-key pairs an earlier table filed there dropped and the view's facts filed under the
-    // request's table's keys (enumerateClasses), so its walk reads its own table alone.
+    // A request's own entry over a Limited reading (EnterRows): the view's entry reopened as the request's (dropped when it returns,
+    // DropOwnedEntries) and re-filed by its table (FileByTable).
     private void OwnEntry(ViewIndex index, EvidenceView view)
     {
-        index.Kept = false;
         this.enumerateOwned.Add((view, this.activeRequirementContract));
+        this.FileByTable(index, view);
+    }
+
+    // An entry re-filed by the open request's table (enumerateClasses): OwnEntry's, and a closure's later round's copy of its T(G)
+    // entry (ExtendRound, never the view's entry, so not registered as owned): not Kept, the class-key pairs an earlier table filed
+    // there dropped and the view's facts filed under the table's keys, so its walk reads its own table alone.
+    private void FileByTable(ViewIndex index, EvidenceView view)
+    {
+        index.Kept = false;
         index.DropClassKeys();
         this.IndexWritten(index, view);
+    }
+
+    // e2-7 (i) (G1406-42 (2)): the view's T(G) entry, its closures' first round (CloseRoot's preparation, before its walk starts: a
+    // reading demands nested requests): the view's facts as written, its readings (IndexNormalized, as a request's preparation forms
+    // them) and the facts again under T(G)'s keys, as a first round filed the view's own entry (OwnEntry). It is never a request's
+    // entry (RowsRequest keys by its reading's table), so a closure leaves a request's Kept entry Kept. Kept for the pass
+    // (ForgetKeptTables, ClearClosure) while T(G) is memoized for `serial` and every reading it formed was kept, read as IndexOf reads
+    // a Kept entry (readings only in KeptRegion); otherwise formed again in place. The first proof limit its formation wrote (its
+    // readings', T(G)'s) is kept with it and joined at each read (W6, G1406-43 (2)), so a closure reading it rests on what one that
+    // formed it rests on.
+    private ViewIndex GroundsEntry(BindingScope scope, EvidenceView view, int serial)
+    {
+        var key = (view, this.activeRequirementContract);
+        if (this.enumerateGrounds.TryGetValue(key, out var entry) && entry.Serial == serial && entry.Kept && (!entry.Readings || this.KeptRegion))
+        {
+            this.ScopeReads.Limit ??= entry.Limit;
+            return entry;
+        }
+
+        if (entry is null)
+        {
+            entry = this.enumerateIndexPool.Count != 0 ? this.enumerateIndexPool.Pop() : new();
+            this.enumerateGrounds[key] = entry;
+        }
+
+        var outer = this.SetAsideLimit();
+        entry.Open(serial);
+        this.IndexWritten(entry, view); // as written (no request classes)
+        var (formations, stores) = (this.readingFormations, this.readingStores);
+        if (this.IndexNormalized(entry, view) != serial)
+        {
+            throw new InvalidOperationException("A closure's T(G) entry moved its own view (InternalInvariant; e2-7).");
+        }
+
+        this.enumerateClasses = this.GroundsOf(scope, serial) ?? throw new InvalidOperationException("T(G) re-entered at a closure's entry (InternalInvariant; e2-7).");
+        this.IndexWritten(entry, view); // under T(G)'s keys
+        this.enumerateClasses = null;
+        entry.Limit = this.TakeOwnLimit(outer);
+        entry.Kept = this.identityGrounds[scope].Serial == serial && this.readingFormations - formations == this.readingStores - stores;
+        return entry;
     }
 
     // PLAN G881b (SPEC 8.2.3 Cycles, 8.3.3): the rows of a request's subject and of its class key as the walk's least fixpoint, the
@@ -652,6 +712,11 @@ public sealed partial class Binding
             index.Forget();
         }
 
+        foreach (var index in this.enumerateGrounds.Values)
+        {
+            index.Forget();
+        }
+
         this.ForgetIdentityClasses();
         this.ForgetHeads();
     }
@@ -758,7 +823,13 @@ public sealed partial class Binding
             this.enumerateIndexPool.Push(index);
         }
 
+        foreach (var index in this.enumerateGrounds.Values)
+        {
+            this.enumerateIndexPool.Push(index);
+        }
+
         this.enumerateIndex.Clear();
+        this.enumerateGrounds.Clear();
         this.ForgetHeads();
     }
 
@@ -831,6 +902,9 @@ public sealed partial class Binding
         // first proof limit its walk wrote (W6).
         internal Dictionary<BoundType, (List<PremiseRow> Rows, ICheckCause? Limit)> Rows { get; } = new(ReferenceEqualityComparer.Instance);
 
+        // A T(G) entry's formation's first proof limit (Binding.GroundsEntry; W6), joined at each read of the kept entry.
+        internal ICheckCause? Limit { get; set; }
+
         // A publication started: the entry is formed again in place at its view's next read.
         internal void Forget() => this.Serial = -1;
 
@@ -862,6 +936,27 @@ public sealed partial class Binding
             copy.Clear();
             copy.AddRange(rows);
             this.Rows.Add(link, (copy, limit));
+        }
+
+        // A closure's later round's entry (Binding.ExtendRound) starts as its first round's: `first`'s buckets copied into this
+        // entry's own lists in their order, with no kept row; FileByTable then re-files it by the round's table.
+        internal void CopyFrom(ViewIndex first)
+        {
+            this.Open(first.Serial);
+            foreach (var (key, list) in first.Buckets)
+            {
+                if (this.used == this.lists.Count)
+                {
+                    this.lists.Add(new(list.Count));
+                }
+
+                var copy = this.lists[this.used++];
+                copy.Clear();
+                copy.AddRange(list);
+                this.Buckets.Add(key, copy);
+            }
+
+            this.Readings = first.Readings;
         }
 
         // An extension's walking round (Binding.ExtendRound) reads its own table's keys alone: the pairs filed under another subject
