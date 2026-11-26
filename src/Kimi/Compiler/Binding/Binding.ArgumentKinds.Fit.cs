@@ -143,14 +143,9 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (source is ArrayLiteralKoto array)
         {
-            // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
-            var shaped = expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } &&
-                (array.FillLength is null || expected.Kind == BoundTypeKind.FixedArray) &&
-                (expected.Kind != BoundTypeKind.FixedArray || (array.FillLength is null ? expected.Length == array.Elements.Count :
-                    array.FillCount is { } count && (count.IsConstant
-                        ? expected.LengthExpression is null && expected.Length == count.Value
-                        : ReferenceEquals(expected.LengthExpression, count))));
-            if (!this.ShapeFits(shaped))
+            // SPEC 4.3: a call-argument literal fits the candidate's owned fixed array of exactly its length, or its owned Array: the
+            // shape it constructs there (ConstructsAt, the one array length rule).
+            if (!this.ShapeFits(expected.Semantics == SemanticsKind.Owner && this.ConstructsAt(array, expected)))
             {
                 return CandidateApplicability.Inapplicable;
             }
