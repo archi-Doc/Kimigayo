@@ -124,7 +124,7 @@ public sealed partial class Binding
         {
             if (this.CaptureOuterUse(node, symbol, scope) is not { } capture)
             {
-                return this.Fail(node, BindingFailure.Capture);
+                return null; // Its refusal is recorded at the use (CaptureOuterUse).
             }
 
             symbol = capture;
