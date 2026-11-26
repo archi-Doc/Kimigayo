@@ -7171,6 +7171,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: an index-only bound (a second rule for one decision); the part rule for every Field or Downcast step (Whole is also the
     Case bound's fact, so it accepts the settled I pins rvCaseFieldResBad, rvCasePayloadFieldBad and rvCaseElementBad against
     O-364 (a)'s Field and element rule).
+  - Superseded in part by R4-M250 (G1093, 2026-11-26): the Rule's `Ends` read: besides a root that holds only calls' results, a
+    root whose write slot holds Φ_B after a store of the body through a Deref is read whole.
 - **R4-M219 A5 reads every element of a value at the reading path's Type (the A5 value redesign's chain: U3b, U3c, G785, U6, U7)**
   (2026-11-19, landing with Q-539; Middle, A5 with Binding publications; Major, an acceptance mover; the owner's O-209, O-220 (a),
   O-223 (B'), O-230, O-232 (a), O-254, O-353 (a) and O-424 (a); the redesign's design reviews 1-4 and the re-review, the units'
@@ -7428,6 +7430,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (caseWriteOkCaseOk: a uniq/i32 written reaches only the Ok Case; caseWriteR2CleanOk: a plain u64 carries nothing); unbounding
     the holder a call writes (its Err payload then carried what the Ok Case holds, a Language error on caseWriteR2LenderUseOk);
     reading the written input's later value instead of a slot (caseWriteR2LaterBad: the input overwritten after the call).
+  - Superseded in part by R4-M250 (G1093, 2026-11-26): approximation (2) is replaced: a store of the body through a Deref is the
+    body's own value at the holders it reaches (Φ_B), so rvCaseRefWriteBad is rejected; approximation (1) also names
+    caseWriteR2LenderUseOk and caseWriteR2ExposedUseOk (the split from a call's write is O-383 (b)'s recorded scope). "A call's
+    write is a source" now reads a slot instead only while it lacks Φ_B; a lost argument or a store through a Deref writes every
+    exposed local; Mixing runs before the slots are numbered where a call has a write source or a store passes a Deref
+    (`WriteSourced`). The two Rejected unboundings hold as stated for a call's write; the body's own store unbounds from that point
+    on, not at the borrow or address, and does unbound the holder a call writes.
 - **R4-M221 The A5 landing hunk: W's one step decision past a holder's layer (c1) and the Φ_E rule at a kept binding's hidden
   layers (c4)** (2026-11-19, landed with the A5 one-tree landing, Q-539; Middle, A5; Major, an acceptance mover; the owner's O-312
   (a), O-389 (a), O-398 (a), O-418 (a) and O-424 (a); design `middle\notes\a5v-landing-hunk-design.md` Revisions 1-7 (R7.7) and
@@ -8553,6 +8562,43 @@ and migration obligations remain in force; no numeric cap changes are authorized
     holders, not E); a clause for the AnyOf arm alone (the Any and erased arms are the same fact).
   - Rejected for now: form A in place of the kept clause (the call's own pointer at `writingPlace`'s key): without a holder's
     positions it adds a Language error on the valid r3SibAddrArrOk and needs a route-1 exclusion no fact publishes (U5).
+- **R4-M250 A store of the body through a Deref is the body's own value at the holders it reaches (Φ_B; G1093)** (2026-11-26;
+  Middle, A5; Major, an acceptance mover) SPEC 15.6 Holders and its write sentence (l. 547-548). Amends R4-M220 (its approximation
+  (2) is replaced) and R4-M218 (`Ends`).
+  - Rule: an Assign or returning Call whose Place passes a borrow or raw Deref sets Mixing's `lost`, so every exposed local is
+    written (spread over Mixing's edges), and makes its view WriteSourced (`MirBorrows.Holders`' Mixing, WriteSourced). There,
+    Store joins into the write slot of each holder it reaches what `MirBorrows.Holders`' one classifier (`Puts`, read by Mixing at a
+    direct destination and by `StoredThrough` at the planned location) makes of the stored value (`MirBorrows.Flow`' Store, which
+    the Assign and the Call transfer both reach): the write slot of a local a whole Move or Copy stores (its whole value, Case
+    payload or held reference) where that local is not mixed, nothing where it has no slot; nothing for a call's result that keeps
+    no source slot's input by Value (KeepsSourced); otherwise, a mixed local's value or a part store included, Φ_B. The Case and
+    referent bounds hold at a point only while the root's write slots lack Φ_B (`MirBorrows.Values`' Read); Rewrite replaces the
+    slots at a whole store and clears them at a storage start or end and a call's result.
+  - Φ_B (`MirBorrows`' `Built`, element 6; `Markers` 7): an A5 set marker, no closed vocabulary. It is written only into write
+    slots (Store, and Rewrite's copy of a source slot), read only by Read's bound test, and never in a value's set, so no check,
+    record or Cause reads it. `mixed` (flow-insensitive, a direct part or non-Whole store) and Φ_B (flow-sensitive, a store through
+    a Deref) are two forms of "the body stored a value of its own"; removal stage R7, after G1093 lands (PLAN G1446).
+  - Reason: SPEC 15.6: a write through a reference "adds the written value's Loans to every holder it may reach and ends none", and
+    the bounds hold only from a local that holds only calls' results; no owner cost covers the body's own store. The split from a
+    call's write is O-383 (b)'s recorded scope (R4-M220 approximation (1): caseWriteR2LenderUseOk and caseWriteR2ExposedUseOk stay
+    V); making both I would withdraw that owner cost and is the owner's decision. This rule unbounds at the store, from that point
+    on, not at the borrow or address (R4-M220's rejected unbounding; rvCaseRawOk, rvCaseKeptOk stay V).
+  - Rejected: joining the stored value's Loans into the slot (rwr, vRefOwnLoan: false errors); joining only Loan-free operands
+    (rwry stays accepted); skipping a store whose value carries nothing (itConstStore stays accepted; no cost filter); mixing every
+    exposed result holder flow-insensitively (rvCaseUniqOk, rvCaseRawOk, rvCaseKeptOk: false errors); mixing the reached holders
+    before the walk (Reach before Mixing, a second analysis); a classifier argument at `MirBorrows.Calls`' Store call (Store
+    classifies at the planned location, so a call pays KeepsSourced only at a store through a Deref).
+  - Rows (`MirBorrowsTest`): rvCaseRefWriteBad at `kk = 2`; the 34 G1093 rows of
+    `AValueReadFromAHolderCarriesItsLoansWhateverItsType` (15 I at their writes, 19 V/V* accepted; with rvCaseRefWriteBad, the
+    design's rw0, the 35 programs); `AStoreThroughAReferenceIntoACallsResultIsFollowedInLinearWork`.
+  - Cost: Puts is O(1) per Assign; at a returning Call it runs KeepsSourced as Mixing did before; G1093 adds it only at a
+    through-Deref Call's Store. WriteSourced adds one pass over the statements; every exposed Returned local of a view with a store
+    through a Deref takes a write slot. G1093's write slots multiply the E8 End term by about 1.8-2.0 on N exposed result holders,
+    each stored through (PLAN G768). The linear-work row grows x1.9 per doubling (5214, 8839, 16124). Measured cost (R1.6, 11-26,
+    53 A5 programs against dev): A5 Work +4.9% (at most +11.8%, Iterators), cold A5 allocation +1.0%, warm allocation 0; the
+    Middle accepts it for the class 1 fix (RQ8), and G768 is its removal row.
+  - Limit: Mixing's `mixed` is flow-insensitive, so a Move through a reference of a local the body mixes elsewhere reads the
+    target whole: vLaterMixed and vEarlierMixed (valid) are rejected at `a = 2`, as dev rejects the direct form vLaterMixedDirect.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
