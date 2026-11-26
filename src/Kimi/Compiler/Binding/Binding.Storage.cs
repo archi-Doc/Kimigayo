@@ -13,6 +13,10 @@ public sealed partial class Binding
     private readonly List<BoundEnumCase?> storedCases = new();
     private readonly List<BoundType> enumPayloadTypes = new();
     private readonly TypeMemo<BoundType, BoundType?> completedParts = new(); // CompleteProjections' results.
+    private readonly TypeMemo<BoundType, bool> headerParts = new(); // The Types one header walk met (DemandContainedHeaders).
+    private bool inferringHeader; // An inferred stored Property's header is the innermost one being computed (BindHeader).
+
+    internal int HeaderWalkWork { get; private set; } // The Types the header walks visited (TypeDagScalingTest).
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before; an
@@ -618,6 +622,74 @@ public sealed partial class Binding
         this.ValidateEnumProjections();
     }
 
+    // SPEC 11.6 (PLAN G1220; DECISIONS: G1220): a fact request made while an inferred stored Property's header types its initializer
+    // (inferringHeader, which BindHeader sets for that header alone, so a function's or an annotated header's own requests walk nothing)
+    // demands the Signature query of every stored Property the request's Type contains: the parts the capability rows read (CapabilityParts;
+    // for a declaration-judged instance its Type arguments, which Copy reads only through a conditional opt-in, SPEC 8.8) and its
+    // declaration's storage in its formals (StoredSyntax; the base through DirectBase), each part the leaf rule does not decide. A demand
+    // that meets the running header is its re-entry, whose rule records the cycle (ReenterHeader); the request then answers as before.
+    // Each Type is visited once per walk (headerParts, this walk's own table), a declaration's storage once per instance; a nested walk,
+    // begun by a header a demand binds, can only overwrite entries of headers it completes, so the walks of a pass stay bounded by the
+    // headers times the parts.
+    // Temporary (DECISIONS: G1220): deleted with its gate when the proof's stored-Type reads demand the Signature query during the headers (R7-D2
+    // d2 / C2 b, PLAN G381's removal).
+    private void DemandContainedHeaders(BoundType type, IntrinsicKind kind) => this.DemandHeaders(type, kind, this.headerParts.Begin(this.storageVersion));
+
+    private void DemandHeaders(BoundType type, IntrinsicKind kind, uint query)
+    {
+        if (this.headerParts.TryGet(type, query, out _) || this.TryLeafCapability(type, kind, out _))
+        {
+            return;
+        }
+
+        this.headerParts.Set(type, query, true);
+        this.HeaderWalkWork++;
+        if (JudgedByDeclaration(type))
+        {
+            var container = (DeclarationContainerKoto)type.Symbol!.Declaration!;
+            this.DemandStoredHeaders(container, kind, query); // Once per instance: its stored Types repeat in formals, met once.
+            if (kind == IntrinsicKind.Copy && !(this.copyByType.TryGetValue(container, out var copies) && copies.Exists(static x => x.Premises is not null)))
+            {
+                return;
+            }
+        }
+
+        foreach (var (part, _, _) in new CapabilityParts(type, BoundType.Unit))
+        {
+            if (part is not null)
+            {
+                this.DemandHeaders(part, kind, query);
+            }
+        }
+    }
+
+    private void DemandStoredHeaders(DeclarationContainerKoto container, IntrinsicKind kind, uint query)
+    {
+        if (container is StructKoto structure && this.DirectBase(structure) is { } baseSymbol)
+        {
+            this.DemandHeaders(structure.BaseClause!.BoundType ?? this.SelfType(baseSymbol), kind, query);
+        }
+
+        var members = new StoredSyntax(container);
+        while (members.MoveNext())
+        {
+            if (members.Syntax is not { } syntax)
+            {
+                continue;
+            }
+
+            if (members.Member is PropertyKoto { BoundSymbol: { } field })
+            {
+                this.BindHeader(field);
+            }
+
+            if ((members.Member is PropertyKoto ? members.Member.BoundSymbol?.Type : syntax.BoundType) is { } stored)
+            {
+                this.DemandHeaders(stored, kind, query);
+            }
+        }
+    }
+
     // SPEC 9.7.2, 15.3.1 (PLAN G425): a declaration's Type at an occurrence of its Type, every Type and declared Origin slot mapped to the
     // occurrence's arguments in one pass (SubstituteType); a clause's form (StoredConstraint) uses the same images.
     private BoundType? StoredType(BoundType field, BoundType owner)
@@ -851,7 +923,8 @@ public sealed partial class Binding
     // A container's members in declaration order with the syntax each stores (SPEC 11.7: layout, Copy derivation and destruction use
     // only stored Fields and base components; SPEC 15.2.3: the payloads of every Case): a stored Property once, with its annotation or,
     // inferred, itself; a Case payload once per operand (none for an empty payload); any other member once, storing nothing (Syntax
-    // null). The one enumeration of a container's stored syntax: PrepareStorage forms the shape from it. Base clauses are no members.
+    // null). The one enumeration of a container's stored syntax: PrepareStorage forms the shape from it, the header walk demands its Properties
+    // (DemandStoredHeaders). Base clauses are no members.
     private ref struct StoredSyntax(DeclarationContainerKoto container)
     {
         private readonly DeclarationContainerKoto container = container;
