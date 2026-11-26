@@ -207,7 +207,7 @@ public sealed partial class Binding
 
             if (SelectedOrigin(use, ref carrier, out _) is { } origin)
             {
-                return origin;
+                return this.UnmergedSelection(origin, use, use.BoundSymbol);
             }
 
             if (use.BoundSymbol is { Slot: ReceiverSlot } receiver)
@@ -221,6 +221,33 @@ public sealed partial class Binding
 
         this.Record(use, BindingFailure.MissingOrigin, [], unresolved: true);
         return null;
+    }
+
+    // Interim, the owner's O-534 (a) (PLAN G922 U1; DECISIONS R8-M56 as amended): a written name whose selection (SelectedOrigin's
+    // result, a plain name's and a projection's alike) is or meets a region that a `let` local's opening merged (LocalRegion.Merged),
+    // outside that local's body, through a binding the name's Closure does not carry (CarriesBinding), is the located Unsupported_Kd at
+    // the name, with no Origin; any other selection is `origin`. Removed once PLAN G922 U2/U3 give each merged part its own regions.
+    private BoundOrigin? UnmergedSelection(BoundOrigin origin, Koto use, BindingSymbol? symbol)
+    {
+        var body = BodyOwner(use);
+        var merged = MergedElsewhere(origin);
+        for (var i = 0; !merged && i < origin.Operands.Count; i++)
+        {
+            merged = MergedElsewhere(origin.Operands[i]);
+        }
+
+        if (!merged || CarriesBinding(use, symbol))
+        {
+            return origin;
+        }
+
+        // A header bound ahead of its locals failed this name with no selection (BindOriginName's InvalidOrigin) and binds it again at
+        // the function's statement (BindFunction's Q-B row): the limit is this attempt's verdict, so that failure leaves first.
+        this.ClearFailure(use);
+        this.RecordLocated(use, use.Span);
+        return null;
+
+        bool MergedElsewhere(BoundOrigin region) => SlotRegion(region) && this.Region(region) is { Merged: true } row && !ReferenceEquals(row.Body, body);
     }
 
     // SPEC 15.3.1, 23.1.2: a written Origin expression. A parenthesis or meet whose operand did not resolve has no Origin for that
@@ -272,6 +299,7 @@ public sealed partial class Binding
                 {
                     input.BindingState = target.BindingState = BindingState.Resolved;
                     target.BoundOrigin = result;
+                    result = this.UnmergedSelection(result, syntax, input.BoundSymbol);
                 }
                 else if (type?.Symbol is { Schema: not null } symbol)
                 {

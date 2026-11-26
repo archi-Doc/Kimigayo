@@ -23,7 +23,8 @@ namespace Kimi.Compiler;
 // one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
 // body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
-// proved it, and before as a reading with no answer yet (the deferral fact).
+// proved it, and before as a reading with no answer yet (the deferral fact). A `let` region that merges a stored part met on several
+// of the local's paths is marked so (LocalRegion.Merged, LocalBorrowType), read by the name limit alone (PLAN G922 U1).
 // Invariants: a value holds no region of its own body that publishes a value (each is read through once, when published), so a read at
 // a use is one step; it may hold a `var` region of its own body that publishes none (a `let` initializer, or an equality, naming a `var`
 // local), which a use in that body reads as the region and RegionValue as its candidate, whose walk reads each bound's region with a
@@ -601,7 +602,7 @@ public sealed partial class Binding
     {
         var record = this.WrittenRegion(region);
         record.Body = BodyOwner(region.Binder!);
-        (record.Value, record.Equality) = (null, false);
+        (record.Value, record.Equality, record.Merged) = (null, false, false);
         record.Value = this.RegionValueIn(value, record.Body);
         this.regionValues++;
         this.RecordRegionBound(record.Value, region, evidence);
@@ -644,7 +645,7 @@ public sealed partial class Binding
             region.Sources.Clear();
             region.Row = OriginVariance.Unused;
             region.Version = -1;
-            (region.Value, region.Equality) = (null, false);
+            (region.Value, region.Equality, region.Merged) = (null, false, false);
             region.Body = null;
             region.Solved = null;
             (region.Solution, region.SolutionVersion) = (null, -1);
@@ -858,6 +859,11 @@ public sealed partial class Binding
         // Written with the value (PublishRegionValue resets it, FixedRegion sets it); read through ReadsLetValue alone (O-400 (b)'s limit,
         // and FixedRegion's reading of an equality's end).
         internal bool Equality { get; set; }
+
+        // A `let` local's region that merges a stored part met on several of its paths (DECISIONS R8-M56; LocalBorrowType's MarkMerged), read
+        // by the name limit alone (UnmergedSelection, the owner's O-534 (a) interim; PLAN G922 U1). Written with the value (PublishRegionValue
+        // resets it).
+        internal bool Merged { get; set; }
 
         internal Koto? Body { get; set; }
 
