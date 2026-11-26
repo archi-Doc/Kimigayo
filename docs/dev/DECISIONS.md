@@ -2285,6 +2285,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amended by BU-251 (D-1163, Q-732, 2026-11-24): the Opens' "a failed match" is a match failed for its own requirement
     (non-exhaustive, Pending, a `try` whose operand failed or is not Option/Result); a match Binding resolves through its result
     join is outside the owner reservation, by R4-M179's precedent.
+  - Superseded in part by the owner's decision of 2026-11-26 (PLAN G103 R1, census question (7) (b), option C): the Rejected item "Binding publishing the Expression Type now (option C: owner and BU scope)" no longer holds, since the owner chose it; Binding publishes a construct's Expression Type wherever SPEC 14.9.2 forms one (the Front's unit), Part 3's "Temporary" builder choice and Residual R1 go with it, and the construct exception narrows to a construct that has no Expression Type (G121 (2), past R7's exit).
 - **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, verbatim 「推奨どおり承認 (推奨)」 to the package with OQ-F5-1 to OQ-F5-6
   at their recommendations; R4-M74 OQ2) The package is `draft/Sketches/A5 Step 2/2b-D-package.md`. In short:
   - err(effect) is an access in `MirBorrows` (`AccessKind` rows `EffectRead`, `EffectWrite`; three effect fact kinds); the Call's
@@ -3050,6 +3051,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     whose Opaque site names the located root (R5-M84) and evaluates no kept operand again. One rule with
     `Unsupported(node, derived, expected)`; temporary with Part 3, it goes with residual R1 when Binding publishes the Expression Type
     (option C)." (`MirBuilder.Value`, `SiteRoots`.)
+  - Superseded in part by the owner's decision of 2026-11-26 (PLAN G103 R1, option C): this Type rule (`Unsupported(node, derived, expected)`, temporary with Part 3) goes when the Front's unit publishes the Expression Type, with the Middle's builder deletion.
   - `PlanRow.Adjust` (one owner, the publisher; an existing per-node row): the Adjust by which the earlier of two calls of one consumer
     takes the node where the two take it by different Adjusts, the column keeping the later's; default otherwise, written at each call
     input of each pass (`HirPublisher.Write` under `callOrdinal`). Its one reader is an update's receiver, which exactly its getter and
