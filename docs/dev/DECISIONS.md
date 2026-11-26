@@ -29963,6 +29963,8 @@ Closure row of `MirCases.Branch`).
     before its selection names the call as its cause (`MarkOmittedHeaders`), so the earlier check's empty range stood and a record
     resting on the failed selection (SPEC 7.7.1) was reported; the cause is the header binder's provisional failure (PLAN G1391); a
     published "waiting header" fact the dependent writer consults (a who-wrote predicate under another name).
+  - Amended by R7-M124 (PLAN G144 F1): its two `RecordRead` sentences (the writer list's "a check's one read outside any frame" and
+    "writes its read whatever the node holds") are replaced there; held frames and the frame-less half are unchanged (PLAN G1391).
 - **R7-M107 A negated leaf atom is its kind's row; the Callable reader answers both polarities** (Front, 2026-11-25; R7-C2c2 c2-5b;
   Major, an acceptance mover; `artifacts/units/r7-c25b/plan.md`, `design.md`, F's CC-8, CC-9, CC-12, CC-13, CC-17, CC-18 and CC-20;
   supersedes in part R7-M31's Staged bullet and its "under `not`" sentence, and R7-M41's Temporary bullet for `Reading`). SPEC 8.3.2
@@ -30746,6 +30748,48 @@ Closure row of `MirCases.Branch`).
     Unit, n)` (a Binding table at render time and an undecided `?? Unit`, ruling 49); a ProblemFactKind `Member` for the inherited
     member (a vocabulary entry for a fact Actual carries, ruling 50 (B)); forming the Callable proposition at record time (the proof
     already holds it, B-3).
+- **R7-M124 A check's one read joins its node's own unheld frame: the recorder decides once where a read goes (PLAN G144, G144-11
+  Rule F1)** (Front, 2026-11-27; R7-D3 G144 F1; Major; design `artifacts\units\g144\design-frame.md` (G144-10), F's ruling G144-11,
+  6.1 (a); the Middle's consent with four conditions, G144-12) SPEC 23.1.2. Amends R7-M106.
+  - **Rule** (`Binding.Diagnostics.Prerequisites.cs`, stated once in its contract). It replaces two sentences of R7-M106: "A node's
+    prerequisite range has three writers: `EndConsultation` (a frame's reads), `ConsultedFor` (a check's one read inside a frame)
+    and `RecordRead` (a check's one read outside any frame)" and "`RecordRead` writes its read whatever the node holds, as before".
+    The three writers stay; `RecordRead(node, read)` is "a check's one read: inside its node's unheld frame, a read of that frame;
+    the range until the frame's end". It writes its one-read range whatever the node holds, as before, so the readers inside the
+    frame (`BindAndAdaptNode`'s temporary rest, `CheckConformance`'s use) read the one representation, the range (6.1 (a)'s write
+    order); when `node` is the open frame's node and that frame is not held, the read also joins the frame, unfiltered (the readers filter at
+    publication), so `EndConsultation`, which replaces the range with the frame's reads, keeps it. Anywhere else (no frame, another node's
+    frame, a held frame) the one-read range is the node's range, as on dev. Held frames stay PLAN G1391's (R7-M106's frame-less
+    half): a held frame is dropped, so a read joining it would be lost. `FailBaseRule` keeps its caller guard until G1391.
+  - **Defect closed.** `RecordRead` ran inside its node's own frame at almost every `CompleteDependent` caller, and the frame's end
+    replaced the read unless the frame had read it too. Counted on dev 79934ae85 over the whole suite (in-process, 48,744 tests):
+    11,171 one reads, 2,965 in the node's own unheld frame (the reads that now join), 48 in a held own frame, 3,214 in another
+    node's frame, 4,944 outside any frame; 127 own-frame ends lost the read (BindAssociatedApplication 42, BindNode 27, DecideResult
+    28, DecideWaiting 8, BindContainerReference 12, FailUnboundSlots 6, BindValueCallOnSplit 3, CaptureEntries 1), 984 kept it.
+    R7-M106's in-frame case (a `ProofRestsOnLimit` one read rewritten by `EndConsultation`) is 327 on dev 79934ae85, each a
+    one-read frame that keeps the read (R7-M106's 475 was suite 331 plus twins 144, counted on R7-C4's head merged onto 52505fff8; this trace recounted the suite
+    only, and the suite has changed since).
+    The 457 such reads in the node's own unheld frame all end accounted for: 327 rewritten and 130 empty frames.
+    Every reader is an OR over the range, so the range only gains the lost read: a record may only become derived (rule W, Q13),
+    never added.
+  - **Shape B** (a read outside the node's frame, then the end of a later frame of that node) is left as on dev by this rule: 8
+    such ends in the suite, and each of them had also read it in its own frame, so no read was lost and no record rests on a lost
+    read of that shape (G144-12 condition 3).
+  - **Removes** the per-site question: G144-9's SelectMember line (`consulted.Add(searched)` under an open frame) is again
+    `RecordRead(member, searched)`, one case of the rule, in G144's commit 2.
+  - **Moves (Q13):** none (G144-12 condition 4): the whole suite at its labels (48,746 passed), the diagnostic snapshot 0
+    differences against shared-base 79934ae85, the A5 oracle 0 of 1,764 (commit `120a90fb8`). The regression row (GenericCallFormationBindingTest
+    `ADecisionsReadInItsOwnFrameIsAReadOfTheFrame`, f1-o): `Kimi.Option<i32, i64>.Some(1)`'s call read its callee (resting on the
+    written list) in its frame, then rested on the written Type; its causes now name the written `Kimi.Option<i32, i64>` (dev: the
+    callee alone). Its records are unchanged (one InvalidTypeFormation_Kd); the counterpart f1-o2 keeps `missing`'s independent
+    UnresolvedBinding_Kd (SPEC 23.1.2).
+  - **Cost:** one reference compare per `RecordRead`; `consulted` is the reused collector (no allocation after warm-up; the
+    `Purpose=Allocation` rows of the whole suite pass).
+  - **Rejected:** a per-site move into the frame (an open family); G144-8's End test; `EndConsultation` merging the node's earlier
+    range of the pass (stale reads of retried frames would join); folding `ConsultedFor` into `RecordRead` (it would drop either
+    `ConsultedFor`'s held guard or `RecordRead`'s unfiltered read); a fourth frame field with a recorder query for the mid-frame
+    readers (6.1 (b): a second place for one fact); joining a held frame (the read would be dropped with the frame, and G1391's
+    question would be settled here).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
