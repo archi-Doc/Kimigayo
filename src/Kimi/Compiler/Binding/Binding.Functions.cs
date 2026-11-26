@@ -144,9 +144,12 @@ public sealed partial class Binding
                 this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
             }
 
-            // SPEC 15.3.4 (PLAN G230 (A)): the header may be bound before the body types a local its written Origins name; bound
-            // again here, with that local bound, each parameter takes its Type and a result the header could not bind takes its own,
-            // its `during r` naming r's region, which a named nested function's body reads as a fixed Origin through its declaring body.
+            // Temporary (PLAN G230-H's Q-B row): a `let` or `var` local that a header names is demanded there (OriginCandidate). So a
+            // parameter or result that the header failed is bound again here only for a local that the demand cannot form before its
+            // evaluating construct binds: a Pattern or `for` binding, which has no declaration to demand, or a local of a Closure body
+            // whose literal's environment is not ready (FormEnvironment: an omitted parameter Type, SPEC 7.7.1, or a pending entry
+            // source such as a `for` binding). It goes when the demand can form both: the Pattern or `for` head bound on demand, and the
+            // literal's expected input formed on demand.
             if (function.ReturnType is { } resultSyntax && symbol is { Type: null })
             {
                 symbol.Type = this.BindType(resultSyntax, scope);

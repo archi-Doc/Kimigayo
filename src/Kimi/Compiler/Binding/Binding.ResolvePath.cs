@@ -989,11 +989,18 @@ public sealed partial class Binding
         return current.Parameters?.Values?.GetValueOrDefault(name) is { } slot && this.Accessible(slot, scope) ? new(PathEnd.Selected, slot, use) : new(PathEnd.Unresolved, null, use);
     }
 
-    // SPEC 9.3, 7.2.3: whether a value binding is visible at `use`: a local only after its declaration (its initializer sees the outer
-    // scope), a parameter as ParameterVisible says, any other binding of the scope always. The one visibility rule of a value lookup
-    // (ValueStage) and of a literal's capture test (CanCapture, Binding.Captures).
-    private bool VisibleAt(BindingSymbol candidate, Koto use)
-        => (candidate.Kind != BindingSymbolKind.Local || candidate.Declaration.Span.End <= use.Span.Start) && ParameterVisible(candidate, use);
+    // SPEC 9.3, 7.2.3, 15.8.2: whether a value binding is visible at `use`, one row per kind: a local only after its declaration (its
+    // initializer sees the outer scope), a parameter as ParameterVisible says, an environment binding only in its literal's body (the
+    // literal's own header names resolve among its parameters and enclosing scopes, never to environment bindings; F's G230H-13), any
+    // other binding of the scope always. The one visibility rule of a value lookup (ValueStage), of a written Origin name
+    // (OriginCandidate) and of a literal's capture test (CanCapture, Binding.Captures). A use reaching a literal's scope lies in the
+    // literal, so one comparison with its body's start places it.
+    private bool VisibleAt(BindingSymbol candidate, Koto use) => candidate switch
+    {
+        { Kind: BindingSymbolKind.Local } => candidate.Declaration.Span.End <= use.Span.Start,
+        { Kind: BindingSymbolKind.Capture, Declaration: FunctionKoto literal } => ((Koto?)literal.Body ?? literal.ExpressionBody)!.Span.Start <= use.Span.Start,
+        _ => ParameterVisible(candidate, use),
+    };
 
     private ResolvedPath SelectedPath(in TypeCandidates candidates, Koto use, int step)
     {

@@ -263,7 +263,7 @@ public class ArchitectureRulesTest
         "Binding.ControlFlow.cs:ReadTypeUnification=1 formed",
         "Binding.ControlFlow.cs:SelectCommonType=2 kind",
         "Binding.Conversions.Raw.cs:CompletePointerConversion=2 kind",
-        "Binding.Conversions.cs:BindConversion=12 formed",
+        "Binding.Conversions.cs:BindConversion=11 formed",
         "Binding.Conversions.cs:BindConversion=2 kind",
         "Binding.Conversions.cs:IsNeverValue=1 kind",
         "Binding.Conversions.cs:IsRuntimeRecordType=3 kind",
@@ -651,7 +651,9 @@ public class ArchitectureRulesTest
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
     // (ii): three of `Binding.LocalOrigins.cs`'s are InferLocalOrigins' `let` branch, which reads the replacements, publishes each
     // region's value and replaces the replacement with the region before it sets the declaration's state: formation, as the rule names.
-    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    // PLAN G1369: `Binding.OriginDeclarations.Failures.cs` lost the dead first-failure copy (5 -> 4); `Binding.OriginDeclarations.cs`'s
+    // SubstituteOriginEqualities reads the completed relations and counts a local's fixed regions (FixedRegions; 29 -> 28).
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=4;Binding/Binding.OriginDeclarations.cs=28;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
     // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
     // number is reached, its holder and a member returning it included:

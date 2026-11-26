@@ -95,20 +95,6 @@ public sealed partial class Binding
         return slot < 0 ? null : type!.Kind == BoundTypeKind.Slice ? type.Origin : slot < type.OriginArguments.Count ? type.OriginArguments[slot] : null;
     }
 
-    // An atom of a body local's annotation or set (a FieldKoto's Type), not its region slot, which its body reads, or a meet with one.
-    private static bool LocalAtom(BoundOrigin origin)
-    {
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (LocalAtom(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto && !SlotRegion(origin);
-    }
-
     // SPEC 8.13.1: whether a node is one of a `specialize func` header's Type arguments.
     private static bool IsSpecializationArgument(FunctionKoto function, Koto node)
     {
@@ -307,6 +293,15 @@ public sealed partial class Binding
     }
 
     // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
+    // SPEC 15.3.4, 15.4.4 (PLAN G230-H, rule D): a name of a local, its value or its set, outside that local's own declaration reads the
+    // local's declared Type, so it demands the declaration as a value use does (QueryValueType); the local forms in its declaring body
+    // (FormingBodyOf), so a header bound before that body (R4-M101 E3) selects the Type and the regions the body forms. A local's own
+    // declaration (its Type and clauses) reads its declared Type as it forms and is never demanded from inside it (SPEC 9.3). Asked once,
+    // where the name's candidate is found (G230H-6, G230H-8, G230H-11 C-2): a name that a not-ready literal itself declares (its
+    // parameter, a body local, set or Origin, a written entry not yet formed), for a header bound ahead of that literal's environment
+    // (AheadOfEnvironment), rests. The name selects nothing, so the header fails there and is bound again at the function's statement
+    // (BindFunction); a clause keeps that failure (Q-B's class). A formed written entry selects its environment binding, whose Type its
+    // entry fixes (SPEC 7.7.2, C-1), and a name of a named function's scope is selected normally (SPEC 9.3, 15.3.4).
     private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
@@ -324,9 +319,19 @@ public sealed partial class Binding
         for (var current = scope; current is not null; current = current.Parent)
         {
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
-                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
-                (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
+                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture && Visible(competing);
             var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name);
+
+            // SPEC 15.3.4's Local set row: a local set is visible in its Type, its clauses and the following scope.
+            var visibleSet = current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
+                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start) ? local : null;
+            var entry = current.Owner is FunctionKoto { IsAnonymous: true } literal && CaptureEntryOf(literal, name) is not null;
+            if ((entry || visibleValue || set is not null || visibleSet is not null || current.Origins?.ContainsKey(name) == true) &&
+                this.AheadOfEnvironment(owner, current) && !(entry && current.Values.GetValueOrDefault(name) is { Kind: BindingSymbolKind.Capture }))
+            {
+                return true; // G230H-6: the demand rests; nothing the environment forms is read before it is ready (a formed entry is, C-1).
+            }
+
             if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);
@@ -340,16 +345,15 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
-                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
+            if (visibleSet is not null)
             {
-                carrier = this.BindOriginSetType(local, current);
-                repeated = RepeatedSet(local) ? local : null;
-                if (repeated is null && this.UnlinkedLocalType(use, carrier))
+                if (OriginOwner(visibleSet) is { } setOwner && !ReferenceEquals(setOwner, owner) && setOwner.BoundSymbol is { } setLocal)
                 {
-                    carrier = null;
+                    this.QueryValueType(setLocal);
                 }
 
+                carrier = this.BindOriginSetType(visibleSet, current);
+                repeated = RepeatedSet(visibleSet) ? visibleSet : null;
                 return true;
             }
 
@@ -384,54 +388,30 @@ public sealed partial class Binding
             if (current.Values.TryGetValue(name, out var symbol) &&
                 symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture)
             {
-                if (symbol.Kind == BindingSymbolKind.Local && !ReferenceEquals(symbol.Declaration, owner) && symbol.Declaration.Span.End > use.Span.Start)
+                // Read again: the environment may have formed it since visibleValue (AheadOfEnvironment's demand, C-1).
+                if (!Visible(symbol))
                 {
                     continue;
                 }
 
                 (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
-                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
-                if (symbol is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { TypeKoto: not null } annotated })
+                if (!ReferenceEquals(symbol.Declaration, owner))
                 {
-                    // SPEC 15.3.4 (PLAN G230 (A)): a declaration's plain name of an annotated body local whose top Origin it omits is that
-                    // local's region (LocalRegionSlot), the atom its body reads; any other selection of the annotation's own atoms keeps
-                    // the located limit (UnlinkedLocalType).
-                    if (!this.formingBody.IsBody && use is IdentifierNameKoto && symbol.Type is null && this.originAtoms.TryGetValue((annotated, OriginKind.Inference, -1), out var region))
-                    {
-                        scalar = region;
-                    }
-                    else if (this.UnlinkedLocalType(use, carrier))
-                    {
-                        carrier = null;
-                    }
+                    this.QueryValueType(symbol);
                 }
 
+                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
                 return true; // An unsuitable nearest candidate never falls through.
             }
         }
 
         return false;
-    }
 
-    // SPEC 15.3.4 (PLAN G230 (A)'s remaining limit, DECISIONS BU-56 narrowed): a declaration's written Origin (bound with no body) that
-    // selects an atom of a body local's set or annotation which no body reads: a projection of an annotated local or of a set, or a
-    // plain name bound before the local's declaration formed its region (a declaration bound ahead of the local). The name is a located
-    // Unsupported_Kd and resolves to nothing a judge could read; a name that selects no Origin keeps its own failure. A Closure's header is
-    // bound in its evaluating body and keeps EnclosingAtom's rule.
-    private bool UnlinkedLocalType(Koto use, BoundType? type)
-    {
-        if (this.formingBody.IsBody || use is not (IdentifierNameKoto or MemberAccessKoto) || OriginOwner(use) is FieldKoto)
-        {
-            return false;
-        }
-
-        if (SelectedOrigin(use, ref type, out _) is not { } selected || !LocalAtom(selected))
-        {
-            return false;
-        }
-
-        this.Fail(use, BindingFailure.Unsupported);
-        return true;
+        // The lookup's visibility (VisibleAt; SPEC 15.8.2: the literal's own header never sees its environment bindings), and SPEC 15.4.4's
+        // Origin-name rule: a local's own attached clauses and annotation name its declared Type's slots ("in them, `view.source` names the
+        // declared Type's slot").
+        bool Visible(BindingSymbol candidate)
+            => (candidate.Kind == BindingSymbolKind.Local && ReferenceEquals(candidate.Declaration, owner)) || this.VisibleAt(candidate, use);
     }
 
     private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref, int aggregateSlot = -1, BindingSymbol? borrowCondition = null)
