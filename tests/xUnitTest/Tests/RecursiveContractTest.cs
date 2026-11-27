@@ -309,7 +309,11 @@ public sealed partial class RecursiveContractTest
     // rounds filing 0, 1, 1 and 1 class-key pairs, 3: (68, 118, 128) -> (139, 139, 139). N3's observable becomes: no request extends
     // into the view's Kept entry (each extension is the closure's, in its own entry), so the Copy and the last request add nothing to
     // the Tree request's count. While FileByTable filed the view's facts again under their subjects (a second filing under one key),
-    // those rounds filed 40, and the programs 176.
+    // those rounds filed 40, and the programs 176. G1406-55 S3 (G1406-49 (4)): a key's closure files each abstract member of its rows
+    // under the key, so at serial 3 the request for T.(Tree).Child.(Tree).Alias, a member of T.Child.Child's rows (AT3's identity at
+    // T.Child), reads that closure: it forms no T(G) entry of its own (10 pairs) and re-roots no more (IdentityRestarts 1 -> 0). The
+    // T(G) entries are 7 formations, 58 pairs (serial 1: T, T.Child, T.Alias, T.Other, 7 each; serial 3: T.Child.Child, T.Child.Other
+    // and T, 10 each), the requests' 68 and the class-key 3 unchanged: (139, 139, 139) -> (129, 129, 129).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
@@ -319,7 +323,7 @@ public sealed partial class RecursiveContractTest
         probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
         var copy = Work(Orders + probe) - orders;
         probe += "    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal((139, 139, 139), (tree, copy, Work(Orders + probe) - orders));
+        Assert.Equal((129, 129, 129), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }

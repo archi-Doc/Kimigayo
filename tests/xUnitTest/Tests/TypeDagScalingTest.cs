@@ -406,7 +406,7 @@ public partial class TypeDagScalingTest
     // ... <- DN (C bounds Item by DN, its parent D(N-1) declares `Self.(D0).X is M`) reads that identity in its view's closure, so each
     // of 10 uses is accepted (G1406-42 (1): the named Q13 class 1 acceptance move from 10 Unsupported_Kd). Its closure index work is
     // quadratic in N, each D_k's view filing its k ancestors' clauses in its request entry (n^2/2 + 8.5n + 26; dev, two entries a D_k:
-    // n^2 + 6n + 26), PLAN G<O2>: the row asserts the measured values as an upper bound, removed by G<O2>'s fix, which restores a linear
+    // n^2 + 6n + 26), PLAN G1496: the row asserts the measured values as an upper bound, removed by G1496's fix, which restores a linear
     // bound.
     [Fact]
     public void AContractChainUseIsAcceptedWithinItsMeasuredClosureIndexWork()

@@ -656,12 +656,12 @@ public partial class TypeIdentityTest
     // valid: by the grounds (8.2.3) x at `T.(Pq).Up` is x at `T.Next^k.Up` for every k, so the premise at 40 links, past the round
     // bound, applies; the allowed outcomes are acceptance or the limit once at the use (8.3.3), never a Language record from the cut
     // rows (one failed requirement, the callee's premise, which the limit answers: 23.1.2). c5c-nc: x's one Callable premise past the
-    // bound (71dc3559a: NotCallable_Kd beside the limit, which its row pins under PLAN G<O1>); c5c-sel: two premises within the
+    // bound (71dc3559a: NotCallable_Kd beside the limit, which its row pins under PLAN G1495); c5c-sel: two premises within the
     // bound and the applicable one past it (FailCallableCandidates); c5c-ef: a confined Callable premise past the bound used through a
     // confined requirement (UnsatisfiedEffectBound_Kd).
     public static TheoryData<string, string, string> RefusedReadingReaderRows => new()
     {
-        { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x() | NotCallable_Kd: return x()" }, // PLAN G<O1> (G1406-52; Q17 class 3, pre-existing: dev records NotCallable_Kd alone on this valid program). e2-7 adds the limit (SPEC 8.3.3); the NotCallable_Kd is the open row's, and its fix leaves the limit alone (G1406-18 C1)
+        { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x() | NotCallable_Kd: return x()" }, // PLAN G1495 (G1406-52; Q17 class 3, pre-existing: dev records NotCallable_Kd alone on this valid program). e2-7 adds the limit (SPEC 8.3.3); the NotCallable_Kd is the open row's, and its fix leaves the limit alone (G1406-18 C1)
         {
             "c5c-sel", Called(
                 string.Empty,
