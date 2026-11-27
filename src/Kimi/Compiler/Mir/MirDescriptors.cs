@@ -41,10 +41,10 @@ internal enum MirEffect : ushort
     Unknown = 1 << 8, // An Opaque value, caused by its site.
 }
 
-/// <summary>A row of the descriptor table: the access a kind makes, its effects, and for an intrinsic its arity (-1: its lowering
-/// defines it later) and the operand the builder adds beyond its declaration whose value its result retains
-/// (<see cref="RetentionKind.Value"/>; -1: none; A3 E14), which the declaration's retention does not cover. A kind without a row is not
-/// <see cref="Defined"/>. A column that only some rows of a family set is named at its row.</summary>
+/// <summary>A row of the descriptor table: the access a kind makes, its effects, and for an intrinsic its arity (-1: the declaration
+/// gives the call's shape: the validator checks the call's count against it) and the operand the builder adds beyond its declaration
+/// whose value its result retains (<see cref="RetentionKind.Value"/>; -1: none; A3 E14), which the declaration's retention does not cover.
+/// A kind without a row is not <see cref="Defined"/>. A column that only some rows of a family set is named at its row.</summary>
 internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, MirEffect Effects, sbyte Arity, sbyte Retained)
 {
     /// <summary>Gets a value indicating whether an rvalue of the kind has a Place (<see cref="MirRvalue.Place"/>), which its access is to:
@@ -198,6 +198,8 @@ internal static class MirDescriptors
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
         IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment | MirEffect.Allocation, 0), // The path's copy on the heap.
         IntrinsicId.MonotonicClock => Intrinsic(MirEffect.Environment, 0), // A platform read, no Abort: Time.readCounter raises clockFailure.
+        // Every row accesses processor state (IMPL 21.6; SPEC 8.11.2); the declaration gives the call's shape.
+        IntrinsicId.Instruction => Intrinsic(MirEffect.Environment, -1),
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
         _ => default,
     };

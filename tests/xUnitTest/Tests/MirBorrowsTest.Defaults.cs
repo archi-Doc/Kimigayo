@@ -1009,8 +1009,9 @@ public sealed partial class MirBorrowsTest
     // G171; addOther and addRead the disjoint and read-only twins, Counter.add the effect form), f's omits g's (§4 row 1), f2 keeps its own
     // Loan across g's copy (row 2), g5 and add5 conflict inside themselves (r before the poke),
     // f5 omits g5's (row 5), local3 conflicts on its own local, addg is generic, addh has e17's generic loop, then g5's conflict, addl's
-    // default passes A4's Limit, setd replaces a static whose old value's drop reads it (R3), gd's guard lets its candidate escape, keepd
-    // copies a preceding argument (DefaultAccessTest :17's form) and effOwn's touch meets its own Loan of counter (err(effect)).
+    // default passes A4's Deep (Lim's destruction past the walk's bound, R4-M153), setd replaces a static whose old value's drop reads it
+    // (R3), gd's guard lets its candidate escape, keepd copies a preceding argument (DefaultAccessTest :17's form) and effOwn's touch meets
+    // its own Loan of counter (err(effect)).
     private const string Copies = """
         struct Counter
             public var count: i32 = 0
@@ -1111,7 +1112,7 @@ public sealed partial class MirBorrowsTest
     // default's operation as its Evaluated fact. R4-M90 PQ-1: until P42 Binding reports every Borrow of counter or other here, written in a
     // default or a caller or a receiver's (fx), as the located Unsupported_Kd, so A5 meets none of their Loans: the caller-owned rows (G171,
     // its effect form, n1, twiceBoth, first, gen, held's omitting call) and the templates' static conflicts (f2, g5, add5, addh, effOwn, the
-    // Limit addl's copy meets) are ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted's (R4-M107). Kept, with local Loans only: local3's
+    // Deep addl's copy meets) are ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted's (R4-M107). Kept, with local Loans only: local3's
     // own conflict, held's and limit's callers' own conflicts (held's call rests on its written Borrow's record and inlines no copy) and a
     // guard across a copy (guardAcross, the caller's EndBorrow); template-owned
     // and omitted in the caller with the template's record: R3 in a copy (setd) and a guard escaping inside a copy (gd). Not Binding-valid, as

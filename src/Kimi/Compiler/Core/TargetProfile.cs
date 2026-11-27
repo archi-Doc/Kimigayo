@@ -16,7 +16,8 @@
 // library starts through (CRuntime, null for none; the Tatara plan's B7b2b), the convention by which the row's imports extend their
 // arguments (ArgumentExtension, IMPL 21.2's name, null for none), the extension of a program library's input (InputExtension, IMPL
 // 20.4), the executable format, whose link writer the native build selects (Format, IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's
-// B7b7), the host that runs the row's executables (ExecutionHost, as HostName spells one, null for none; B7b8), whether the program
+// B7b7), the catalog name of the row's linker script, which the native build stages and passes to the ELF link (LinkerScript, an ELF
+// row's fact, null on a COFF row; null: the linker's own layout; the Tatara plan's B9f), the host that runs the row's executables (ExecutionHost, as HostName spells one, null for none; B7b8), whether the program
 // supplies the platform layer's routines (ProgramPlatform, SPEC 22.4.5; the Tatara plan's B9), the runtime's import declarations,
 // and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines (MemorySymbols), the
 // C entry's symbol (MainSymbol), the reserved external names of every target (ReservedSymbols, IMPL 21.2) and the reads over every
@@ -125,6 +126,7 @@ internal sealed class TargetProfile
         ArgumentExtension = null,
         InputExtension = ".lib",
         Format = "COFF",
+        LinkerScript = null,
         ExecutionHost = "windows x64",
         ProgramPlatform = false,
     };
@@ -157,6 +159,7 @@ internal sealed class TargetProfile
         ArgumentExtension = "SystemV",
         InputExtension = ".a",
         Format = "ELF",
+        LinkerScript = null,
         ExecutionHost = null,
         ProgramPlatform = false,
     };
@@ -194,6 +197,7 @@ internal sealed class TargetProfile
         ArgumentExtension = "SystemV",
         InputExtension = ".a",
         Format = "ELF",
+        LinkerScript = "kernel.ld",
         ExecutionHost = null,
         ProgramPlatform = true,
     };
@@ -295,6 +299,11 @@ internal sealed class TargetProfile
     /// and the native build to its link writer (another value is a broken contract in each); a "COFF" row has a subsystem, a float marker
     /// and a load configuration symbol, no other row has.</summary>
     internal required string Format { get; init; }
+
+    /// <summary>Gets the catalog name of the row's linker script (the Tatara plan's decision 31; IMPL 21.6.1-21.6.2), the compiler's own,
+    /// which the native build stages and passes to the ELF link, or null when the row links in the linker's own layout. ToolchainIdentity
+    /// holds its material, the catalog's.</summary>
+    internal required string? LinkerScript { get; init; }
 
     /// <summary>Gets the host whose processes run the row's executables, spelled as <see cref="HostName"/> spells one, or null when no
     /// host Kimi runs on runs them (linux-x64 until the Tatara plan's B8: no Linux host runs Kimi's native build or its launcher).</summary>

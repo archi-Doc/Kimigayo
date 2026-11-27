@@ -57,6 +57,20 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(paths.Ir)!, "*.tmp"));
     }
 
+    // SPEC 21.4.7 (C-597 N1; the Tatara plan's B9f): the staged none row's manifest head states its own backend package, not Windows':
+    // its package id and ABI version, and its archive hash the none catalog's kimi_backend file (ToolchainIdentity.Packages).
+    [Fact]
+    public void ANoneManifestHeadStatesItsRowsPackage()
+    {
+        var paths = LinuxPair.Publish(TargetProfile.None, this.directory, KernelSources.Hello + KernelSources.Board + KernelSources.BoardTerminate, "O2");
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
+        using var catalog = JsonDocument.Parse(Repository.ReadText("src", "backend", "none-x64", "profile.json"));
+        var head = manifest.RootElement.GetProperty("backendSupport");
+        Assert.Equal(
+            $"kimi-backend-none-x64 1 {Assert.Single(catalog.RootElement.GetProperty("files").EnumerateArray()).GetProperty("sha256").GetString()}",
+            $"{head.GetProperty("packageId").GetString()} {head.GetProperty("abiVersion").GetInt32()} {head.GetProperty("artifactSha256").GetString()}");
+    }
+
     [Theory]
     [InlineData("O3", "out/Hello.ll")]
     [InlineData("o2", "out/Hello.ll")]
@@ -119,7 +133,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void ALinuxManifestIsTheRows(bool ffi)
     {
         var source = ffi ? LinuxPair.Program("Ffi", "Ffi.kimi") : LinuxPair.Program("Hello", "Hello.kimi");
-        var paths = LinuxPair.Publish(this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
+        var paths = LinuxPair.Publish(TargetProfile.Linux, this.directory, source, "O2", ffi ? [("codec", "static", "codec.a")] : []);
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(paths.Manifest));
         var root = manifest.RootElement;
         Assert.Same(TargetProfile.Linux, NativeToolchain.ValidateManifest(root));
