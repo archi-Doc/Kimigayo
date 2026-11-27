@@ -13231,7 +13231,8 @@ resumed by R4-M86 (2026-10-20).
     lints (rows 10 and the discard rows), `StructuralCompletion.CloseTransfers`, and the HIR publication (Adjust, Group,
     `Discards`). A closure whose body infers Unit publishes that body as its result, as a named function's value body.
   - Rejected: Binding reading the published row (BU-101's reason; it would also leave the Adjust and Group); an instance rule over the
-    result contexts (static readers; a pooled context stays mapped after a fixed rebinding); a copy of the fixed Type on the plan.
+    result contexts (static readers; a pooled context stays mapped after a fixed rebinding; for InfersUnit superseded by BU-275); a
+    copy of the fixed Type on the plan.
 
 - **BU-110 One acquisition rule for every Pattern binding; a failed binding is derived in `Bind`** (2026-11-06; its "and its plan Invalid" and
   `AcquireBinding`'s Coverage write superseded by R4-M179; PLAN G439, unit bu174; Major;
@@ -20057,6 +20058,20 @@ resumed by R4-M86 (2026-10-20).
     rule.
   - **Rejected:** a `MayCarry` call at each site (a clause per Past read, and a walk where no holder carries); TyCtxt calling
     `MayCarry` (Binding's predicate); the argument as Handed's subject (dv's `uniq/((T^31) -> i32)` carries, so the Limit would stay).
+- **BU-275 Unintended Unit inference reads one fact for every target: its result context (PLAN G470)** (2026-11-27). SPEC 17.5.2,
+  10.5.4.
+  - **Rule.** `Binding.InfersUnit` reads the target's result context's `Inferred` for every target. A Closure has a context only where
+    its signature fixes no result (`BindClosureBody`), so the fact needs no clause for functions. `BindClosure`'s reset removes the
+    previous binding's row (`ResultContextRows.Remove`) beside Signature, Published and Classified, so a Closure's row is always its
+    latest binding's: the one its body opened, or none.
+  - **Supersedes in part** BU-109's rejection of an instance rule over the result contexts, for InfersUnit only. The reason that no
+    longer holds: a rebinding no longer leaves its predecessor's row mapped. Its other reason stands: the static readers
+    (`DiscardsFunctionBody`, and `TypedByHeader` before the body) read no pass-local family (BU-220), so `BoundClosure.InfersResult`
+    stays for them. Where a Closure's latest binding bound its body, InfersResult equals whether that body opened a context; a
+    binding that binds no body (a failed header, FailClosureHeader, or a failed environment) keeps the previous flag and no row, and
+    leaves the literal failed, so InfersUnit reads false either way.
+  - **Rejected:** InfersUnit reading `InfersResult` for a function and the context otherwise (a clause per form, two stores for one
+    fact); clearing the row only where the rebinding fixes the result (a second copy of BindClosureHeader's rule).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now

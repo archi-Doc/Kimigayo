@@ -172,14 +172,21 @@ public class CurrentControlFlowTest
     [InlineData("let f = func () -> ()\n    compute()", 0)]
     [InlineData("let f: () -> () = func ()\n    compute()", 0)]
     [InlineData("let f = func () => compute()", 0)]
-    public void OnlyAnInferredUnitClosureWarnsAtItsDiscardedTails(string declaration, int count)
+    [InlineData("func run(f: () -> ()) => f()\nlet r = run(func ()\n    compute()\n)", 0)]
+    [InlineData("func run(f: () -> ()) => f()\nfunc run(x: i32) => ()\nlet r = run(func ()\n    compute()\n)", 0)]
+    [InlineData("func apply<R>(x: R, f: () -> R) -> R => f()\nlet r = apply((), func ()\n    compute()\n)", 0)]
+    [InlineData("func apply<R>(f: () -> R, x: R) -> R => f()\nlet r = apply(func ()\n    compute()\n, ())", 0)]
+    [InlineData("func run(f: () -> (), x: i32) => f()\nfunc run(f: () -> (), x: bool) => f()\nlet r = run(func ()\n    compute()\n, 1)", 0)]
+    [InlineData("group G\n    public func compute() -> i32 => 1\nstruct S\n    public let cb = func ()\n        G.compute()\n    public init() => ()", 1, "G.compute()")]
+    [InlineData("group G\n    public func compute() -> i32 => 1\nstruct S\n    public let cb: () -> () = func ()\n        G.compute()\n    public init() => ()", 0, "G.compute()")]
+    public void OnlyAnInferredUnitClosureWarnsAtItsDiscardedTails(string declaration, int count, string tail = "compute()")
     {
         var c = Parse("func compute() -> i32 => 1\n" + declaration);
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var tails = CompilationTestHelper.BindingWarnings(c).Where(x => x.Code == nameof(Kimi.DiagnosticCode.DiscardedTail_Kd)).ToArray();
         Assert.Equal(count, tails.Length);
-        Assert.All(tails, x => Assert.Equal("compute()", x.Text));
+        Assert.All(tails, x => Assert.Equal(tail, x.Text));
     }
 
     [Theory]
