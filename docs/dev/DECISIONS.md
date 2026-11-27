@@ -23882,6 +23882,9 @@ structure is recorded here by the unit that first implements it.
     stays until G2.
   - Superseded in part by R8-M52 (R8-I1): the `Unproduced` intrinsic row of its broken-contract list; `IntrinsicWriter.Unproduced` is
     deleted, every member having a MIR producer and a writer since R8-S2c (R8-M34).
+  - Superseded in part by T-M59 (OSF1a): its broken-contract item "a compiler function's Item with no single routine (unsafe and
+    internal functions have no Item)" no longer covers the `Instruction` family, whose safe public members have Items: each has one
+    routine, its `InstructionRows` row's. The item stays for every other row.
 - **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29; extends R5-M135) X1
   (plan §4 row X1, §5.3) ran at dev `17cd554ab`: sel fails exactly the 110 decided P42 rows (R5-M144, R5-M145); the native outcomes of all
   6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes both generators, and sel's `.ll` is identical to
@@ -36713,3 +36716,84 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     library's definition meeting the archive's lazy member by link order, B7b's change W5); the whole builtins library (speculative
     members, O1); a CMake build of compiler-rt (a further download and a second build system); committing the tarball; checking the
     none catalog's packageId and abiVersion against new constants (a second copy with no reader before B9f).
+- **T-M59 Machine instructions are one intrinsic family over a Backend table; every call is the row's routine** (Tatara,
+  2026-11-27; OSF1a, Q-830, D-1344; Major; design B10 C-457 Revision 2.1 §4.3-4.4, the owner's O-489 (a) (a), verbatim 「O-489 全てa」,
+  the plan's decisions 36-43; T's rulings 156 and H-162). Supersedes R5-M146 in part.
+  - **The family:** `IntrinsicId.Instruction` (+1, limit 30 → 31 under O-489's approval of OSF's four ids). Binding's
+    `IntrinsicDisposition` column `Code` is `Member` (commit 1, behaviour unchanged): a family id (`IntrinsicDisposition.TakesMember`,
+    a closed switch: `Fail`, `Instruction`) carries its member, `Fail`'s SPEC §22.5.2 code, `Instruction`'s row; `DefinitionOf`
+    checks `TakesMember(id) != (member is not null)`. Binding never reads the Backend; `MirBuilder.Extra` adds `Fail`'s code only.
+  - **`InstructionRows`** (`Backend/InstructionRows.cs`, a canonical component): one row per member, its LLVM inline-asm template,
+    its constraints and its routine's `FunctionAbi` (`__kimi_x86_<row>`, the operands' and result's LLVM Types, no location
+    parameter); the one suffix `~{memory},~{dirflag},~{fpsr},~{flags}` (Clang's x86 default; `rdtsc`'s `shlq`/`orq` change EFLAGS),
+    appended to every row by the one definition writer, no per-row clobber rule; at most 64 rows (the module's request set).
+    OSF1a's rows: `pause`, `rdtsc`, `hlt`, `cli`, `sti`, `inb`/`inw`/`inl`, `outb`/`outw`/`outl`. A member naming no row is a
+    library defect: `KimiLibraryShapeTest` holds every member to its row and each declaration's lowered signature to the row's
+    routine, and the Backend's miss is `InternalInvariant_Kd` at the call.
+  - **The library:** `Kimi.X86` (`X86.kimi`) under `#if arch == "x86_64"`: `pause` and `readTimestamp` on every x86-64 row, the
+    privileged members under `os == "none"` (IMPL §21.6.8). A member is `unsafe` exactly when it accesses a device or changes the
+    processor's address translation, descriptor tables or model-specific state (the port members in OSF1a).
+  - **Every call is the row's routine (design §4.4 (i)):** `IntrinsicRows`' row `Instruction` (Target None, Need None, Writer
+    `Instruction`, Routine null); `IntrinsicWriter.Instruction` is a routine writer: `FunctionCodegen.Routine` takes the row plus the
+    callee's member (the direct call's `Callee.Symbol.Definition.Member`, `Runs`' `item.Symbol.Definition.Member`) and its arm
+    `this.module.Instruction(member)` requests the row and returns its routine. So the direct call, an Item's Value call and its
+    adapter's entry all write `call @__kimi_x86_<row>` through `Invoke`, the one call writer. `ModuleCodegen` keeps the requested rows
+    (one bit per row, cleared per module) and writes each requested routine once, in row order, before the functions: `define
+    internal <result> @__kimi_x86_<row>(<operands>) alwaysinline #0` with the module's entry label, one `call asm sideeffect` and its
+    `ret` (the label: the Back's OSF1a read C2, T's ruling 163). `Abi.Flags.Inline`
+    (`alwaysinline`, recorded as `OutOfLine` is) marks the definition; calls are unchanged. At O2 the routine is inlined at every call
+    and removed; at O0 each call is a call. Hosted modules that call no member are byte-equal.
+  - **MIR:** `MirDescriptors.Of(IntrinsicId.Instruction)` is `Intrinsic(MirEffect.Environment, -1)`; arity −1 now means "the
+    declaration gives the call's shape" (the descriptor's summary rewritten). `MirValidator.Calls` gains one arm: a call of a row with
+    arity −1 that carries no declaration is `MirViolation.Callee`, and one whose operand count differs from the declaration's parameter
+    count is `MirViolation.Arity`. `MirDump` prints such a call `intrinsic Instruction.<member>` (no golden moves).
+  - **The effect class (C-457 C3):** every member is an environment effect (SPEC §8.11.2): it accesses processor state outside the
+    program; a `confined` implementation calls none of them. One class for the family's one MIR row.
+  - **Rejected:** LLVM intrinsics where they exist (`@llvm.x86.rdtsc`: a second lowering form; the asm row gives the same code); one
+    `IntrinsicId` per instruction (the limit would pass 50); rows without `~{memory}` for the pure instructions (a per-row barrier
+    rule, no measured gain); `Kimi.X86` in SPEC §22.1's table (target-specific declarations, IMPL documents them); an `IntrinsicRows`
+    column `Family` (Binding would read the Backend); writing the asm inline at direct calls and a routine only for Items (two forms
+    of one row); a located `Unsupported_Kd` for a member's Item (a valid form unsupported only to save the definition writer, which
+    OSF1b needs regardless); `DirectCallOnly` for the safe members (a Language error for a valid program, SPEC §7.7.4).
+- **T-M60 The none row's linker script and its ELF link** (Tatara, 2026-11-27; the plan's unit B9f; Major; design §3.7; decision 31;
+  rulings w3w5 F4, F7-F9, O5, O6, O11; T's rulings 150 (1), 151, 152).
+  - **Script:** `src/backend/none-x64/kernel.ld`, which the compiler carries, embedded (`Kimi.None.kernel.ld`) and named with its SHA-256 by the
+    none catalog's `linkerScript`. `ENTRY(__kimi_start)`; `PHDRS` text (R+X), rodata (R), data (R+W); linked at 0xFFFFFFFF80000000;
+    `.text`; `ALIGN(0x1000)` (the script's alignment fixes the segments' addresses, and `p_align` 0x1000 is LLD 22.1.8's x86-64
+    default max-page-size, so the line passes no `-z max-page-size`: F7, probe P2 byte-equal to the design's `-z` form, the image row
+    pins `p_align`; the Back's B9f N4);
+    `.rodata` and `.eh_frame` (`KEEP`); `ALIGN(0x1000)`; `.data` beginning with `KEEP` of `.limine_requests_start`, `.limine_requests`,
+    `.limine_requests_end`; `.bss` with `COMMON`; `.symtab 0`, `.strtab 0` and `.shstrtab 0`; `/DISCARD/` of `.note*` and `.comment`.
+  - **Orphans (ruling 152):** the row's line passes `--orphan-handling=error`, so an input section the script does not place is a located
+    link error, never LLD's silent placement (O5). The three tables are the linker's own sections, not input, so the script names them to
+    complete its layout under the flag (the Linux kernel's `ELF_DETAILS` form); without them the flag fails every link
+    ("<internal>:(.symtab) is being placed in '.symtab'"). Run 3: an object with a kept `.kimi_probe` section fails and the record names it.
+    Input `.comment` (each compiler-rt member's clang ident) is placed by `/DISCARD/`, so it is no orphan and the script places no
+    `.comment 0` (T's ruling 155 on the Back's B9e N4): run 3 (`probes\probe-log-run3.txt`) links the seconds program, which pulls
+    `__floatundidf`/`__floatdidf` and `__divdf3`, under the flag, and its image holds no `.comment`.
+  - **Column and material:** `TargetProfile.LinkerScript` (`required string?`: Windows and Linux null, the linker's own layout; None
+    `"kernel.ld"`). Its bytes are the row's material, not a supply's (a script is no library, IMPL 20.4; F9): `ToolchainIdentity.Scripts`,
+    one `SupplyFile` per row with a script, placed `SupplyPlace.Script` (-T's argument) by its member: the catalog's `linkerScript`
+    entry is read in a file entry's form (`CatalogFile`), with the place that member fixes and no `place` datum; a `files` entry
+    placed `script` is refused like any other place (ruling 167); the initializer checks that a row has a script
+    exactly when its column names one, and that the names agree.
+  - **Package identity (ruling 150 (1), F4):** `ToolchainIdentity.PackageIdentities` (Windows `kimi-backend-windows-x64` 3, None
+    `kimi-backend-none-x64` 1) replaces Windows' two constants; each catalog states its row's package id, ABI version and the pinned LLVM
+    version (a row without an identity states no package id); `Packages` gives each row reserving the backend supply its head's
+    `backendSupport.*` (the compiler's version, the row's backend supply's name and symbols, the archive's hash; the row's backend
+    supply is one file). `LinkManifest`'s heads are
+    built over the table's array (`AllRows`), so a staged row's pair is published and built.
+  - **Build:** the script is staged as a supply's file is (`StageSupply`, `.ld` kept), held to the build's end; the ELF line adds
+    `-T <staged> --orphan-handling=error` after `-e` for a row with a script; the record gains `linkerScript` (`path` redacted, `sha256`)
+    only for such a row, so hosted records are byte-equal. The libc-free path already places the program's libraries before the row's
+    `library` files (probe P4). No head row names the script (O6).
+  - **toolchain verify:** each row's script's embedded bytes against the catalog's SHA-256, stated in the supplies' form without facts
+    (VerifyScript, through the supplies' one compare; a script is not inspected); the report's members are unchanged.
+  - **Keying (M's C-597 N2):** `ToolchainIdentity.Of(row, name)` finds a compiler's supply by (row, supply name), not by `TargetSupply`'s
+    record equality (which compared `Symbols` by array reference).
+  - **Inspection (F8):** the object rule with the row's allowed set stays the product's; the image's shape is asserted by tests with the
+    shared `ElfFile` reader (its segments gain offset, address, sizes and alignment, O11), no post-link check in the product.
+  - **Rejected:** a project-supplied script (design §7.2); a post-link ELF check for one row (F8); the script as a supply's file (F9); the
+    page size as a line flag (F7); a fallback to the linker's layout when the row's script is missing (a broken contract, the
+    initializer's error); dropping `--orphan-handling=error` (ruling 152 (b)); placing the three tables by an exception list instead of the
+    script (they are the script's complete layout).
