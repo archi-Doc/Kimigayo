@@ -69,7 +69,8 @@ public sealed partial class Binding
 
     // e2-7 (SPEC 8.2.3, 8.3.3 Limits; G1406-11 C2, G1406-16 B1, C2): the publication's closed roots (ContractSolver's CloseRoot), each
     // closed part filed by FileClosure under its view scope and the part as asked: its closure (IdentityClosure), a Limited one as a
-    // Complete one (G1406-19); a part whose T(G) key is another Type is filed under its key's closure (CloseAsked, G1406-42 (2) (iii)).
+    // Complete one (G1406-19); a part whose T(G) key is another Type is filed under its key's closure (CloseAsked, G1406-42 (2) (iii)),
+    // and so is each abstract member of a newly filed key's rows (FileClosure, G1406-55 S3).
     // The readings' kept tables (ReadingOf), each under its closure set (a range of identityReadingClosures) and
     // Limited bit, with the serial it is memoized for (-1: kept, not memoized), chained per view scope from its last reading
     // (identityReadingHeads; G1406-18 N1: a key scan reads its scope's readings alone). All are forgotten at each publication and each
@@ -273,7 +274,8 @@ public sealed partial class Binding
     // PremiseClosureLimit is filed alone, Limited, with no rows, and its key is not filed: the key's own closure has its own budget, so
     // what is filed is a function of (entry, G) whichever reader closes first (SPEC 8.3.3). Otherwise the key, unless filed, is filed
     // with E, its last round's rows that join its class in that round's table (R3.1: a prefix closure's E is empty), and its spending
-    // (an unfiled key is the entry itself: CloseRoot closes a key other than its root first), Limited past the budget; a Limited
+    // (an unfiled key is the entry itself: CloseRoot closes a key other than its root first), Limited past the budget, and each
+    // abstract member of E's rows not yet filed is filed under it (G1406-55 S3: a member reads its key's closure); a Limited
     // closure is filed for the publication as a Complete one is (G1406-19). An entry other than the key is filed with the key's rows and
     // the pair row `entry is key`, read with the request's Completion: the link its re-rootings rest on, which the restart's cleared rows
     // held (SPEC 8.3.3: the identities obtained before it are kept).
@@ -299,6 +301,22 @@ public sealed partial class Binding
             }
 
             closure = File(key, new(key, -1, start, this.identityClosed.Count - start, spent, spent > PremiseClosureLimit, serial, limit));
+
+            // G1406-55 S3 (G1406-49 (4)): each abstract member E's rows hold is filed under the key's closure, as CloseAsked files a part
+            // read through its T(G) key, so a later entry at a member reads this closure and closes its class no second time.
+            for (var i = start; i < this.identityClosed.Count; i++)
+            {
+                var fact = this.identityClosed[i].Fact;
+                if (fact.Subject is { IsAbstractType: true } subject)
+                {
+                    this.identityRoots.TryAdd((scope, subject), closure);
+                }
+
+                if (fact.RequiredType is { IsAbstractType: true } required)
+                {
+                    this.identityRoots.TryAdd((scope, required), closure);
+                }
+            }
         }
 
         if (ReferenceEquals(entry, key))

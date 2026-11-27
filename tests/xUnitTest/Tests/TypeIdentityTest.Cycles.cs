@@ -547,11 +547,17 @@ public partial class TypeIdentityTest
     // lower, and starts its closure again from that key (Binding.IdentityRestarts, exact). mate: `T.(Q).C.(Q).Up` is `T.(Q).B.(Q).Up`
     // (T's clause) and that is `T.(Q).B.(Q).A` (T.B's clause, joined by a round), where the premise proves `need(x)` (mate-v, valid:
     // SPEC 8.2.3's grounds include the identities `T is Q` supplies at every depth); with the premise at `T.(Q).B.(Q).B.(Q).A` no
-    // identity reaches x's class (mate-i, invalid: the proof is missing, SPEC 8.3.2). mate's 2 are one request's two steps,
-    // `T.(Q).C.(Q).Up` to `T.(Q).B.(Q).Up` to `T.(Q).B.(Q).A`. spm-a's x at `T.(Pq).Up` re-roots once (measured and derived, G1406-53
-    // S3): the premise's member `T.Next^68.Up`, first seen at round 68, re-roots to `T.Up`, its class's least key. e2-7's head measures
-    // 9 for mate and 5 for spm-b (x at `T.Next^2.Up`): a later request closes again a class an earlier one keyed, a defect G1406-53 S3
-    // fixes, not counted, so those rows keep dev's 2 and 0 until that fix.
+    // identity reaches x's class (mate-i, invalid: the proof is missing, SPEC 8.3.2). e2-7 (G1406-55 S3, G1406-49 (4)): a re-root is
+    // counted once per view and serial, and a filed class's member reads its key's closure, so no request closes a filed class again
+    // (FileClosure). A publication forgets an earlier serial's filings (E27-BOUND (P), R7-M20), so a later serial's request re-roots
+    // again. Term by term: Q's view (serial 1, at contract Q) re-roots `Self.(Q).X.(Q).Up` to `Self.(Q).X.(Q).A` for X = A, B, C (3);
+    // f's validation request (serial 2) closes its part `T.(Q).C.(Q).C.(Q).Up` in two steps, to `T.(Q).C.(Q).C.(Q).A` and then
+    // `T.(Q).C.(Q).B.(Q).A` (R7-M44: an extending request counts its own closure's re-roots, 2). mate-v: 3 + 2 = 5. mate-i adds f's
+    // `T.(Q).B.(Q).Up` to `T.(Q).B.(Q).A` in serial 1 and again in serial 2 (1 + 1): 7. spm-a's x at `T.(Pq).Up` re-roots once: the
+    // premise's member `T.Next^68.Up`, first seen at round 68, to `T.Up`, its class's least key (serial 1). spm-b (x at `T.Next^2.Up`)
+    // re-roots that member in its signature's serial 1 and again in its validation's serial 3: 2. Dev's 2, 2, 0 and 0 counted one
+    // request's steps alone; e2-7's head before the fix measured 9, 9, 1 and 5, a class closed again by a later request of the same
+    // serial (a defect, fixed and not counted).
     [Theory]
     [MemberData(nameof(ReRootRows))]
     public void AnExtendingRequestReRootsToItsClassesLeastKey(string row, string source, int restarts, string codes)
@@ -563,10 +569,10 @@ public partial class TypeIdentityTest
 
     public static TheoryData<string, string, int, string> ReRootRows => new()
     {
-        { "mate-v", Mate("T.(Q).B.(Q).A"), 2, string.Empty },
-        { "mate-i", Mate("T.(Q).B.(Q).B.(Q).A"), 2, "UnprovenConstraint_Kd" },
+        { "mate-v", Mate("T.(Q).B.(Q).A"), 5, string.Empty }, // e2-7 (G1406-55 S3 (a)): Q's 3 and f's validation's 2, derived above
+        { "mate-i", Mate("T.(Q).B.(Q).B.(Q).A"), 7, "UnprovenConstraint_Kd" }, // e2-7 (G1406-55 S3 (a)): mate-v's 5 and `T.(Q).B.(Q).Up`'s re-root in serials 1 and 2
         { "spm-a", Spm(0, string.Empty, "    need(x)\n"), 1, string.Empty }, // R7-C3 (C-c): keyed by its class from the start; e2-7 (G1406-20, G1406-53 S3; Q13 named class 1 acceptance move): valid by SPEC 8.2.3 and accepted, as RoundBoundProgramRows' spm-a; its one re-root is `T.Next^68.Up`'s to `T.Up`, which dev's limit stopped before (0)
-        { "spm-b", Spm(2, string.Empty, "    need(x)\n"), 0, string.Empty }, // e2-7 (G1406-20; Q13 named class 1 acceptance move): valid by SPEC 8.2.3 and accepted, as RoundBoundProgramRows' spm-b; the count is dev's until G1406-53 S3's fix, then the derived number
+        { "spm-b", Spm(2, string.Empty, "    need(x)\n"), 2, string.Empty }, // e2-7 (G1406-20; Q13 named class 1 acceptance move): valid by SPEC 8.2.3 and accepted, as RoundBoundProgramRows' spm-b; 2 re-roots, derived above (G1406-55 S3 (a))
     };
 
     private const string PqUses = "func f<T>(x: ref/T.(Pq).Up, y: ref/T.(Pq).Up)\n    T is Pq\n";
