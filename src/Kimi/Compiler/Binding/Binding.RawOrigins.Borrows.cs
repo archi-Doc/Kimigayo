@@ -206,10 +206,22 @@ public sealed partial class Binding
     {
         for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
         {
-            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, Acquisition: PatternAcquisition.Borrow, BodySymbol.Type: { } bound })
+            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, Acquisition: PatternAcquisition.Borrow, BodySymbol.Type: { } bound } position)
             {
-                this.RecordBorrow(rows, bound);
+                this.RecordAcquisition(rows, position.Source, bound);
             }
+        }
+    }
+
+    // A by-reference binding's acquisition, formed (BindingBorrows) and counted (PublishedBindings): the reach's Borrow, under the reach's
+    // Origin. A `let` binding's Type states its own region there instead (BindingTypeOf, SPEC 14.8.2), whose published value
+    // (PublishRegionValue) is that Origin.
+    private void RecordAcquisition(Dictionary<BoundOrigin, BorrowList> rows, Koto declaration, BoundType bound)
+    {
+        if (this.BorrowReferent(bound, out var outer, out var exclusive) is { } referent && outer is not null)
+        {
+            var own = ReferenceEquals(outer.Binder, declaration);
+            this.RecordEntry(rows, own && this.Region(outer) is { Value: { } reach } ? reach : outer, referent, exclusive);
         }
     }
 
@@ -390,7 +402,9 @@ public sealed partial class Binding
 
                 break;
             case ForKoto loop:
-                this.PublishedBindings(BoundMatch.Of(this, loop));
+                var iteration = BoundMatch.Of(this, loop);
+                this.RecordBorrow(this.publishedBorrows, iteration?.SubjectBorrow);
+                this.PublishedBindings(iteration);
                 break;
             case MatchKoto match:
                 var plan = BoundMatch.Of(this, match);
@@ -408,7 +422,7 @@ public sealed partial class Binding
             if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, BodySymbol.Type: { } bound } position &&
                 HirAdjust.Of(position.Acquisition, position.AccessMode).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow)
             {
-                this.RecordBorrow(this.publishedBorrows, bound);
+                this.RecordAcquisition(this.publishedBorrows, position.Source, bound);
             }
         }
     }
