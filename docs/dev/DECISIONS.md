@@ -37179,3 +37179,27 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     - the run kept from the layer while a member runs: either leaked (memory grows with each such run) or held in a list that two
       routines drain (O-545's (b): cases per routine);
     - a test in the heap's return path (the common runtime would read the layer's flag).
+- **T-M63 The instruction rows' second set: descriptor tables, control registers, MSRs, `cpuid` and the idle wait**
+  (Tatara, 2026-11-28; OSF1b, Q-842, D-1358; Major; design B10 C-457 §4.3-4.4, IMPL §21.6.8; T's rulings 165 (A) and 181; the Back's
+  H-165 conditions). Extends T-M59.
+  - **Rows:** `InstructionRows` gains `lidt`, `lgdt`, `ltr`, `invlpg`, `rdcr0`/`rdcr2`/`rdcr3`/`rdcr4`, `wrcr0`/`wrcr3`/`wrcr4`,
+    `rdmsr`, `wrmsr`, `cpuid` and `stihlt` (26 of 64). `rdmsr` joins EDX:EAX and `wrmsr` splits its value (`shlq`/`orq`,
+    `shrq`), each clobbering `dx`; the one suffix stays the writer's.
+  - **The asm's result Type and the slot shape (ruling 165 (A)):** `InstructionRow` gains `Result`, the asm call's result Type. A
+    row whose routine's first parameter is `Abi.Ret` (now internal, the one record of the result slot) has `ResultSlot` and returns
+    `void`; `WriteInstructions` passes the operands after the slot, writes one `store <Result> %r, ptr %ret` and `ret void`, with no
+    case per row. `KimiLibraryShapeTest` pins `Result` to Layout's storage Type of the declared result for a slot routine (`cpuid`'s
+    `CpuidResult`, `{ i32, i32, i32, i32 }`) and to the routine's result otherwise.
+  - **NoStore's family statement:** `KimiLibraryCatalog.NoStore` answers true for every input of `IntrinsicId.Instruction`, one
+    id-keyed clause beside the declaration-keyed `NoStoreRows`: the family stores no value through an operand, and its raw-operand
+    members exist only where `os == "none"`, where a catalog row would stop every hosted compilation. Call retention
+    (`Binding.Retention.Rows`) and A5's pun rule (`TyCtxt.NoStore`) read it. A5's pun rule is the clause's observer
+    (`MirBorrowsTest.AnInstructionStoresNothingThroughItsRawOperand`); its retention half has no `X86` observer yet, since no
+    member's operand holds a value a call could retain (`raw/u8`, `raw/()`). **Removal:** PLAN G1290's one per-input row.
+  - **The read-only raw-operand list:** `KimiLibraryShapeTest.ReadOnlyInstructions` (`lidt`, `lgdt`, `invlpg`) holds the rows whose
+    routine takes a `ptr` operand; every other row's operands are integers. The three rows are pinned by the shape test.
+  - **Test reading:** `GeneratedIr` reads an inline asm call as a call without a callee function and keeps quoted text (template,
+    constraints) as text, in which no register is a value (PLAN G1481 removed).
+  - **Rejected:** a per-member NoStore row (a catalog id under a Condition); a `Supports*` gate for the slot; a second definition
+    writer for slot rows; `enableInterrupts(); halt()` as the idle wait (two calls: never adjacent at O0, not guaranteed adjacent at O2); `usize` operands for
+    `lidt`/`invlpg` (the operand addresses storage).
