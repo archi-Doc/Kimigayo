@@ -402,9 +402,30 @@ public partial class TypeDagScalingTest
         }
     }
 
-    // SPEC 8.3.2, 8.5.3 (R7-N1 c-b, F's N1c rulings 43, 44): UnreadIdentity reads the subject's declaring Contract's clauses and the bound's
-    // supply (ContractSupply: the bound and each Contract it inherits), so a use through the root of a Contract chain D0 <- D1 <- ... <- DN
-    // (C bounds Item by DN, its parent D(N-1) declares the identity, the supply reading ancestors root first) reads work linear in N; each of 10 uses records the located Unsupported_Kd.
+    // SPEC 8.3.2, 8.5.3 (R7-N1 c-b, F's N1c rulings 43, 44; e2-7, G1406-55 S2): a use through the root of a Contract chain D0 <- D1 <-
+    // ... <- DN (C bounds Item by DN, its parent D(N-1) declares `Self.(D0).X is M`) reads that identity in its view's closure, so each
+    // of 10 uses is accepted (G1406-42 (1): the named Q13 class 1 acceptance move from 10 Unsupported_Kd). Its closure index work is
+    // quadratic in N, each D_k's view filing its k ancestors' clauses in its request entry (n^2/2 + 8.5n + 26; dev, two entries a D_k:
+    // n^2 + 6n + 26), PLAN G<O2>: the row asserts the measured values as an upper bound, removed by G<O2>'s fix, which restores a linear
+    // bound.
+    [Fact]
+    public void AContractChainUseIsAcceptedWithinItsMeasuredClosureIndexWork()
+    {
+        var (w30, w60, w120) = (Work(30), Work(60), Work(120));
+        Assert.True(w30 <= 731 && w60 <= 2336 && w120 <= 8246, $"{w30} {w60} {w120}");
+
+        static int Work(int n)
+        {
+            var binding = ChainUses(n, "    associate X\n", "    Self.(D0).X is M\n", ".A");
+            Assert.Empty(binding.Issues);
+            return binding.ClosureIndexWork;
+        }
+    }
+
+    // SPEC 8.3.2, 8.5.3 (F's N1c rulings 42-44; G1406-55 S2): UnreadIdentity reads the subject's declaring Contract's clauses and the
+    // bound's supply (ContractSupply: the bound and each Contract it inherits), so a member missing over a projection through the root
+    // of the chain, whose identity `Self.(D0).X is Self.(D0).Y` (D(N-1)) leaves it a projection, reads work linear in N; each of 10
+    // uses records the located Unsupported_Kd (TypePathFailure).
     [Fact]
     public void AnUnreadIdentityIsDecidedInWorkLinearInTheContractChain()
     {
@@ -415,23 +436,9 @@ public partial class TypeDagScalingTest
 
         static int Work(int n)
         {
-            var source = new System.Text.StringBuilder("enum M\n    A\n    public func f(self) -> i32 => 1\ncontract D0\n    associate X\n");
-            for (var i = 1; i <= n; i++)
-            {
-                source.Append($"contract D{i}: D{i - 1}\n").Append(i == n - 1 ? "    Self.(D0).X is M\n" : string.Empty);
-            }
-
-            source.Append($"contract C\n    associate Item is D{n}\nfunc g<T>() -> i32\n    T is C\n");
-            for (var k = 0; k < 10; k++)
-            {
-                source.Append($"    let x{k} = T.(C).Item.(D0).X.A\n");
-            }
-
-            source.Append("    return 0\n");
-            var c = CompilationTestHelper.Parse(source.ToString());
-            c.Bind();
-            Assert.Equal(10, c.Binding.Issues.Count(static x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd));
-            return c.Binding.UnreadIdentityWork;
+            var binding = ChainUses(n, "    associate X\n    associate Y\n", "    Self.(D0).X is Self.(D0).Y\n", ".Zz");
+            Assert.Equal(10, binding.Issues.Count(static x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd));
+            return binding.UnreadIdentityWork;
         }
     }
 
@@ -843,6 +850,28 @@ public partial class TypeDagScalingTest
 
     // A `let` DAG t_{k+1} = (t_k, t_k), t_0 = (p, p), and its use: a leaf through `keep`, a `let` copy and depth + 1 projections, or a
     // Closure that captures it (the review's du1 and du2 rows).
+    // The chain programs: D0 (`d0`) <- D1 <- ... <- Dn, D(n-1) stating `identity`, C bounding Item by Dn, and g's 10 uses
+    // `T.(C).Item.(D0).X` followed by `use`, bound.
+    private static Binding ChainUses(int n, string d0, string identity, string use)
+    {
+        var source = new System.Text.StringBuilder("enum M\n    A\n    public func f(self) -> i32 => 1\ncontract D0\n" + d0);
+        for (var i = 1; i <= n; i++)
+        {
+            source.Append($"contract D{i}: D{i - 1}\n").Append(i == n - 1 ? identity : string.Empty);
+        }
+
+        source.Append($"contract C\n    associate Item is D{n}\nfunc g<T>() -> i32\n    T is C\n");
+        for (var k = 0; k < 10; k++)
+        {
+            source.Append($"    let x{k} = T.(C).Item.(D0).X{use}\n");
+        }
+
+        source.Append("    return 0\n");
+        var c = CompilationTestHelper.Parse(source.ToString());
+        c.Bind();
+        return c.Binding;
+    }
+
     private static string LetDagUse(string shape, int depth)
     {
         if (shape == "meet")
