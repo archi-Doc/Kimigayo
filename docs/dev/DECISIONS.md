@@ -36867,3 +36867,69 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     halt is the layer's); `WriteStart`'s loop kept beside the marker's text (two writers of one line form); `llvm.expect` on the test
     (a `noreturn` call's block is cold).
   - **For OSF3b:** `__kimi_platform_idle` takes no masking: it sets nothing, and B10 §6.5 rule 1 keeps allocation out of handlers.
+- **T-M62 Every run of a platform member holds the busy flag: the member's own body** (Tatara,
+  2026-11-28; PLAN G1455, the plan's unit B9d4, Q-835, D-1350; Major; SPEC 22.4.5 ¶3, IMPL 21.6.3 (revised); T's rulings 164, 170,
+  172, 174 and 175; O-538 (a), K's OWNER line 11-27 08:55; O-545 (a), K's OWNER line 11-27 10:19; the Back's N4 on B9d3):
+  - **The rule** (O-538 (a)): SPEC 22.4.5 ¶3's end applies to every run of a member, the program's own calls included. On
+    x86_64-unknown-none the busy flag is set from a member body's entry to each of its returns, whoever calls it, and restored,
+    not cleared, so a member's call of another member is an ordinary call (IMPL 21.6.3).
+  - **The cause:** only the layer's six routines set the flag (T-M56), around the runtime's calls of a member. The program's own call
+    of a member, a Function value's call and a member's call of another reach the witness's function without a routine, so an
+    allocation, a `Console` write, a clock read or an Abort inside such a run did not end the program.
+  - **The fact:** `Abi.Flags.PlatformMember` (64), a fact of a definition its Types do not give, as `OutOfLine` and `Inline` are; in
+    `Recorded`, so `Matches` separates it and a warm Write's signature follows it; no call reads it. `ModuleCodegen.Signature`
+    sets it for an Application's witnesses' items, its output roots 1 to 6 (T-M57), which `Write` copies once before any item is
+    written (`witnesses`, when Binding published a platform, the fact on which `Compilation.OutputRoots` appends them; none on a
+    hosted row, in a Library or a test build); the adapters read the same copy.
+  - **The bracket:** for such a definition, `FunctionCodegen`'s frame writes `%t<n> = call i8 @__kimi_platform_enter()` as the
+    last instruction before the entry block's branch and `call void @__kimi_platform_leave(i8 %t<n>)` once in `Return`, after the
+    result value is computed and directly above either `ret` form, both through `WriteCall`. A path that does not return (an Abort,
+    a `noreturn` call, a loop) keeps the flag set; there is no unwinding (SPEC 22.6). Every call of a member reaches this one
+    function, so the bracket covers every run.
+  - **The layer's half:** `RuntimeAbi.PlatformEnter` (`i8 ()`: the flag's value, then the flag set) and `PlatformLeave` (`void
+    (i8)`: the flag restored), the none layer's own (its definition list after `PlatformIdle`, outside `PlatformRoutines`). The value
+    is the layer's (T-M56's `i8` flag), threaded by generated code and read by no compiler code. The six routines keep their adapter
+    call and their mapping and lose their set and clear; `__kimi_boot` now runs before the flag is set, which nothing observes.
+    B9d3's allocation calls (T-M61) are unchanged and now see every run.
+  - **The tests: where SPEC 22.4.5 ¶3 ends the program, and nowhere else** (O-545 (a): while a member runs, a release continues;
+    the Back's N4 on B9d3):
+    - The flag is tested at an allocation (T-M61), at `__kimi_write` (a `Console` write or an Abort's report), at
+      `__kimi_clock` and at `__kimi_exit` (an Abort's end), each as a call of `PlatformIdle` (T's ruling 172).
+    - `__kimi_platform_start` (before any member), `__kimi_pages` (reached only after the allocation's test) and
+      `__kimi_release_pages` have no test.
+    - ¶3 names no release, and under O-538 (a) a run the program makes can release a block the program took earlier. The heap
+      gives such a block's run to the layer when it is above 1 MiB or displaces the spare (`__kimi_heap_return_run`), so a test
+      there would end the program by the heap's state.
+    - A run the runtime makes holds no block (no static storage, the Tatara plan's decision 45; `start` runs under the flag). A
+      release therefore reaches `releasePages` only while no member holds the platform value, and the adapter's `uniq` access
+      aliases nothing.
+    - IMPL 21.6.3's sentence is revised to match (O-545 (a)).
+  - **Hosted rows:** unchanged by construction: no platform is published off a `ProgramPlatform` row, so no signature carries the
+    flag and no enter or leave is written; the records are only in the none layer's list.
+  - **Cost:** hosted rows none. The none row's member bodies: at O2, 6 to 7 instructions per member run (probe P1: `start` +7,
+    `mapPages` +6, `write` +7, `clock` +7); the depth counter was equal or one below and the flag spelled by code generation equal,
+    so the form stands (T's ruling 174). At O0 two internal calls, +5 to +7 instructions per body that returns. The program's own
+    allocating call of a member folds at O2 to the store of 1 and the halt (P2). The kept tests as idle calls give the same O2 code
+    (P4).
+  - **Supersedes in part T-M56** ("each of one shape: the busy flag's test ..., its set, the adapter's call, its clear ...";
+    "Rejected: shared enter/leave helpers (OSF3b's saved RFLAGS is per routine ...)"): the set and clear move from the routines to
+    the member's body, because a routine no longer brackets every run (O-538 (a)); the per-routine shape's reason no longer holds,
+    since a routine now only tests. For OSF3b, the bracket is the one place where a member's run begins and ends, and its value is
+    the layer's word, so RFLAGS can join it in the template and the record's type without a code generation change.
+  - **Supersedes in part T-M57's "`ModuleCodegen.Start` reads roots 1 to 6 by position"**: `ModuleCodegen.Write` reads them once,
+    before any item is written (`witnesses`), because the signatures now need the fact before `Start` writes the adapters; the
+    adapters read the same copy.
+  - **Supersedes in part T-M61's reason why a release has no test** ("a member releases only blocks taken while it
+    runs"): the reason holds for a run the runtime makes, not for the program's own runs (O-538 (a)). The conclusion stands on SPEC
+    22.4.5 ¶3, which names no release (O-545 (a)).
+  - **Rejected:** a wrapper function per member (every reference path would choose it: an open family; a frame per run at O0); a
+    depth counter through `void ()` enter and leave (ruling 164's restore; T-M56's flag widened; OSF3b's per-run RFLAGS needs a
+    value); the flag spelled by code generation (the template's representation read outside it); the set in the adapters or the
+    routines only (the program's own calls bypass them); a MIR form (vocabulary for one row's layer protocol); call-site
+    instrumentation (an open family of call forms); a per-item query beside `Abi.Flags`; a `RuntimeLayer` column for the bracket
+    (a second source of the witness fact, which already implies the none layer, and could disagree with it).
+  - **Rejected for a release** (O-545 (a)):
+    - the routine's test kept: an end SPEC does not name, decided by the heap's state;
+    - the run kept from the layer while a member runs: either leaked (memory grows with each such run) or held in a list that two
+      routines drain (O-545's (b): cases per routine);
+    - a test in the heap's return path (the common runtime would read the layer's flag).

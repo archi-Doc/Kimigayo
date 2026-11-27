@@ -289,8 +289,9 @@ The runtime calls the program's platform members with these meanings:
 - `clock()`: monotonic nanoseconds; a negative result is a failure.
 - `terminate(status)`: never returns.
 
-While a member runs, an allocation, the runtime's call of a member (for pages, `Console` output or a clock read) and an Abort halt
-the processor with interrupts disabled, without a report; a member's own call of another member is an ordinary call.
+While a member runs, an allocation, the runtime's call of a member for `Console` output or a clock read, and an Abort halt the
+processor with interrupts disabled, without a report; a release (whose run may reach `releasePages`) and a member's own call of
+another member are ordinary.
 
 The runtime keeps the platform value that `start` returns, called once before the startup body with the loader's `Boot`
 ([§21.6.2](#2162-entry-and-boot)), in storage of the platform struct's layout, which is not a static slot and is never destroyed
