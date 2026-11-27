@@ -108,6 +108,18 @@ public sealed class MirDumpTest
             Unsited(program, main));
     }
 
+    // IMPL 21.6 (Principle 4): an accepted call of a family's member dumps the family's id and the member its declaration names.
+    [Fact]
+    public void AnInstructionCallDumpsItsMember()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            TargetProfile.None, "public group Board\n    public func send()\n        unsafe => X86.writePort8(0x3F8, 65)\n", "Board.kimi", OutputKind.Library);
+        var records = TestDiagnostics.Of(c);
+        Assert.True(c.Accepts, string.Join(", ", records));
+        Assert.DoesNotContain(records, static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("intrinsic Instruction.outb", Dump(c), StringComparison.Ordinal);
+    }
+
     // A golden's program, including deliberate syntax recovery, compiled as a test build when it has a #Test.
     internal static Compilation Compile(string name)
     {
