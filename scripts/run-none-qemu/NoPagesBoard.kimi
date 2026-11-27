@@ -1,0 +1,27 @@
+// Board.kimi's platform without pages: mapPages always returns null, so every allocation fails (IMPL 21.6.3).
+struct NoPagesBoard
+    Self is Copy
+    Self is Platform
+
+    init() => ()
+
+    public func start(boot: Boot) -> Self => NoPagesBoard.init()
+    public func mapPages(self: uniq/Self, bytes: isize) -> raw/u8 => null
+    public func releasePages(self: uniq/Self, run: raw/u8, bytes: isize) -> i64 => 0
+
+    public func write(self: uniq/Self, stream: i32, text: Text.Utf8Slice) -> i64
+        let bytes = text.bytes()
+        var i: isize = 0
+        while i < bytes.length
+            unsafe
+                while (X86.readPort8(0x3FD) & 0x20) == 0
+                    X86.pause()
+                X86.writePort8(0x3F8, bytes[i])
+            i += 1
+        return 0
+
+    public func clock(self: uniq/Self) -> i64 => X86.readTimestamp()@i64
+
+    public func terminate(self: uniq/Self, status: i32) -> Never
+        unsafe => X86.writePort8(0xF4, status@u8)
+        loop => X86.halt()

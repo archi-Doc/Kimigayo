@@ -1,0 +1,11 @@
+// The Stopwatch reads the platform's clock (SPEC 22.8.2, IMPL 21.6.5) around a spin of 10,000,000 time-stamp counts.
+var watch = Time.Stopwatch.init()
+watch.start()
+let begin = X86.readTimestamp()
+while X86.readTimestamp() - begin < 10000000
+    X86.pause()
+watch.stop()
+if watch.elapsed().rawMicroseconds > 0
+    Console.writeLine("elapsed")
+else
+    Console.writeLine("zero")

@@ -1,0 +1,65 @@
+{
+  "tools": {
+    "qemu": {
+      "version": "11.1.0",
+      "source": "https://qemu.weilnetz.de/w64/qemu-w64-setup-20260811.exe",
+      "installerSha512": "5bcf9eed634e8575a37b74f445af41a2fe4106da512d0c30c368301d4c105037fdfab40a5287367a28a957624cddebbc8c07e16c88ab6634f554cdf3d16bf543",
+      "files": {
+        "qemu-system-x86_64.exe": "47d57a6072e0bb3bd98f87926eb129eb1736dfe818c67b3b81ef7ce4edd0b3cd",
+        "share/edk2-x86_64-code.fd": "33090cc07675baa5190d9f1e84bf5176b33bcbfa9bacac522961150cdb6dbb2a",
+        "share/edk2-i386-vars.fd": "5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e"
+      }
+    },
+    "limine": {
+      "release": "v11.2.1-binary",
+      "source": "https://github.com/limine-bootloader/limine.git",
+      "commit": "deba356b4a70ee183ec3214864f0ba2ffe510b8c",
+      "files": {
+        "BOOTX64.EFI": "698013c27ce2102766d399451fc3520c12662e84ebecc504f09f77417a5103d1"
+      }
+    }
+  },
+  "timeoutSeconds": 30,
+  "rows": [
+    {
+      "row": "B9 1",
+      "label": "SPEC 22 (the x86_64-unknown-none profile), 22.4.5: valid",
+      "level": "O2",
+      "sources": [ "Hello.kimi", "Board.kimi" ],
+      "text": "Hello\n",
+      "end": { "exit": 0 }
+    },
+    {
+      "row": "B9 7",
+      "label": "IMPL 21.6.3 (mapPages null), 21.6.5, SPEC 22.5.1-22.5.2: valid",
+      "level": "O2",
+      "sources": [ "Allocation.kimi", "NoPagesBoard.kimi" ],
+      "text": "Hello\nAllocation.kimi:3:26: abort KIMI_E_ALLOC: Failed to allocate memory\n",
+      "end": { "exit": 1 }
+    },
+    {
+      "row": "B9 8",
+      "label": "IMPL 21.6.3 (an Abort while a member runs), SPEC 22.4.5: valid program, failing platform",
+      "level": "O2",
+      "sources": [ "Hello.kimi", "OverrunBoard.kimi" ],
+      "text": "Hello",
+      "end": "halts"
+    },
+    {
+      "row": "B9 9",
+      "label": "SPEC 22.8.2, IMPL 21.6.5 (the platform's clock): valid",
+      "level": "O2",
+      "sources": [ "Elapsed.kimi", "Board.kimi" ],
+      "text": "elapsed\n",
+      "end": { "exit": 0 }
+    },
+    {
+      "row": "B9 10",
+      "label": "SPEC 22.8.1, 22.10.2, IMPL 21.6.1, 21.6.7 (soft float): valid",
+      "level": "O2",
+      "sources": [ "Seconds.kimi", "Board.kimi" ],
+      "text": "1.5\n",
+      "end": { "exit": 0 }
+    }
+  ]
+}
