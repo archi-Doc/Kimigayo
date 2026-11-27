@@ -7378,8 +7378,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     c1): the reason that no longer holds is 'storage of a Type that holds no Loan admits no value that carries a Loan or an
     address' (U6's review F1; the dev Tuple forms, Q17 class 1).
   - The Case bound (the owner's O-383 (b): a value Moved or Copied out of a Case payload of a call's result carries the Loans the
-    result holds through that Case; SPEC 15.6 Holders' sentence for it, H's draft, stays a proposal for the owner's explicit
-    revision): a read of a Place that is, or lies in, a Case payload whose Type holds no Loan, reached through Case payloads alone
+    result holds through that Case; SPEC 15.6 states it, read per path, since the owner's O-550 (a) (「O-550 a」,
+    11-28)): a read of a Place that is, or lies in, a Case payload whose Type holds no Loan, reached through Case payloads alone
     from a local that holds only calls' results and Case payloads of them, carries nothing (`MirBorrows.Values`' Unheld, read by
     Read and by Flowing's edge; the walk runs from the Place's last step to its root, and a struct Field, an element or a Deref
     drops the bound of the steps after it: O-364 (a)'s Field rule). A read through a local's shared reference reads every Place the
