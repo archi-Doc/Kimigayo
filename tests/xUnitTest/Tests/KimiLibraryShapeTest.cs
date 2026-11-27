@@ -901,7 +901,7 @@ public partial class KimiLibraryShapeTest
     private static string Shape(Koto node) => string.Join('\n', Lines(node, true));
 
     // A body's pinned header (R8-W1b B2, W1c B1, W1c-2b): the declaration's first source lines, each trimmed, as many as the pin states:
-    // its header, on one line or wrapped within STYLE's 120 columns, then its clause lines (an origin relation, a constraint). The body's
+    // its header, on one line or wrapped, then its clause lines (an origin relation, a constraint). The body's
     // statements follow the clauses at their depth, so the pin's own line count bounds what is read.
     private static string HeaderLines(Koto node, string header)
     {
