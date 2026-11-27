@@ -66,8 +66,19 @@ public class TimeLibraryTest
     public void WindowsIsDeclaredWhereWindowsHolds(string triple, string source, string errors)
     {
         var c = MinimalEmissionTest.Check(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Application);
-        Assert.Equal(errors, string.Join(" | ", TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}")));
+        Assert.Equal(errors, Errors(c));
     }
+
+    // SPEC 19.2, IMPL 21.6 (OSF's row 4): Kimi.X86's halt, interrupt-flag and port members are declared where `os == "none"` holds, so on
+    // a hosted row `X86.halt` names no member, while pause and readTimestamp are declared on every x86-64 row.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
+    [InlineData("x86_64-unknown-linux-musl", "public group Board\n    public func stop() => X86.halt()\n", "UnresolvedBinding_Kd X86.halt")]
+    [InlineData("x86_64-unknown-none", "public group Board\n    public func stop() => X86.halt()\n", "")]
+    [InlineData("x86_64-pc-windows-msvc", "public group Board\n    public func spin() => X86.pause()\n", "")]
+    [InlineData("x86_64-unknown-linux-musl", "public group Board\n    public func spin() => X86.pause()\n", "")]
+    public void X86IsDeclaredWhereItsConditionsHold(string triple, string source, string errors)
+        => Assert.Equal(errors, Errors(MinimalEmissionTest.Check(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Library)));
 
     // IMPL 21.5.5 (the Tatara plan's B7b6, C1): the Linux row's Stopwatch reads the platform layer's clock, a counter of nanoseconds: its
     // verified module calls __kimi_clock, which the row's layer defines (MinimalEmissionTest.HelloOnTheLinuxRowIsLibcFree), and names no
@@ -205,6 +216,10 @@ public class TimeLibraryTest
         c.Analyze();
         ScalarEmissionTest.WriteFixture("TimeLibraryConversion" + ticks + "_" + frequency, CompilationTestHelper.WriteIr(c), string.Empty);
     }
+
+    // A compilation's error records in result order, each its code and the text it names.
+    internal static string Errors(Compilation c)
+        => string.Join(" | ", TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => $"{x.Code} {x.Text}"));
 
     // A fake QueryPerformanceCounter: it returns the comma-separated values in order and fails once they run out.
     private static string Counter(string values)
