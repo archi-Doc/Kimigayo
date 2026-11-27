@@ -6,11 +6,12 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a region owner's Type (IsRegionOwner: every local, a var Pattern
-// binding or a var for slot; LocalRegionSlot, with its row), the bounds recorded on them (RecordLocalRegionBound, RecordRegionBound) and
-// the lower bounds a slot region is recorded to outlive (RecordRegionTarget), their finite
-// sources (LocalRegionSources) and the value that brought a source in (LocalRegionSourceUse), and the relations judged through those
-// sources (RegionContains, JudgeLocalRegion). A row is read through one find (Region) and written through one create (WrittenRegion).
+// The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a region owner's Type (IsRegionOwner: every local, Pattern binding
+// and for slot, and a Subject borrowed in place (its match or for construct; SPEC 15.1.6); LocalRegionSlot, with its row; ValuedRegion,
+// one with its value), the bounds recorded on them (RecordLocalRegionBound, RecordRegionBound) and the lower bounds a slot region is
+// recorded to outlive (RecordRegionTarget), their finite sources (LocalRegionSources) and the value that brought a source in
+// (LocalRegionSourceUse), and the relations judged through those sources (RegionContains, JudgeLocalRegion). A row is read through one
+// find (Region) and written through one create (WrittenRegion).
 // The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's D-9 line): the find reads the library layer's part first, then the
 // running pass's, and a new row goes into the running pass's. The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 // Output (PLAN G492-a (ii); R7-O2 A1): a `let` local's region has a value, the Origin its declaration fixes for the slot
@@ -23,7 +24,8 @@ namespace Kimi.Compiler;
 // one reading of any local region's SPEC 15.3.6 value: a published value as published, any other `var` region's its row's candidate
 // over its recorded bounds (SPEC 15.3.6's table); a body that carries the region (CarriedRegion) reads it so (the view's row 6, the
 // body's oracle, StaticOrigin through ValueIn). ValueIn reads a deferred result slot's atom (R7-O2 O2-F) as its completion once Final
-// proved it, and before as a reading with no answer yet (the deferral fact).
+// proved it, and before as a reading with no answer yet (the deferral fact). A `let` region that merges a stored part met on several
+// of the local's paths is marked so (LocalRegion.Merged, LocalBorrowType), read by the name limit alone (PLAN G922 U1).
 // Invariants: a value holds no region of its own body that publishes a value (each is read through once, when published), so a read at
 // a use is one step; it may hold a `var` region of its own body that publishes none (a `let` initializer, or an equality, naming a `var`
 // local), which a use in that body reads as the region and RegionValue as its candidate, whose walk reads each bound's region with a
@@ -79,8 +81,22 @@ public sealed partial class Binding
     internal static bool IsLocalRegion(BoundOrigin origin)
         => origin.Open || (origin is { Kind: OriginKind.Inference, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder));
 
-    // SPEC 15.4.4, 15.6.5: the declarations whose Types have region slots: every local, and a reassignable Pattern binding or for slot.
-    internal static bool IsRegionOwner(Koto declaration) => declaration is VariableKoto || IsMutableDeclaration(declaration);
+    // SPEC 14.8.2, 14.6.1, 15.4.4, 15.6.5, 15.1.6: the declarations whose Types have region slots, the body locals (DeclaringPart).
+    internal static bool IsRegionOwner(Koto declaration) => DeclaringPart(declaration) is not null;
+
+    // The region owners, one row each, and each one's declaring part, the node a use within is "the one being declared" (LocalRegionOf;
+    // ruling G922-34): every local, every Pattern binding (a BindingPattern form) and every for slot (a name a ForKoto declares, never its
+    // Iterable) is its own; a Subject borrowed in place (SPEC 15.1.6) is owned by its match or for construct and declared by its Subject,
+    // the match's Expression or the for construct's Iterable. Any other declaration owns no region: null.
+    internal static Koto? DeclaringPart(Koto declaration)
+        => declaration switch
+        {
+            VariableKoto or SyntaxFormKoto { Akind: KotoKind.BindingPattern } => declaration,
+            IdentifierNameKoto { Parent: ForKoto loop } when !ReferenceEquals(loop.Iterable, declaration) => declaration,
+            MatchKoto match => match.Expression,
+            ForKoto loop => loop.Iterable,
+            _ => null,
+        };
 
     internal bool RegionContains(BoundOrigin expression, BoundOrigin origin)
     {
@@ -601,11 +617,22 @@ public sealed partial class Binding
     {
         var record = this.WrittenRegion(region);
         record.Body = BodyOwner(region.Binder!);
-        (record.Value, record.Equality) = (null, false);
+        (record.Value, record.Equality, record.Merged) = (null, false, false);
         record.Value = this.RegionValueIn(value, record.Body);
         this.regionValues++;
         this.RecordRegionBound(record.Value, region, evidence);
         return record;
+    }
+
+    // SPEC 15.3.6, 15.4.4, 15.6.5: the region at `slot` of `owner`'s Type (LocalRegionSlot, at `row`) whose value its declaration fixes,
+    // `value` published as that value (PublishRegionValue): a `let` local's slot (LocalBorrowType, InferLocalOrigins) and the layer a
+    // `let` Pattern binding's or for slot's reach adds (BindingTypeOf, PLAN G922), and a Subject borrowed in place (SubjectRegion, PLAN
+    // G922 tws). The one mint and publish of such a region.
+    private BoundOrigin ValuedRegion(Koto owner, int slot, OriginVariance row, BoundOrigin value, Koto evidence)
+    {
+        var region = this.LocalRegionSlot(owner, slot, row);
+        this.PublishRegionValue(region, value, evidence);
+        return region;
     }
 
     // O25 (PLAN G949 S1-1, R): every row of the running part has its sources for the run's version, so no later pass forms a source
@@ -644,7 +671,7 @@ public sealed partial class Binding
             region.Sources.Clear();
             region.Row = OriginVariance.Unused;
             region.Version = -1;
-            (region.Value, region.Equality) = (null, false);
+            (region.Value, region.Equality, region.Merged) = (null, false, false);
             region.Body = null;
             region.Solved = null;
             (region.Solution, region.SolutionVersion) = (null, -1);
@@ -858,6 +885,11 @@ public sealed partial class Binding
         // Written with the value (PublishRegionValue resets it, FixedRegion sets it); read through ReadsLetValue alone (O-400 (b)'s limit,
         // and FixedRegion's reading of an equality's end).
         internal bool Equality { get; set; }
+
+        // A `let` local's region that merges a stored part met on several of its paths (DECISIONS R8-M56; LocalBorrowType's MarkMerged), read
+        // by the name limit alone (UnmergedSelection, the owner's O-534 (a) interim; PLAN G922 U1). Written with the value (PublishRegionValue
+        // resets it).
+        internal bool Merged { get; set; }
 
         internal Koto? Body { get; set; }
 

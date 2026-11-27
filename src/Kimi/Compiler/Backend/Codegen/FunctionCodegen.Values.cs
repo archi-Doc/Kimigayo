@@ -154,9 +154,10 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 22.5.1 (I5; DECISIONS R5-M93): the location a callee, a runtime routine or an Abort at a site of the body reports, IMPL 21.3.1's
     // pair of a text and its byte length: in a caller-location body the location it received, its last two parameters (Abi.Of), which it
-    // forwards, so a failure inside it reports the user's call; elsewhere the site's text as a pooled Location constant. False after a
-    // record at a site without its source document, a broken contract.
-    private bool Location(in SourceInfo source, out Site site)
+    // forwards, so a failure inside it reports the user's call; elsewhere the site's text as a pooled Location constant, at an offset of
+    // its document where a Drop carries one (MirTerminator.Offset). False after a record at a site without its source document, a broken
+    // contract.
+    private bool Location(in SourceInfo source, out Site site, int offset = -1)
     {
         var count = this.abi.Parameters.Length;
         if (this.abi.CallerLocation)
@@ -166,7 +167,7 @@ internal sealed partial class FunctionCodegen
         }
 
         site = default;
-        if (this.module.Locations.Text(this.body.Subject(source)) is not { } text)
+        if (this.module.Locations.Text(this.body.Subject(source), offset) is not { } text)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A site of a body has its source document.
             return false;

@@ -182,7 +182,8 @@ public sealed partial class Binding
                 return BoundType.Char;
             case UnitLiteralKoto:
                 return BoundType.Unit;
-            case UnaryKoto { Akind: KotoKind.Not } or BinaryKoto { Akind: KotoKind.And or KotoKind.Or or KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals }:
+            case UnaryKoto { Akind: KotoKind.Not }:
+            case BinaryKoto binary when binary.Akind is KotoKind.And or KotoKind.Or || Parser.IsComparison(binary.Akind):
                 return BoundType.Boolean;
             case UnaryKoto { Akind: KotoKind.PrefixMinus } negation:
                 return this.BuiltinRouteEvidence(negation.Operand, null, scope);

@@ -9,6 +9,11 @@ namespace XunitTest;
 // premise from the declaring body. Rows: g492a-ii's probes (labels.md, labels-rv.md), each with its records as `code@line:column`.
 public partial class OriginPremiseCatalogTest
 {
+    // PLAN G922's probe frame (rev2, rev2-review): `t`'s opening merges its two `ref/i64` parts into one region, which `a` and `b` select.
+    private const string MergedFrame = "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t@copy\n        (let a, let b)\n";
+
+    private const string MergedEnd = "            return 0\n    return 0\n";
+
     // The class 1 family (invalid rows accepted before (ii)), their annotated and `var` twins, and the forms beside them; pl1, a chain of
     // `let` locals named in a Closure's signature with no comparison, has its `var` twin's record (review-ii-r4 N2). a1p and a1s3
     // take their `var` twin's records (a1pv, a1s3v): a named nested function's signature names the local's region, fixed there with no
@@ -49,6 +54,63 @@ public partial class OriginPremiseCatalogTest
         { "k1v", "func f(p: ref/i64) -> ref/i64 during p\n    var r = p\n    let g = func() -> ref/i64 during p => r\n    return g()\n", string.Empty },
         { "pl1", "func outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    let w = n@ref\n    let z = w\n    let x = z\n    let k = func (v: ref/i64 during w) -> ref/i64 during x => v\n    return 0\n", "UnprovenOriginRelation_Kd@6:63" },
         { "pl1v", "func outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    var w = n@ref\n    var z = w\n    var x = z\n    let k = func (v: ref/i64 during w) -> ref/i64 during x => v\n    return 0\n", "UnprovenOriginRelation_Kd@6:63" },
+        // SPEC 15.1.6, 14.6.2, 15.6.5 (PLAN G922 tws): a Subject borrowed in place (a bare Place) owns its Borrow's region, so a nested
+        // signature naming a binding of it (a match's `let`, a loop's element) names that region, with no premise from the body: the
+        // match and `for` forms move to rejection, their reflexive and value-Subject forms stay (tfq to rvc), the `let`-local controls tfl
+        // and twl keep their code and site, and the pair-layer twins (plf to plmq) follow 13.5.5. rcp (a `@copy` Subject's `let`) is valid
+        // and outside every rule (G922-9). tex, tcv, vsr and vsp (a value Subject) are invalid but outside the rule (G922's O-T3): pinned
+        // as recorded.
+        { "tws", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:134" },
+        { "tfs", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for x in pairs\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during pairs => y\n    return 0\n", "UnprovenOriginRelation_Kd@3:134" },
+        { "twn", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        let w\n            match w\n                let z\n                    func inner(x: ref/(ref/i64 during e, ref/i64 during e) during z) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n                    return 0\n    return 0\n", "UnprovenOriginRelation_Kd@6:142" },
+        { "tff", "func outer(h: ref/(Array<i64>, i32)) -> i32\n    for x in h.0\n        func inner(y: ref/i64 during x) -> ref/i64 during h => y\n    return 0\n", "UnprovenOriginRelation_Kd@3:64" },
+        { "tmf", "func outer(h: ref/(Array<i64>, i32)) -> i32\n    match h.0\n        let w\n            func inner(x: ref/Array<i64> during w) -> ref/Array<i64> during h => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:82" },
+        { "tgs", "func outer<T>(u: ref/T) -> i32\n    match u\n        let w\n            func inner(x: ref/T during w) -> ref/T during u => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:64" },
+        { "twu", "func outer(u: uniq/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        let w\n            func inner(x: uniq/(ref/i64 during e, ref/i64 during e) during w) -> uniq/(ref/i64 during e, ref/i64 during e) during u => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:136" },
+        { "rnp", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, _)\n            match a\n                let w\n                    func inner(x: ref/(ref/i64 during e) during w) -> ref/(ref/i64 during e) during u => x\n                    return 0\n    return 0\n", "UnprovenOriginRelation_Kd@6:106" },
+        { "rfh", "func outer(h: ref/(ref/Array<i64> during e, i32)) -> i32\n    for x in h.0\n        func inner(y: ref/i64 during x) -> ref/i64 during e => y\n    return 0\n", "UnprovenOriginRelation_Kd@3:64" },
+        { "rfs", "struct Holder {source}\n    public let items: ref/Array<i64> during source\nfunc outer(h: ref/Holder) -> i32\n    for x in h.items\n        func inner(y: ref/i64 during x) -> ref/i64 during h => y\n    return 0\n", "UnprovenOriginRelation_Kd@5:64" },
+        { "rmh", "func outer(h: ref/(ref/i64 during e, i32)) -> i32\n    match h.0\n        let w\n            func inner(x: ref/i64 during w) -> ref/i64 during e => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:68" },
+        { "tfq", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for x in pairs\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during x => y\n    return 0\n", string.Empty },
+        { "tfc", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for x in pairs\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/i64 during f => y.1\n    return 0\n", string.Empty },
+        { "rvh", "func outer(h: ref/(ref/i64 during e, i32)) -> ref/i64 during e\n    return match h.0\n        let w => w\n", string.Empty },
+        { "rvf", "func outer(h: ref/(ref/Array<i64> during e, i32)) -> i32\n    for x in h.0\n        func inner(y: ref/i64 during x) -> ref/i64 during x => y\n    return 0\n", string.Empty },
+        { "rvc", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, _)\n            match a\n                let w\n                    let g = func [w] () -> ref/(ref/i64 during e) during u => w\n                    return 0\n    return 0\n", string.Empty },
+        { "tfl", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    let r = pairs\n    for x in r\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during pairs => y\n    return 0\n", "UnprovenOriginRelation_Kd@4:134" },
+        { "twl", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    let r = u\n    match r\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:134" },
+        { "rcp", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u@copy\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n            return 0\n    return 0\n", string.Empty },
+        { "tex", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u@follow@ref\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n            return 0\n    return 0\n", string.Empty },
+        { "tcv", "func pick(v: ref/(ref/i64 during e, ref/i64 during e)) -> ref/(ref/i64 during e, ref/i64 during e) during v => v\nfunc outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match pick(u)\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during u => x\n            return 0\n    return 0\n", string.Empty },
+        { "vsr", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for x in pairs@ref\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during pairs => y\n    return 0\n", string.Empty },
+        { "vsp", "func pick(v: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> ref/Array<(ref/i64 during e, ref/i64 during f)> during v => v\nfunc outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for x in pick(pairs)\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during pairs => y\n    return 0\n", string.Empty },
+        { "plf", "func outer<s/T>(p: s/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    s is value or valueborrow\n    for x in p\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during p => y\n    return 0\n", "InvalidOriginBinding_Kd@4:125" },
+        { "plq", "func outer<s/T>(p: s/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    s is value or valueborrow\n    for x in p\n        func inner(y: ref/(ref/i64 during e, ref/i64 during f) during x) -> ref/(ref/i64 during e, ref/i64 during f) during x => y\n    return 0\n", string.Empty },
+        { "plm", "func outer<s/T>(p: s/(ref/i64 during e, ref/i64 during e)) -> i32\n    s is value or valueborrow\n    match p\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during p => x\n            return 0\n    return 0\n", "InvalidOriginBinding_Kd@5:129" },
+        { "plmq", "func outer<s/T>(p: s/(ref/i64 during e, ref/i64 during e)) -> i32\n    s is value or valueborrow\n    match p\n        let w\n            func inner(x: ref/(ref/i64 during e, ref/i64 during e) during w) -> ref/(ref/i64 during e, ref/i64 during e) during w => x\n            return 0\n    return 0\n", string.Empty },
+
+        // PLAN G922 (R1.3; SPEC 14.8.2, 14.8.3, 15.1.6, 15.6.5): a `let` Pattern binding or for slot reached through a reference owns the
+        // region of the layer its reach adds, valued at the reach's dependency, so a nested signature that names two bindings of one Subject
+        // names two fixed Origins with no premise relating them. Moves (class 1: invalid, accepted before): pbn, pbnc, pbca1 (b carried by
+        // nothing), pbf (a for decomposition), tsu, tpr, tnw (through two reference layers) and tux (an exclusive reach). Valid guards:
+        // pbnq, pbcab and tcr (carried, each fixed equal to its value), pbfq, tow (an Owned erasure), rpb (D-693's A row), tuxq and pv3v
+        // (a binding past a qualifying pair layer of an owned Subject: its acquisition Borrow is formed under the reach's Origin, so a
+        // raw pointer read through it has the Subject's members).
+        { "pbn", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:68" },
+        { "pbnc", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let k = func [] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:74" },
+        { "pbca1", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@5:75" },
+        { "pbf", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for (u, v) in pairs\n        func inner(x: ref/i64 during u) -> ref/i64 during v => x\n    return 0\n", "UnprovenOriginRelation_Kd@3:64" },
+        { "tsu", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, _)\n            func inner(x: ref/(ref/i64 during e) during a) -> ref/(ref/i64 during e) during u => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:98" },
+        { "tpr", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, let b)\n            func inner(x: ref/(ref/i64 during e) during a) -> ref/(ref/i64 during e) during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:98" },
+        { "tnw", "func outer(p: ref/i64) -> i32\n    let t = (p, p)\n    let w = (t@ref, 0)\n    match w\n        ((let a, let b), _)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@6:68" },
+        { "tux", "func outer(u: uniq/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, let b)\n            func inner(x: uniq/(ref/i64 during e) during a) -> uniq/(ref/i64 during e) during b => x\n            return 0\n    return 0\n", "UnprovenOriginRelation_Kd@4:100" },
+        { "pbnq", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during a => x\n            return 0\n    return 0\n", string.Empty },
+        { "pbcab", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            let g = func [a, b] (x: ref/i64 during a) -> ref/i64 during b => x\n            return 0\n    return 0\n", string.Empty },
+        { "pbfq", "func outer(pairs: ref/Array<(ref/i64 during e, ref/i64 during f)>) -> i32\n    for (u, v) in pairs\n        func inner(x: ref/i64 during u) -> ref/i64 during u => x\n    return 0\n", string.Empty },
+        { "tcr", "func outer(u: ref/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, _)\n            let g = func [a] () -> ref/(ref/i64 during e) during u => a\n            return 0\n    return 0\n", string.Empty },
+        { "tow", "func outer(u: ref/(ref/i64 during static, ref/i64 during static) during static) -> i32\n    match u\n        (let a, _)\n            let f: () -> i32 = func [a] () -> i32 => 0\n            return f()\n    return 0\n", string.Empty },
+        { "rpb", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let t = (p, p)\n    match t\n        (let a, let b)\n            var c = func [var a, var b] () -> ()\n                swap(a@uniq, b@uniq)\n            c()\n    return 0\n", string.Empty },
+        { "tuxq", "func outer(u: uniq/(ref/i64 during e, ref/i64 during e)) -> i32\n    match u\n        (let a, let b)\n            func inner(x: uniq/(ref/i64 during e) during a) -> uniq/(ref/i64 during e) during a => x\n            return 0\n    return 0\n", string.Empty },
+        { "pv3v", "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nfunc q<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _)\n            var h = Wrap.init(x@follow@raw@raw/u8)\n", string.Empty },
     };
 
     // SPEC 15.3.7, 15.3.6, 15.6.5 under the owner's O-363 (a), O-375 (a)(a) (PLAN G492-a (ii) with (iii)): a Callable comparison in a `let`
@@ -151,6 +213,21 @@ public partial class OriginPremiseCatalogTest
         { "rvi_direct_r", LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> i32\n    let r = p\n    let h = func [] (v: ref/i32 during r) -> i32 => 0\n    let g: (ref/i32 during q) -> i32 = h@move\n    return 0\n", "Unsupported_Kd@7:40" },
         { "rvi_eq_chain", LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> i32\n    let a: Cursor{m} = Cursor.init(p)\n        origin m.at == p\n    let c: Cursor{k} = Cursor.init(a.item)\n        origin k.at == m.at\n    let h = func [] (v: ref/i32 during k.at) -> i32 => 0\n    let g: (ref/i32 during q) -> i32 = h@move\n    return 0\n", "UnprovenOriginContract_Kd@10:40" },
         { "rvi_res_let", LocalOriginClauseTest.CursorType + "func f(p: ref/i32, q: ref/i32) -> i32\n    let s = q\n    let c: Cursor{k} = Cursor.init(p)\n        origin k.at == p\n    let h = func [] (v: ref/i32) -> ref/i32 during k.at => $abort(\"a\")\n    let g: (ref/i32) -> ref/i32 during s = h@move\n    return 0\n", "Unsupported_Kd@9:44" },
+        // PLAN G922 R1.3 (SPEC 15.3.7, 15.3.6, 15.1.6; ruling G922-32): a `let` Pattern binding reached through a reference owns its
+        // layer's region, so a comparison in its body reads the binding as that region, bounded by its value as a `let` local's region is
+        // (R5's region, LocalRegionOf, reads every region owner other than the one whose DeclaringPart holds the use; ruling G922-34).
+        // h's bound T is i64, so h's Item is Owned (7.7.4, 15.2.3). cmpsO and cmplO are valid (z's value is u) and accepted; tusO and
+        // cmpxO, whose values do not prove the condition, take O-400 (b)'s limit at the conversion, as us2n and pfx do. cmpsW (a whole
+        // Subject binding), cmpsF (a for slot) and cmpsV (a `var` Pattern binding, 14.8.2, 15.4.4) are valid and accepted; cmpsVL, a `var`
+        // local, is their control.
+        { "tusO", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/(i64, i64), w: ref/(i64, i64)) -> i32\n    match (u, w)\n        ((let z, _), (_, let x))\n            let f: (ref/i64 during z, ref/i64 during x) -> ref/i64 during x = h\n            return 0\n    return 0\n", "Unsupported_Kd@7:79" },
+        { "cmpxO", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/(i64, i64), w: ref/(i64, i64)) -> i32\n    match w\n        (_, let x)\n            let f: (ref/i64 during u, ref/i64 during x) -> ref/i64 during x = h\n            return 0\n    return 0\n", "Unsupported_Kd@7:79" },
+        { "cmplO", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/(i64, i64)) -> i32\n    match u\n        (let z, _)\n            let f: (ref/i64 during z, ref/i64 during u) -> ref/i64 during u = h\n            return 0\n    return 0\n", string.Empty },
+        { "cmpsO", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/(i64, i64)) -> i32\n    match u\n        (let z, _)\n            let f: (ref/i64 during u, ref/i64 during z) -> ref/i64 during z = h\n            return 0\n    return 0\n", string.Empty },
+        { "cmpsW", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/i64) -> i32\n    match u\n        let w\n            let f: (ref/i64 during u, ref/i64 during w) -> ref/i64 during w = h\n            return 0\n    return 0\n", string.Empty },
+        { "cmpsF", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/Array<i64>) -> i32\n    for x in u\n        let f: (ref/i64 during u, ref/i64 during x) -> ref/i64 during x = h\n    return 0\n", string.Empty },
+        { "cmpsV", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/(i64, i64)) -> i32\n    match u\n        (var z, _)\n            let f: (ref/i64 during u, ref/i64 during z) -> ref/i64 during z = h\n            return 0\n    return 0\n", string.Empty },
+        { "cmpsVL", "func h<T>(w: ref/T during a, v: ref/T during c) -> ref/T during c\n    origin a outlives c\n    return w\nfunc outer(u: ref/i64) -> i32\n    var z = u\n    let f: (ref/i64 during u, ref/i64 during z) -> ref/i64 during z = h\n    return 0\n", string.Empty },
     };
 
     // The owner's O-385 (a) (PLAN G492-a (ii), revision 4): an Origin's slot-or-value reading is made once, by its producer at its use, and
@@ -213,6 +290,64 @@ public partial class OriginPremiseCatalogTest
         { "ncmp", "func eqa(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    let z = p\n    let x = p\n    let c1 = func () -> i32\n        let f: (uniq/(ref/i64 during z), uniq/(ref/i64 during x)) -> i32 = eqa\n        return 0\n    let k = func (v: ref/i64 during x) -> ref/i64 during p => v\n    return 0\n", "UnprovenOriginRelation_Kd@8:76|UnprovenOriginRelation_Kd@10:63" },
         { "ncmpv", "func eqa(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var z = p\n    var x = p\n    let c1 = func () -> i32\n        let f: (uniq/(ref/i64 during z), uniq/(ref/i64 during x)) -> i32 = eqa\n        return 0\n    let k = func (v: ref/i64 during x) -> ref/i64 during p => v\n    return 0\n", "UnprovenOriginRelation_Kd@8:76|UnprovenOriginRelation_Kd@10:63" },
     };
+
+    // PLAN G922 U1 (the owner's O-534 (a) interim; DECISIONS R8-M56 as amended): a name outside a `let` local's body that selects a
+    // region the local's opening merged, through a binding the name's Closure does not carry, is the located limit at the name, a plain
+    // name (pbm), an operand of a meet (pbmm), a projection (pbmp) and a name in a Function Type parameter (pbmfp, whose result is not
+    // bound once its parameter fails, as on dev) alike. Class 1 (invalid, accepted before): pbm, pbmc1 (b not carried), rvb (in the nested
+    // body), rvn, pbmn and pbmn2 (nested Tuples), pbmu (a copy local's own merged part), pbmg2 (a generic call's result), rvcn and rvcnc
+    // (a named function's or a nested Closure's header naming a Closure's captures, which only that Closure's own uses carry), and cbu (an
+    // Origin name alone is no capture, SPEC 9.3). O-534 (a)'s approved reductions (valid): pbmq, pbmt and pbmnt, and under the owner's
+    // O-540 (a) the valid forms whose binding the Closure carries in a way the carried test does not read, until U2/U3: pbmtc (pbmc1's
+    // Types), pbmct (b carried through t), pbmcc (through `let c = b`), pbmco (an omitted list's header, before its captures form), and
+    // cbi and cbif (an omitted list's body names b before b's first value use, in the body or in a nested omitted list; cbib, the value
+    // use first, is accepted: the limit depends on statement order). rvr's record moves from its relation to the limit at `a` (DECISIONS
+    // Q13: the relation reads a's failed Type and rests). Kept: pbmc (each name carried), pbmf (one call Origin), rvo (the local's own
+    // body), rvc (no merged name), rvcnl (two `let` locals, nothing merged), rvm (each name a `let` local's own unmerged region); and,
+    // invalid and accepted as on dev, rvg and rvg0 (a generic call's result holds the contributor's Origin p, no merged region: PLAN
+    // G922's O-2 row) and rvh (its names are in the declaring body; G922 U2/U3).
+    public static TheoryData<string, string, string> MergedRegionRows => new()
+    {
+        { "pbm", MergedFrame + "            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmm", MergedFrame + "            func inner(x: ref/i64 during (a and b)) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@5:43|Unsupported_Kd@5:49" },
+        { "pbmp", "struct View {source}\n    Self is Copy\n    public let data: ref/i64 during source\n    public init(data: ref/i64 during source) => self.data = data\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (View.init(p), View.init(p))\n    match t@copy\n        (let a, let b)\n            func inner(x: ref/i64 during a.source) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@9:42" },
+        { "pbmfp", MergedFrame + "            func inner(f: (ref/i64 during a) -> ref/i64 during b) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@5:43" },
+        { "pbmc1", MergedFrame + "            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:70" },
+        { "pbmtc", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match (t.0, t.0)\n        (let a, let b)\n            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:70" },
+        { "pbmct", MergedFrame + "            let g = func [a, t] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:73" },
+        { "pbmcc", MergedFrame + "            let c = b\n            let g = func [a, c] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@6:73" },
+        { "pbmco", MergedFrame + "            let g = func (x: ref/i64 during a) -> i64 => x@follow + a@follow\n" + MergedEnd, "Unsupported_Kd@5:45" },
+        { "cbi", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                return y@follow + b@follow\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbif", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                let h = func () -> i64 => b@follow\n                return y@follow + h()\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbu", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                return y@follow\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbib", MergedFrame + "            let g = func () -> i64\n                let z = b@follow\n                let y: ref/i64 during b = a\n                return y@follow + z\n" + MergedEnd, string.Empty },
+        { "rvcn", MergedFrame + "            let g = func [a, b] () -> i32\n                func inner(x: ref/i64 during a) -> ref/i64 during b => x\n                return 0\n" + MergedEnd, "Unsupported_Kd@6:46|Unsupported_Kd@6:67" },
+        { "rvcnc", MergedFrame + "            let g = func [a, b] () -> i32\n                let h = func [] (x: ref/i64 during a) -> ref/i64 during b => x\n                return 0\n" + MergedEnd, "Unsupported_Kd@6:52|Unsupported_Kd@6:73" },
+        { "rvcnl", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let a = p\n    let b = p\n    let g = func [a, b] () -> i32\n        func inner(x: ref/i64 during a, y: ref/i64 during b) -> i32 => 0\n        return 0\n    return 0\n", string.Empty },
+        { "pbmu", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    let u = t\n    match u@copy\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@6:42|Unsupported_Kd@6:63" },
+        { "pbmf", "func dup(x: ref/i64) -> (ref/i64 during x, ref/i64 during x) => (x, x)\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match dup(t.0)\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "pbmn", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), p)\n    match t@copy\n        ((let a, let b), _)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmn2", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), p)\n    match t@copy\n        ((let a, _), let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmg2", "func id<T>(x: T) -> T => x@move\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match id((t.0, t.0))\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@6:42|Unsupported_Kd@6:63" },
+        { "pbmnt", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), p)\n    match (t.0, t.0)\n        ((let a, _), (let b, _))\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "rvb", MergedFrame + "            func inner(x: ref/i64 during a) -> i32\n                let y: ref/i64 during b = x\n                return 0\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@6:39" },
+        { "rvn", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), (p, p))\n    match t@copy\n        ((let a, _), (_, let b))\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "rvg", "func two<A, B>(x: A, y: B) -> (A, B) => (x@move, y@move)\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match two(t.0, t.1)\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "pbmq", MergedFrame + "            func inner(x: ref/i64 during a) -> ref/i64 during a => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmt", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match (t.0, t.0)\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "rvr", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p, q)\n    match t@copy\n        (let a, let b, let c)\n            func inner(x: ref/i64 during a) -> ref/i64 during c => x\n" + MergedEnd, "Unsupported_Kd@5:42" },
+        { "pbmc", MergedFrame + "            let g = func [a, b] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "rvo", MergedFrame + "            let y: ref/i64 during b = a\n" + MergedEnd, string.Empty },
+        { "rvc", MergedFrame + "            let g = func [b] () -> ref/i64 during p => b\n" + MergedEnd, string.Empty },
+        { "rvm", MergedFrame + "            let c = b\n            let d = a\n            func inner(x: ref/i64 during d) -> ref/i64 during c => x\n" + MergedEnd, "UnprovenOriginRelation_Kd@7:68" },
+        { "rvg0", "func id<T>(x: T) -> T => x@move\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    match id((p, p))\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "rvh", MergedFrame + "            let g: (ref/i64 during a) -> ref/i64 during b = func [] (x) => x\n" + MergedEnd, string.Empty },
+    };
+
+    [Theory]
+    [MemberData(nameof(MergedRegionRows))]
+    public void ANameOfAMergedRegionOutsideItsBodyIsTheLimit(string row, string body, string records)
+        => Assert.True(records == LocalOriginClauseTest.Records(body + Main), $"{row}: {LocalOriginClauseTest.Records(body + Main)}");
 
     [Theory]
     [MemberData(nameof(NestedSignatureRows))]

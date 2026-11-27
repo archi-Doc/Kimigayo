@@ -69,6 +69,26 @@ public class CallableSignatureSelectionTest
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void ACallableCandidateRelatesTheClauseThatSuppliedItsReceiver(bool reversed)
+    {
+        const string Weaker = "    F is Callable<ref, (i32) -> ()>\n";
+        const string Stronger = "    F is Callable<uniq, (i32) -> ()>\n";
+        var source = "func both<F>(action: uniq/F) -> ()\n" + (reversed ? Weaker + Stronger : Stronger + Weaker) +
+            "    F is Callable<uniq, (i64) -> ()>\n    action(1@i32)\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ReceiverShapeMismatch_Kd), error.Code);
+        Assert.Equal(["Callable<ref, (i32) -> ()>", "Callable<uniq, (i64) -> ()>"], error.Related!.Select(x => x.Label).Order(StringComparer.Ordinal));
+        Assert.All(error.Related!, candidate =>
+        {
+            Assert.Equal("candidate", candidate.Role);
+            var span = candidate.Span!.Value;
+            Assert.Equal("F is " + candidate.Label, source.Substring(span.Start, span.Length));
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void TypedArgumentsSelectIndependentlyOfConstraintOrder(bool reversed)
     {
         var clauses = new[] { "    F is Callable<(i32) -> i32>\n", "    F is Callable<(i64) -> i64>\n" };
