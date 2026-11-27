@@ -11,8 +11,8 @@ namespace XunitTest;
 public class CommandOptionsTest
 {
     // A row: the command, its line, the values read ("name=value;...", in the table's spelling), the inputs and the invalid options'
-    // texts ("|" between two). Names ignore case (O-525); test reads the one table (G1236); the listed values ignore case, a Boolean is
-    // read as bool.TryParse reads it and a listed text is not trimmed (O-525, the Middle's D1); --locked and --no-build alone mean true
+    // texts ("|" between two). Names ignore case (O-525); test reads the one table (G1236); listed values, including Booleans, ignore case
+    // and keep whitespace significant (IMPL 20.3); --locked and --no-build alone mean true
     // (O-525); a value is never an option word, so a removed name after --filter leaves it without its value; a removed option is
     // invalid with any value and every other invalid option is reported where it is read; a repeated option is invalid in any spelling
     // (O-526 Q3); each command takes its rows (IMPL 20.3, 20.5, 20.6.2; restore's --Target, O-527); a word of dashes alone is an input,
@@ -24,7 +24,8 @@ public class CommandOptionsTest
     [InlineData("test", "T --Formats json --list", "--list=true", "T json", "Unknown option: --Formats")]
     [InlineData("test", "T --target w --Debug TRUE --list", "--Target=w;--Debug=true;--list=true", "T", "")]
     [InlineData("test", "T --Targets w", "", "T w", "Unknown option: --Targets")]
-    [InlineData("check", "T --Debug \" true\"", "--Debug=true", "T", "")]
+    [InlineData("check", "T --Debug \" true\"", "", "T", "Invalid value: --Debug  true")]
+    [InlineData("check", "--locked \" false\"", "--locked=true", " false", "")]
     [InlineData("check", "T --Format \" json\"", "", "T", "Invalid value: --Format  json")]
     [InlineData("check", "T --Format yaml", "", "T", "Invalid value: --Format yaml")]
     [InlineData("check", "T --Debug yes", "", "T", "Invalid value: --Debug yes")]
@@ -40,6 +41,9 @@ public class CommandOptionsTest
     [InlineData("check", "T --LlvmBin a --LlvmBin b", "", "T a b", "--LlvmBin was removed: Kimi carries its toolchain.|--LlvmBin was removed: Kimi carries its toolchain.")]
     [InlineData("check", "T --bogus --Target=x", "", "T", "Unknown option: --bogus|Unknown option: --Target=x")]
     [InlineData("check", "T --Debug true --debug false", "--Debug=true", "T", "Repeated option: --Debug")]
+    [InlineData("check", "T --Debug yes --debug true", "--Debug=true", "T", "Invalid value: --Debug yes|Repeated option: --Debug")]
+    [InlineData("check", "T --Debug true --debug yes", "--Debug=true", "T", "Repeated option: --Debug|Invalid value: --Debug yes")]
+    [InlineData("check", "T --Debug --Debug", "", "T", "Missing value: --Debug|Repeated option: --Debug|Missing value: --Debug")]
     [InlineData("test", "T --Format json --Format text", "--Format=json", "T", "Repeated option: --Format")]
     [InlineData("restore", "T --Target w", "--Target=w", "T", "")]
     [InlineData("build", "T --Format json", "", "T json", "Unknown option: --Format")]
