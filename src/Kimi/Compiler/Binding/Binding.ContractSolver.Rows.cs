@@ -350,8 +350,8 @@ public sealed partial class Binding
     }
 
     // e2-7 (i) (G1406-42 (2)): the view's T(G) entry, its closures' first round (CloseRoot's preparation, before its walk starts: a
-    // reading demands nested requests): the view's facts as written, its readings (IndexNormalized, as a request's preparation forms
-    // them) and the facts again under T(G)'s keys, as a first round filed the view's own entry (OwnEntry). It is never a request's
+    // reading demands nested requests): the view's facts as written and under T(G)'s keys in one filing, as IndexOf files a request's
+    // entry under its table's keys, then its readings (IndexNormalized, as a request's preparation forms them). It is never a request's
     // entry (RowsRequest keys by its reading's table), so a closure leaves a request's Kept entry Kept. Kept for the pass
     // (ForgetKeptTables, ClearClosure) while T(G) is memoized for `serial` and every reading it formed was kept, read as IndexOf reads
     // a Kept entry (readings only in KeptRegion); otherwise formed again in place. The first proof limit its formation wrote (its
@@ -381,17 +381,16 @@ public sealed partial class Binding
         }
 
         var outer = this.SetAsideLimit();
-        entry.Open(serial);
-        this.IndexWritten(entry, view); // as written (no request classes)
         var (formations, stores) = (this.readingFormations, this.readingStores);
+        entry.Open(serial);
+        this.enumerateClasses = this.GroundsOf(scope, serial) ?? throw new InvalidOperationException("T(G) re-entered at a closure's entry (InternalInvariant; e2-7).");
+        this.IndexWritten(entry, view); // as written and under T(G)'s keys
+        this.enumerateClasses = null;
         if (this.IndexNormalized(entry, view) != serial)
         {
             throw new InvalidOperationException("A closure's T(G) entry moved its own view (InternalInvariant; e2-7).");
         }
 
-        this.enumerateClasses = this.GroundsOf(scope, serial) ?? throw new InvalidOperationException("T(G) re-entered at a closure's entry (InternalInvariant; e2-7).");
-        this.IndexWritten(entry, view); // under T(G)'s keys
-        this.enumerateClasses = null;
         entry.Limit = this.TakeOwnLimit(outer);
         entry.Kept = this.identityGrounds[scope].Serial == serial && this.readingFormations - formations == this.readingStores - stores;
         return entry;
