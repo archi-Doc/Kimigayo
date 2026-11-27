@@ -11,19 +11,36 @@ namespace Kimi.Compiler.Backend;
 // Type's layout, the result of the receiverless row's witness, `start`; never destroyed, as Self is Copy) and one adapter per PlatformRows
 // row, defined by its record (RuntimeAbi.PlatformMember*), which calls the row's witness, roots 1 to 6 (Compilation.OutputRoots,
 // positional; Compilation.PlatformRoots checks their count, so the span is trusted), through FunctionCodegen's entry call in the adapter it
-// begins. Each argument's source is chosen by the row and the witness's signature: the storage for a receiver and a result slot; a
-// Text.Utf8Slice owned slot written by FunctionCodegen (WriteTextSlot) from the adapter's next two parameters; another value or owned slot
-// the adapter's next parameter, of its Type. The call's value is returned unchanged (the template maps it), void returns, a noreturn call
-// is followed by `unreachable` (FunctionCodegen's End). A Library's (PlatformDeclarations, for inspection): the six adapters' declarations,
-// so the template's calls resolve: one module cannot both declare and define a symbol. A witness parameter without a source (of another
-// kind, a Text.Utf8Slice slot without the adapter's two parameters, or a pass-through of another Type than the adapter parameter's), an
-// adapter parameter left over, or a result or noreturn other than the adapter's is a broken contract at the witness's site.
+// begins. Write reads the witnesses once, before any item (Witnesses), so each witness's signature carries Abi.Flags.PlatformMember and
+// FunctionCodegen's frame brackets its every run, whoever calls it (IMPL 21.6.3). Each argument's source is chosen by the row and the
+// witness's signature: the storage for a receiver and a result slot; a Text.Utf8Slice owned slot written by FunctionCodegen
+// (WriteTextSlot) from the adapter's next two parameters; another value or owned slot the adapter's next parameter, of its Type. The
+// call's value is returned unchanged (the template maps it), void returns, a noreturn call is followed by `unreachable` (FunctionCodegen's
+// End). A Library's (PlatformDeclarations, for inspection): the six adapters' declarations, so the template's calls resolve: one module
+// cannot both declare and define a symbol. A witness parameter without a source (of another kind, a Text.Utf8Slice slot without the
+// adapter's two parameters, or a pass-through of another Type than the adapter parameter's), an adapter parameter left over, or a result
+// or noreturn other than the adapter's is a broken contract at the witness's site.
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The platform storage, the program's platform value (IMPL 21.6), spelled by FunctionCodegen's Value prefix P.</summary>
     internal const string PlatformStorage = "__kimi_platform";
 
     private readonly StringWriter platformText = new(CultureInfo.InvariantCulture); // The platform part of the latest Write (Start).
+    private readonly int[] witnesses = new int[PlatformRows.Rows.Length]; // The latest Write's witnesses' items, by row (-1: none).
+
+    // The witnesses' items, Binding's PlatformWitnesses, into witnesses before any item is written: roots 1 to 6, in PlatformRows' order,
+    // exactly when Binding published a platform (StartupResult.Platform, null on a hosted row, in a test build and in a Library), the
+    // fact on which Compilation.OutputRoots appends them (positional; Compilation.PlatformRoots checks their count, so the span is
+    // trusted); -1 otherwise. It is the one place ModuleCodegen reads roots 1 to 6 by position: Signature marks each witness's body
+    // (Abi.Flags.PlatformMember) and PlatformAdapters calls it.
+    private void Witnesses(in StartupResult startup, ReadOnlySpan<int> roots)
+    {
+        this.witnesses.AsSpan().Fill(-1);
+        if (startup.Platform is not null)
+        {
+            roots[1..].CopyTo(this.witnesses);
+        }
+    }
 
     // A Library's platform part into platformText: the adapters' declarations.
     private void PlatformDeclarations()
@@ -42,7 +59,7 @@ internal sealed partial class ModuleCodegen
     }
 
     // An Application's platform part into platformText: the storage and the adapters over the witnesses' items, one per PlatformRows row.
-    private void PlatformAdapters(ReadOnlySpan<int> witnesses)
+    private void PlatformAdapters()
     {
         if (!this.row.ProgramPlatform)
         {
@@ -51,7 +68,7 @@ internal sealed partial class ModuleCodegen
 
         for (var i = 0; i < PlatformRows.Rows.Length; i++)
         {
-            this.MemberAdapter(PlatformRows.Rows[i], witnesses[i]);
+            this.MemberAdapter(PlatformRows.Rows[i], this.witnesses[i]);
         }
     }
 

@@ -4,10 +4,10 @@
 // string values and string handles, the string release kinds, the zero-sized buffer address, and the FunctionAbi of each
 // runtime routine that generated code defines or calls, the platform layer's routines (PlatformRoutines, which the common runtime and
 // the allocator call and every layer template defines; the Tatara plan's decision 22) and a layer's own (PlatformStart, Clock; B7b2a,
-// N6; PlatformIdle, x86_64-unknown-none's), the adapters of a program-supplied platform (PlatformMember*, one per Platform
-// requirement, which x86_64-unknown-none's layer calls and ModuleCodegen's frame defines; decision 30), one RuntimeLayer record per
-// platform layer (windows-x64's over kernel32, linux-x64's over system calls, x86_64-unknown-none's over the program's platform: its
-// template's resource name, which a target row's Layer column
+// N6; PlatformIdle, PlatformEnter and PlatformLeave, x86_64-unknown-none's), the adapters of a program-supplied platform
+// (PlatformMember*, one per Platform requirement, which x86_64-unknown-none's layer calls and ModuleCodegen's frame defines; decision
+// 30), one RuntimeLayer record per platform layer (windows-x64's over kernel32, linux-x64's over system calls, x86_64-unknown-none's
+// over the program's platform: its template's resource name, which a target row's Layer column
 // names; its OS-error prefix; its definition list, the routines whose template definitions are spliced from them; its start form, the
 // start routine, the module asm defining the entry and the layer's routines called before the startup root; its allocation calls, the
 // layer's routines the allocator calls before it reads its state for a block; the test runtime its test builds link, if any), and
@@ -167,14 +167,22 @@ internal static class RuntimeAbi
     // Routines of a row's own layer, outside PlatformRoutines (the Tatara plan's B7b2a, N6): the process's setup before the program's
     // start (linux-x64: SIGPIPE ignored, so a write to a closed pipe fails with its errno; x86_64-unknown-none: the loader's answers
     // passed to the program's platform start, IMPL 21.6); the monotonic clock in nanoseconds, or a negative failure (C1; the Kimi
-    // library's MonotonicClock intrinsic, declared only where `not windows` holds); x86_64-unknown-none's test, before every block the
-    // allocator takes, that no platform member runs (its allocation call: while one runs, the processor halts, IMPL 21.6.3); and the body
-    // of a start whose entry the layer's module asm defines (the libc-free __kimi_start of linux-x64 and x86_64-unknown-none), internal.
+    // library's MonotonicClock intrinsic, declared only where `not windows` holds); x86_64-unknown-none's test that no platform member
+    // runs, before every block the allocator takes (its allocation call) and first in the write, clock and exit routines (while one runs,
+    // the processor halts, IMPL 21.6.3); and the body of a start whose entry the layer's module asm defines (the libc-free __kimi_start
+    // of linux-x64 and x86_64-unknown-none), internal.
     internal static readonly FunctionAbi PlatformStart = new("__kimi_platform_start", Unit.ComputationType, []);
 
     internal static readonly FunctionAbi Clock = new("__kimi_clock", "i64", []);
 
     internal static readonly FunctionAbi PlatformIdle = new("__kimi_platform_idle", Unit.ComputationType, []);
+
+    // x86_64-unknown-none's bracket of a platform member's run, outside PlatformRoutines (IMPL 21.6.3): FunctionCodegen calls the enter at
+    // the head of a member's body and passes its value to the leave directly above each `ret`; the value is the layer's own, which no
+    // compiler code reads.
+    internal static readonly FunctionAbi PlatformEnter = new("__kimi_platform_enter", "i8", []);
+
+    internal static readonly FunctionAbi PlatformLeave = new("__kimi_platform_leave", Unit.ComputationType, [new("i8", "saved")]);
 
     internal static readonly FunctionAbi StartBody = new("__kimi_start_body", Unit.ComputationType, []) { NoReturn = true };
 
@@ -259,7 +267,7 @@ internal static class RuntimeAbi
         new(
             "NonePlatform.ll.in",
             " (platform=",
-            [.. PlatformRoutines, PlatformStart, Clock, PlatformIdle, .. CommonDefinitions],
+            [.. PlatformRoutines, PlatformStart, Clock, PlatformIdle, PlatformEnter, PlatformLeave, .. CommonDefinitions],
             StartBody,
             StartAssembly(TargetProfile.None.EntrySymbol),
             [PlatformStart],
