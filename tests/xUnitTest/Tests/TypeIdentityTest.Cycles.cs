@@ -143,8 +143,8 @@ public partial class TypeIdentityTest
         // commit 4's time (0.015 s); 5c restarted the rounds at each re-rooting (33 x 33 rounds) and did not finish in 10 minutes.
         { "u-callee", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\n", string.Empty },
         { "u-bad", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "ComparisonLoanConflict_Kd" },
-        { "u-con", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    return\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "ComparisonLoanConflict_Kd" },
-        { "recn", Mk + "func f<T>(t: ref/T)\n    T is Mk\n    need(t)\n", "UnprovenConstraint_Kd" },
+        { "u-con", Mk + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is Mk\n    return\nfunc fuBad<T>(x: T.(Mk).Next, s: ref/T) -> ()\n    T is Mk\n    var t = x@move\n    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    fu<T>(t@uniq, w@raw@raw/u8, s)\n    y = 5\n    consume(t@move)\n", "AnalysisLimit_Kd" }, // e2-7 (G1406-53 S4, G1406-26 D1, SPEC 8.3.3; Q13 class 4, counted): fu's handed signatures read T's closure, which the round limit cuts, so their universal answer over the cut rows is refused at the call, a resource failure at the declaration that reaches it; the conflict at `y = 5` reads that call's refused retention directly, so it rests on the limit (rule W). The program stays rejected
+        { "recn", Mk + "func f<T>(t: ref/T)\n    T is Mk\n    need(t)\n", "AnalysisLimit_Kd" }, // e2-7 (G1406-53 S4, G1406-26 D1, SPEC 8.3.3; Q13 class 4, counted): Mk's `Self.(Mk).Next.(Mk).Up is Self` gives T a closure the round limit cuts, so `T is Inner` is Unknown over a Limited reading; D1 refuses that negative answer, a resource failure at the same use, where dev read the cut rows as a refutation (UnprovenConstraint_Kd). The program stays rejected
         { "recv", Mk + "func f<T>(x: ref/T.(Mk).Next.(Mk).Up)\n    T is Mk\n    T is Inner\n    need(x)\n", string.Empty },
         { "pathq", "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    return\n", string.Empty },
         { "pathqn", "contract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    need(x)\n", "AnalysisLimit_Kd" },
@@ -279,8 +279,8 @@ public partial class TypeIdentityTest
     // Contract whose declaration fails, whose rows stay unavailable round after round (ub*); a Callable row and an effect bound reached
     // only through a cycle (fc*, fb*); a recursive Contract supplied only through a cycle (rk*, pkv; pk, the invalid twin of pkv, ends
     // at the round bound: its record is the limit's, AnalysisLimit_Kd); an identity recorded on the request's own chain from a row that arrives
-    // through the cycle (mzc*, mzm*); an identity a Contract supplies at a prefix of a cycle's mate (yz*: yz itself, valid, is rejected,
-    // the stated limit, a PLAN row; its row holds the record until that row lands); retention through each (h*). On G881's head hdc2,
+    // through the cycle (mzc*, mzm*); an identity a Contract supplies at a prefix of a cycle's mate (yz*: each accepted, yz itself
+    // only since e2-7: before it PLAN G914's rejected valid program, Q17 class 3); retention through each (h*). On G881's head hdc2,
     // hsc and hq4b (invalid) were accepted.
     public static TheoryData<string, string, string> CycleReviewRows => new()
     {
@@ -317,7 +317,7 @@ public partial class TypeIdentityTest
         { "heqx", RvF + "func callIt<X, Y>(x: ref/X, p: raw/u8) -> Y\n    X is Callable<(raw/u8) -> Y>\n    return x(p)\nfunc f<T, U, W>(w: ref/W, p: raw/u8) -> T\n    U is Inner\n    W is T.(Inner).F\n    return callIt<W, T>(w, p)\n", "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd" }, // R7-C3 (review h.eqx, I; F's C2 ruling 255, Q13): T.(Inner).F needs T is Inner (8.5.2); fcn's class: the call's proof reads neither a failed premise nor the named input, its own record (23.1.2)
         { "fbn", RvF + "func callIt<X, Y>(x: ref/X, p: raw/u8) -> Y\n    X is Callable<(raw/u8) -> Y>\n    return x(p)\nfunc applyC<F, R>(f: ref/F, p: raw/u8) -> R\n    F is Callable<(raw/u8) -> R>\n        effect confined\n    return f(p)\nfunc f<T, W>(w: ref/W, p: raw/u8) -> T\n    T is Cy2\n    T.(Cy2).X.(Mid).Next is T\n    W is T.(Inner).F\n    return applyC<W, T>(w, p)\n", "UnsatisfiedEffectBound_Kd" }, // R7-C3: applyC applies (W is Callable by Inner's clause); its bound fails at `w` (SPEC 8.11.4, 10.1)
         { "fbwn", RvF + "func callIt<X, Y>(x: ref/X, p: raw/u8) -> Y\n    X is Callable<(raw/u8) -> Y>\n    return x(p)\nfunc applyC<F, R>(f: ref/F, p: raw/u8) -> R\n    F is Callable<(raw/u8) -> R>\n        effect confined\n    return f(p)\nfunc f<T, W>(w: ref/W, p: raw/u8) -> T\n    T is Inner\n    W is T.(Inner).F\n    return applyC<W, T>(w, p)\n", "UnsatisfiedEffectBound_Kd" }, // R7-C3: applyC applies (W is Callable by Inner's clause); its bound fails at `w` (SPEC 8.11.4, 10.1)
-        { "rk", RvX + "func f<T>(t: ref/T)\n    T is CyK\n    T.(CyK).X.(MidK).Next is T\n    need(t)\n", "UnprovenConstraint_Kd" },
+        { "rk", RvX + "func f<T>(t: ref/T)\n    T is CyK\n    T.(CyK).X.(MidK).Next is T\n    need(t)\n", "AnalysisLimit_Kd" }, // e2-7 (G1406-53 S4, G1406-26 D1, SPEC 8.3.3; Q13 class 4, counted): the cycle supplies Mk, whose `Self.(Mk).Next.(Mk).Up is Self` gives T a closure the round limit cuts, so `T is Inner` is Unknown over a Limited reading; D1 refuses that negative answer, a resource failure at the same use, where dev read the cut rows as a refutation (UnprovenConstraint_Kd). The program stays rejected
         { "rkv", RvX + "func f<T>(t: ref/T)\n    T is CyK\n    T.(CyK).X.(MidK).Next is T\n    T is Inner\n    need(t)\n", string.Empty },
         { "rku", RvX + "func fu<T>(dst: uniq/T.(Mk).Next, p: raw/u8, src: ref/T)\n    T is CyK\n    T.(CyK).X.(MidK).Next is T\n    let a = src.next()\n    let b = a.next()\n    let g = b.getG()\n    dst@follow = g(p)\n", string.Empty },
         { "rkx", RvX + "func f<T>(x: ref/T.(Mk).Next.(Mk).Up)\n    T is CyK\n    T.(CyK).X.(MidK).Next is T\n    T is Inner\n    need(x)\n", string.Empty },
@@ -332,7 +332,7 @@ public partial class TypeIdentityTest
         { "mzm2", RvY + "func f<T, U>(u: ref/U, x: ref/T.(CyZ).X.(MidZ).Next.(A3).X)\n    T is CyZ\n    T.(CyZ).X.(MidZ).Next is T\n    T.(CyZ).X.(MidZ).Next.(A3).X is U\n    needZ(x)\n    needZ(u)\n", string.Empty },
         { "mzm3", RvY + "func f<T, U>(u: ref/U, x: ref/T.(CyZ).X.(MidZ).Next.(A3).X)\n    T is CyZ\n    T.(CyZ).X.(MidZ).Next is T\n    T.(CyZ).X.(MidZ).Next.(A3).X is U\n    needZ(u)\n    needZ(x)\n", string.Empty },
         { "mzcn", RvY + "func f<T, U>(u: ref/U)\n    T is CyZ\n    T.(CyZ).X.(MidZ).Next is T\n    T.(A3).X is U\n    need(u)\n", "UnprovenConstraint_Kd" },
-        { "yz", RvZ + "func f<T>(t: ref/T)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(t)\n", "UnprovenConstraint_Kd" },
+        { "yz", RvZ + "func f<T>(t: ref/T)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(t)\n", string.Empty }, // e2-7 (G1406-52; Q13 named class 1 acceptance move, PLAN G914's defect): valid by SPEC 8.2.3 (`T = T.X.Next = T.X.Alt is ZC`), now accepted like its spelling twins yzx, yz2 and yz3
         { "yzx", RvZ + "func f<T>(x: ref/T.(CyY).X.(MidY).Next)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(x)\n", string.Empty },
         { "yz2", RvZ + "func f<T>(t: ref/T, x: ref/T.(CyY).X.(MidY).Next)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(x)\n    needZ(t)\n", string.Empty },
         { "yz3", RvZ + "func f<T>(t: ref/T, x: ref/T.(CyY).X.(MidY).Next)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(t)\n    needZ(x)\n", string.Empty },
@@ -544,8 +544,11 @@ public partial class TypeIdentityTest
     // lower, and starts its closure again from that key (Binding.IdentityRestarts, exact). mate: `T.(Q).C.(Q).Up` is `T.(Q).B.(Q).Up`
     // (T's clause) and that is `T.(Q).B.(Q).A` (T.B's clause, joined by a round), where the premise proves `need(x)` (mate-v, valid:
     // SPEC 8.2.3's grounds include the identities `T is Q` supplies at every depth); with the premise at `T.(Q).B.(Q).B.(Q).A` no
-    // identity reaches x's class (mate-i, invalid: the proof is missing, SPEC 8.3.2). spm-a's x at `T.(Pq).Up` and spm-b's at
-    // `T.Next^2.Up` each re-root once, to the least key their first round's table gives them (measured; R4.4's shape).
+    // identity reaches x's class (mate-i, invalid: the proof is missing, SPEC 8.3.2). mate's 2 are one request's two steps,
+    // `T.(Q).C.(Q).Up` to `T.(Q).B.(Q).Up` to `T.(Q).B.(Q).A`. spm-a's x at `T.(Pq).Up` re-roots once (measured and derived, G1406-53
+    // S3): the premise's member `T.Next^68.Up`, first seen at round 68, re-roots to `T.Up`, its class's least key. e2-7's head measures
+    // 9 for mate and 5 for spm-b (x at `T.Next^2.Up`): a later request closes again a class an earlier one keyed, a defect G1406-53 S3
+    // fixes, not counted, so those rows keep dev's 2 and 0 until that fix.
     [Theory]
     [MemberData(nameof(ReRootRows))]
     public void AnExtendingRequestReRootsToItsClassesLeastKey(string row, string source, int restarts, string codes)
@@ -559,8 +562,8 @@ public partial class TypeIdentityTest
     {
         { "mate-v", Mate("T.(Q).B.(Q).A"), 2, string.Empty },
         { "mate-i", Mate("T.(Q).B.(Q).B.(Q).A"), 2, "UnprovenConstraint_Kd" },
-        { "spm-a", Spm(0, string.Empty, "    need(x)\n"), 0, "AnalysisLimit_Kd" }, // R7-C3 (C-c): keyed by its class from the start, no re-root
-        { "spm-b", Spm(2, string.Empty, "    need(x)\n"), 0, "AnalysisLimit_Kd" },
+        { "spm-a", Spm(0, string.Empty, "    need(x)\n"), 1, string.Empty }, // R7-C3 (C-c): keyed by its class from the start; e2-7 (G1406-20, G1406-53 S3; Q13 named class 1 acceptance move): valid by SPEC 8.2.3 and accepted, as RoundBoundProgramRows' spm-a; its one re-root is `T.Next^68.Up`'s to `T.Up`, which dev's limit stopped before (0)
+        { "spm-b", Spm(2, string.Empty, "    need(x)\n"), 0, string.Empty }, // e2-7 (G1406-20; Q13 named class 1 acceptance move): valid by SPEC 8.2.3 and accepted, as RoundBoundProgramRows' spm-b; the count is dev's until G1406-53 S3's fix, then the derived number
     };
 
     private const string PqUses = "func f<T>(x: ref/T.(Pq).Up, y: ref/T.(Pq).Up)\n    T is Pq\n";
@@ -571,12 +574,13 @@ public partial class TypeIdentityTest
         "    Self is Has2 when T is Pq\n        associate Has2.Item is T.(Pq).Up\n";
 
     // The delta re-check's ov3, line for line: two paths to one conformance (D: C), C's under `T.Next^68.Up is Inner`, D's under that,
-    // `T.Next^69.Up is Inner` and `T is Copy`; D's premise closure reaches the bound.
+    // `T.Next^69.Up is Inner` and `T is Copy`; the agreement of C's two paths reaches the bound (G1406-53).
+    private static readonly string Ov3SelfC = "    Self is C when T is Pq, T" + string.Concat(Enumerable.Repeat(".(Pq).Next", 68)) + ".(Pq).Up is Inner";
+
     private static readonly string Ov3SelfD = "    Self is D when T is Pq, T" + string.Concat(Enumerable.Repeat(".(Pq).Next", 68)) + ".(Pq).Up is Inner, T" +
         string.Concat(Enumerable.Repeat(".(Pq).Next", 69)) + ".(Pq).Up is Inner, T is Copy";
 
-    private static readonly string Ov3 = "contract Inner\n    associate Z\n" + Pq + "contract C\n    associate Item\ncontract D: C\nstruct Box<T>\n    var v: i32\n" +
-        "    Self is C when T is Pq, T" + string.Concat(Enumerable.Repeat(".(Pq).Next", 68)) + ".(Pq).Up is Inner\n" +
+    private static readonly string Ov3 = "contract Inner\n    associate Z\n" + Pq + "contract C\n    associate Item\ncontract D: C\nstruct Box<T>\n    var v: i32\n" + Ov3SelfC + "\n" +
         "        associate C.Item is T.(Pq).Up.(Inner).Z\n" + Ov3SelfD + "\n        associate C.Item is T.(Pq).Next.(Pq).Up.(Inner).Z\npublic func main() => ()\n";
 
     // PLAN G881b, F's ruling 216 (SPEC 8.3.3 Limits: the limit "is reported once ... at the declaration that reaches it"; 8.2.1,
@@ -612,16 +616,20 @@ public partial class TypeIdentityTest
         => CompilationTestHelper.AssertRecordsAtLines(row, CyclePrelude + Pq + source + "public func main() => ()\n", records);
 
     // F's ruling 222 (SPEC 8.3.3 Limits, 23.1.2): a check that reads a declaration the premise-closure limit refused rests on the
-    // limit's record and keeps none of its own: in ov3 the agreement of C's two paths (at `Self is C`) and the use check of `Self is D`
-    // read D's conditional conformance, whose closure reached the bound (8d4e74206 gave each an InvalidConstraint_Kd beside the limit).
-    // ov3-own: C's specification names no associate of Inner, an independent failure whose record stays (23.1.2); `Self is C` rests on
-    // that specification and keeps no InvalidAssociatedType_Kd of its own (PLAN G1405 with G1386's unit; Q13 rule W: one dependent record).
+    // limit's record and keeps none of its own (8d4e74206 gave each reader an InvalidConstraint_Kd beside the limit). ov3 is invalid
+    // (G1406-52, SPEC 8.9.2): C's own path and D's refinement give C.Item `T.Up.Z` and `T.Next.Up.Z`, never one class under the
+    // stride-2 Pq, so their agreement cannot be proven. e2-7 (G1406-53; Q13 class 4, counted): D's judgments are Proven within the cut,
+    // and Proven results stand (8.3.3), so D records nothing (dev's limit at `Self is D` was D's closure stopping before the proof);
+    // the agreement's refusal is at C's path `Self is C`, the declaration that reaches it. ov3-own: C's specification names no associate
+    // of Inner, an independent failure whose record stays (23.1.2); `Self is C` rests on that specification and keeps no
+    // InvalidAssociatedType_Kd of its own (PLAN G1405 with G1386's unit; Q13 rule W: one dependent record), and the agreement's refusal
+    // reaches that already-failed `Self is C` (rule W), so the specification's record is the program's one.
     public static TheoryData<string, string, string> RefusedDeclarationReadRows => new()
     {
-        { "ov3", Ov3, "AnalysisLimit_Kd: " + Ov3SelfD.Trim() },
+        { "ov3", Ov3, "AnalysisLimit_Kd: " + Ov3SelfC.Trim() },
         {
             "ov3-own", Ov3.Replace("(Inner).Z\n    Self is D", "(Inner).Zz\n    Self is D", StringComparison.Ordinal),
-            "AnalysisLimit_Kd: " + Ov3SelfD.Trim() + " | UnresolvedBinding_Kd: associate C.Item is T.(Pq).Up.(Inner).Zz"
+            "UnresolvedBinding_Kd: associate C.Item is T.(Pq).Up.(Inner).Zz"
         },
     };
 
@@ -635,12 +643,12 @@ public partial class TypeIdentityTest
     // valid: by the grounds (8.2.3) x at `T.(Pq).Up` is x at `T.Next^k.Up` for every k, so the premise at 40 links, past the round
     // bound, applies; the allowed outcomes are acceptance or the limit once at the use (8.3.3), never a Language record from the cut
     // rows (one failed requirement, the callee's premise, which the limit answers: 23.1.2). c5c-nc: x's one Callable premise past the
-    // bound (71dc3559a: NotCallable_Kd beside the limit); c5c-sel: two premises within the bound and the applicable one past it
-    // (FailCallableCandidates); c5c-ef: a confined Callable premise past the bound used through a confined requirement
-    // (UnsatisfiedEffectBound_Kd).
+    // bound (71dc3559a: NotCallable_Kd beside the limit, which its row pins under PLAN G<O1>); c5c-sel: two premises within the
+    // bound and the applicable one past it (FailCallableCandidates); c5c-ef: a confined Callable premise past the bound used through a
+    // confined requirement (UnsatisfiedEffectBound_Kd).
     public static TheoryData<string, string, string> RefusedReadingReaderRows => new()
     {
-        { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x()" },
+        { "c5c-nc", Called(string.Empty, "x: ref/T.(Pq).Up) -> i32", $"    T{Next(40)}.(Pq).Up is Callable<() -> i32>\n    return x()\n"), "AnalysisLimit_Kd: return x() | NotCallable_Kd: return x()" }, // PLAN G<O1> (G1406-52; Q17 class 3, pre-existing: dev records NotCallable_Kd alone on this valid program). e2-7 adds the limit (SPEC 8.3.3); the NotCallable_Kd is the open row's, and its fix leaves the limit alone (G1406-18 C1)
         {
             "c5c-sel", Called(
                 string.Empty,
