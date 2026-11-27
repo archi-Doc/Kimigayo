@@ -302,7 +302,7 @@ internal sealed partial class MirBorrows
         {
             var (operand, position) = (this.Input(call, this.slotPositions[i]), this.slotPositions[i]);
             this.limit |= (entry.Undecided & ~entry.Proven & (1UL << Math.Min(i, 63))) != 0 && (record.Kinds[i] & RetentionKind.Value) == 0 &&
-                this.sets.Elements(this.Retained(state, operand, position, RetentionKind.Value)) is [.., var last] && last >= this.loanBase;
+                this.sets.Elements(this.Retained(state, operand, position, RetentionKind.Value)) is [.., var last] && last.Element >= this.loanBase;
         }
 
         return entry.Proven;

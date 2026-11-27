@@ -126,7 +126,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             if (this.SlotLoan(element) is >= 0 and var loan)
             {
@@ -150,7 +150,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.defaultHeld, this.loanCount);
         var placed = this.eStores[location].Sure;
         this.Work += this.sets.Count(placed);
-        foreach (var element in this.sets.Elements(placed))
+        foreach (var (element, _) in this.sets.Elements(placed))
         {
             if (this.SlotLoan(element) is >= 0 and var loan)
             {

@@ -104,7 +104,7 @@ internal sealed partial class MirBorrows
 
         var on = !this.OffGrid(pointer);
         this.Work += this.sets.Count(pointer);
-        foreach (var element in this.sets.Elements(pointer))
+        foreach (var (element, _) in this.sets.Elements(pointer))
         {
             if (this.PunEntry(element) is >= 0 and var entry)
             {
@@ -174,7 +174,7 @@ internal sealed partial class MirBorrows
     {
         var (on, open, positive, kept, writable) = (!this.OffGrid(pointer), false, false, false, false);
         this.Work += this.sets.Count(pointer);
-        foreach (var element in this.sets.Elements(pointer))
+        foreach (var (element, _) in this.sets.Elements(pointer))
         {
             if (this.ReadEntry(element) is >= 0 and var entry && cases.TypeOf(this.loans[entry].Place) is var place)
             {
@@ -287,7 +287,7 @@ internal sealed partial class MirBorrows
         this.scanChildren.Clear();
         var on = !this.OffGrid(set);
         var facts = this.punKeys[view];
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             var entry = this.PunEntry(element);
             if (entry < 0)
@@ -343,7 +343,7 @@ internal sealed partial class MirBorrows
 
     private bool AnyEntry(int set)
     {
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             if (this.PunEntry(element) >= 0)
             {
@@ -445,7 +445,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += this.sets.Count(value);
-        foreach (var element in this.sets.Elements(value))
+        foreach (var (element, _) in this.sets.Elements(value))
         {
             if (this.PunEntry(element) is >= 0 and var entry && !this.Step(cases.TypeOf(this.loans[entry].Place), of, field))
             {

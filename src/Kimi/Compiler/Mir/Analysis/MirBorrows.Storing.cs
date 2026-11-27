@@ -368,7 +368,7 @@ internal sealed partial class MirBorrows
                 ? (place.Root, layers > 1 ? -1 : OwnStepPart(this.mustSteps[first].Prefix, owned), layers) : default;
         }
 
-        if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [var element])
+        if (first != 0 || layers != 1 || this.slots[place.Root] < 0 || this.sets.Elements(this.must[this.slots[place.Root]]) is not [(var element, _)])
         {
             return default;
         }
@@ -398,7 +398,7 @@ internal sealed partial class MirBorrows
         var stepped = this.punKeys[this.Key(this.KeyOf(place.Root, this.mustSteps.AsSpan(0, count)), 0)] is { RawInline: true, AnyStated: false };
         var at = stepped ? part : LayerPart(part);
         var own = false;
-        foreach (var element in this.sets.Elements(this.mustValue))
+        foreach (var (element, _) in this.sets.Elements(this.mustValue))
         {
             var key = (element & 1) == 0 ? this.ownKeys[(element >> 1) - this.body.Locals.Length] : (Input: 0, Part: 0);
             own |= key.Input == input && (at < 0 || (stepped ? key.Part : LayerPart(key.Part)) != at);

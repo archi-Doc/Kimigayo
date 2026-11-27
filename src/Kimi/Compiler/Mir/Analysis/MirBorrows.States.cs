@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Mir;
 // entry), and Shared in its high 32 bits, what stores through a reference gave it (P10's refs^k targets and every W target); σ(h) is
 // Placed ∪ Shared. One store's value reaches every holder it writes as the same Shared id, so a walk reads each distinct Shared id once.
 // Input: the slots MirBorrows.Solve carries and MirBorrows.Flow commits. Output: a state's parts and σ(h) as one set (Set), its elements
-// in ascending order without forming it (ElementsOf), and the part of a holder's state a gather pass reads at a read's tier (Scanned).
+// in ascending order without forming it, each at MirLoanSets' joined tier (ElementsOf), and the part of a holder's state a gather pass reads at a read's tier (Scanned).
 // Two marks by set id, each read and set by Steps at a level: the reads' (steppedBy, by Step's level), by which a Chain closure or a part
 // list reads each distinct Shared id once; and W's own (walkedBy, by walk), by which a W walk reads each distinct part, Placed or Shared,
 // once, so a read inside a W walk (MirBorrows.Reach's WriteTargets) moves no mark of the walk's.
@@ -97,33 +97,29 @@ internal sealed partial class MirBorrows
         return State(Placed(held), 0);
     }
 
-    /// <summary>The ascending merge of a state's two parts, an element in both once.</summary>
-    private ref struct StateElements(ReadOnlySpan<int> placed, ReadOnlySpan<int> shared)
+    /// <summary>The ascending merge of a state's two parts, an element in both once, at the decided tier where either part has it decided
+    /// (MirLoanSets' join).</summary>
+    private ref struct StateElements(ReadOnlySpan<TieredElement> placed, ReadOnlySpan<TieredElement> shared)
     {
-        private ReadOnlySpan<int> placed = placed;
-        private ReadOnlySpan<int> shared = shared;
+        private ReadOnlySpan<TieredElement> placed = placed;
+        private ReadOnlySpan<TieredElement> shared = shared;
 
-        public int Current { get; private set; }
+        public TieredElement Current { get; private set; }
 
         public readonly StateElements GetEnumerator() => this;
 
         public bool MoveNext()
         {
-            if (this.shared.IsEmpty || (!this.placed.IsEmpty && this.placed[0] <= this.shared[0]))
+            if (this.placed.IsEmpty && this.shared.IsEmpty)
             {
-                if (this.placed.IsEmpty)
-                {
-                    return false;
-                }
-
-                this.Current = this.placed[0];
-                this.placed = this.placed[1..];
-                this.shared = !this.shared.IsEmpty && this.shared[0] == this.Current ? this.shared[1..] : this.shared;
-                return true;
+                return false;
             }
 
-            this.Current = this.shared[0];
-            this.shared = this.shared[1..];
+            var fromPlaced = this.shared.IsEmpty || (!this.placed.IsEmpty && this.placed[0].Element <= this.shared[0].Element);
+            var fromShared = this.placed.IsEmpty || (!this.shared.IsEmpty && this.shared[0].Element <= this.placed[0].Element);
+            this.Current = fromPlaced && (!fromShared || this.placed[0].Word <= this.shared[0].Word) ? this.placed[0] : this.shared[0];
+            this.placed = fromPlaced ? this.placed[1..] : this.placed;
+            this.shared = fromShared ? this.shared[1..] : this.shared;
             return true;
         }
     }

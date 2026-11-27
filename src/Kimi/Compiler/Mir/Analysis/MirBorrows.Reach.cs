@@ -134,7 +134,7 @@ internal sealed partial class MirBorrows
         this.partsWritable = false;
         this.parts.Clear();
         this.Step();
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             escaped |= element == Escaped;
             writable |= element == Writable;
@@ -214,7 +214,7 @@ internal sealed partial class MirBorrows
     {
         var direct = false;
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             if (element is Escaped or Writable)
             {
@@ -297,7 +297,7 @@ internal sealed partial class MirBorrows
         var (direct, escaped) = (false, false);
         this.refs.Clear();
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             escaped |= element == Escaped;
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
@@ -550,7 +550,7 @@ internal sealed partial class MirBorrows
     {
         var punned = false;
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             if (this.PunEntry(element) is var entry and >= 0 && cases.TypeOf(this.loans[entry].Place) is var place &&
                 !this.Designates(place, reading, on))
@@ -658,7 +658,7 @@ internal sealed partial class MirBorrows
             }
 
             var key = this.Key(past, facts.Fold);
-            foreach (var element in this.sets.Elements(set))
+            foreach (var (element, _) in this.sets.Elements(set))
             {
                 if (this.PunEntry(element) is not (var entry and >= 0))
                 {
@@ -917,7 +917,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += this.sets.Count(part);
-        foreach (var element in this.sets.Elements(part))
+        foreach (var (element, _) in this.sets.Elements(part))
         {
             if (this.PunEntry(element) is >= 0 and var entry)
             {
@@ -959,7 +959,7 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            foreach (var element in this.sets.Elements(value))
+            foreach (var (element, _) in this.sets.Elements(value))
             {
                 if (element >= this.loanBase &&
                     this.loans[element - this.loanBase] is { Direct: true, Named: > Escaped, Mode: not MirRefKind.Shared } loan)
@@ -1009,7 +1009,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += this.sets.Count(part);
-        foreach (var element in this.sets.Elements(part))
+        foreach (var (element, _) in this.sets.Elements(part))
         {
             this.walkResting |= element is Maybe or Undecided;
             if (element == Writable)
@@ -1121,7 +1121,7 @@ internal sealed partial class MirBorrows
     private bool Changes(int set)
     {
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             if (element == Writable ? this.ChangesUnowned() : element >= this.loanBase &&
                 this.loans[element - this.loanBase] is { Direct: true, Named: >= 0, Mode: not MirRefKind.Shared } loan && this.Changes(loan))
@@ -1152,7 +1152,7 @@ internal sealed partial class MirBorrows
     private void Write(int set, byte via)
     {
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             this.walkResting |= element is Maybe or Undecided;
             if (element == Writable)

@@ -449,7 +449,7 @@ internal sealed partial class MirBorrows
     {
         this.tier = this.ReadTier(State(set, 0), at);
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             if (element == Escaped || (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 }))
             {

@@ -26,7 +26,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private readonly List<int> wCauses = []; // The W elements' causes (indices in MirReport.All): element w's from wStart[w] to wStart[w + 1].
-    private readonly List<int> marks = []; // Indirect's scratch.
+    private readonly List<TieredElement> marks = []; // Indirect's scratch: each marker at its W element's tier.
     private readonly List<int> causes = []; // The causes of the conflict being recorded, consumed by its record.
     private int[] wStart = [];
     private int[] wOfLoan = []; // By Loan: its W index, or -1.
@@ -192,11 +192,11 @@ internal sealed partial class MirBorrows
 
         this.marks.Clear();
         this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, rested) in this.sets.Elements(set))
         {
             if (this.W(element) is var w and >= 0)
             {
-                this.marks.Add(this.Mark(w));
+                this.marks.Add(new(this.Mark(w), rested));
             }
         }
 
@@ -232,7 +232,7 @@ internal sealed partial class MirBorrows
     private bool WholeTarget(int set, int slot)
     {
         var any = false;
-        foreach (var element in this.sets.Elements(set))
+        foreach (var (element, _) in this.sets.Elements(set))
         {
             if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan && loan.Named == slot)
             {

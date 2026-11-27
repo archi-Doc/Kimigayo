@@ -48,7 +48,7 @@ internal sealed partial class MirBorrows
     {
         this.tier = at;
         this.Work += this.Count(found);
-        foreach (var element in this.ElementsOf(found))
+        foreach (var (element, _) in this.ElementsOf(found))
         {
             this.Consider(element, found, via);
         }
