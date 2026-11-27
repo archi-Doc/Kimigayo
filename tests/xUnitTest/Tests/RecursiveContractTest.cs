@@ -514,8 +514,8 @@ public sealed partial class RecursiveContractTest
     // written premise against it is contradictory evidence (nc2c to ncs2c, class 1). Its twins keep their verdicts: depth 1, another
     // Contract or reference, no clause, the positive clause, the use on T itself, a negated disjunction (8.3.1: no De Morgan), the
     // positive clause against a written negation, a Contract's own premises meeting, a Semantics atom (the admitted set decides, 8.3.4).
-    // nts2c-rev is invalid and accepted, and nts2n-pos's use is refuted but Unproven, until e2-7's closure (R7-C2e2): the identity at
-    // depth is in no view's table.
+    // e2-7's closure (R7-C2e2) puts the identity at depth in the view's table, so nts2c-rev's written negation is contradictory evidence
+    // (class 1) and nts2n-pos's use is refuted (10.1).
     // ncs2g's noMark is a group's (SPEC 6.1.1: a Container body never finds a root function; ncs2, a guard row, keeps that record).
     // twcall keeps b1-r2-failed's records with a name discovery before the copy (W6: a kept answer joins the limit its walk wrote).
     // p-res1 and p-res1r (F's CC-66 B1) keep `T is Show`'s own record in either order: the walk of `T.(Tree).Child` reads Bad's
@@ -551,9 +551,9 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "nm2n-or", "contract Marker\ncontract Tag\ncontract NO\n    associate Next is NO\n    associate V\n    Self.(NO).V is not Marker or Tag\n    func near(self: ref/Self) -> ref/Self.(NO).V\n    func deep(self: ref/Self) -> ref/Self.(NO).Next.(NO).V\n    func deep3(self: ref/Self) -> ref/Self.(NO).Next.(NO).Next.(NO).V\n" + NoMark + "func probe<T>(t: ref/T) -> i32\n    T is NO\n    let v = t.deep()\n    return noMark(v)\n", "UnprovenConstraint_Kd: return noMark(v)")]
     [InlineData("guard", "nca2n", NegatedDs + NoD64 + "func probe<T>(t: ref/T) -> i32\n    T is NA\n    let v = t.deep()\n    return noD64(v)\n", "UnprovenConstraint_Kd: return noD64(v)")]
     [InlineData("guard", "nts2n-other", NegatedTexts + NotI32 + "func probe<T>(t: ref/T) -> i32\n    T is KS\n    let v = t.deep()\n    return notI32(v)\n", "UnprovenConstraint_Kd: return notI32(v)")]
-    [InlineData("e2-7", "nts2n-pos", PositiveTexts + NotText + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return notText(v)\n", "NoApplicableOverload_Kd: return notText(v)", Explicit = true)]
+    [InlineData("e2-7", "nts2n-pos", PositiveTexts + NotText + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return notText(v)\n", "NoApplicableOverload_Kd: return notText(v)")]
     [InlineData("guard", "nm2c-rev", PositiveMarks + "func probe<T>(t: ref/T) -> i32\n    T is PM\n    T.(PM).Next.(PM).V is not Marker\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
-    [InlineData("e2-7", "nts2c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32", Explicit = true)]
+    [InlineData("e2-7", "nts2c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
     [InlineData("guard", "nh2c", "contract Marker\ncontract H2\n    associate Next is H2\n    associate V\n    Self.(H2).V is Marker\n    Self.(H2).Next.(H2).V is not Marker\n    func near(self: ref/Self) -> ref/Self.(H2).V\n    func deep(self: ref/Self) -> ref/Self.(H2).Next.(H2).V\n    func deep3(self: ref/Self) -> ref/Self.(H2).Next.(H2).Next.(H2).V\n", "InvalidConstraint_Kd: contract H2 | ...")]
     [InlineData("guard", "nmr2-pos", PositiveMarks + PickMark + "func probe<T>(t: ref/T) -> i32\n    T is PM\n    let v = t.deep()\n    return pickm(v)\n", "")]
     [InlineData("guard", "nmr2n-bare", BareMarks + PickMark + "func probe<T>(t: ref/T) -> i32\n    T is NB\n    let v = t.deep()\n    return pickm(v)\n", "UnprovenConstraint_Kd: return pickm(v)")]
@@ -617,14 +617,14 @@ public sealed partial class RecursiveContractTest
     // requiring it is strictly best (rv-g-ntr2p, 10.1); a written negation of it is contradictory evidence (nts3c-rev, nts2ci-rev, class 1,
     // as nts2c-rev above), and a use requiring i32 is refuted (ti32-2, 10.1). rv-g-tpos1 (one link) and tw2 (an associate no clause
     // states: no evidence) are guards.
-    [InlineData("g1406", "rv-g-tpos2", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return textOnly(v)\n", "", Explicit = true)]
-    [InlineData("g1406", "rv-g-ntr2p", PositiveTexts + PickText + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return pickt(v)\n", "", Explicit = true)]
-    [InlineData("g1406", "tpos3", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep3()\n    return textOnly(v)\n", "", Explicit = true)]
-    [InlineData("g1406", "tpos2i", PositiveTexts + TextOnly + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is KP\n    let v = t.deep()\n    return textOnly(v)\n", "", Explicit = true)]
+    [InlineData("g1406", "rv-g-tpos2", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return textOnly(v)\n", "")]
+    [InlineData("g1406", "rv-g-ntr2p", PositiveTexts + PickText + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return pickt(v)\n", "")]
+    [InlineData("g1406", "tpos3", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep3()\n    return textOnly(v)\n", "")]
+    [InlineData("g1406", "tpos2i", PositiveTexts + TextOnly + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is KP\n    let v = t.deep()\n    return textOnly(v)\n", "")]
     [InlineData("guard", "rv-g-tpos1", PositiveTexts + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.near()\n    return textOnly(v)\n", "")]
-    [InlineData("g1406", "nts3c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32", Explicit = true)]
-    [InlineData("g1406", "nts2ci-rev", PositiveTexts + "func probe<T, U>(t: ref/T) -> i32\n    T is KP\n    U is T\n    U.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T, U>(t: ref/T) -> i32", Explicit = true)]
-    [InlineData("g1406", "ti32-2", PositiveTexts + NeedI32 + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return needI32(v)\n", "NoApplicableOverload_Kd: return needI32(v)", Explicit = true)]
+    [InlineData("g1406", "nts3c-rev", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T>(t: ref/T) -> i32")]
+    [InlineData("g1406", "nts2ci-rev", PositiveTexts + "func probe<T, U>(t: ref/T) -> i32\n    T is KP\n    U is T\n    U.(KP).Next.(KP).V is not string\n    return 0\n", "InvalidConstraint_Kd: func probe<T, U>(t: ref/T) -> i32")]
+    [InlineData("g1406", "ti32-2", PositiveTexts + NeedI32 + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let v = t.deep()\n    return needI32(v)\n", "NoApplicableOverload_Kd: return needI32(v)")]
     [InlineData("guard", "tw2", OtherAssociates + TextOnly + "func probe<T>(t: ref/T) -> i32\n    T is KP2\n    let w = t.deepw()\n    return textOnly(w)\n", "UnprovenConstraint_Kd: return textOnly(w)")]
 
     // e2-7 (R7-C2e2, the view's identity closure; design-p0.md R1.5, labelled from SPEC first). An identity the grounds supply at depth
@@ -635,11 +635,13 @@ public sealed partial class RecursiveContractTest
     // mismatch resting on it is dependent (pqlet-i32, 8.3.3, 23.1.2). ordr-a, ordr-b, arg-a, mk-a, mk-b, c4a and c4b already hold on
     // the head (guards). hc-use's use keeps a counted independent NoApplicableOverload_Kd (Q13 class 4, G1406-50; 8.2.3 says "never
     // again at uses"): the candidate's result fit reads the premise error as its limit (IdentityPremiseErrorRead), but the selection
-    // rejects on the fit's answer and its NoneApplicable record reads no limit (the PLAN open issue).
-    [InlineData("e2-7", "tconf2", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is i32\n    return 0\n", "InvalidConstraint_Kd: T.(KP).Next.(KP).V is i32", Explicit = true)]
+    // rejects on the fit's answer and its NoneApplicable record reads no limit (the PLAN open issue). ord-a, ord-b and arg-b are valid
+    // and rejected before e2-7 and after it (Q13 class 3, G1406-8 Stop 4; G1406-60): e2-7 does not deliver them, so they stay Explicit
+    // until the unit of their PLAN open issue (E27's class 3 row, rev 69's schedule).
+    [InlineData("e2-7", "tconf2", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    T.(KP).Next.(KP).V is i32\n    return 0\n", "InvalidConstraint_Kd: T.(KP).Next.(KP).V is i32")]
     [InlineData("e2-7", "tdec", "contract KS\n    associate V\n    Self.(KS).V is string\ncontract K\n    associate A\n    associate B\n    associate C is KS\n    Self.(K).A is Option<Self.(K).C.(KS).V>\n    Self.(K).B is Option<i32>\nfunc probe<T>(t: ref/T) -> i32\n    T is K\n    T.(K).A is T.(K).B\n    return 0\n", "InvalidConstraint_Kd: T.(K).A is T.(K).B", Explicit = true)]
     [InlineData("guard", "hc-use", "contract HC\n    associate Next is HC\n    associate V\n    Self.(HC).V is string\n    Self.(HC).Next.(HC).V is i32\n    func deep(self: ref/Self) -> ref/Self.(HC).Next.(HC).V\nfunc probe<T>(t: ref/T) -> i32\n    T is HC\n    let s: ref/i32 = t.deep()\n    return 0\n", "InvalidConstraint_Kd: Self.(HC).Next.(HC).V is i32 | NoApplicableOverload_Kd: let s: ref/i32 = t.deep()")]
-    [InlineData("e2-7", "u2-let", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let s: ref/string = t.deep()\n    return 0\n", "", Explicit = true)]
+    [InlineData("e2-7", "u2-let", PositiveTexts + "func probe<T>(t: ref/T) -> i32\n    T is KP\n    let s: ref/string = t.deep()\n    return 0\n", "")]
     [InlineData("e2-7", "ord-a", IdentityOrders + "func probe<T>(t: ref/T) -> i32\n    T is K\n    let s: ref/string = t.v()\n    let y: ref/T.(K).Y = t.x()\n    return 0\n", "", Explicit = true)]
     [InlineData("e2-7", "ord-b", IdentityOrders + "func probe<T>(t: ref/T) -> i32\n    T is K\n    let y: ref/T.(K).Y = t.x()\n    let s: ref/string = t.v()\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "ordr-a", RequestOrders + NeedMarker + "func probe<T>(t: ref/T) -> i32\n    T is K\n    T.(K).Y is Marker\n    let q: ref/T.(K).A.(KA).S = t.p()\n    return needMark(t.x())\n", "")]
@@ -653,7 +655,7 @@ public sealed partial class RecursiveContractTest
     [InlineData("guard", "mk-b", CycleMates + "func probe<T>(a: ref/T.(Mk).Next.(Mk).Next.(Mk).Up, b: ref/T.(Mk).Next.(Mk).Up) -> i32\n    T is Mk\n    let y: ref/T = b\n    let x: ref/T.(Mk).Next = a\n    return 0\n", "")]
     [InlineData("guard", "c4a", ChainedTakes + "func c4a<T>(n: ref/T.(KR).Next, x: ref/T.(KR).Next.(KR).A) -> i32\n    T is KR\n    return n.take(x)\n", "")]
     [InlineData("guard", "c4b", ChainedTakes + "func c4b<T>(n: ref/T.(KR).Next, x: ref/T.(KR).Next.(KR).A) -> i32\n    T is KR\n    let s: ref/string = x\n    return n.take(x)\n", "")]
-    [InlineData("e2-7", "pqlet-i32", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let y: ref/i32 = x\n    return 0\n", "AnalysisLimit_Kd: let y: ref/i32 = x", Explicit = true)]
+    [InlineData("e2-7", "pqlet-i32", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    let y: ref/i32 = x\n    return 0\n", "AnalysisLimit_Kd: let y: ref/i32 = x")]
     // The re-review's twins (artifacts/units/r7-c2-next/review-rev1.md and rr1/, labelled from SPEC first; G1406-9). At a limited
     // root the reading is a function of the declaration, never of the order of checks (8.2.3, 8.3.3): ordl through a proof, ordf
     // through a form and a mismatch, each AnalysisLimit_Kd alone at its use in both orders, the mismatch resting on the limit
@@ -662,12 +664,12 @@ public sealed partial class RecursiveContractTest
     // and a deeper value in either order (mkv).
     [InlineData("guard", "ordl-a", "contract Inner\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\n" + LimitedOrders + "Inner" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    need(x)\n    let n = g(t.p().far())\n    return\n", "AnalysisLimit_Kd: need(x)")]
     [InlineData("guard", "ordl-b", "contract Inner\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\n" + LimitedOrders + "Inner" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let n = g(t.p().far())\n    need(x)\n    return\n", "AnalysisLimit_Kd: need(x)")]
-    [InlineData("e2-7", "ordf-a", LimitedOrders + "string" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let s: ref/string = x\n    let n = g(t.p().far())\n    return\n", "AnalysisLimit_Kd: let s: ref/string = x", Explicit = true)]
-    [InlineData("e2-7", "ordf-b", LimitedOrders + "string" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let n = g(t.p().far())\n    let s: ref/string = x\n    return\n", "AnalysisLimit_Kd: let s: ref/string = x", Explicit = true)]
-    [InlineData("e2-7", "pqerr", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is string\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32\n    return 0\n", "InvalidConstraint_Kd: T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32", Explicit = true)]
-    [InlineData("e2-7", "pqerr-use", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is string\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32\n    let s: ref/i32 = x\n    return 0\n", "InvalidConstraint_Kd: T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32", Explicit = true)]
-    [InlineData("e2-7", "mkv-a", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let s: ref/string = t.d3v()\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    return 0\n", "", Explicit = true)]
-    [InlineData("e2-7", "mkv-b", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    let s: ref/string = t.d3v()\n    return 0\n", "", Explicit = true)]
+    [InlineData("e2-7", "ordf-a", LimitedOrders + "string" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let s: ref/string = x\n    let n = g(t.p().far())\n    return\n", "AnalysisLimit_Kd: let s: ref/string = x")]
+    [InlineData("e2-7", "ordf-b", LimitedOrders + "string" + LimitedReaders + "func f<T>(t: ref/T, x: ref/T.(D).P.(Pq).Up)\n    T is D\n    let n = g(t.p().far())\n    let s: ref/string = x\n    return\n", "AnalysisLimit_Kd: let s: ref/string = x")]
+    [InlineData("e2-7", "pqerr", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is string\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32\n    return 0\n", "InvalidConstraint_Kd: T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32")]
+    [InlineData("e2-7", "pqerr-use", PathEquation + "func f<T>(x: ref/T.(Pq).Up) -> i32\n    T is Pq\n    T.(Pq).Up is string\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32\n    let s: ref/i32 = x\n    return 0\n", "InvalidConstraint_Kd: T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is i32")]
+    [InlineData("e2-7", "mkv-a", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let s: ref/string = t.d3v()\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    return 0\n", "")]
+    [InlineData("e2-7", "mkv-b", CycleValues + "func f<T>(t: ref/T) -> i32\n    T is Mk\n    let k: ref/T.(Mk).Next.(Mk).Next = t.up2()\n    let s: ref/string = t.d3v()\n    return 0\n", "")]
 
     // SPEC 8.3.2 Contract refinement, 8.4.1, 8.4.3 (R7-C2c2 c2-5a; PLAN G402, G837, G849): `T is C<i32>` supplies C's own and
     // inherited Constraints with T for Self and i32 for C's parameter, at every projection a query needs: a clause naming the Contract's
