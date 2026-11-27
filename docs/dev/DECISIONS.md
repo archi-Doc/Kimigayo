@@ -23861,6 +23861,9 @@ structure is recorded here by the unit that first implements it.
     stays until G2.
   - Superseded in part by R8-M52 (R8-I1): the `Unproduced` intrinsic row of its broken-contract list; `IntrinsicWriter.Unproduced` is
     deleted, every member having a MIR producer and a writer since R8-S2c (R8-M34).
+  - Superseded in part by T-M59 (OSF1a): its broken-contract item "a compiler function's Item with no single routine (unsafe and
+    internal functions have no Item)" no longer covers the `Instruction` family, whose safe public members have Items: each has one
+    routine, its `InstructionRows` row's. The item stays for every other row.
 - **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29; extends R5-M135) X1
   (plan §4 row X1, §5.3) ran at dev `17cd554ab`: sel fails exactly the 110 decided P42 rows (R5-M144, R5-M145); the native outcomes of all
   6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes both generators, and sel's `.ll` is identical to
@@ -36691,3 +36694,42 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     library's definition meeting the archive's lazy member by link order, B7b's change W5); the whole builtins library (speculative
     members, O1); a CMake build of compiler-rt (a further download and a second build system); committing the tarball; checking the
     none catalog's packageId and abiVersion against new constants (a second copy with no reader before B9f).
+- **T-M59 Machine instructions are one intrinsic family over a Backend table; every call is the row's routine** (Tatara,
+  2026-11-27; OSF1a, Q-830, D-1344; Major; design B10 C-457 Revision 2.1 §4.3-4.4, the owner's O-489 (a) (a), verbatim 「O-489 全てa」,
+  the plan's decisions 36-43; T's rulings 156 and H-162). Supersedes R5-M146 in part.
+  - **The family:** `IntrinsicId.Instruction` (+1, limit 30 → 31 under O-489's approval of OSF's four ids). Binding's
+    `IntrinsicDisposition` column `Code` is `Member` (commit 1, behaviour unchanged): a family id (`IntrinsicDisposition.TakesMember`,
+    a closed switch: `Fail`, `Instruction`) carries its member, `Fail`'s SPEC §22.5.2 code, `Instruction`'s row; `DefinitionOf`
+    checks `TakesMember(id) != (member is not null)`. Binding never reads the Backend; `MirBuilder.Extra` adds `Fail`'s code only.
+  - **`InstructionRows`** (`Backend/InstructionRows.cs`, a canonical component): one row per member, its LLVM inline-asm template,
+    its constraints and its routine's `FunctionAbi` (`__kimi_x86_<row>`, the operands' and result's LLVM Types, no location
+    parameter); the one suffix `~{memory},~{dirflag},~{fpsr},~{flags}` (Clang's x86 default; `rdtsc`'s `shlq`/`orq` change EFLAGS),
+    appended to every row by the one definition writer, no per-row clobber rule; at most 64 rows (the module's request set).
+    OSF1a's rows: `pause`, `rdtsc`, `hlt`, `cli`, `sti`, `inb`/`inw`/`inl`, `outb`/`outw`/`outl`. A member naming no row is a
+    library defect: `KimiLibraryShapeTest` holds every member to its row and each declaration's lowered signature to the row's
+    routine, and the Backend's miss is `InternalInvariant_Kd` at the call.
+  - **The library:** `Kimi.X86` (`X86.kimi`) under `#if arch == "x86_64"`: `pause` and `readTimestamp` on every x86-64 row, the
+    privileged members under `os == "none"` (IMPL §21.6.8). A member is `unsafe` exactly when it accesses a device or changes the
+    processor's address translation, descriptor tables or model-specific state (the port members in OSF1a).
+  - **Every call is the row's routine (design §4.4 (i)):** `IntrinsicRows`' row `Instruction` (Target None, Need None, Writer
+    `Instruction`, Routine null); `IntrinsicWriter.Instruction` is a routine writer: `FunctionCodegen.Routine` takes the row plus the
+    callee's member (the direct call's `Callee.Symbol.Definition.Member`, `Runs`' `item.Symbol.Definition.Member`) and its arm
+    `this.module.Instruction(member)` requests the row and returns its routine. So the direct call, an Item's Value call and its
+    adapter's entry all write `call @__kimi_x86_<row>` through `Invoke`, the one call writer. `ModuleCodegen` keeps the requested rows
+    (one bit per row, cleared per module) and writes each requested routine once, in row order, before the functions: `define
+    internal <result> @__kimi_x86_<row>(<operands>) alwaysinline #0` with the module's entry label, one `call asm sideeffect` and its
+    `ret` (the label: the Back's OSF1a read C2, T's ruling 163). `Abi.Flags.Inline`
+    (`alwaysinline`, recorded as `OutOfLine` is) marks the definition; calls are unchanged. At O2 the routine is inlined at every call
+    and removed; at O0 each call is a call. Hosted modules that call no member are byte-equal.
+  - **MIR:** `MirDescriptors.Of(IntrinsicId.Instruction)` is `Intrinsic(MirEffect.Environment, -1)`; arity −1 now means "the
+    declaration gives the call's shape" (the descriptor's summary rewritten). `MirValidator.Calls` gains one arm: a call of a row with
+    arity −1 that carries no declaration is `MirViolation.Callee`, and one whose operand count differs from the declaration's parameter
+    count is `MirViolation.Arity`. `MirDump` prints such a call `intrinsic Instruction.<member>` (no golden moves).
+  - **The effect class (C-457 C3):** every member is an environment effect (SPEC §8.11.2): it accesses processor state outside the
+    program; a `confined` implementation calls none of them. One class for the family's one MIR row.
+  - **Rejected:** LLVM intrinsics where they exist (`@llvm.x86.rdtsc`: a second lowering form; the asm row gives the same code); one
+    `IntrinsicId` per instruction (the limit would pass 50); rows without `~{memory}` for the pure instructions (a per-row barrier
+    rule, no measured gain); `Kimi.X86` in SPEC §22.1's table (target-specific declarations, IMPL documents them); an `IntrinsicRows`
+    column `Family` (Binding would read the Backend); writing the asm inline at direct calls and a routine only for Items (two forms
+    of one row); a located `Unsupported_Kd` for a member's Item (a valid form unsupported only to save the definition writer, which
+    OSF1b needs regardless); `DirectCallOnly` for the safe members (a Language error for a valid program, SPEC §7.7.4).

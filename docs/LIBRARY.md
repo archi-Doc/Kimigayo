@@ -11,7 +11,7 @@ Names are relative to `Kimi`. The default alias opens its root, but not nested g
 
 Tables omit `public` and may omit `func`. Each signature includes its receiver and result; `Self` denotes the containing Type. Properties are read-only unless stated otherwise. An argument Type written as `A or B` abbreviates two overloads, not a union Type. `during` annotations identify result dependencies; they never extend storage lifetimes.
 
-This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §10. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
+This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §11. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
 
 ## 1. Foundational Types and Contracts
 
@@ -622,7 +622,22 @@ Only the structured operations above request cancellation, for the children they
 | `Boot.Region.length: u64` | The entry's length in bytes. |
 | `Boot.Region.kind: u64` | The loader's entry type: 0 usable, 1 reserved, ..., 5 bootloader reclaimable, ... |
 
-## 10. Current Source Differences
+## 10. x86-64 Instructions
+
+[Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations); the implementation's table is IMPL §21.6.8 ([machine instructions](impl/21-layout-runtime-and-code-generation.md#2168-machine-instructions)).
+
+`X86` groups x86-64 processor instructions and is declared where the Condition `arch == "x86_64"` holds; its privileged members only where `os == "none"` also holds. Each call executes its instruction once, in program order with every memory access and every other member. Every member is an environment effect, so a `confined` implementation calls none.
+
+| Function | Guarantee |
+| --- | --- |
+| `X86.pause() -> ()` | Safe, every x86-64 target. Hints that the caller spins in a wait loop (`pause`). |
+| `X86.readTimestamp() -> u64` | Safe, every x86-64 target. The processor's time-stamp counter (`rdtsc`). |
+| `X86.halt() -> ()` | Safe, `os == "none"`. Stops the processor until the next interrupt (`hlt`). |
+| `X86.disableInterrupts() -> ()`, `X86.enableInterrupts() -> ()` | Safe, `os == "none"`. Clears or sets the interrupt flag (`cli`, `sti`). |
+| `unsafe X86.readPort8(port: u16) -> u8`, `readPort16(port: u16) -> u16`, `readPort32(port: u16) -> u32` | `os == "none"`. Reads one, two or four bytes from an I/O port (`in`). The device at `port` may change any storage it can reach; the caller keeps that storage within the program's platform contract. |
+| `unsafe X86.writePort8(port: u16, value: u8) -> ()`, `writePort16(port: u16, value: u16) -> ()`, `writePort32(port: u16, value: u32) -> ()` | `os == "none"`. Writes one, two or four bytes to an I/O port (`out`), under the same obligation. |
+
+## 11. Current Source Differences
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 
