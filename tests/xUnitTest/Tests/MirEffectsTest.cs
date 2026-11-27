@@ -1013,7 +1013,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             "    _ = Text.toString(w)\n    _ = \"\\(w)\"\n    return writer.write(w)\n"));
 
     // SPEC 8.11.3, 13.4: a tuple operator runs its leaves' witnesses (its expansion, DECISIONS R5-M75): built-in for i32, Compared's
-    // environment read, also nested; a leaf with an abstract part runs its requirement under the caller's premises: Fixed's confined
+    // environment read, also nested; an abstract leaf runs its requirement under the caller's premises: Fixed's confined
     // equals, and Equatable's, which bounds no effect (fail-before: the first three, a limit; the fourth was a limit until R5-M75).
     [Theory]
     [InlineData("        _ = (value, 1) == (value, 2)\n        _ = value == 2\n", "")]
@@ -1042,13 +1042,14 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // SPEC 8.11.3, 8.6.1: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through
     // the instance, also as a comparison's leaf at a call the body writes, a default's copy (SPEC 7.2.3) or a tuple operator (13.4.1):
     // Box<A>'s callee is known (fail-before: the first, judged by the premises; R7-P5a's B1V and B1T, the call's leaf judged by the
-    // premises' bound, B1T since R5-M166).
+    // premises' bound, B1T since R5-M166). Each writing equals is its pure twin's invalid counterpart.
     [Theory]
     [InlineData(" => true\n", OpenFind, "")]
     [InlineData("\n        Console.writeLine(\"eq\")\n        return true\n", OpenFind, Failed)]
     [InlineData(" => true\n", OpenCopy, "")]
     [InlineData("\n        Console.writeLine(\"eq\")\n        return true\n", OpenCopy, Failed)]
     [InlineData(" => true\n", OpenOperator, "")]
+    [InlineData("\n        Console.writeLine(\"eq\")\n        return true\n", OpenOperator, Failed)]
     public void AnOpenSelfRunsItsWitness(string equals, string use, string expected)
         => Assert.Equal(
             Expected(expected),

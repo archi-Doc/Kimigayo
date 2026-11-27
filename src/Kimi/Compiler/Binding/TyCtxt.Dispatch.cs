@@ -21,8 +21,9 @@
 // witness's executing accessor under its implementing Type's instance, a library group's function under its own slots.
 // Builtin: a compiler function under the call's substitution, whose bound reference instantiates the requirement's signature. Storage: a
 // standard property witness's implementing Field under the call's substitution, Access its operation (Copy, Borrow or Set; AccessorCall for
-// every other kind). Refused: OCC-X. None: no answer, also for an abstract Self, which for a closed accepted Self is a broken contract that
-// its reader records as InternalInvariant_Kd. What a call runs does not depend on its Self's storage, so Witness reads no storage verdict:
+// every other kind). Refused: OCC-X. None: no answer, also for an abstract Self; for a Formed Self with an abstract part, a conformance
+// only a premise states, with no known concrete callee (SPEC 8.2.3, 8.11.3), which A4 judges by the premises' bound; for a closed accepted
+// Self a broken contract that its reader records as InternalInvariant_Kd. What a call runs does not depend on its Self's storage, so Witness reads no storage verdict:
 // a Self whose storage rests on a part Binding rejected or nests past Binding's bound has its witness's target, and the instance the
 // target needs is its reader's to admit (DECISIONS BU-38, R7-M54 c4).
 // Cause: the resolution's formation (TyCtxt.Formation), Formed but for a resolution that formed a Type past IMPL A.4's height inside the
