@@ -6,8 +6,8 @@
 // the allocator call and every layer template defines; the Tatara plan's decision 22) and a layer's own (PlatformStart, Clock; B7b2a,
 // N6; PlatformIdle, PlatformEnter and PlatformLeave, x86_64-unknown-none's), the adapters of a program-supplied platform
 // (PlatformMember*, one per Platform requirement, which x86_64-unknown-none's layer calls and ModuleCodegen's frame defines; decision
-// 30), one RuntimeLayer record per platform layer (windows-x64's over kernel32,
-// linux-x64's over system calls, x86_64-unknown-none's over the program's platform: its template's resource name, which a target row's Layer column
+// 30), one RuntimeLayer record per platform layer (windows-x64's over kernel32, linux-x64's over system calls, x86_64-unknown-none's
+// over the program's platform: its template's resource name, which a target row's Layer column
 // names; its OS-error prefix; its definition list, the routines whose template definitions are spliced from them; its start form, the
 // start routine, the module asm defining the entry and the layer's routines called before the startup root; its allocation calls, the
 // layer's routines the allocator calls before it reads its state for a block; the test runtime its test builds link, if any), and
@@ -27,8 +27,8 @@
 // layers' template names distinct; a layer's definition list lists each routine whose `{{name}}` marker its runtime templates (the
 // layer, the common part and the allocator) hold exactly once; a template spells a marker's constant only through its marker, and a
 // writer through the constant; every heap block of every row is taken by HeapAllocate alone, which first calls its layer's allocation
-// calls, so on x86_64-unknown-none an allocation while a platform member runs halts (IMPL 21.6.3) and a hosted row's allocator text
-// is the marker's empty text.
+// calls, so on x86_64-unknown-none an allocation while a platform member runs halts (IMPL 21.6.3) and a hosted row's marker
+// expands to nothing, so its allocator text is unchanged.
 // Must not take BoundType, syntax or MIR types, or hold a per-module record.
 
 using System.Globalization;

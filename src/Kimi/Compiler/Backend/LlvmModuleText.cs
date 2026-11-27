@@ -15,6 +15,7 @@
 // integer formatting part (FormatInteger128Runtime.ll.in: the FormatInteger128 intrinsic's routine and its division by ten, a module part
 // on request), the runtime routines a module defines only where a body calls them (TryAllocate, the nullable Alloc; TransferBytes, the byte
 // copy), the checked one-scan expansion every runtime template takes (ExpandRuntime; TestRuntime's text too),
+// the start's call lines (ModuleFrame.StartCalls: the layer's StartCalls through RuntimeAbi.Calls, which the start's entry writes),
 // the external declarations, the overflow and memory intrinsic declarations, the footer (the row's profile attributes with its
 // FunctionAttributes, #0; #1, #0 plus "no-builtins", for the memory part; the PIC Level module flag of a pic row, none for a static
 // one), the spelling of external symbols, numbered names, numbers formatted on the stack and the bits of

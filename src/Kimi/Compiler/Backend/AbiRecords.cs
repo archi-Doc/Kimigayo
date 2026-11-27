@@ -44,8 +44,9 @@ internal readonly record struct AbiParameter(
     internal string Attributes => this.Kind == AbiParameterKind.SharedReference ? " noundef nonnull align 8 dereferenceable(24)" : this.Extension;
 }
 
-/// <summary>A physical signature shared by definitions and calls (SPEC 21.3.1), with its definition's attributes (<c>noreturn</c>, and
-/// <c>noinline</c> for <see cref="OutOfLine"/>), which calls do not write. ccc is LLVM's default; identity is by reference.</summary>
+/// <summary>A physical signature shared by definitions and calls (SPEC 21.3.1), with its definition's attributes (<c>noreturn</c>,
+/// <c>noinline</c> for <see cref="OutOfLine"/> and <c>alwaysinline</c> for <see cref="Inline"/>), which calls do not write. ccc is LLVM's
+/// default; identity is by reference.</summary>
 internal sealed class FunctionAbi(string name, string result, AbiParameter[] parameters)
 {
     private string? internalDefinition;
@@ -71,6 +72,8 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
     internal bool CallerLocation => (this.Flags & Abi.Flags.CallerLocation) != 0;
 
     internal bool OutOfLine => (this.Flags & Abi.Flags.OutOfLine) != 0;
+
+    internal bool Inline => (this.Flags & Abi.Flags.Inline) != 0;
 
     internal bool PlatformMember => (this.Flags & Abi.Flags.PlatformMember) != 0;
 
@@ -103,6 +106,6 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
             text.Append(this.Parameters[i].Type).Append(this.Parameters[i].Attributes).Append(" %").Append(this.Parameters[i].Name);
         }
 
-        return text.Append(this.NoReturn ? ") noreturn" : ")").Append(this.OutOfLine ? " noinline #0 {\n" : " #0 {\n").ToString();
+        return text.Append(this.NoReturn ? ") noreturn" : ")").Append(this.OutOfLine ? " noinline #0 {\n" : this.Inline ? " alwaysinline #0 {\n" : " #0 {\n").ToString();
     }
 }
