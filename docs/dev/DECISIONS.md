@@ -19963,6 +19963,73 @@ resumed by R4-M86 (2026-10-20).
     and is the row an `Unstored` member would join, PLAN G1466).
   - Open: the Type-argument route, which SPEC 15.3.5 decides by the owner's O-541 (i) while this unit keeps dev's reading (twins O1
     and O1b unchanged), and the raw-pointee route (PLAN G1466, after this unit).
+- **BU-273 A name outside a `let` local's body that selects a region the local's opening merged, through a binding its Closure
+  does not carry, is the located `Unsupported_Kd` (interim; PLAN G922 U1)** (2026-11-26; Front, Binding; Major, an acceptance mover;
+  design `artifacts\units\g922\design.md` Revision 2 (R2.2, R2.5), its independent review `review-rev2.md` and F's rulings G922-3 and
+  G922-5 (C1-C7); the implementation review `review-u1-impl.md` and F's rulings G922-24, G922-26 and G922-27; the owner's O-534, main
+  option path regions with the interim (a), and O-540 (a), six forms of the carried test taken into that interim; the A5 corpus oracle
+  (`artifacts\verify\f-g922u1-r3f-oracle`, 1,764 programs, 0 record differences); the Middle's RP17 consent, path B (the owner's O-540 (a)
+  takes cbi) with C1-C4 (`artifacts\units\g922\m-consent-u1.md` item 4); landed at `claude/f-g922-u1`@ffdc7786ab with the whole
+  suite 48,878 tests, 0 failed, and the diagnostic snapshot 0 differences) SPEC 7.7.2, 9.3,
+  14.8.3, 15.3.4, 15.6.5, 15.8.2, 23.1.1. Amends R8-M56; answers its rejected option G.
+  - **Rule.** `LocalBorrowType` marks each region of a `let` local's part that its opening meets again on another path, at the
+    `rewrittenParts` hit, as merged (`LocalRegion.Merged`, written by `MarkMerged`, one `visitedParts` query per opening; cleared with
+    the value by `PublishRegionValue` and `ResetLocalRegions`). `UnmergedSelection` reads SelectedOrigin's result at its two sites
+    (`BindOriginName`, `BindOrigin`'s projection), so a plain name, a meet's operand and a projection alike: where the selection is or
+    meets a merged region whose body is not the name's (`BodyOwner`), and the name's Closure does not carry the selected binding
+    (`CarriesBinding`: in its body, its own capture; in its header, a binding its written list enters), the name is the located
+    `Unsupported_Kd` and selects no Origin; its dependents rest on it (SPEC 23.1.2). A written Origin node bound again is decided again:
+    `BindOrigin` clears the earlier attempt's failure at its entry (`ClearFailure`), as where a named nested function's header names a
+    Pattern binding before its Type forms and is bound again at the function's statement (BindFunction, PLAN G230-H's Q-B row). So the
+    limit only records, and after a successful retry no failure stays linked to a Resolved Origin node (dev left the first attempt's
+    there, hidden by the state).
+  - **Reason.** A merged region and SPEC's per-path regions share one value, so only a written name outside the region's body reads
+    the region as itself with no premise (design R2.2); there the merge accepts invalid programs (pbm: `during a` and `during b` name
+    one region). The owner takes the located limit as the interim (O-534 (a)) until the name reads its slot path (U2, U3).
+  - **Option G.** R8-M56 rejected a gate at the name for the valid programs it rejected, when R8-M56's rule had no known invalid
+    program at a merged part. That reason no longer holds: the merge accepts invalid programs at the name (G922's class 1), and the
+    owner chose the gate as the interim. The gate reads only a merged region outside its body through a binding no Closure carries;
+    every other name keeps R8-M56's reading.
+  - **Removal.** G922 U2 (Place, Copy and binding Subjects) and U3 (Tuple literal and call Subjects, carried path regions) move their
+    forms from the limit, O-540's forms among them, form by form; the last removes `Merged`, `MarkMerged`, `UnmergedSelection` and
+    `CarriesBinding`.
+  - **Moves.** Class 1 (invalid, accepted before): pbm, pbmn, pbmn2, pbmu, pbmg2, pbmc1 (b is not carried), rvb and rvn take the
+    limit at their names, and so do rvcn and rvcnc (a named function's or a nested Closure's header inside a Closure body names that
+    Closure's captures, which carry only its own uses: SPEC 15.6.5's "any other nested body"), and cbu (an omitted-list Closure's body
+    names `b` only in an annotation: naming an Origin is no capture, SPEC 9.3, so the Closure carries no `b`; the limit at 6:39). O-534
+    (a)'s approved reduction (valid): pbmq, pbmt and pbmnt. Under the same literal rule, valid programs newly take the limit: pbmm,
+    pbmp, pbmfp and `one` (a nested signature naming a merged `let` region that its body does not carry; no relation to judge).
+    - **The owner's O-540 (a): the question's forms taken into O-534 (a)'s interim** (valid; the Closure carries the binding in a way
+      the carried test does not read; each is the located `Unsupported_Kd` at the name, never a Language error, until U2/U3 remove
+      it). The question's renamed entry `func [c = a]` is no program: SPEC F.9's `Capture` takes no rename.
+      1. pbmtc: pbmc1's Closure `func [a]` naming `b` over `match (t.0, t.0)` (pbmc1's Types; only U2/U3's slot paths separate
+         them), at `b` (5:70);
+      2. pbmct: `func [a, t]` naming `b`, carried through `t`, at `b` (5:73);
+      3. pbmcc: `let c = b`, then `func [a, c]` naming `b`, carried in turn, at `b` (6:73);
+      4. pbmco: an omitted-list Closure's header name (`func (x: ref/i64 during a) -> i64 => x@follow + a@follow`: the captures form
+         after the header), at `a` (5:45);
+      5. cbi and cbif: an omitted-list Closure's body names `b` (`let y: ref/i64 during b = a`) before `b`'s first value use, in the
+         body (cbi) or in a nested omitted-list Closure that captures it (cbif), at the annotation's `b` (6:39). Under (a) the limit
+         depends on statement order: cbib, the same body with the value use first (`let z = b@follow`), is accepted (kept).
+    - The reductions are pbmq, pbmt, pbmnt, pbmm, pbmp, pbmfp and `one`, plus O-540's forms 1-5. nclv is no reduction: dev
+      already rejects it (PLAN G230-H (rest)), and the head adds the limit at inner's two header names. rvr's
+      `UnprovenOriginRelation_Kd` at `x` moves to the limit at `a` (record selection, Q13: the relation reads a's failed Type). Kept:
+      pbmc (each name carried), pbmf, rvo (the local's own body), rvc and rvcnl (two `let` locals, nothing merged), cbib, valid; rvm's
+      record; and, invalid and accepted as on dev, pbmg, pbmf2, rvg and rvg0 (the call's result holds the contributor's Origin p, no
+      merged region: PLAN G922's O-2 row) and rvh (its names are in the declaring body; PLAN G922's class 1 row for U2/U3, G922-5 C2).
+    - More class 1 moves, the twins (invalid, accepted before; each takes the limit at its predicted names): cbn, cbl, cbo, acc, mth,
+      ota, fldm, call and trl. On the head, cbc (label I, G922-27: rvcn's program) takes the limit at 6:46 and 6:67, and cbn at 6:46 too
+      (G922-24 B1).
+    - Record changes on programs both reject, counted by code (Q13): mvx and rvr, `UnprovenOriginRelation_Kd` -1 and `Unsupported_Kd`
+      +1 each (at `b` and at `a`); callb, `UnresolvedBinding_Kd` -1 (rule W: the call's check reads a failed header whose record is
+      reported) and `Unsupported_Kd` +2; nclv, `Unsupported_Kd` +2, beside dev's two `InvalidOriginBinding_Kd` (kept).
+  - **Rejected:** firing at every name, carried or not (G922-3's O-1: pbmc, valid, would lose support without the owner's approval;
+    G922-5 C3); a region-level carried test (`CarriedRegion`: pbmc1's `func [a]` carries the region through a, so b would pass); the
+    limit inside `BindOrigin` (a plain name reaches SelectedOrigin through `BindOriginName` without it; G922-5 C1); a second walk over
+    the opened Type to find merged regions (the hit already knows them; C5); for cbi's form (G922-27, `design-u1-cbi.md`), the body's
+    capture set published before the body binds (no owner: a pre-walk is a second name resolution, against R7-M91's N6), the verdict
+    at the captures' completion (the annotated local's Type would form twice) and a deferred limit list on the literal (a side table
+    for one feature, two outcomes of one rule chosen by timing).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -33566,7 +33633,8 @@ Closure row of `MirCases.Branch`).
     every omitted slot of an annotation the local's region. A slot's region is one per stored part and place: each projection path of a
     reassignable binding (`IsMutableDeclaration`) is its own place, a `let` local is one place, so a stored part met on several of its
     paths is opened once (`rewrittenParts`, `Binding.TypeMemo.cs`, whose two new users, `ResolveLocalResultOrigins` and
-    `LocalBorrowType`'s opening, run inside no other query). A `let` local's region has a value, the Origin its declaration fixes for
+    `LocalBorrowType`'s opening, run inside no other query), its regions marked merged,
+    which only BU-273's interim limit reads. A `let` local's region has a value, the Origin its declaration fixes for
     the slot (SPEC 15.3.6, 15.4.4): the initializer's Origin at that slot, or the omitted slot's candidate as `SolveLocalBounds` solves
     it (dev's `let` rule, an earlier `let` region read as its value), published by `PublishRegionValue`. An Origin read at a use in the
     region's own body (`SuppliedAtUse`, hence `OriginAtUse`) reads the region as its value; a nested function's signature or body, a
@@ -33762,7 +33830,8 @@ Closure row of `MirCases.Branch`).
   - **Rejected:** a region per path for every binding (a `let` DAG's Type has 2^depth nodes: A2-0); a region per part for every binding
     (vp1 and mb23 refused: A2-1); opening a slot at a later use (15.4.4); option D, a second region for the name (two Origins per slot
     either way; (ii) picks once per reader at its use through one decider, `RegionValueIn`, where option D picks at the declaration and
-    gives the name a second slot every consumer must choose between); a gate at the name (option G: about 21 valid programs); recording
+    gives the name a second slot every consumer must choose between); a gate at the name (option G: about 21 valid programs; taken in part as the interim by BU-273, the
+    owner's O-534 (a) and O-540 (a), for a merged region outside its body); recording
     the slots' bounds in `LocalBorrowType` without `CheckTypeUse` (a second obligation path); pair tables beside the walk in ValueFits
     (A2-2's `usedParts`: a side table the walk's own parts make unnecessary); one fact per pair of parts in every walk; one clause per
     consumer (`SuppliedBy` following region bounds, `SolveLocalBounds` reading region bounds, a routing exception, a selection
