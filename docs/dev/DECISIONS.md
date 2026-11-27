@@ -31201,12 +31201,12 @@ Closure row of `MirCases.Branch`).
     `ReadsLowerBounds` takes them), are each their own variable over their own row: a bound that is another member stays that
     variable as recorded, is never read through its candidate, and is no proven lower bound (`LowerBound` has none wherever one
     names a member, a sole one included; where another lower bound, `static` or an operand of a meet that names the member, is
-    proven by the solver rules alone to outlive the others, SPEC 15.3.6 still takes it: PLAN G-new (l), a value difference with no
+    proven by the solver rules alone to outlive the others, SPEC 15.3.6 still takes it: PLAN G1505, a value difference with no
     known acceptance difference, c4_static accepted on dev and the head). A member upper bound that is not contravariant and reaches
     back closes an outlives cycle and is read through with it as one variable, by SPEC 15.3.6's "Variables connected by a cycle of
     `outlives` relations are equal and solved as one" (chapter 15 :442; `ReadThrough`; cyc_ok and cyc_bad); a contravariant member is
     not joined (a contravariant position gives a lower bound), a departure from :442, which joins every member of an `outlives` cycle
-    and solves one at both positions as invariant (PLAN G-new (c); cyc_contra is accepted and cyc_contra_bad rejected as before A4-L). This amends
+    and solves one at both positions as invariant (PLAN G1504; cyc_contra is accepted and cyc_contra_bad rejected as before A4-L). This amends
     `m-ruling-a4l-o544.md` ruling 1's "UpperBound meets a member as an atom", which still holds for a member that does not reach
     back (`m-ruling-a4l-p2r.md` ruling 3 (2)). Each set's candidates are read while every member still waits and then published, a named member
     first, so a value names no region with a value and the result is the same in every order of the `let` slots (c4_let and
@@ -31219,7 +31219,7 @@ Closure row of `MirCases.Branch`).
     measurement column, not a closed vocabulary. OriginProofScalingTest's chain row (N = 16 to 128) asserts that the term walks,
     CandidateSteps (2N) and the proof's insertions grow linearly. On a reading cycle, FixDeclaredRegions' walk is O(N·E²)
     BoundAtoms steps (Θ(N³) on a ring of N slots), because each member's UpperBound runs one ReachesRegion walk per read-through
-    atom: a named limit (PLAN G-new (r): one upper-bound strongly connected pass at the close).
+    atom: a named limit (PLAN G1502: one upper-bound strongly connected pass at the close).
   - **Removed:** `SolveLocalBounds`, `Forming.Inferred`, `OriginDeclaration.InferredVariance`, the `let` branch of `Bind` and the
     `var` branch's own `AddOriginFit` (a second row of CheckTypeUse's relation), the publish loop; `RowCandidate`'s readers are the
     call solve's fixpoint and the representative (PLAN G1208).
@@ -31234,7 +31234,7 @@ Closure row of `MirCases.Branch`).
       runs first, while the region has no value, and its row is the bound the candidate reads; the value is that candidate, not a
       second bound. The rest of R8-M56 stands, including its sentence on an immutable Pattern binding and BU-197.
     - R7-M89's "`SolveLocalBounds` read it" (`RowCandidate`'s readers): a local's slot now reads `VarCandidate`, the table, so the
-      table's departures left are the call solve's (PLAN G1208) and the reading cycle's contravariant member (PLAN G-new (c)).
+      table's departures left are the call solve's (PLAN G1208) and the reading cycle's contravariant member (PLAN G1504).
   - **Record moves (Q13, the Middle's rulings Q-A and Q-B):** a local's Type's well-formedness bounds its slots, as A1's `var`
     reading did: tcsf's and r7inv's well-formedness records go, and such programs with a valid fit are accepted (class 3: wfcov,
     wf_ret_ok, wf_nest_ok, wf_use_ok_v, wf_clo_ok; each with one record "requires a outlives c" at the `let` on dev), and wf_ret,
