@@ -219,9 +219,11 @@ public partial class OriginRelationDiagnosticTest
     // sc_elem, and the value call sc_h; 23.1.2), a Tuple source that awaits its position still the join's (sc_tfi), and Tuple results of
     // another length fit no candidate (sc_len; 10.5.1's last paragraph). Outside a call argument the conflict is the join's (sc_let).
     // A value call's join takes the parameter's Type in its one per-source step (step 4; PLAN G844, F's G844-15): each source that does
-    // not fit is its own record (sc_h, and both of s2's), and a source of a join resting on a failed part keeps its own record (w1,
-    // BU-79); w1's `1` misfits the Type the outer join takes from `b`, a failure caused by `b`'s reported one, which SPEC 23.1.2's second
-    // sentence leaves implementation-defined and which is reported, as on dev (DECISIONS Q13: rule W reads no failed input there).
+    // not fit is its own record (sc_h, and both of s2's). w1's inner join rests on `missing` and, Dependent with `b`'s candidate, is typed
+    // bool (G103 R1 option C), so the outer join checks it like any source: its misfit is its own record, at its form, as on dev (F's
+    // G844-17; fail-before: lost); w1's `1` misfits the Type the outer join takes from `b`, a failure caused by `b`'s reported one, which
+    // SPEC 23.1.2's second sentence leaves implementation-defined and which is reported, as on dev (DECISIONS Q13: rule W reads no failed
+    // input there).
     // A misfit is its delivery's, so sc_h's join is typed i64 and a double move on its other path is its own record (sc_h_mv, G103 C;
     // fail-before: `b` only).
     [Theory]
@@ -230,7 +232,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6g", "sc_elem", FI64 + KXB + "    return f((if c => x else => b))\n", "NoApplicableOverload_Kd f((if c => x else => b))")]
     [InlineData("U1.6g", "sc_h", FI64 + KXB + "    let h = f\n    return h(if c => x else => b)\n", "TypeMismatch_Kd b")]
     [InlineData("G844", "s2", FI64 + "func k(c: bool, b: bool, s: string) -> i32\n    let h = f\n    return h(if c => b else => s)\n", "TypeMismatch_Kd b; TypeMismatch_Kd s")]
-    [InlineData("G844", "w1", FI64 + "func k(c: bool, d: bool, b: bool) -> i32\n    let h = f\n    return h(if c => (if d => missing else => b) else => 1)\n", "TypeMismatch_Kd 1; TypeMismatch_Kd b; UnresolvedBinding_Kd missing")]
+    [InlineData("G844", "w1", FI64 + "func k(c: bool, d: bool, b: bool) -> i32\n    let h = f\n    return h(if c => (if d => missing else => b) else => 1)\n", "TypeMismatch_Kd (if d => missing else => b); TypeMismatch_Kd 1; UnresolvedBinding_Kd missing")]
     [InlineData("U1.6g", "sc_h_mv", "func take(v: string) -> i64 => 0\n" + FI64 + "func k(c: bool, s: string, b: bool) -> i32\n    let h = f\n    return h(if c => take(s@move) + take(s@move) else => b)\n", "MovedPlace_Kd s; TypeMismatch_Kd b")]
     [InlineData("U1.6g", "sc_tov", FTuples + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]
     [InlineData("U1.6g", "sc_tfi", FTuple + KXB + "    return f(if c => (x, 1) else => (b, 2))\n", "NoApplicableOverload_Kd f(if c => (x, 1) else => (b, 2))")]

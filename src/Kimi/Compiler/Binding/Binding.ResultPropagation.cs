@@ -309,8 +309,7 @@ public sealed partial class Binding
     // failed with its own BindingFailure, recorded or derived (Invalid), is failed.
     private bool PartFailed(Koto part)
     {
-        if (part.Parent is JumpKoto { BindingFailure: not BindingFailure.None } jump && ReferenceEquals(jump.Expression, part) &&
-            TransferTarget(jump) is { } target && this.resultContexts.TryGetValue(target, out var given) && !given.Inferred)
+        if (this.TransferRecorded(part))
         {
             return true;
         }
@@ -331,6 +330,34 @@ public sealed partial class Binding
         }
 
         return part.BoundType is null ? !this.IsCheckedCall(part) && this.HasFailureCauses(part) : part.BindingState == BindingState.Invalid;
+    }
+
+    // F's G844-16: a transfer's operand whose jump recorded its misfit where the jump's target was given its Target Result Type (not
+    // Inferred): the jump's check is SPEC 14.9.2 step 4's, its record written at the jump, the form that delivers the operand.
+    private bool TransferRecorded(Koto part)
+        => part.Parent is JumpKoto { BindingFailure: not BindingFailure.None } jump && ReferenceEquals(jump.Expression, part) &&
+            TransferTarget(jump) is { } target && this.resultContexts.TryGetValue(target, out var given) && !given.Inferred;
+
+    // SPEC 23.1.2, 14.9.2 step 4 (F's G844-16 class C, G844-17): whether a bound source is its join's cause, never checked again: its own
+    // delivery form recorded its misfit, read where the record is published (its BindingFailure along DeliveredOperand's chain, or its
+    // transfer's: TransferRecorded), or it has no Type to check (unbound, failed as PartFailed reads it). No Outcome of a typed source is
+    // read: a typed Dependent join has no record, and its consumers check its formed Type (Q-827, PLAN G103 R1 option C).
+    private bool IsRecordedCause(Koto source)
+    {
+        if (source.BoundType is null)
+        {
+            return this.PartFailed(source);
+        }
+
+        for (Koto? form = source; form is not null; form = DeliveredOperand(form))
+        {
+            if (form.BindingFailure != BindingFailure.None)
+            {
+                return true;
+            }
+        }
+
+        return this.TransferRecorded(source);
     }
 
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
@@ -559,15 +586,16 @@ public sealed partial class Binding
     // either side, FitsValueAt otherwise, its Origin positions rows of the body that A5 judges at the source's value, the value that
     // supplies the fit's longer end (the use-site fit; R7-O1; H11b D5), a structural Unit at the join. A Closure or Function Item that
     // its late Type did not convert is judged by its erasure here (ErasesToFunction, DECISIONS R4-M161), whose row the record of its
-    // misfit reads; a failed Owned part or condition is the value's own record (BU-107), on which the join rests. A failed source is its
-    // own record (ResultCandidates) and a source that waited unbound BindWaitedSources'. Step 4's check against the Target Result Type
-    // the join was given (not ResultContext.Inferred: SPEC 14.9.2 step 1, in any context) is the source's own (SPEC 23.1.2; F's G844-15
-    // and G844-16): each source that does not fit is its own record, at its delivery form (FailMismatch), and the join rests on the first
-    // (Dependent), so its other paths are built and their records stand; so is each source of a resting join (ResultContext.Rests, the
-    // join whose verdict rule W suppresses, DECISIONS BU-79). Without a Target Result Type, `type` is step 2's (the survey's or the
-    // formed), so a source that does not fit means its sources have no common Type: the first and its failure are returned, the join's
-    // own Conflict, as is an implicit Unit's misfit, and each further one is a record of the join at that source (G844-4 C3); a Conflict
-    // join's own record stands for its sources.
+    // misfit reads; a failed Owned part or condition is the value's own record (BU-107), on which the join rests. A source whose own
+    // form recorded its misfit, or that has no Type to check, is the join's cause and is not checked again (IsRecordedCause; F's G844-17);
+    // a typed Dependent join is checked like any source, and a source that waited unbound is BindWaitedSources'. Step 4's check against
+    // the Target Result Type the join was given (not ResultContext.Inferred: SPEC 14.9.2 step 1, in any context) is the source's own
+    // (SPEC 23.1.2; F's G844-15 and G844-16): each source that does not fit is its own record, at its delivery form (FailMismatch), and
+    // the join rests on the first (Dependent), so its other paths are built and their records stand; so is each source of a resting join
+    // (ResultContext.Rests, the join whose verdict rule W suppresses, DECISIONS BU-79). Without a Target Result Type, `type` is step 2's
+    // (the survey's or the formed), so a source that does not fit means its sources have no common Type: the first and its failure are
+    // returned, the join's own Conflict, as is an implicit Unit's misfit, and each further one is a record of the join at that source
+    // (G844-4 C3); a Conflict join's own record stands for its sources.
     private BoundType? AdaptBoundSources(Koto node, ResultContext context, BoundType type, out ComparisonFailure failure)
     {
         BoundType? failed = null;
@@ -575,7 +603,7 @@ public sealed partial class Binding
         for (var i = 0; i < context.Sources.Count; i++)
         {
             var source = context.SourceNodes[i];
-            if (context.Sources[i] is not { } actual || (source is not null && this.PartFailed(source)))
+            if (context.Sources[i] is not { } actual || (source is not null && this.IsRecordedCause(source)))
             {
                 continue; // A Never source fits by LateType's Never row and every fit's NeverFits (SPEC 3.8).
             }
