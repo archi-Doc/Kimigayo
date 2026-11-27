@@ -13,8 +13,8 @@ internal static class Repository
 
     /// <summary>Gets a value indicating whether this process runs native builds: a Windows host whose test output holds the tatara.dll
     /// a build copies from the checkout's toolchain (README, Toolchain). Off Windows, and in a checkout without a toolchain such as a
-    /// fresh clone, the rows that load Tatara or run the toolchain's tools skip; scripts/verify.ps1 runs the tests with -failSkips, so
-    /// there such a skip fails.</summary>
+    /// fresh clone, the rows that load Tatara or run the toolchain's tools skip; scripts/verify.ps1 fails on such a skip (only the
+    /// unconfigured semantic snapshot comparison may skip there).</summary>
     internal static bool NativeBuilds { get; } = OperatingSystem.IsWindows() && File.Exists(Path.Combine(AppContext.BaseDirectory, "tatara.dll"));
 
     /// <summary>Reads a repository text file with LF line endings.</summary>
