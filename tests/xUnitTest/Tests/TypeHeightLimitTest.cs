@@ -400,7 +400,7 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     }
 
     // A Tuple chain of the given height over `bottom`: D_n<T>.Item adds 2^n layers.
-    private static string Chain(int height, string bottom)
+    internal static string Chain(int height, string bottom)
     {
         for (var n = 0; n < 13; n++)
         {

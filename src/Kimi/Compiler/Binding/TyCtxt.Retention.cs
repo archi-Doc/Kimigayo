@@ -30,9 +30,11 @@
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
 // past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
-// arguments; Binding.RawMembers). Storage a Binding failure left Rejected is no limit: its parts that do not substitute hold nothing and
-// the rows that hold whatever they are stay (SPEC 23.1.2; DECISIONS BU-36); in a complete compilation it is a broken contract, an
-// exception, which ends the check as CheckFaulted_Kd.
+// arguments; Binding.RawMembers); a Deep contract (CallRetention.IsDeep), its rows with a part past the bound beside them, where a walk
+// over a contract Type leaves a finding undecided past its own bound and both a holder the rows name and the finding's subject can carry
+// a Loan or an address (Binding.Retention.cs, retentionPast; G408B-17, R4-M153's Join). Storage a Binding failure left Rejected is no
+// limit: its parts that do not substitute hold nothing and the rows that hold whatever they are stay (SPEC 23.1.2; DECISIONS BU-36); in
+// a complete compilation it is a broken contract, an exception, which ends the check as CheckFaulted_Kd.
 // Invariants: a storage retains an input when the callee's body may move a value of the input there under the premises its body is
 // checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins left as the
 // call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name one abstract
@@ -200,8 +202,12 @@ internal sealed class OutputRetention(int output, StorageRetention own, (BoundTy
 
 /// <summary>A call's retention: what its result retains (<see cref="Result"/>), the storages past the result's written layers
 /// (<see cref="ResultWrites"/>), what the storage it may write through each input retains (<see cref="Writes"/>, by ascending output),
-/// and the stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them.</summary>
-internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores, bool composes)
+/// and the stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them. A Deep
+/// contract (<see cref="IsDeep"/>) has them with a part past the bound beside them: its rows are a lower bound on the exact rows, so
+/// a reader that a present row moves (a record, a Loan or a plan entry) follows them, and A5 records the Deep part at the call
+/// (R4-M153's Join: a decided part ranks over Deep); every answer from a row's absence (<see cref="Keeps"/>, the storing rule's
+/// refusal, a Closure's receiver independence) is conservative: it reads a Deep contract as the Limit. Immutable.</summary>
+internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores, bool composes, bool deep)
 {
     /// <summary>The output slot of a call's result, beside its inputs' slots (0 and up).</summary>
     internal const int ResultOutput = -1;
@@ -211,7 +217,7 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     /// member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: nothing is computed, and A5
     /// records a located Unsupported_Kd at the call. Storage a Binding failure left Rejected is not a Limit (DECISIONS BU-36). Reading its
     /// Result, Writes or ReferentStores is a broken contract.</summary>
-    internal static readonly CallRetention Limit = new(null, null, [], [], composes: true);
+    internal static readonly CallRetention Limit = new(null, null, [], [], composes: true, deep: false);
 
     private readonly StorageRetention? result = result;
     private readonly OutputRetention? resultWrites = resultWrites;
@@ -219,6 +225,11 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     private readonly int[] referentStores = referentStores;
 
     internal bool IsLimit => this.result is null;
+
+    /// <summary>Gets a value indicating whether a part of the contract lies past a walk's bound beside its rows (G408B-17): a finding a
+    /// retention walk left undecided there where both a holder the rows name and the finding's subject can carry a Loan or an address
+    /// (Binding.Retention.Rows.cs). Its rows are those found within the bound; never with <see cref="IsLimit"/>.</summary>
+    internal bool IsDeep { get; } = deep;
 
     /// <summary>Gets a value indicating whether the call's writes and reads compose within it (SPEC 15.6.4: "Except for the operations whose
     /// writes SPEC states, ... a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): false for `replace`,
@@ -228,12 +239,13 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     internal bool Composes { get; } = composes;
 
     /// <summary>Whether the call may keep an input past its end: its result or a storage it may write holds it, and the Limit, which states
-    /// nothing, may. False is what an inspection means (SPEC 13.4: the `bool` result keeps none).</summary>
+    /// nothing, and a Deep contract, whose rows are a lower bound, may. False is what an inspection means (SPEC 13.4: the `bool` result
+    /// keeps none).</summary>
     /// <param name="input">The input slot.</param>
     /// <returns>Whether the input may outlive the call in any output.</returns>
     internal bool Keeps(int input)
     {
-        if (this.result is null || this.result.Holds(input))
+        if (this.result is null || this.IsDeep || this.result.Holds(input))
         {
             return true;
         }
