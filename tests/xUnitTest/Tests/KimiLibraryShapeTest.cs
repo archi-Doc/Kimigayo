@@ -273,18 +273,26 @@ public partial class KimiLibraryShapeTest
         var registered = c.Library.RegisteredSymbols.ToArray().ToHashSet();
         Visit(c.Library.Kotonoha.RootKoto);
 
-        // Rows L9-L11 (SPEC 22.1, 3.2.2, 13.6.2, 13.6.3; IMPL 21.3.4): the `#Unsupported` declarations are Kimi.Intrinsics' four Weak
-        // functions, each the only declaration of its Name (so its group is wholly `#Unsupported`), and the struct Weak, which has no
-        // member and no synthesized constructor (`#Lang("Weak")`: ManagedRepresentation); none is specialized. Source order: Core.kimi is
-        // read before Intrinsics.kimi (R8-G1 G1-5: every library source is ordinary).
+        // SPEC 13.6.2-3, 22.1: Weak clone shares its name with the strong intrinsic. Each other Weak operation is alone in its group.
+        // Weak itself has no members or synthesized constructor. Core.kimi is read before Intrinsics.kimi.
         var intrinsics = Assert.IsType<GroupKoto>(c.Library.MakeObj.Declaration.Parent); // Kimi.Intrinsics, makeObj's group (R8-G1 G1-5).
         var unsupported = LibraryAttributes(Library.Value, AttributeKind.Unsupported).Select(static x => x.Target).ToArray();
-        Assert.Equal(["Weak", "downgrade", "upgrade", "makeRcCyclic", "makeArcCyclic"], unsupported.Select(static x => x is FunctionKoto function ? function.Name : ((StructKoto)x).Name));
+        Assert.Equal(["Weak", "clone", "downgrade", "upgrade", "makeRcCyclic", "makeArcCyclic"], unsupported.Select(static x => x is FunctionKoto function ? function.Name : ((StructKoto)x).Name));
         foreach (var function in unsupported.OfType<FunctionKoto>())
         {
             Assert.Same(intrinsics, function.Parent);
             Assert.False(function.IsSpecialization || HasBody(function) || function.FindAttribute(AttributeKind.Intrinsic) is not null, Line(function));
-            Assert.Single(intrinsics.Members, x => x is FunctionKoto other && other.Name == function.Name);
+            var overloads = intrinsics.Members.OfType<FunctionKoto>().Where(x => x.Name == function.Name);
+            if (function.Name == "clone")
+            {
+                Assert.Equal([c.Library.GetSymbol(KimiDeclarationId.Clone)!.Declaration, function], overloads.Cast<Koto>());
+                const string Header = "public func clone<s/T>(value: ref/Weak<s/T>) -> Weak<s/T>\ns is rc or arc";
+                Assert.Equal(Header, HeaderLines(function, Header));
+            }
+            else
+            {
+                Assert.Same(function, Assert.Single(overloads));
+            }
         }
 
         var weak = Assert.IsType<StructKoto>(unsupported[0]);
