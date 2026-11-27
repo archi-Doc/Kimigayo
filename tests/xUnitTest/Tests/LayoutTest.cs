@@ -103,6 +103,8 @@ public partial class LayoutTest
     [Theory]
     [InlineData("struct S\n    var a: u8\n    var b: i64\n    var c: u16", "S", "{ [0 x i64], [16 x i8] }", 16, 8, "10,0,8")]
     [InlineData("#Layout(\"C\")\nstruct S\n    var a: u8\n    var b: u64\n    var c: u8", "S", "{ i8, i64, i8 }", 24, 8, "0,8,16")]
+    // IMPL 21.6 (OSF3a): Kimi.X86's interrupt frame, the processor's push in 64-bit mode, whose storage OSF3b's entry takes byval.
+    [InlineData("", "X86.InterruptFrame", "{ i64, i64, i64, i64, i64 }", 40, 8, "0,8,16,24,32")]
     [InlineData("", "(u8, i32, bool)", "{ [0 x i32], [8 x i8] }", 8, 4, "4,0,5")]
     [InlineData("", "(i32, ())", "{ [0 x i32], [4 x i8] }", 4, 4, "0,4")]
     [InlineData("", "[3 of i16]", "{ [0 x i16], [6 x i8] }", 6, 2, "")]
