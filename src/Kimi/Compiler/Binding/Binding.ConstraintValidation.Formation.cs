@@ -136,6 +136,11 @@ public sealed partial class Binding
         this.BeginProof(site);
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ?
             ConstraintProof.Unknown : ConstraintProof.Proven;
+
+        // A temporary second judge of a declaration's written Type, beside the declaration judge's roots (ValidateOriginRelations): a
+        // pass-level validator forming it in its container's or an accessor's scope (a base, a Property Type's or an enum Case's
+        // projection, an accessor's circular proof of its Field's Type). Removal condition: R7-E5 or G491 D1's owner decision, whichever
+        // comes first; this part then judges only a Type with no written occurrence (PLAN G1459).
         return CombineProof(proof, this.CheckTypeOriginRelations(type, scope.Owner), true);
     }
 
@@ -275,6 +280,9 @@ public sealed partial class Binding
 
     private ConstraintProof FormSignature(FunctionKoto function, QuerySite site)
     {
+        // The callee's own declaration check, not part of typing a header that calls it (SPEC 11.6, 15.3.5): its requests walk nothing.
+        var inferring = this.inferringHeader;
+        this.inferringHeader = false;
         var scope = this.scopes[function];
         var proof = function.BoundSymbol?.Type is { } result ? this.CheckDeclaredTypeConstraints(result, scope, site) : ConstraintProof.Unknown;
         for (var i = 0; i < function.Parameters.Count; i++)
@@ -285,6 +293,7 @@ public sealed partial class Binding
                 true);
         }
 
+        this.inferringHeader = inferring;
         return proof;
     }
 

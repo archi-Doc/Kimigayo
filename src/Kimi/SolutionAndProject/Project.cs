@@ -30,7 +30,7 @@ public partial class Project
         DefaultProjectFile = projectFile;
     }
 
-    /// <summary>Attempts to load a project from a <c>.kimiproj</c> file.</summary>
+    /// <summary>Loads a <c>.kimiproj</c> file. Read and configuration failures return <see langword="false"/>. Other exceptions propagate.</summary>
     /// <param name="kimigayo">The owning compiler service.</param>
     /// <param name="logger">The load logger.</param>
     /// <param name="path">The project-file path.</param>
@@ -39,7 +39,7 @@ public partial class Project
     public static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, [MaybeNullWhen(false)] out Project project)
         => TryCreate(kimigayo, logger, path, CheckInputSource.Disk, out project, out _);
 
-    /// <summary>Attempts to load a project from a <c>.kimiproj</c> file through an input source.</summary>
+    /// <summary>Loads a <c>.kimiproj</c> file through the input source. Read and configuration failures return <see langword="false"/> with their reasons. Other exceptions propagate.</summary>
     /// <param name="kimigayo">The owning compiler service.</param>
     /// <param name="logger">The load logger.</param>
     /// <param name="path">The project-file path.</param>
@@ -369,7 +369,7 @@ public partial class Project
         /// <summary>Several targets are selected.</summary>
         Several,
 
-        /// <summary>The one selected target has no row.</summary>
+        /// <summary>The one selected target has no row, or a staged row (TargetProfile.Staged, until the Tatara plan's B9g).</summary>
         NoRow,
     }
 
@@ -382,7 +382,9 @@ public partial class Project
     {
         var (targets, failure) = this.SelectedTargets();
         reason = failure is not null ? NoArtifactTarget.Selection : targets.Length > 1 ? NoArtifactTarget.Several : NoArtifactTarget.NoRow;
-        return reason == NoArtifactTarget.NoRow ? TargetProfile.Find(targets[0]) : null;
+
+        // A staged row is not selectable: the membership test is the temporary of TargetProfile.Staged, which B9g deletes with it.
+        return reason == NoArtifactTarget.NoRow && TargetProfile.Find(targets[0]) is { } row && Array.IndexOf(TargetProfile.Rows, row) >= 0 ? row : null;
     }
 
     /// <summary>The host rule of run and test (IMPL 20.3, 20.6.1; SPEC 22 ¶1: running or testing a program for a target whose executables

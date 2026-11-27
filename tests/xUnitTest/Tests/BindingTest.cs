@@ -768,10 +768,10 @@ public class BindingTest
     // DECISIONS G949 S1 as R7-N5 B4 amends it (the Front's C1, B's ruling 10): the fact a failure carries is stored with the failure, by
     // the recorder's one decision, so a library node the program pass fails with a fact is the program part's entry and its fact the
     // part's foreign row, which the family's reader reads; no library column is written, and CheckBound gives the node its issue. No
-    // program fails one today (the census), so each row fails one through the private writer after a Final Bind, as a check of the
+    // program fails one today (the census), so the row fails one through the private writer after a Final Bind, as a check of the
     // program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce): a qualification stop's QualificationRequired (B1a's
     // `qualificationFailures`, written by FailUnselected, the resolver's miss (R7-E2 E2-0), where B1a's HirTables.Of refused the frozen
-    // library table) and FailExplained's per-call Origin fact (MissingOrigin). A program pass never stops a library use's lookup, and
+    // library table). A program pass never stops a library use's lookup, and
     // the frozen library's QualificationStops column refuses such a stop (R7-N5 B1b-2), so the row writes the two effects FailUnselected
     // writes after it reads one: the stop as the failure's fact, and the failure.
     [Fact]
@@ -799,30 +799,6 @@ public class BindingTest
         Assert.Empty(c.Library.Layer.Part.ForeignFailures); // So the library part's ForeignFacts has no row a reader reaches.
         c.Binding.CheckBound();
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.QualificationRequired);
-    }
-
-    [Fact]
-    public void AFailExplainedFactAtALibraryNodeIsRecordedWithItsFailure()
-    {
-        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
-        Assert.False(c.Bind().IsComplete);
-        var library = c.Library.Kotonoha.RootKoto;
-        var call = KotoTree.Walk(library).OfType<InvocationKoto>().First(x => x.StateOf(c) == BindingState.Resolved && x.ArgumentNodes.Count != 0);
-        var selected = KotoTree.Walk(library).OfType<FunctionKoto>().First(static x => x.GenericArguments.Count != 0);
-        FactFamily<Binding.PerCallOriginFact> family = static (ref NodeColumns columns) => ref columns.PerCallOrigins;
-        var explain = typeof(Binding).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(static x => x.Name == "FailExplained" && x.GetParameters()[0].ParameterType is { IsGenericType: true } p && p.GetGenericTypeDefinition() == typeof(FactFamily<>))
-            .MakeGenericMethod(typeof(Binding.PerCallOriginFact));
-        explain.Invoke(c.Binding, [family, call, BindingFailure.MissingOrigin, new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), false]);
-        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        Assert.Equal((call, BindingFailure.MissingOrigin), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
-        var rows = typeof(Binding).GetField("perCallOrigins", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        object?[] read = [call, null];
-        Assert.True((bool)rows.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(rows, read)!);
-        Assert.Equal(new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), read[1]);
-        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.PerCallOrigins.Used);
-        c.Binding.CheckBound();
-        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
     }
 
     // R7-N5 E (B4's precedent, AFactALibraryNodesFailureCarriesIsRecordedWithIt): a node's dependence row is stored by the recorder's
@@ -954,7 +930,7 @@ public class BindingTest
     // R7-E2 E2-5b (D-850): a problem whose facts are its whole record, as each converted family's ReportProblem row reads them, at a frozen
     // library node is the program's one record, through Core's store decision (Koto.ReportIn). No library node records one, so the row
     // records it through the recorder after a Final Bind, with facts at library declarations of the kinds the row reads.
-    // ConstructorAbsence.NoConstructor is 18, a private row.
+    // ConstructorAbsence.NoConstructor is 18 and OwnedMemberKind.TypeArgument 1, private rows.
     [Theory]
     [InlineData("ambiguity", (byte)BindingFailure.Ambiguous, DiagnosticCode.AmbiguousBinding_Kd)] // two candidates, their instances, a count
     [InlineData("agreement", (byte)BindingFailure.InvalidAssociatedType, DiagnosticCode.InvalidAssociatedType_Kd)] // two instances, each binding the associated Type
@@ -965,6 +941,8 @@ public class BindingTest
     [InlineData("absence", (byte)BindingFailure.MissingName, DiagnosticCode.UnresolvedBinding_Kd)] // its reason, the construction and its constructed Type
     [InlineData("access", (byte)BindingFailure.Access, DiagnosticCode.InaccessibleBinding_Kd)] // the inaccessible declaration, the part that shows it (E2-4a)
     [InlineData("access-use", (byte)BindingFailure.Access, DiagnosticCode.InaccessibleBinding_Kd)] // the inaccessible declaration alone (E2-4a)
+    [InlineData("owned", (byte)BindingFailure.UnprovenConstraint, DiagnosticCode.UnprovenConstraint_Kd)] // `S is Owned`, its 1st Type argument's member row (E4e)
+    [InlineData("callable", (byte)BindingFailure.UnprovenConstraint, DiagnosticCode.UnprovenConstraint_Kd)] // the clause, its proposition, the trial's contract (E4e)
     public void ALibraryNodesFactRecordIsTheProgramsRecord(string family, byte failure, DiagnosticCode code)
     {
         var c = CompilationTestHelper.Parse("let x: i32 = true\n"); // A failed Bind whose own record shares no row's code.
@@ -976,6 +954,8 @@ public class BindingTest
         Koto contract = library.OfType<ContractKoto>().First();
         Koto clause = library.OfType<IsKoto>().First();
         Koto function = library.OfType<FunctionKoto>().First();
+        var owned = (BoundConstraint)typeof(Binding).GetMethod("InternConstraint", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(c.Binding, [new ConstraintKey(ConstraintKind.Contract, BoundType.Boolean, contract: c.Library.Owned)])!;
         ProblemFact[] facts = family switch
         {
             "ambiguity" => [Related(associated[0]), Instance(associated[0], BoundType.Boolean), Related(associated[1]), Instance(associated[1], BoundType.Unit), new(ProblemFactKind.Count, SourceRef.Of(node), 2)],
@@ -987,6 +967,9 @@ public class BindingTest
             "absence" => [new(ProblemFactKind.Reason, SourceRef.Of(node), 18), Related(node), Instance(node, BoundType.Boolean)],
             "access" => [Related(contract), Related(node, 1)],
             "access-use" => [Related(contract)],
+            "owned" => [new(ProblemFactKind.Constraint, SourceRef.Of(node), report.Keep(owned)), new(ProblemFactKind.Reason, SourceRef.Of(node), 1)],
+            "callable" => [Related(clause), new(ProblemFactKind.Constraint, SourceRef.Of(clause), report.Keep(owned)),
+                new(ProblemFactKind.OriginRecord, SourceRef.Of(node), report.Keep(new OriginRecord(null, new OriginContractFact(node, "the result", BoundOrigin.Static, BoundOrigin.Static, false))))],
             _ => throw new ArgumentOutOfRangeException(nameof(family)),
         };
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!

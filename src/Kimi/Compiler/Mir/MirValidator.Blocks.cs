@@ -317,6 +317,11 @@ internal sealed partial class MirValidator
                 this.Report(MirViolation.CheckTarget);
             }
 
+            if (terminator.Offset < -1 || (terminator.Offset >= 0 && terminator.Kind != MirTerminatorKind.Drop))
+            {
+                this.Report(MirViolation.Operation); // SPEC 22.5.1: only a Drop is located at an offset of its document.
+            }
+
             if (terminator.Places && terminator.Kind != MirTerminatorKind.Call)
             {
                 this.Report(MirViolation.Operation); // PLAN G442: only a Call is a construction's insertion.

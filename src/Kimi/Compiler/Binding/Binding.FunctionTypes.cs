@@ -288,7 +288,9 @@ public sealed partial class Binding
     // receiver: its call's retention (TyCtxt.Retains, the one source, whose rule A keeps every input at a raw layer without an Origin that
     // the call writes in its result) has the result retain the receiver, input 0, by its own value. A Function Item has no receiver
     // input (TyCtxt.HasReceiverInput). Proven when independent, Refuted when it depends; a retention past its limits decides nothing
-    // (Error): the located limit, at applicability (ErasedArgumentsEnvironment) and at the erasure's value (ErasesToFunction) alike.
+    // (Error): the Limit, and Deep where its receiver row lacks Value (Deep's rows are a lower bound, so a present Value row is decided
+    // and refutes, while its absence proves nothing). Error is the located limit, at applicability (ErasedArgumentsEnvironment) and at
+    // the erasure's value (ErasesToFunction) alike.
     private ConstraintProof ReceiverIndependence(BoundType actual)
     {
         if (!this.types.HasReceiverInput(actual))
@@ -298,7 +300,8 @@ public sealed partial class Binding
 
         var retention = this.types.Retains(actual, this.ClosureDefinitionSignature(actual)!, null);
         return retention.IsLimit ? ConstraintProof.Error
-            : (retention.Result.Kinds[0] & RetentionKind.Value) != 0 ? ConstraintProof.Refuted : ConstraintProof.Proven;
+            : (retention.Result.Kinds[0] & RetentionKind.Value) != 0 ? ConstraintProof.Refuted
+            : retention.IsDeep ? ConstraintProof.Error : ConstraintProof.Proven;
     }
 
     // SPEC 7.7.4, 10.7, 15.3.7, 15.6.1: the receiver and signature part of an erasure as its conversion reads it, under the premises
@@ -610,11 +613,13 @@ public sealed partial class Binding
     // of its per-call Origins (AddTypeClauseObligations forms a row only for a clause those premises do not entail). It is never a premise
     // of a body and never proven by a call. The one entry of both: BindFunctionType, wherever a Function Type is bound (a Closure header's
     // probe included; the obligation set keeps one), and an anonymous function's own written result once per binding of its header, at
-    // its commitment (BindClosureHeader) or at its failed fit (FailClosureHeader), never by a header probe (ClosureSignatureFits). The
-    // bound result passes through, also when there is no written result (`written` null) or its binding failed (null).
+    // its commitment (BindClosureHeader) or at its failed fit (FailClosureHeader), never by a header probe (ClosureSignatureFits). A result
+    // written in a declaration frame (its FormedTypes row's) is the declaration judge's root after Completion (ValidateOriginRelations),
+    // so this forms the rows of a result written in a body (a Body row); a result with no row is neither's. The bound result passes
+    // through, also when there is no written result (`written` null) or its binding failed (null).
     private BoundType? FormNestedResult(BoundType? result, Koto? written)
     {
-        if (result is not null && written is not null)
+        if (result is not null && written is not null && FormedTypeRows.Frame(written) == FormationFrame.Body)
         {
             this.AddTypeClauseObligations(result, written);
         }

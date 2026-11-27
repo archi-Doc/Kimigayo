@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 // - Responsibility: a failed erasure's published outcome (erasureOutcomes); an Owned failure's Constraint record
 //   (ReportOwnedConversion), and a failed condition's one record from the comparison's own failure (ContractFact, RecordCondition).
 // - Inputs: the comparison's ComparisonFailure, a failed erasure's outcome (ErasureOutcome, published by
-//   ErasesToFunction for its two Types) and the Owned fact (OwnedConversionFact); the conversion rules are judged in
+//   ErasesToFunction for its two Types) and the Owned record's facts (RecordOwned); the conversion rules are judged in
 //   Binding.FunctionTypes and Binding.OwnedConversions.
 // - Outputs: the Owned record with its evidence alternative.
 // - Invariants: a record is made only for a conversion that already failed.
@@ -29,6 +29,9 @@ public sealed partial class Binding
         Dependence, // The result contract depends on the receiver (ReceiverIndependence).
         Condition,
     }
+
+    // An ordinal's English text ("1st", "22nd", "13th"), for the members the adapter names.
+    private static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 
     // SPEC 10.7, 15.6.1, 23.1: the one record of a whole-contract comparison that failed in a condition, from the failure its walk found:
     // the member from the nearest comparison ("the 1st parameter's 1st parameter's well-formedness"), with both ends instantiated under
@@ -65,8 +68,6 @@ public sealed partial class Binding
         }
 
         return new(at, member, instance.Instantiate(failure.Longer!), instance.Instantiate(failure.Shorter!), failure.Equality);
-
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
     // SPEC 10.7, 15.6.1: the record of an erasure that failed only its signature's fit (ErasesToFunction's Condition part): a condition,
@@ -77,7 +78,7 @@ public sealed partial class Binding
     {
         if (failure.IsCondition && TyCtxt.StorageMatches(required, implementation))
         {
-            this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
+            this.RecordOrigin(node, new(null, this.ContractFact(node, failure, node)));
         }
         else if (failure.Kind != ComparisonFailureKind.Shape)
         {
@@ -87,13 +88,32 @@ public sealed partial class Binding
 
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
     // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
-    // entry and related there.
-    private void ReportOwnedConversion(Koto node, DiagnosticCollection? store, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
+    // entry and related there. The record's facts (RecordOwned): the kept `S is Owned` at the converted value, the member row, the
+    // judged relation's Origin (its Longer), an inherited member's Type or Origin (Actual) and a captured binding's Borrow; a capture's
+    // name is read from the subject and the capture entry from the closure's syntax (CaptureEntryOf).
+    private void ReportOwnedConversion(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
     {
-        var subject = DiagnosticTypeName(owned.Subject);
-        var entry = owned.Entry is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
-        var origin = owned.Origin is not { } failing ? (DiagnosticOrigin?)null
-            : entry is { } written ? new DiagnosticOrigin("borrow", written.Name + "@" + written.Operation) : OriginDisplay(failing, owned.Borrow);
+        var facts = this.report.Facts(index);
+        var at = this.compilation.SyntaxOf(facts[0].Site);
+        var subjectType = this.report.Constraint(facts[0]).Subject!;
+        var (kind, n) = ((OwnedMemberKind)(byte)facts[1].Value, (int)(facts[1].Value >> 8));
+        var failing = this.FactOf(index, ProblemFactKind.OriginRecord) is { } record ? this.report.Origin(record).Relation?.Longer : null;
+        var borrow = this.FactOf(index, ProblemFactKind.Related) is { } source ? this.compilation.SyntaxOf(source.Site) : null;
+        var closure = kind is OwnedMemberKind.Capture or OwnedMemberKind.TypeArgument && subjectType is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
+        var inherited = this.FactOf(index, ProblemFactKind.Actual);
+        var member = kind switch
+        {
+            OwnedMemberKind.Capture => BoundClosure.Of(subjectType)!.Captures[n].Environment.Name,
+            OwnedMemberKind.TypeArgument => $"{Ordinal(n + 1)} Type argument",
+            OwnedMemberKind.InheritedTypeArgument => $"inherited Type argument `{DiagnosticTypeName(this.report.Value(inherited!.Value))}`",
+            _ => $"inherited Origin `{this.report.OriginSide(inherited!.Value).Name}`",
+        };
+
+        var named = closure is null ? null : CaptureEntryOf(closure, member);
+        var subject = DiagnosticTypeName(subjectType);
+        var entry = named is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
+        var origin = failing is null ? (DiagnosticOrigin?)null
+            : entry is { } written ? new DiagnosticOrigin("borrow", written.Name + "@" + written.Operation) : OriginDisplay(failing, borrow);
 
         // SPEC 23.1: a borrow end is related at its syntax: a capture entry that borrows, or the Borrow a captured binding was
         // initialized by; otherwise at the capture entry or the converted value. An omitted end is related at its Type occurrence.
@@ -101,58 +121,57 @@ public sealed partial class Binding
         (string Role, Koto At, string? Label)[]? related = null;
         if (origin is { Kind: "borrow" or "omitted" } relatedOrigin)
         {
-            if (entry is { } at && owned.Closure is { } closure)
+            if (entry is { } borrowing && closure is not null)
             {
-                spans = [("origin", closure, at.Span, null)];
+                spans = [("origin", closure, borrowing.Span, null)];
             }
-            else if (relatedOrigin.Kind == "omitted" && OmittedAt(owned.Origin!) is { } occurrence)
+            else if (relatedOrigin.Kind == "omitted" && OmittedAt(failing!) is { } occurrence)
             {
                 related = [("origin", occurrence, null)];
             }
-            else if (owned.Borrow is { } borrow)
+            else if (borrow is not null)
             {
                 related = [("origin", borrow, null)];
             }
-            else if (owned.Entry is { } named && owned.Closure is { } owner)
+            else if (named is { } capture && closure is not null)
             {
-                spans = [("origin", owner, named.Span, null)];
+                spans = [("origin", closure, capture.Span, null)];
             }
             else
             {
-                related = [("origin", owned.At, null)];
+                related = [("origin", at, null)];
             }
         }
 
         string note;
-        if (owned.Closure is { } converted && PreparedCapture(converted, owned.Member) is { } preparedSource)
+        if (closure is not null && PreparedCapture(closure, member) is not null)
         {
             // SPEC 7.2.3: in a default, a capture of a preceding argument can neither move it nor keep a new borrow of it, and the
             // closure always converts to the parameter's Function Type, so only a Copy that holds no borrow or a new parameter remain.
             note = (origin is { } shown
                 ? "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); " +
-                    $"the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
-                : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} is not proven Owned") +
+                    $"the capture {member} depends on {OriginText(shown)}, which is not static"
+                : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {member} is not proven Owned") +
                 "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
             // An exclusive reference is captured by a Reborrow, which no proof makes valid there.
-            var parameter = $"give the Function Type a parameter for {owned.Member} and pass {owned.Member} where the function value is called";
             // A borrowing entry of a Copy Owned argument, such as [k@ref] of k: i32, is repaired by its bare Copy entry, [k].
         }
-        else if (owned.Closure is not null)
+        else if (closure is not null)
         {
             note = origin is { } shown
                 ? "Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); " +
-                    $"the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
-                : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {owned.Member} is not proven Owned";
+                    $"the capture {member} depends on {OriginText(shown)}, which is not static"
+                : $"Common Function conversion requires an Owned environment (SPEC 7.7.4, 15.2.3); the capture {member} is not proven Owned";
         }
         else
         {
-            // An inherited Origin, whose member Type is the subject itself (FailOwnedConversion), is an Origin that is not static.
-            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.7.4, 15.2.3); the {owned.Member} " +
-                (ReferenceEquals(owned.MemberType, owned.Subject) ? "is not static" : "is not proven Owned");
+            // An inherited Origin (its member row's kind) is an Origin that is not static.
+            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.7.4, 15.2.3); the {member} " +
+                (kind == OwnedMemberKind.InheritedOrigin ? "is not static" : "is not proven Owned");
         }
 
-        object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
-        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
+        object[] evidence = origin is { } fact ? [subject, member, fact] : [subject, member];
+        node.ReportIn(store, problem.Requirement, problem.Code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: at, condition: problem.Condition);
 
         static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
         {

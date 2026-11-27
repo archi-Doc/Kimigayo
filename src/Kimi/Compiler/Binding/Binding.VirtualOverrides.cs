@@ -433,7 +433,7 @@ public sealed partial class Binding
             {
                 if (incompatible is { } contract)
                 {
-                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                    this.RecordOrigin(function, new(null, contract));
                 }
                 else
                 {
@@ -595,8 +595,7 @@ public sealed partial class Binding
             if (original.Parameters[i].ExternalName != implementation.Parameters[i].ExternalName)
             {
                 var facts = this.OverrideFacts(implementation, OverrideFailureCause.ExternalName, original);
-                var span = implementation.Parameters[i].ExternalNameSpan;
-                facts.Add(new(ProblemFactKind.Span, SourceRef.Of(implementation), ((long)span.Start << 32) | (uint)span.Length));
+                facts.Add(LocatedFact(implementation, implementation.Parameters[i].ExternalNameSpan));
                 this.RecordOverride(implementation, BindingFailure.OverrideContractMismatch, facts);
                 return;
             }

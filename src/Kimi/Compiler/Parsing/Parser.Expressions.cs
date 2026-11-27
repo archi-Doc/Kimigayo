@@ -188,7 +188,7 @@ public static partial class Parser
         // Directive conditions reject every is test separately; do not report it twice as a chain.
         var runtimeIs = !reader.IsParsingCompileTimeCondition;
         return (tokenKind != TokenKind.Is || runtimeIs) &&
-            ((left is BinaryKoto comparison && IsComparisonKind[(int)comparison.Akind]) || (runtimeIs && left is IsKoto));
+            ((left is BinaryKoto comparison && IsComparison(comparison.Akind)) || (runtimeIs && left is IsKoto));
     }
 
     /// <summary>Parses one adaptation of SPEC F.9.1 Adapted, <c>"@" (ClosedTarget | OpenTarget)</c> (F.9.4), over its parsed operand.

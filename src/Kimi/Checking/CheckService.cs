@@ -7,7 +7,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Checking;
 
-/// <summary>Runs one check unit through the shared check entry and returns its immutable output (SPEC 23.2).</summary>
+/// <summary>Loads projects for checking and returns the immutable output of each check unit (SPEC 23.2).</summary>
 /// <remarks>
 /// The unit's compilation lives only for one call: its diagnostics become <see cref="CheckDiagnostic"/> records, and the
 /// compilation is released. The service holds no state, so any number of callers may share it.

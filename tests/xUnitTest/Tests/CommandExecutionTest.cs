@@ -28,8 +28,8 @@ public sealed class CommandExecutionTest : IDisposable
     // first:
     // - The message, no code: a missing input (build, check, restore), a directory without projects, the usage errors (build, toolchain,
     //   restore's input, an unknown command), run's selection, the toolchain's calls (a missing manifest, run --no-build without a build
-    //   on a host that runs its Windows target, a missing executable), restore's lock write (an output failure naming the lock:
-    //   PLAN G1257), a malformed solution file and two files nested deeper than the configuration reader reads (the parse of a user's
+    //   on a host that runs its Windows target, a missing executable), restore's lock write (an output failure naming the lock, then the
+    //   system's message, which is the host's: PLAN G1257), a malformed solution file and two files nested deeper than the configuration reader reads (the parse of a user's
     //   file is the file's failure), and a project file check cannot read (the load's reason, PLAN G1010).
     // - CheckFaulted_Kd: the host's console throwing at the selected project's line (build with a type the toolchain's classification
     //   lists, which printed as a plain failure, and with one it does not, which escaped the command; check and emit), at the line after
@@ -43,7 +43,7 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("run selection", null, false, "Run requires exactly one")]
     [InlineData("manifest", null, false, "missing.link.json")]
     [InlineData("no build", null, false, "No built Application is available.")]
-    [InlineData("restore output", null, false, "Hello.kimi.lock.json. Access to the path is denied.")]
+    [InlineData("restore output", null, false, "Hello.kimi.lock.json. ")]
     [InlineData("malformed solution", null, false, "Cannot load solution")]
     [InlineData("deep solution", null, false, "Cannot load solution")]
     [InlineData("deep project", null, false, "indentation depth")]
@@ -116,10 +116,12 @@ public sealed class CommandExecutionTest : IDisposable
     // The Tatara plan's B7b8 (IMPL 20.3, SPEC 22 ¶1, ruling 85; design row 19's run half): run of a target whose executables this host
     // does not run is refused before any build or record write, with or without --no-build: the location-only Unsupported_Kd at the
     // project, exit 1, no bin\ directory. Several selected targets are run's input error. Every host: no host runs linux-x64's
-    // executables until B8. Fail-before: the build's "Artifact production currently requires exactly one configured Windows x64
-    // target." (a record under bin\x86_64-pc-windows-msvc\), or with --no-build "Run requires the Windows x64 target.".
+    // executables until B8, nor a staged row's (none-x64). Fail-before: the build's "Artifact production currently requires exactly one
+    // configured Windows x64 target." (a record under bin\x86_64-pc-windows-msvc\), or with --no-build "Run requires the Windows x64
+    // target.".
     [Theory]
     [InlineData("\"x86_64-unknown-linux-musl\"", false, null)]
+    [InlineData("\"x86_64-unknown-none\"", false, null)]
     [InlineData("\"x86_64-unknown-linux-musl\"", true, null)]
     [InlineData("\"x86_64-pc-windows-msvc\", \"x86_64-unknown-linux-musl\"", true, "Run requires one selected target; select one with --Target.")]
     public async Task RunRefusesATargetThisHostDoesNotRunBeforeAnyBuild(string targets, bool noBuild, string? message)
@@ -146,7 +148,7 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("x86_64-unknown-linux-musl", "x86_64-unknown-linux-musl", "A.O2")]
     public async Task AnImplicitProjectBuildsForItsSelectedTarget(string? target, string folder, string executable)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native build runs on Windows.");
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         var kimigayo = new Kimigayo(console);
         var source = Path.Combine(this.directory, "A.kimi");
@@ -282,6 +284,9 @@ public sealed class CommandExecutionTest : IDisposable
     {
         private const string Passes = "#Test\nfunc passes()\n    $require(1 == 1)\n";
 
+        // IMPL 20.3: an implicit project takes the host's target; a host without one (linux x64 until B8) selects no implicit project.
+        private const string NoHostTarget = "An implicit project takes the host's target, and this host has none.";
+
         private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-command-" + Guid.NewGuid().ToString("N"));
 
         public ConsoleTests() => Directory.CreateDirectory(this.directory);
@@ -289,7 +294,7 @@ public sealed class CommandExecutionTest : IDisposable
         public void Dispose() => Directory.Delete(this.directory, true);
 
         // The removed options (Tatara B6b4, decision 20; design §5.2 rows 1, 2 and 4, C4, N4-2, N4-3; C-449 B1, N1): a command other than
-        // test and lsp whose arguments name --ToolchainRoot or --LlvmBin, in any spelling the reader names an option by (KimiOptions.Read),
+        // test whose arguments name --ToolchainRoot or --LlvmBin, in any spelling the reader names an option by (KimiOptions.Read),
         // fails before its work as its input error (CommandExecution), toolchain verify included: each occurrence's text on standard
         // error, nothing on standard output (check --Format json writes no document), no file written, exit 1. The reader reads an option
         // word after -- (an input word: no Kimi command forwards arguments after it, run takes no program arguments, IMPL 20.3; the
@@ -297,6 +302,8 @@ public sealed class CommandExecutionTest : IDisposable
         [Theory]
         [InlineData("build <lib> --ToolchainRoot C:\\tc", "--ToolchainRoot")]
         [InlineData("toolchain verify --ToolchainRoot x", "--ToolchainRoot")]
+        [InlineData("lsp --ToolchainRoot x --debugwait false", "--ToolchainRoot")]
+        [InlineData("lsp --debugwait false --LlvmBin x --ToolchainRoot y", "--LlvmBin", "--ToolchainRoot")]
         [InlineData("run <lib> --LlvmBin x", "--LlvmBin")]
         [InlineData("build <lib> -ToolchainRoot x", "--ToolchainRoot")]
         [InlineData("build <lib> --TOOLCHAINROOT x", "--ToolchainRoot")]
@@ -344,7 +351,7 @@ public sealed class CommandExecutionTest : IDisposable
         [Fact]
         public async Task ToolchainVerifyStillBindsItsReport()
         {
-            Assert.SkipUnless(OperatingSystem.IsWindows(), "Tatara runs on Windows.");
+            Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
             var report = Path.Combine(this.directory, "verify report.json");
             var product = TataraCommandTest.Unit(new());
             Environment.ExitCode = 0;
@@ -530,7 +537,7 @@ public sealed class CommandExecutionTest : IDisposable
         [InlineData("Built: ", 2, null)]
         public async Task TestFailsByItsInputItsRunnerOrItsOwnFault(string origin, int expected, string? message, params string[] options)
         {
-            Assert.SkipUnless(origin != "Built: " || TargetProfile.Host == TargetProfile.Windows, "The native build runs on Windows.");
+            Assert.SkipUnless(origin != "Built: " || Repository.NativeBuilds, Repository.NoNativeBuilds);
             Assert.SkipUnless(origin != "results file" || TargetProfile.Host == TargetProfile.Windows, "The run needs a host that runs the Windows target.");
             var input = WriteTests(Path.Combine(this.directory, "A", "A.kimiproj"), origin == "identity" ? "TestProjectId = \"Same\"\n" : string.Empty);
             if (origin == "identity")
@@ -670,6 +677,7 @@ public sealed class CommandExecutionTest : IDisposable
         [InlineData("Tests.kimiproj")]
         public async Task TheProjectIdentityAndTheResultPathAreTheInputs(string file)
         {
+            Assert.SkipUnless(file == "Tests.kimiproj" || TargetProfile.Host is not null, NoHostTarget);
             var input = Path.Combine(this.directory, file);
             File.WriteAllText(Path.Combine(this.directory, file == "Tests.kimiproj" ? "tests.kimi" : file), Passes);
             if (file == "Tests.kimiproj")
@@ -698,6 +706,7 @@ public sealed class CommandExecutionTest : IDisposable
         [InlineData("b/A.kimi", "a/B.kimi", 0, "B.kimi A.kimi")]
         public async Task SolutionProjectsConflictByTheirSpelledIdentitiesAndFollowTheirInputs(string first, string second, int expected, string identities)
         {
+            Assert.SkipUnless(TargetProfile.Host is not null, NoHostTarget);
             foreach (var source in new[] { first, second })
             {
                 Directory.CreateDirectory(Path.Combine(this.directory, Path.GetDirectoryName(source)!));

@@ -142,10 +142,26 @@ public sealed partial class Binding
         }
 
         var reference = this.BindContainerReference(syntax, declaration, scope, context, own is null ? [] : (BoundType[])own.Components);
-        reference = reference is null ? null : this.CompleteOrigins(reference, syntax as TypeSemanticsKoto, syntax, scope, context);
-        if (reference is null || reference.OriginArguments.Count != declaration.Schema.Origins.Count || reference.OriginArguments.Contains(null!))
+        if (reference is null)
         {
+            // Transitional, R7-E5 (E4c, B1, n2): a null reference reads BindContainerReference's record (its arity, its qualifier's
+            // dependence, or a Core qualifier's Ambiguous at the member path, ContainerReferences.cs:319), so it keeps `Fail` until
+            // R7-E5's per-problem inputs.
             this.Fail(syntax, BindingFailure.InvalidOrigin);
+            return null;
+        }
+
+        // SPEC 15.3.2: a Contract declares no Origin slots, so CompleteOrigins returns null only after recording at `syntax` itself
+        // (a binding set, TypeOrigins 109; B-4).
+        reference = this.CompleteOrigins(reference, syntax as TypeSemanticsKoto, syntax, scope, context);
+        if (reference is null)
+        {
+            return null;
+        }
+
+        if (reference.OriginArguments.Count != declaration.Schema.Origins.Count || reference.OriginArguments.Contains(null!))
+        {
+            this.Record(syntax, BindingFailure.InvalidOrigin, []);
             return null;
         }
 
@@ -155,17 +171,17 @@ public sealed partial class Binding
         for (var level = generic is not null && unwrapped is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : null; level is not null; level = ReferenceEquals(level, generic) ? null : ((TypeSemanticsKoto)level).Type)
         {
             level.BoundSymbol = declaration;
-            FormedTypeRows.Add(level);
+            FormedTypeRows.Add(level, this.formingBody);
             Complete(level, reference);
         }
 
         if (!ReferenceEquals(unwrapped, syntax))
         {
-            FormedTypeRows.Add(unwrapped);
+            FormedTypeRows.Add(unwrapped, this.formingBody);
             Complete(unwrapped, reference);
         }
 
-        FormedTypeRows.Add(syntax);
+        FormedTypeRows.Add(syntax, this.formingBody);
         Complete(syntax, reference);
         return this.BoundContractReference(reference);
     }

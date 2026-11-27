@@ -483,11 +483,12 @@ public sealed partial class Binding
             this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
             !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? stored : null;
 
-    // R5's region: the region `node` is, when it is a slot of a local of the use's own body other than the one being declared; otherwise
-    // null. A nested body or signature has no such premise: there the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
+    // R5's region: the region `node` is, when it is a slot of a body local of the use's own body (a region owner, PLAN G922) other than the
+    // one being declared (the use is not within its DeclaringPart); otherwise null. A nested body or signature has no such premise: there
+    // the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
     private BoundOrigin? LocalRegionOf(OriginPremiseEnvironment environment, int node, Koto? body)
-        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: VariableKoto variable } region && IsLocalRegion(region) &&
-            !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? region : null;
+        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: { } owner } region && DeclaringPart(owner) is { } declared &&
+            IsLocalRegion(region) && !IsWithin(environment.Use, declared) && ReferenceEquals(PremiseSignature(owner), body) ? region : null;
 
     // A required signature's own well-formedness: its inputs' and its result's.
     private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
@@ -546,9 +547,9 @@ public sealed partial class Binding
     // SPEC 15.6.1, 15.8.2 (DECISIONS R4-M152, PLAN G270): R2 of a Closure's call receiver `R/Env during ρ`, input 0 of its contract
     // (R4-M148): its body may assume the receiver's Type well formed. Each environment binding's Type is (AddTypePremises), and under a
     // borrowed receiver every Origin stored in one outlives ρ; under `owner/Self` the receiver is the environment by value, with no layer.
-    // The bindings are the components EnvironmentType interns, read here because BindConcreteClosure publishes EnvironmentType only
-    // after it judges the pending relations, the first judge that needs them. Before classification ρ is pending (DECISIONS R4-M133),
-    // so a relation naming it waits and no edge is needed; a Borrow of a binding, `env_i`, resolves to ρ at its use (PremiseNode).
+    // The bindings are the components EnvironmentType interns, read here because PublishClosure publishes EnvironmentType last, after
+    // the receiver is classified and the result published. Before classification ρ is pending (DECISIONS R4-M133), so a relation naming
+    // it is a row (DECISIONS R7-M66) and no edge is needed; a Borrow of a binding, `env_i`, resolves to ρ at its use (PremiseNode).
     private void AddReceiverPremises(OriginPremiseEnvironment environment, FunctionKoto literal, BoundClosure closure)
     {
         var receiver = closure.Classified && closure.Receiver != SemanticsKind.Owner

@@ -35,6 +35,7 @@ public sealed partial class KimiLibrary
             Read("Intrinsics.kimi"),
             Read("Formatting.kimi"),
             Read("Test.kimi"),
+            Read("Platform.kimi"),
         ];
 
         private static Source Read(string name)

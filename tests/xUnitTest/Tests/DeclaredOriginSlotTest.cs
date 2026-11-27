@@ -1,6 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
 
@@ -15,6 +18,11 @@ public class DeclaredOriginSlotTest
     private const string SlotW = "struct W {s}\n    public var items: Array<ref/i32 during s>\n    public init(items: Array<ref/i32 during s>) => self.items = items@move\n";
 
     private const string Item = "contract C\n    associate Item(a) is i32\nstruct S\n    Self is C\n";
+
+    // SPEC 15.3.5's example: a slot only a stored Function Type's input states; and a slot a Field keeps beside a signature's `uniq` layer.
+    private const string Callback = "struct Callback {input}\n    let call: (ref/i32 during input) -> i32\n";
+
+    private const string Mixed = "struct Mixed {m}\n    let keep: ref/i32 during m\n    let call: (uniq/i32 during m) -> i32\n";
 
     [Theory]
     [InlineData("public struct View<T> {source}\n    private let data: ref/T during buffer\n", "buffer", "header", "{source}")]
@@ -146,7 +154,10 @@ public class DeclaredOriginSlotTest
     // declaration's pair binders, its own and an enclosing declaration's, and a generic definition is valid only when every case is
     // (SPEC 8.15.2; DECISIONS BU-44): a slot only a conditional pair slot or a nested slot uses is Phantom where those cases store no
     // borrow (the owner case; `s = owner, t = owner`; Inner<i32>'s and an owner-only binder's every case), and kept where every case does
-    // (`ref or uniq`; a `uniq` binder beside an `owner or ref` one) or another Field keeps it.
+    // (`ref or uniq`; a `uniq` binder beside an `owner or ref` one) or another Field keeps it. A stored Function Type's signature stores
+    // nothing (SPEC 15.2.4), so a slot only its layers state is Phantom too (PLAN G1456): in a parameter, through a nested slot bound to
+    // it, in a result, under a double reversal, in a pair binder's case, and at a projection of the slot; a Field keeping it beside a
+    // signature's `uniq` layer keeps it.
     [Theory]
     [InlineData("struct W<T> {s}\n    let p: raw/T during s", "InvalidOriginBinding_Kd: raw/T during s")]
     [InlineData("struct W<T> {s}\n    let keep: Loan<ref/T during s>\n    let p: raw/T during s", null)]
@@ -160,6 +171,14 @@ public class DeclaredOriginSlotTest
     [InlineData(PairAnnotationBindingTest.InnerOwnerUniq + "struct Outer {a}\n    let j: Inner<i32> during a\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
     [InlineData(PairAnnotationBindingTest.InnerOwnerUniq + "struct Outer<q/U> {a}\n    q is owner\n    let j: Inner<q/U> during a\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
     [InlineData(PairAnnotationBindingTest.InnerOwnerUniq + "struct Outer<q/U> {a}\n    q is owner or uniq\n    let j: Inner<q/U> during a\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
+    [InlineData("struct Probe {s}\n    let call: (ref/i32 during s) -> i32\n    let at: raw/i32 during s", "InvalidOriginBinding_Kd: raw/i32 during s")]
+    [InlineData(Callback + "struct Relay {r}\n    let inner: Callback during r\n    let at: raw/i32 during r", "InvalidOriginBinding_Kd: raw/i32 during r")]
+    [InlineData("struct Maker {s}\n    let make: () -> ref/i32 during s\n    let at: raw/i32 during s", "InvalidOriginBinding_Kd: raw/i32 during s")]
+    [InlineData("struct Twice {s}\n    let call: ((ref/i32 during s) -> i32) -> i32\n    let at: raw/i32 during s", "InvalidOriginBinding_Kd: raw/i32 during s")]
+    [InlineData(PairAnnotationBindingTest.HolderOwnerUniq + "    let call: (ref/i32 during a) -> i32\n    let p: raw/i32 during a", "InvalidOriginBinding_Kd: raw/i32 during a")]
+    [InlineData(Mixed + "    let at: raw/i32 during m", null)]
+    [InlineData("struct C {s}\n    let call: (ref/i32 during s) -> i32\nfunc f(c: ref/C, p: raw/i32 during c.s) => ()", "InvalidOriginBinding_Kd: raw/i32 during c.s")]
+    [InlineData("struct C {s}\n    let call: (ref/i32 during s) -> i32\nfunc f(c: ref/(C during a), p: raw/i32 during a) => ()", "InvalidOriginBinding_Kd: raw/i32 during a")]
     public void ARawLayerStatesNoPhantomSlot(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
 
@@ -182,6 +201,79 @@ public class DeclaredOriginSlotTest
         "static cannot supply uniq for Origin slot a in the Semantics cases q = uniq; p = uniq")]
     public void AConditionalSlotsRecordNamesItsCase(string declarations, string label)
         => Assert.Equal(label, Assert.Single(DiagnosticCorpus.Check(declarations + "\n" + Main).Diagnostics).Label);
+
+    // SPEC 15.2.4, 15.3.5, 15.4.2 (PLAN G1456): a stored Function Type's `uniq` layer is no use of its slot, so `static` supplies a slot
+    // only such a layer states (Sink) or a `ref` Field keeps beside it (Mixed).
+    [Theory]
+    [InlineData("struct Sink {s}\n    let call: (uniq/i32 during s) -> i32\nfunc f(x: Sink during static) => ()")]
+    [InlineData(Mixed + "func f(x: Mixed during static) => ()")]
+    public void StaticSuppliesASlotOnlyASignatureMakesUniq(string declarations)
+        => Assert.Empty(RawPointerSyntaxTest.Records(declarations));
+
+    // R7-E4 E4c: a slot case records its facts at the failure, read back by position (ProblemFact's contract): the listing schema's
+    // declaration (Related, role 0), the instance, Reason 1 the failing row with the slot's index above bit 8, then one SemanticsMask
+    // Reason per requirement binder, always present, a zero one keeping its position (F's twins T2, T2z). Eight binders open give
+    // dev's union over p1 to p8 beside the definition's OwnershipCaseLimit_Kd (256 cases), the label bounded by DiagnosticText.Bound
+    // (the Note keeps the whole union); seven concrete arguments name only p8.
+    [Theory]
+    [InlineData(8, "cas…p6 = uniq; p7 = uniq; p8 = uniq")]
+    [InlineData(1, "case p8 = uniq")]
+    public void ASlotCaseRecordsOneReasonPerRequirementBinder(int open, string cases)
+    {
+        var binders = Enumerable.Range(9 - open, open).ToArray();
+        var source = "struct Eight<" + string.Join(", ", Enumerable.Range(1, 8).Select(static k => $"s{k}/T{k}")) + "> {a}\n" +
+            string.Concat(Enumerable.Range(1, 8).Select(static k => $"    s{k} is owner or uniq\n")) +
+            string.Concat(Enumerable.Range(1, 8).Select(static k => $"    public let x{k}: s{k}/T{k} during a\n")) +
+            "func g<" + string.Join(", ", binders.Select(static k => $"p{k}/V{k}")) + ">(r: uniq/i32, " + string.Join(", ", binders.Select(static k => $"v{k}: p{k}/V{k} during r")) +
+            ") -> Eight<" + string.Join(", ", Enumerable.Range(1, 8).Select(k => k > 8 - open ? $"p{k}/V{k} during r" : "i32")) + "> during static\n" +
+            string.Concat(binders.Select(static k => $"    p{k} is owner or uniq\n")) + "    return $abort(\"u\")\n" + Main;
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        string[] codes = open == 8 ? [nameof(DiagnosticCode.OwnershipCaseLimit_Kd), nameof(DiagnosticCode.InvalidOriginBinding_Kd)] : [nameof(DiagnosticCode.InvalidOriginBinding_Kd)];
+        Assert.Equal(codes, records.Select(static x => x.Code));
+        Assert.Equal("static cannot supply uniq for Origin slot a in the Semantics " + cases, records[^1].Label);
+
+        var c = MinimalEmissionTest.Analyze(source);
+        var issue = Assert.Single(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding)!;
+        var facts = report.Facts(issue.Problem).ToArray();
+        ProblemFactKind[] kinds = [ProblemFactKind.Related, ProblemFactKind.Instance, .. Enumerable.Repeat(ProblemFactKind.Reason, 9)];
+        Assert.Equal(kinds, facts.Select(static x => x.Kind));
+        Assert.Equal(0L, facts[0].Value);
+        long[] reasons = [(long)LoanRequirement.Uniq, .. Enumerable.Range(1, 8).Select(k => k > 8 - open ? (long)SemanticsMask.Uniq : 0L)]; // Slot a: index 0.
+        Assert.Equal(reasons, facts[2..].Select(static x => x.Value));
+    }
+
+    // SPEC 15.2.3, 23.1.2 (R7-E4 E4c): static storage completing a Type's uniq slots from static fails at each of them, and dev records
+    // the first slot in the Type's order only: TypeOrigins' first-failure read, PLAN's second independent failure at an occupied Origin
+    // key, until RecordNumbered per failure (F6; F's T3 with an initializer, so no MissingSyntax_Kd; T3b, whose slot index is 1).
+    [Theory]
+    [InlineData("struct Two {a, b}\n    public let x: uniq/i32 during a\n    public let y: uniq/i32 during b\ngroup Values\n    public var two: Two = $abort(\"u\")", "Two", "a")]
+    [InlineData("struct Three {a, b, c}\n    public let x: uniq/i32 during a\n    public let y: uniq/i32 during b\n    public let z: uniq/i32 during c\ngroup Values\n    public var three: Three = $abort(\"u\")", "Three", "a")]
+    [InlineData("struct Three {a, b, c}\n    public let x: ref/i32 during a\n    public let y: uniq/i32 during b\n    public let z: uniq/i32 during c\ngroup Values\n    public var three: Three = $abort(\"u\")", "Three", "b")]
+    public void StaticStorageRecordsItsFirstUniqSlot(string declarations, string type, string slot)
+    {
+        var source = declarations + "\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidOriginBinding_Kd), type, $"static cannot supply uniq for Origin slot {slot}"), (error.Code, Text(source, error.Span), error.Label));
+    }
+
+    // SPEC 5.7, 15.2.3, 3.3.2 (R7-E4 E4c, labels.md T7): a raw layer's Phantom slot (RawOrigins.Written) and a static Origin at a uniq
+    // slot (TypeOrigins) are never judged at one node. A raw layer's Type is a pointer, which has no schema, and its `during` targets the
+    // raw Semantics; the slot binding is an AnnotatedType of its own inside the group, whose Type the group shares, so the static check
+    // records at the group. Two independent records, one per node.
+    [Fact]
+    public void ARawLayerAndItsPointeesStaticSlotRecordAtTheirOwnNodes()
+    {
+        var source = "struct Inner {a}\n    public let item: uniq/i32 during a\nstruct Holder<s/T> {a, b}\n    s is owner or uniq\n    public let item: s/T during a\n" +
+            "    let p: raw/(Inner during static) during b\n" + Main;
+        var records = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span?.Start).Select(x => (x.Code, Text(source, x.Span), x.Label));
+        (string, string, string?)[] expected =
+        [
+            (nameof(DiagnosticCode.InvalidOriginBinding_Kd), "raw/(Inner during static) during b", "Origin slot b is Phantom"),
+            (nameof(DiagnosticCode.InvalidOriginBinding_Kd), "(Inner during static)", "static cannot supply uniq for Origin slot a"),
+        ];
+        Assert.Equal(expected, records);
+    }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
 }

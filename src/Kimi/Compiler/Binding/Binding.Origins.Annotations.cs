@@ -187,7 +187,12 @@ public sealed partial class Binding
             return BoundOrigin.Static;
         }
 
-        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier, out var repeated))
+        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier, out var repeated) is not { } candidate)
+        {
+            return null; // SPEC 15.3.4, 23.1.2: the lookup failed the use (its DuplicateBinding_Kd); the Origin reads that failed input.
+        }
+
+        if (candidate)
         {
             if (repeated is not null)
             {
@@ -202,7 +207,7 @@ public sealed partial class Binding
 
             if (SelectedOrigin(use, ref carrier, out _) is { } origin)
             {
-                return origin;
+                return this.UnmergedSelection(origin, use, use.BoundSymbol);
             }
 
             if (use.BoundSymbol is { Slot: ReceiverSlot } receiver)
@@ -210,22 +215,56 @@ public sealed partial class Binding
                 return this.ReceiverOrigin(receiver); // SPEC 5.7, 15.2.1: in a constructor or drop, `self` is the receiver's Origin.
             }
 
-            this.Fail(use, BindingFailure.InvalidOrigin);
+            this.Record(use, BindingFailure.InvalidOrigin, []);
             return null;
         }
 
-        this.Fail(use, BindingFailure.MissingOrigin, true);
+        this.Record(use, BindingFailure.MissingOrigin, [], unresolved: true);
         return null;
+    }
+
+    // Interim, the owner's O-534 (a) (PLAN G922 U1; DECISIONS R8-M56 as amended): a written name whose selection (SelectedOrigin's
+    // result, a plain name's and a projection's alike) is or meets a region that a `let` local's opening merged (LocalRegion.Merged),
+    // outside that local's body, through a binding the name's Closure does not carry (CarriesBinding), is the located Unsupported_Kd at
+    // the name, with no Origin; any other selection is `origin`. Removed once PLAN G922 U2/U3 give each merged part its own regions. The
+    // name's body (BodyOwner) is found only at a merged region.
+    private BoundOrigin? UnmergedSelection(BoundOrigin origin, Koto use, BindingSymbol? symbol)
+    {
+        Koto? body = null;
+        var merged = MergedElsewhere(origin);
+        for (var i = 0; !merged && i < origin.Operands.Count; i++)
+        {
+            merged = MergedElsewhere(origin.Operands[i]);
+        }
+
+        if (!merged || CarriesBinding(body, symbol))
+        {
+            return origin;
+        }
+
+        this.RecordLocated(use, use.Span);
+        return null;
+
+        bool MergedElsewhere(BoundOrigin region)
+            => SlotRegion(region) && this.Region(region) is { Merged: true } row && !ReferenceEquals(row.Body, body ??= BodyOwner(use));
     }
 
     // SPEC 15.3.1, 23.1.2: a written Origin expression. A parenthesis or meet whose operand did not resolve has no Origin for that
     // reason alone and rests on the operand (CompleteDependent), which reports the cause; only a failure of its own is its record. It binds
     // as the slot it names (SlotAtUse): a `let` region's value is read at each use (PLAN G492-a (ii); Binding.LocalRegions.cs's contract).
+    // A node bound again is decided again, as a header bound ahead of its locals is at its function's statement (BindFunction's Q-B row):
+    // the earlier attempt's failure leaves first, so the node keeps this attempt's outcome alone and a Resolved node no failure
+    // (Binding.Problems' invariant). Only this binder's own checks record at a written Origin node while it can be bound again.
     private BoundOrigin? BindOrigin(Koto syntax, BindingScope scope)
     {
+        if (this.RecordedFailure(syntax) != BindingFailure.None)
+        {
+            this.ClearFailure(syntax);
+        }
+
         if (IsRecovery(syntax, out _))
         {
-            this.Fail(syntax, BindingFailure.InvalidOrigin);
+            this.Record(syntax, BindingFailure.InvalidOrigin, []);
             return null;
         }
 
@@ -252,7 +291,7 @@ public sealed partial class Binding
         }
         else if (syntax is MemberAccessKoto member && member.Left is IdentifierNameKoto input && member.Right is IdentifierNameKoto target)
         {
-            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated))
+            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated) is true)
             {
                 result = SelectedOrigin(syntax, ref type, out var slot);
                 var schema = type?.Symbol?.Schema;
@@ -265,12 +304,18 @@ public sealed partial class Binding
                 }
                 else if (result is not null)
                 {
-                    input.BindingState = target.BindingState = BindingState.Resolved;
-                    target.BoundOrigin = result;
+                    // The limit decides before the writes, so a rejected projection leaves no Origin on its target.
+                    result = this.UnmergedSelection(result, syntax, input.BoundSymbol);
+                    if (result is not null)
+                    {
+                        input.BindingState = target.BindingState = BindingState.Resolved;
+                        target.BoundOrigin = result;
+                    }
                 }
-                else if (type?.Symbol?.Schema is not null)
+                else if (type?.Symbol is { Schema: not null } symbol)
                 {
-                    this.RecordAbsentSlot(syntax, type);
+                    // SPEC 15.3.2: a slot the Type does not declare, with the Type's declaration related (role 1, "header" or "type").
+                    this.Record(syntax, BindingFailure.InvalidOrigin, [new(ProblemFactKind.Related, this.FactSite(symbol.Declaration!), 1)]);
                 }
             }
         }
@@ -284,6 +329,10 @@ public sealed partial class Binding
 
         if (result is null || !OriginVisible(result, syntax))
         {
+            // Transitional, R7-E5 (E4c, B1): a null result reads BindOriginName's, OriginCandidate's DuplicateBinding_Kd or the absent
+            // slot's record at this node, or the operand's (OriginCandidate's InvalidOrigin or DuplicateBinding_Kd, its MissingOrigin, an
+            // absent slot's), so it keeps `Fail`, which adds no record there, until R7-E5's per-problem inputs; only an invisible Origin is
+            // its own failure.
             _ = failedOperand is null ? this.Fail(syntax, BindingFailure.InvalidOrigin) : this.CompleteDependent(syntax, failedOperand);
         }
 
@@ -292,6 +341,8 @@ public sealed partial class Binding
         Koto? FailedOperand(Koto operand) => this.IsUnresolvedPrerequisite(operand) ? operand : null;
     }
 
+    // True when the name has an Origin-context candidate (its Origin, carrier or set in the outputs), false when it has none, and null when
+    // the lookup itself failed the use: a same-scope conflict among value, Origin and set roles (SPEC 15.3.4), its DuplicateBinding_Kd.
     // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
     // SPEC 15.3.4, 15.4.4 (PLAN G230-H, rule D): a name of a local, its value or its set, outside that local's own declaration reads the
     // local's declared Type, so it demands the declaration as a value use does (QueryValueType); the local forms in its declaring body
@@ -302,7 +353,7 @@ public sealed partial class Binding
     // (AheadOfEnvironment), rests. The name selects nothing, so the header fails there and is bound again at the function's statement
     // (BindFunction); a clause keeps that failure (Q-B's class). A formed written entry selects its environment binding, whose Type its
     // entry fixes (SPEC 7.7.2, C-1), and a name of a named function's scope is selected normally (SPEC 9.3, 15.3.4).
-    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
+    private bool? OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
         carrier = null;
@@ -335,7 +386,7 @@ public sealed partial class Binding
             if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);
-                return true;
+                return null;
             }
 
             if (set is not null)
@@ -524,7 +575,7 @@ public sealed partial class Binding
             {
                 if (!guaranteedBorrow && requirement == LoanRequirement.Uniq)
                 {
-                    this.Fail(use, BindingFailure.MissingOrigin);
+                    this.Record(use, BindingFailure.MissingOrigin, []);
                     return null;
                 }
 
@@ -573,7 +624,12 @@ public sealed partial class Binding
             return this.OriginAtom(use, OriginKind.ConstraintSet, aggregateSlot, set);
         }
 
-        this.Fail(use, BindingFailure.MissingOrigin);
+        if (use is TypeSemanticsKoto repeated && RepeatedSet(repeated))
+        {
+            return null; // SPEC 15.3.1, 23.1.2: a set that failed as a repeat declares nothing; its slot's omission rests on that DuplicateBinding_Kd (RestOnRepeatedSet's rule).
+        }
+
+        this.Record(use, BindingFailure.MissingOrigin, []);
         return null;
 
         ConstraintProof OwnedWithoutConditionalBorrows(BoundOrigin completion)
@@ -717,7 +773,7 @@ public sealed partial class Binding
         }
         else
         {
-            this.Fail(use, BindingFailure.MissingOrigin);
+            this.Record(use, BindingFailure.MissingOrigin, []);
         }
 
         return null;

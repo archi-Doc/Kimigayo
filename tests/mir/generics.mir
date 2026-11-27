@@ -10,23 +10,24 @@ fn largest @4
   _2: T arg fallback @16
   _3: T var mut best @19 s1
   _4: () temp @22 s1
-  _5: ArrayIterator<T> temp @22 s1
-  _6: Option<ref/T> temp (Subject) @22 s1
-  _7: uniq/ArrayIterator<T> temp @100 s1
-  _8: isize temp @107 s1
-  _9: ref/T var value @23 s2
-  _10: () temp @25 s2
-  _11: () temp @26 s3
-  _12: bool temp @27 s3
-  _13: i32 temp @27 s3
-  _14: ref/T temp @28 s3
-  _15: ref/T temp @29 s3
-  _16: () temp @31 s4
-  _17: T temp (Assigned) @32 s4
-  _18: isize temp @108 s1
-  _19: T temp @37 s1
-  _20: T temp (Result) @4
-  _21: T temp @37 s1
+  _5: ref/Array<T> temp (Subject) @24 s1
+  _6: ArrayIterator<T> temp @22 s1
+  _7: Option<ref/T> temp (Subject) @22 s1
+  _8: uniq/ArrayIterator<T> temp @102 s1
+  _9: isize temp @109 s1
+  _10: ref/T var value @23 s2
+  _11: () temp @25 s2
+  _12: () temp @26 s3
+  _13: bool temp @27 s3
+  _14: i32 temp @27 s3
+  _15: ref/T temp @28 s3
+  _16: ref/T temp @29 s3
+  _17: () temp @31 s4
+  _18: T temp (Assigned) @32 s4
+  _19: isize temp @110 s1
+  _20: T temp @37 s1
+  _21: T temp (Result) @4
+  _22: T temp @37 s1
   s1: lexical in s0 @18
   s2: lexical in s1 @22
   s3: lexical in s2 @25
@@ -35,90 +36,93 @@ fn largest @4
       StorageLive(_3) @19 s1
     * _3 = copy _2 @21 s1
       StorageLive(_4) @22 s1
-      StorageLive(_5) @22 s1
-    * _5 = iterate(copy _1) -> bb1 @22 s1
+      StorageLive(_5) @24 s1
+    * _5 = copy _1 @24 s1
+      StorageLive(_6) @22 s1
+      _6 = iterate(copy _5) -> bb1 @22 s1
   bb1:
       goto bb2 @22 s1
   bb2:
-      StorageLive(_6) @22 s1
-      StorageLive(_7) @100 s1
-      _7 = &uniq two-phase _5: uniq/ArrayIterator<T> @100 s1
-      _6 = next(move _7) -> bb6 @22 s1
+      StorageLive(_7) @22 s1
+      StorageLive(_8) @102 s1
+      _8 = &uniq two-phase _6: uniq/ArrayIterator<T> @102 s1
+      _7 = next(move _8) -> bb6 @22 s1
   bb3:
-      StorageDead(_5) @22 s1
+      StorageDead(_6) @22 s1
+      StorageDead(_5) @24 s1
       StorageDead(_4) @22 s1
-      StorageLive(_19) @37 s1
-    * _19 = copy _3 @37 s1
+      StorageLive(_20) @37 s1
+    * _20 = copy _3 @37 s1
       goto bb24 check bb25 @36 s1
   bb4:
-      StorageLive(_18) @108 s1
-      _18 = discriminant(_6) @108 s1
-      switch copy _18 [1: bb14, otherwise: bb5] @108 s1
+      StorageLive(_19) @110 s1
+      _19 = discriminant(_7) @110 s1
+      switch copy _19 [1: bb14, otherwise: bb5] @110 s1
   bb5:
       unreachable @22 s1
   bb6:
-      StorageLive(_8) @107 s1
-      _8 = discriminant(_6) @107 s1
-      switch copy _8 [0: bb7, otherwise: bb4] @107 s1
+      StorageLive(_9) @109 s1
+      _9 = discriminant(_7) @109 s1
+      switch copy _9 [0: bb7, otherwise: bb4] @109 s1
   bb7:
-      StorageLive(_9) @23 s2
-      _9 = move (_6 as case 0).0 @23 s2
-      StorageLive(_10) @25 s2
-      StorageLive(_11) @26 s3
-      StorageLive(_12) @27 s3
+      StorageLive(_10) @23 s2
+      _10 = move (_7 as case 0).0 @23 s2
+      StorageLive(_11) @25 s2
+      StorageLive(_12) @26 s3
       StorageLive(_13) @27 s3
-      StorageLive(_14) @28 s3
-    * _14 = copy _9 @28 s3
-      StorageLive(_15) @29 s3
-      _15 = &_3: ref/T @29 s3
-      _13 = requirement compare of Comparable(move _14, move _15) -> bb11 @27 s3
+      StorageLive(_14) @27 s3
+      StorageLive(_15) @28 s3
+    * _15 = copy _10 @28 s3
+      StorageLive(_16) @29 s3
+      _16 = &_3: ref/T @29 s3
+      _14 = requirement compare of Comparable(move _15, move _16) -> bb11 @27 s3
   bb8:
-      StorageDead(_11) @26 s3
-      _10 = const () @25 s3
-      StorageDead(_10) @25 s2
-      StorageDead(_9) @23 s2
-      StorageDead(_8) @107 s1
-      StorageDead(_7) @100 s1
-      StorageDead(_6) @22 s1
+      StorageDead(_12) @26 s3
+      _11 = const () @25 s3
+      StorageDead(_11) @25 s2
+      StorageDead(_10) @23 s2
+      StorageDead(_9) @109 s1
+      StorageDead(_8) @102 s1
+      StorageDead(_7) @22 s1
       goto bb2 @25 s2
   bb9:
-      StorageDead(_12) @27 s3
-      StorageLive(_16) @31 s4
-      StorageLive(_17) @32 s4
-    * _17 = copy (*_9) @33 s4
+      StorageDead(_13) @27 s3
+      StorageLive(_17) @31 s4
+      StorageLive(_18) @32 s4
+    * _18 = copy (*_10) @33 s4
       drop _3 -> bb12 [keep] @31 s4
   bb10:
-      StorageDead(_12) @27 s3
-      _11 = const () @26 s3
+      StorageDead(_13) @27 s3
+      _12 = const () @26 s3
       goto bb8 @26 s3
   bb11:
-      _12 = Gt(move _13, const 0_i32) proven @27 s3
-      StorageDead(_15) @29 s3
-      StorageDead(_14) @28 s3
-      StorageDead(_13) @27 s3
-      switch copy _12 [0: bb10, otherwise: bb9] @27 s3
+      _13 = Gt(move _14, const 0_i32) proven @27 s3
+      StorageDead(_16) @29 s3
+      StorageDead(_15) @28 s3
+      StorageDead(_14) @27 s3
+      switch copy _13 [0: bb10, otherwise: bb9] @27 s3
   bb12:
-      _3 = move _17 @31 s4
-      _16 = const () @31 s4
-      drop _17 -> bb13 [elide] @32 s4
+      _3 = move _18 @31 s4
+      _17 = const () @31 s4
+      drop _18 -> bb13 [elide] @32 s4
   bb13:
-      StorageDead(_17) @32 s4
-      StorageDead(_16) @31 s4
-      _11 = const () @30 s4
+      StorageDead(_18) @32 s4
+      StorageDead(_17) @31 s4
+      _12 = const () @30 s4
       goto bb8 @30 s3
   bb14:
       _4 = const () @22 s1
       goto bb15 @22 s1
   bb15:
-      StorageDead(_18) @108 s1
-      StorageDead(_8) @107 s1
-      StorageDead(_7) @100 s1
-      StorageDead(_6) @22 s1
+      StorageDead(_19) @110 s1
+      StorageDead(_9) @109 s1
+      StorageDead(_8) @102 s1
+      StorageDead(_7) @22 s1
       goto bb3 @4
   bb16:
       return @4
   bb17:
-      _0 = move _20 @4
+      _0 = move _21 @4
       goto bb16 @4
   bb18:
       drop _2 -> bb19 [keep] @16
@@ -130,18 +134,18 @@ fn largest @4
       StorageDead(_3) @19 s1
       goto bb18 @4
   bb22:
-      drop _19 -> bb23 [elide] @37 s1
+      drop _20 -> bb23 [elide] @37 s1
   bb23:
-      StorageDead(_19) @37 s1
+      StorageDead(_20) @37 s1
       goto bb20 @4
   bb24:
-      _20 = move _19 @36 s1
+      _21 = move _20 @36 s1
       goto bb22 @36 s1
   bb25:
-      _21 = move _19 @36 s1
-      drop _19 -> bb26 [elide] @37 s1
+      _22 = move _20 @36 s1
+      drop _20 -> bb26 [elide] @37 s1
   bb26:
-      StorageDead(_19) @37 s1
+      StorageDead(_20) @37 s1
       drop _3 -> bb27 [keep] @19 s1
   bb27:
       StorageDead(_3) @19 s1
@@ -176,12 +180,12 @@ fn unwrapTry @61
   _3: Option<T> temp (Subject) @71
   _4: isize temp @74
   _5: T var $try.value @78 s1
-  _6: isize temp @111
-  _7: Option<T> temp @115 s2
+  _6: isize temp @113
+  _7: Option<T> temp @117 s2
   _8: Option<T> temp (Result) @61
-  _9: Option<T> temp @115 s2
+  _9: Option<T> temp @117 s2
   s1: lexical in s0 @74
-  s2: lexical in s0 @111
+  s2: lexical in s0 @113
   bb0:
       StorageLive(_2) @70
       StorageLive(_3) @71
@@ -190,13 +194,13 @@ fn unwrapTry @61
       _4 = discriminant(_3) @74
       switch copy _4 [0: bb3, otherwise: bb2] @74
   bb1:
-      StorageDead(_6) @111
+      StorageDead(_6) @113
       StorageDead(_4) @74
       drop _3 -> bb19 [open ((_ as case 0) open (.0 elide))] @71
   bb2:
-      StorageLive(_6) @111
-      _6 = discriminant(_3) @111
-      switch copy _6 [1: bb6, otherwise: bb5] @111
+      StorageLive(_6) @113
+      _6 = discriminant(_3) @113
+      switch copy _6 [1: bb6, otherwise: bb5] @113
   bb3:
       StorageLive(_5) @78 s1
       _5 = move (_3 as case 0).0 @78 s1
@@ -208,8 +212,8 @@ fn unwrapTry @61
   bb5:
       unreachable @70
   bb6:
-      StorageLive(_7) @115 s2
-    * _7 = Adt case 1(): Option<T> @115 s2
+      StorageLive(_7) @117 s2
+    * _7 = Adt case 1(): Option<T> @117 s2
       goto bb16 check bb17 @89 s2
   bb7:
       return @61
@@ -224,25 +228,25 @@ fn unwrapTry @61
       StorageDead(_2) @70
       goto bb9 @61
   bb12:
-      StorageDead(_6) @111
+      StorageDead(_6) @113
       StorageDead(_4) @74
       drop _3 -> bb13 [keep] @71
   bb13:
       StorageDead(_3) @71
       goto bb11 @61
   bb14:
-      drop _7 -> bb15 [elide] @115 s2
+      drop _7 -> bb15 [elide] @117 s2
   bb15:
-      StorageDead(_7) @115 s2
+      StorageDead(_7) @117 s2
       goto bb12 @61
   bb16:
       _8 = move _7 @89 s2
       goto bb14 @89 s2
   bb17:
       _9 = move _7 @89 s2
-      drop _7 -> bb18 [elide] @115 s2
+      drop _7 -> bb18 [elide] @117 s2
   bb18:
-      StorageDead(_7) @115 s2
+      StorageDead(_7) @117 s2
       unreachable check bb1 @89
   bb19:
       StorageDead(_3) @71

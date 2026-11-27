@@ -63,10 +63,10 @@ internal sealed partial class MirBuilder
         compilation.Types.CloseSite(site);
     }
 
-    private int Argument(BoundType? type, string? name, Koto source, int parameters, MirLocalRole role = MirLocalRole.None)
+    private int Argument(BoundType? type, string? name, Koto source, int parameters, MirLocalRole role = MirLocalRole.None, int offset = -1)
     {
         var site = compilation.Types.OpenSite(SourceRef.Of(source));
-        var local = this.ArgumentAt(type, name, source, parameters, role);
+        var local = this.ArgumentAt(type, name, source, parameters, role, offset);
         compilation.Types.CloseSite(site);
         return local;
     }
