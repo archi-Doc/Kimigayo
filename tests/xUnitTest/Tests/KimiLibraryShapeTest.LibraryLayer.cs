@@ -480,6 +480,7 @@ public partial class KimiLibraryShapeTest
             ["Binding.retentionOccurred"] = Rule.Program,
             ["Binding.types.handedFound"] = Rule.Program, // HandedCallables' walk.
             ["Binding.types.handedSeen"] = Rule.Program,
+            ["Binding.types.handedPast"] = Rule.Program, // HandedPast's answers, per HandedCallables query (G408-B).
             ["Binding.types.retentionBounds"] = Rule.Program, // A retention computation's Callable bounds.
             ["Binding.types.composedTypes"] = Rule.Program, // Compose's bindings before interning.
             ["Binding.types.composedOrigins"] = Rule.Program,

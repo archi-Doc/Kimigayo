@@ -158,7 +158,7 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     try {
         $env:KIMI_FIXTURE_DIRECTORY = $fixtureDirectory
         $parallelMode = if ($TestParallel -eq 1) { 'none' } else { 'collections' }
-        & dotnet $dll -parallelMode $parallelMode -maxThreads $TestParallel -failSkips -result-xml $xml @filters *> $log
+        & dotnet $dll -parallelMode $parallelMode -maxThreads $TestParallel -result-xml $xml @filters *> $log
         $code = $LASTEXITCODE
     }
     finally { $env:KIMI_FIXTURE_DIRECTORY = $previousDirectory }
@@ -169,7 +169,9 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     try {
         # Zero executed tests is never evidence, and each requested selector executes a test of its own, so one that matches
         # only Explicit tests is not hidden by the common checks or another selector.
-        $executed = @(Get-KimiExecutedTests $xml)
+        $cases = @(Get-KimiRecordedCases $xml)
+        $executed = @(Get-KimiExecutedTests $cases)
+        foreach ($case in $cases.Where({ $_.result -ceq 'Skip' })) { $detail = "$($case.SelectSingleNode('reason').InnerText); $detail" }
         if ($executed.Count -eq 0) { throw 'The results record no executed test.' }
         Assert-KimiTestSelections $requestedClass $requestedMethod $executed 'among the executed tests'
     }

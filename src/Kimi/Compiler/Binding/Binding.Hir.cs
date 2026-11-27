@@ -135,7 +135,7 @@ public sealed partial class Binding
 
                 ops[node.SyntaxId] = op;
                 completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
-                    : (this.completion ??= new(binding, binding.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.PublishedCompletions)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
+                    : (this.completion ??= new(binding, null, static (ref NodeColumns columns) => ref columns.PublishedCompletions)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
                 BoundType? discardedType = null;
                 if (completions[node.SyntaxId] != HirCompletion.Unset)
                 {
@@ -186,6 +186,10 @@ public sealed partial class Binding
             if (node is ForKoto { Iteration: { } iteration } && op == HirOp.For)
             {
                 this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
+                if (iteration.Subject.BoundSymbol is not null)
+                {
+                    this.Visit(iteration.Subject); // The entry's input, the Subject Place of a Subject borrowed in place (SPEC 15.1.6).
+                }
             }
 
             (this.parent, this.parentOp, this.position, this.need, this.rooted) = (parent, parentOp, outer, need, rooted);

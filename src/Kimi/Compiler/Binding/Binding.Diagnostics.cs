@@ -73,9 +73,9 @@ public sealed partial class Binding
         var shorter = OriginDisplay(relation.Shorter, shorterBorrow, typeLevel);
         var operation = relation.Equality ? "==" : "outlives";
         // SPEC 23.1: a borrow or omitted end is also related at its syntax.
-        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer)
+        var longerAt = longer.Kind == "borrow" ? borrow ?? SubjectOf(relation.Longer) ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer)
             : longer.Kind == "closure" && RoleOf(relation.Longer) == ProjectionRole.ClosureValue ? relation.Longer.Binder : null; // ρ's literal.
-        var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : shorter.Kind == "borrow" ? shorterBorrow : null;
+        var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : shorter.Kind == "borrow" ? shorterBorrow ?? SubjectOf(relation.Shorter) : null;
         (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
             : longerAt is not null ? [("origin", longerAt, null)]
             : shorterAt is not null ? [("origin", shorterAt, null)]

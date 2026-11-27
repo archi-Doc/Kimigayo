@@ -250,6 +250,22 @@ public partial class ModuleBindingTest
     }
 
     [Theory]
+    [InlineData(RootSpec)]
+    [InlineData("alias A\n" + ASpecFixed)]
+    public void AnUnfixedReferenceNamesItsGenericBinderBesideASpecialization(string declarations)
+    {
+        var source = declarations + Item;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(Unbound, error.Code);
+        Assert.Equal(new SourceSpan(source.LastIndexOf("pick", StringComparison.Ordinal), 4), error.Span);
+        Assert.Equal("Generic parameter 'T' is not bound", error.Label);
+        Assert.Equal(new DiagnosticValue("parameter", DiagnosticValueKind.Text, "T"), Assert.Single(error.Reason!));
+        var declaration = Assert.Single(error.Related!);
+        Assert.Equal("declaration", declaration.Role);
+        Assert.Equal(new SourceSpan(source.IndexOf("<T>", StringComparison.Ordinal) + 1, 1), declaration.Span);
+    }
+
+    [Theory]
     [MemberData(nameof(GatheredGroups))]
     public void AGatheredGroupIsOneGroupForEveryUse(string name, string source, string defaults, string codes)
     {

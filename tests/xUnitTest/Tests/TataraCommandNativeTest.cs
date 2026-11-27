@@ -11,14 +11,13 @@ using Xunit;
 
 namespace XunitTest;
 
-// kimi tatara's native rows (Tatara design A3 §3), on the compiler's Tatara (one instance per process, Tatara B6b1); each skips off
-// Windows, and on Windows a missing tatara.dll fails it. Single-shot runs each line in a unit of its own; the session runs every line in one unit. The fatal
-// row leaves Tatara refusing every later call for the rest of its process, so it runs in a child test process of its own (Fatal).
+// kimi tatara's native rows (Tatara design A3 §3), on the compiler's Tatara (one instance per process, Tatara B6b1); each skips where
+// the process runs no native build (Repository.NativeBuilds). Single-shot runs each line in a unit of its own; the session runs every
+// line in one unit. The fatal row leaves Tatara refusing every later call for the rest of its process, so it runs in a child test
+// process of its own (Fatal).
 [Collection<ConsoleIsolationCollection>]
 public sealed class TataraCommandNativeTest : IDisposable
 {
-    private const string Windows = "kimi tatara's native builds run on Windows.";
-
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-session-" + Guid.NewGuid().ToString("N"));
 
     public TataraCommandNativeTest() => Directory.CreateDirectory(this.directory);
@@ -31,7 +30,7 @@ public sealed class TataraCommandNativeTest : IDisposable
     [Fact]
     public async Task EachLineEqualsSingleShot()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         string[] lines = ["build A/A.kimiproj", "run B/B.kimiproj", "run B/B.kimiproj --no-build", "build A/A.kimiproj", "build A/A.kimiproj"];
         var single = Path.Combine(this.directory, "single");
         var session = Path.Combine(this.directory, "session");
@@ -74,7 +73,7 @@ public sealed class TataraCommandNativeTest : IDisposable
     [Fact]
     public async Task ASessionBuildsEachTargetInTurn()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         var (windows, linux) = ("build A/A.kimiproj --Target " + TargetProfile.Windows.Target, "build A/A.kimiproj --Target " + TargetProfile.Linux.Target);
         var (alone, session) = (Path.Combine(this.directory, "alone"), Path.Combine(this.directory, "session"));
         foreach (var root in new[] { alone, session })
@@ -98,7 +97,7 @@ public sealed class TataraCommandNativeTest : IDisposable
     [Fact]
     public async Task ALineAfterACancelledLineSucceeds()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         Write(this.directory);
         var pressed = 0;
         var (code, text) = await Session(this.directory, [("build A/A.kimiproj", null), ("build A/A.kimiproj", null)], () =>
@@ -121,7 +120,7 @@ public sealed class TataraCommandNativeTest : IDisposable
     [Fact]
     public async Task AMalformedLibraryFailsOnlyItsLine()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         Write(this.directory);
         WriteF(this.directory, "malformed.lib", "!<arch>\nnot a library member\n"u8.ToArray());
         var (code, text) = await Session(this.directory, [("build F/F.kimiproj", null), ("build A/A.kimiproj", null)]);
@@ -138,7 +137,7 @@ public sealed class TataraCommandNativeTest : IDisposable
     [Fact]
     public async Task AFatalErrorEndsTheSessionOfItsProcess()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        Assert.SkipUnless(Repository.NativeBuilds, Repository.NoNativeBuilds);
         await FreshProcess.RunExplicit(typeof(Fatal), nameof(Fatal.AFatalErrorEndsTheSession), (Fatal.Folder, this.directory));
     }
 

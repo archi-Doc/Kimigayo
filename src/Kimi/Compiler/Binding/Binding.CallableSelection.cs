@@ -66,7 +66,7 @@ public sealed partial class Binding
         var owner = this.CallableContractType(type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type, scope);
 
         // The candidates are the callee's available Callable rows (TryCallable's), one per normalized signature with its weakest
-        // receiver; a failure relates a candidate's first row by its use (PremiseUse: the written clause, else its scope's owner).
+        // receiver; a failure relates the row supplying that receiver by its use (PremiseUse: the written clause, else its scope's owner).
         var start = this.premiseRows.Count;
         var classes = this.FirstRows(owner, scope, this.premiseRows);
         var rows = this.premiseRows.Count - start;
@@ -93,9 +93,9 @@ public sealed partial class Binding
                 {
                     candidates[count++] = new(signature, receiver, row);
                 }
-                else
+                else if (receiver != candidates[index].Receiver && WeakestReceiver(candidates[index].Receiver, receiver) == receiver)
                 {
-                    candidates[index] = candidates[index] with { Receiver = WeakestReceiver(candidates[index].Receiver, receiver) };
+                    candidates[index] = candidates[index] with { Receiver = receiver, Row = row };
                 }
             }
 

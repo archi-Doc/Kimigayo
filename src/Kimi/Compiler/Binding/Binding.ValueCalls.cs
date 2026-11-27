@@ -562,7 +562,7 @@ public sealed partial class Binding
             }
 
             // SPEC 10.5.1, 10.5.4, 15.6.4 step 2 (PLAN G494): each waiting part is completed at its instantiated parameter, after the solve,
-            // as a named call completes its waiting parts and erasures after selection (CompleteWaiting, CompleteArguments); every taken
+            // as a named call completes its waiting parts and erasures after selection (CompleteAtSelectedParameters, CompleteArguments); every taken
             // part's operation takes its instantiated parameter.
             for (var i = 0; i < count; i++)
             {
