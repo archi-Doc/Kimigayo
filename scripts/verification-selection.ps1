@@ -43,12 +43,21 @@ function Get-KimiRecordedCases([string] $ResultXml) {
     Select-Xml -LiteralPath $ResultXml -XPath '//test' | ForEach-Object { $_.Node }
 }
 
-# The cases a run executed: xUnit reports Explicit tests not requested as Not Run.
-function Get-KimiExecutedCases([string] $ResultXml) { Get-KimiRecordedCases $ResultXml | Where-Object result -CNE 'NotRun' }
-
-# The tests a run executed, as Class.Method.
-function Get-KimiExecutedTests([string] $ResultXml) {
-    Get-KimiExecutedCases $ResultXml | ForEach-Object { "$($_.type).$($_.method)" }
+# Only an unconfigured semantic comparison may skip. Neither it nor an unrequested Explicit test executed.
+function Get-KimiExecutedTests([Xml.XmlElement[]] $Cases) {
+    foreach ($case in $Cases) {
+        $name = "$($case.type).$($case.method)"
+        if ($case.result -ceq 'NotRun') { continue }
+        if ($case.result -ceq 'Skip') {
+            $reason = $case.SelectSingleNode('reason').InnerText
+            if ($name -cne 'XunitTest.SemanticSnapshotTest.RequestedSnapshotMatchesTheBaseline' -or
+                $env:KIMI_SEMANTIC_SNAPSHOT -or $reason -cne 'semantic comparison not configured') {
+                throw "Unexpected skip of ${name}: $reason"
+            }
+            continue
+        }
+        $name
+    }
 }
 
 # Every class and method selection matches one of the tests, Class.Method: the methods discovered in the freshly built
