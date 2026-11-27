@@ -157,7 +157,8 @@ public sealed partial class Binding
     // place a store writes apart (IsMutableDeclaration), so its paths are opened apart; a `let` local is one place, so a stored part met on
     // several of its paths is opened once, in one query of rewrittenParts. The fit records each region's bound from the value
     // (CheckTypeUse). Each slot's row is its position's variance in the local's Type, composed as RelationWalk composes it; a `let` local's
-    // part met again keeps its first row, which no reader reads (its value is published).
+    // part met again keeps its first row, which no reader reads (its value is published), and its regions, which merge its paths
+    // (DECISIONS R8-M56), are marked so (MarkMerged; PLAN G922 U1).
     private BoundType LocalBorrowType(BoundType type, Koto owner, Koto value, int slot)
     {
         if (!InfersStoredType(owner) || !type.StoresOrigin)
@@ -166,6 +167,7 @@ public sealed partial class Binding
         }
 
         var query = IsMutableDeclaration(owner) ? 0u : this.rewrittenParts.Begin(this.storageVersion);
+        var merged = 0u; // MarkMerged's visitedParts query, begun at the first part met again.
         var result = Open(type, OriginVariance.Covariant);
         _ = this.CheckTypeUse(type, result, value, out _);
         return result;
@@ -181,6 +183,14 @@ public sealed partial class Binding
             {
                 opened = OpenPart(current, variance);
                 this.rewrittenParts.Set(current, query, opened);
+            }
+            else
+            {
+                merged = merged == 0 ? this.visitedParts.Begin(this.storageVersion) : merged;
+                if (this.FirstVisit(opened!, merged))
+                {
+                    this.MarkMerged(opened!, owner, merged);
+                }
             }
 
             return opened!;
@@ -228,6 +238,39 @@ public sealed partial class Binding
         // A `let` region's value is the initializer's Origin at its slot (SPEC 15.3.6, 15.4.4: its one bound, fixed at the declaration).
         BoundOrigin Region(BoundOrigin initial, OriginVariance row)
             => query != 0 ? this.ValuedRegion(owner, slot--, row, initial, value) : this.LocalRegionSlot(owner, slot--, row);
+    }
+
+    // DECISIONS R8-M56 (PLAN G922 U1, the owner's O-534 (a) interim): the regions of `owner`'s opened part that its opening met again on
+    // another path merge those paths, each marked Merged for the name limit (UnmergedSelection); each distinct part is walked once per
+    // opening (visitedParts). A contract part keeps its own Origins, which are no regions of `owner`.
+    private void MarkMerged(BoundType part, Koto owner, uint query)
+    {
+        if (!part.StoresOrigin || part.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
+        {
+            return;
+        }
+
+        Mark(part.Origin);
+        for (var i = 0; i < part.OriginArguments.Count; i++)
+        {
+            Mark(part.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < part.Components.Count; i++)
+        {
+            if (this.FirstVisit(part.Components[i], query))
+            {
+                this.MarkMerged(part.Components[i], owner, query);
+            }
+        }
+
+        void Mark(BoundOrigin? origin)
+        {
+            if (origin is not null && SlotRegion(origin) && ReferenceEquals(origin.Binder, owner) && this.Region(origin) is { } row)
+            {
+                row.Merged = true;
+            }
+        }
     }
 
     private BoundType RegionValuesPart(BoundType type, Koto use, uint query)

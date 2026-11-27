@@ -9,6 +9,11 @@ namespace XunitTest;
 // premise from the declaring body. Rows: g492a-ii's probes (labels.md, labels-rv.md), each with its records as `code@line:column`.
 public partial class OriginPremiseCatalogTest
 {
+    // PLAN G922's probe frame (rev2, rev2-review): `t`'s opening merges its two `ref/i64` parts into one region, which `a` and `b` select.
+    private const string MergedFrame = "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match t@copy\n        (let a, let b)\n";
+
+    private const string MergedEnd = "            return 0\n    return 0\n";
+
     // The class 1 family (invalid rows accepted before (ii)), their annotated and `var` twins, and the forms beside them; pl1, a chain of
     // `let` locals named in a Closure's signature with no comparison, has its `var` twin's record (review-ii-r4 N2). a1p and a1s3
     // take their `var` twin's records (a1pv, a1s3v): a named nested function's signature names the local's region, fixed there with no
@@ -285,6 +290,64 @@ public partial class OriginPremiseCatalogTest
         { "ncmp", "func eqa(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    let z = p\n    let x = p\n    let c1 = func () -> i32\n        let f: (uniq/(ref/i64 during z), uniq/(ref/i64 during x)) -> i32 = eqa\n        return 0\n    let k = func (v: ref/i64 during x) -> ref/i64 during p => v\n    return 0\n", "UnprovenOriginRelation_Kd@8:76|UnprovenOriginRelation_Kd@10:63" },
         { "ncmpv", "func eqa(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var z = p\n    var x = p\n    let c1 = func () -> i32\n        let f: (uniq/(ref/i64 during z), uniq/(ref/i64 during x)) -> i32 = eqa\n        return 0\n    let k = func (v: ref/i64 during x) -> ref/i64 during p => v\n    return 0\n", "UnprovenOriginRelation_Kd@8:76|UnprovenOriginRelation_Kd@10:63" },
     };
+
+    // PLAN G922 U1 (the owner's O-534 (a) interim; DECISIONS R8-M56 as amended): a name outside a `let` local's body that selects a
+    // region the local's opening merged, through a binding the name's Closure does not carry, is the located limit at the name, a plain
+    // name (pbm), an operand of a meet (pbmm), a projection (pbmp) and a name in a Function Type parameter (pbmfp, whose result is not
+    // bound once its parameter fails, as on dev) alike. Class 1 (invalid, accepted before): pbm, pbmc1 (b not carried), rvb (in the nested
+    // body), rvn, pbmn and pbmn2 (nested Tuples), pbmu (a copy local's own merged part), pbmg2 (a generic call's result), rvcn and rvcnc
+    // (a named function's or a nested Closure's header naming a Closure's captures, which only that Closure's own uses carry), and cbu (an
+    // Origin name alone is no capture, SPEC 9.3). O-534 (a)'s approved reductions (valid): pbmq, pbmt and pbmnt, and under the owner's
+    // O-540 (a) the valid forms whose binding the Closure carries in a way the carried test does not read, until U2/U3: pbmtc (pbmc1's
+    // Types), pbmct (b carried through t), pbmcc (through `let c = b`), pbmco (an omitted list's header, before its captures form), and
+    // cbi and cbif (an omitted list's body names b before b's first value use, in the body or in a nested omitted list; cbib, the value
+    // use first, is accepted: the limit depends on statement order). rvr's record moves from its relation to the limit at `a` (DECISIONS
+    // Q13: the relation reads a's failed Type and rests). Kept: pbmc (each name carried), pbmf (one call Origin), rvo (the local's own
+    // body), rvc (no merged name), rvcnl (two `let` locals, nothing merged), rvm (each name a `let` local's own unmerged region); and,
+    // invalid and accepted as on dev, rvg and rvg0 (a generic call's result holds the contributor's Origin p, no merged region: PLAN
+    // G922's O-2 row) and rvh (its names are in the declaring body; G922 U2/U3).
+    public static TheoryData<string, string, string> MergedRegionRows => new()
+    {
+        { "pbm", MergedFrame + "            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmm", MergedFrame + "            func inner(x: ref/i64 during (a and b)) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@5:43|Unsupported_Kd@5:49" },
+        { "pbmp", "struct View {source}\n    Self is Copy\n    public let data: ref/i64 during source\n    public init(data: ref/i64 during source) => self.data = data\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (View.init(p), View.init(p))\n    match t@copy\n        (let a, let b)\n            func inner(x: ref/i64 during a.source) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@9:42" },
+        { "pbmfp", MergedFrame + "            func inner(f: (ref/i64 during a) -> ref/i64 during b) -> i32 => 0\n" + MergedEnd, "Unsupported_Kd@5:43" },
+        { "pbmc1", MergedFrame + "            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:70" },
+        { "pbmtc", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match (t.0, t.0)\n        (let a, let b)\n            let g = func [a] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:70" },
+        { "pbmct", MergedFrame + "            let g = func [a, t] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:73" },
+        { "pbmcc", MergedFrame + "            let c = b\n            let g = func [a, c] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@6:73" },
+        { "pbmco", MergedFrame + "            let g = func (x: ref/i64 during a) -> i64 => x@follow + a@follow\n" + MergedEnd, "Unsupported_Kd@5:45" },
+        { "cbi", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                return y@follow + b@follow\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbif", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                let h = func () -> i64 => b@follow\n                return y@follow + h()\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbu", MergedFrame + "            let g = func () -> i64\n                let y: ref/i64 during b = a\n                return y@follow\n" + MergedEnd, "Unsupported_Kd@6:39" },
+        { "cbib", MergedFrame + "            let g = func () -> i64\n                let z = b@follow\n                let y: ref/i64 during b = a\n                return y@follow + z\n" + MergedEnd, string.Empty },
+        { "rvcn", MergedFrame + "            let g = func [a, b] () -> i32\n                func inner(x: ref/i64 during a) -> ref/i64 during b => x\n                return 0\n" + MergedEnd, "Unsupported_Kd@6:46|Unsupported_Kd@6:67" },
+        { "rvcnc", MergedFrame + "            let g = func [a, b] () -> i32\n                let h = func [] (x: ref/i64 during a) -> ref/i64 during b => x\n                return 0\n" + MergedEnd, "Unsupported_Kd@6:52|Unsupported_Kd@6:73" },
+        { "rvcnl", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let a = p\n    let b = p\n    let g = func [a, b] () -> i32\n        func inner(x: ref/i64 during a, y: ref/i64 during b) -> i32 => 0\n        return 0\n    return 0\n", string.Empty },
+        { "pbmu", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    let u = t\n    match u@copy\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@6:42|Unsupported_Kd@6:63" },
+        { "pbmf", "func dup(x: ref/i64) -> (ref/i64 during x, ref/i64 during x) => (x, x)\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match dup(t.0)\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "pbmn", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), p)\n    match t@copy\n        ((let a, let b), _)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmn2", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), p)\n    match t@copy\n        ((let a, _), let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmg2", "func id<T>(x: T) -> T => x@move\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match id((t.0, t.0))\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@6:42|Unsupported_Kd@6:63" },
+        { "pbmnt", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), p)\n    match (t.0, t.0)\n        ((let a, _), (let b, _))\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "rvb", MergedFrame + "            func inner(x: ref/i64 during a) -> i32\n                let y: ref/i64 during b = x\n                return 0\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@6:39" },
+        { "rvn", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = ((p, p), (p, p))\n    match t@copy\n        ((let a, _), (_, let b))\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "rvg", "func two<A, B>(x: A, y: B) -> (A, B) => (x@move, y@move)\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match two(t.0, t.1)\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "pbmq", MergedFrame + "            func inner(x: ref/i64 during a) -> ref/i64 during a => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "pbmt", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p)\n    match (t.0, t.0)\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, "Unsupported_Kd@5:42|Unsupported_Kd@5:63" },
+        { "rvr", "func outer(p: ref/i64, q: ref/i64) -> i32\n    let t = (p, p, q)\n    match t@copy\n        (let a, let b, let c)\n            func inner(x: ref/i64 during a) -> ref/i64 during c => x\n" + MergedEnd, "Unsupported_Kd@5:42" },
+        { "pbmc", MergedFrame + "            let g = func [a, b] (x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "rvo", MergedFrame + "            let y: ref/i64 during b = a\n" + MergedEnd, string.Empty },
+        { "rvc", MergedFrame + "            let g = func [b] () -> ref/i64 during p => b\n" + MergedEnd, string.Empty },
+        { "rvm", MergedFrame + "            let c = b\n            let d = a\n            func inner(x: ref/i64 during d) -> ref/i64 during c => x\n" + MergedEnd, "UnprovenOriginRelation_Kd@7:68" },
+        { "rvg0", "func id<T>(x: T) -> T => x@move\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    match id((p, p))\n        (let a, let b)\n            func inner(x: ref/i64 during a) -> ref/i64 during b => x\n" + MergedEnd, string.Empty },
+        { "rvh", MergedFrame + "            let g: (ref/i64 during a) -> ref/i64 during b = func [] (x) => x\n" + MergedEnd, string.Empty },
+    };
+
+    [Theory]
+    [MemberData(nameof(MergedRegionRows))]
+    public void ANameOfAMergedRegionOutsideItsBodyIsTheLimit(string row, string body, string records)
+        => Assert.True(records == LocalOriginClauseTest.Records(body + Main), $"{row}: {LocalOriginClauseTest.Records(body + Main)}");
 
     [Theory]
     [MemberData(nameof(NestedSignatureRows))]
