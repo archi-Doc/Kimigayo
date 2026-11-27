@@ -23,8 +23,9 @@ namespace Kimi.Compiler;
 /// <summary>The compile stack: compiler threads with a 128 MB reserve, and the hop that runs a site's work on one.</summary>
 internal static class CompilerThread
 {
-    /// <summary>S, the stack reserve of a compiler thread.</summary>
-    internal const int StackSize = 128 << 20; // The owner's O-82 (b): 3.5 x (H + L) levels of dev's deepest walk frame.
+    /// <summary>S, the stack reserve of a compiler thread: the owner's O-82 (b), 3.5 x (H + L + 2) levels of dev's deepest walk frame
+    /// (117,179,216 B; G144-25: the generated function and its Body stand two levels above every root item).</summary>
+    internal const int StackSize = 128 << 20;
 
     // The pool, also its own monitor.
     private static readonly Stack<Worker> Idle = new();

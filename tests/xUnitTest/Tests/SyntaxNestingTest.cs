@@ -10,7 +10,9 @@ namespace XunitTest;
 
 // DECISIONS BU-112 (PLAN G444 U2): Parsing bounds every published tree at the syntax nesting limit L = 1,024 (IMPL A.4): a node at
 // depth L that has a child is cut, one Resource record NestingLimit_Kd per cut, and nothing under a cut is walked, so a program at
-// depth L is accepted and one level more is rejected with that record alone. Fail-before: dev accepted each L + 1 program.
+// depth L is accepted and one level more is rejected with that record alone. Fail-before: dev accepted each L + 1 program. The depth
+// is IMPL A.4's: a directive's marker and the generated function with its Body count no level (G144-25), and a Condition or an
+// excluded part stands at its marker's place; restated so, the root shapes keep two levels more than dev did (G144-30).
 public class SyntaxNestingTest(ITestOutputHelper output)
 {
     private const int L = 1024;
@@ -147,17 +149,60 @@ public class SyntaxNestingTest(ITestOutputHelper output)
         Assert.DoesNotContain(all, static x => x.ChildrenWithSource().Any(static y => y is CompileTimeSwitchKoto));
     }
 
-    // The depth of a tree, its root at 0 (SyntaxNesting's measure, also KimiLibraryShapeTest's), by an explicit stack: the test thread has the default stack.
+    // G144-30 (SPEC 19.4 under IMPL A.4): a part under `#if true` or `#if false` stands where the same syntax without the directive
+    // stands, so it is kept at L and cut one level more, at the same syntax. Fail-before: dev cut the kept rows (the generated pair
+    // counted two levels) and walked no excluded part.
+    [Fact]
+    public void AnExcludedPartIsBoundedWhereSelectedSyntaxIs()
+    {
+        var levels = LevelsWithin("parentheses");
+        var plain = Source("parentheses", levels + 1);
+        var cut = Assert.Single(this.Compile(plain).Records);
+        foreach (var directive in (string[])["#if true", "#if false"])
+        {
+            var kept = this.Compile(Under(directive, Source("parentheses", levels)));
+            Assert.Empty(kept.Records);
+            Assert.True(kept.Accepted);
+
+            var source = Under(directive, plain);
+            var record = Assert.Single(this.Compile(source).Records);
+            Assert.Equal((cut.Code, Text(plain, cut.Span)), (record.Code, Text(source, record.Span)));
+        }
+    }
+
+    // G144-31 (r1 §5's 2a column): a Condition stands at its marker's place, so one past L is cut at the Condition, the selection
+    // unchanged; where the directive's syntax is invalid, the Resource record joins the Language one. Fail-before: dev walked no
+    // Condition.
+    [Fact]
+    public void AConditionPastTheLimitIsCutAtTheCondition()
+    {
+        var condition = $"#if {string.Join(" or ", Enumerable.Repeat("true", 3000))}\n";
+        var valid = this.Compile(condition + "func f() => ()\n");
+        var record = Assert.Single(valid.Records);
+        Assert.Equal((nameof(DiagnosticCode.NestingLimit_Kd), 4), (record.Code, record.Span.Start));
+        Assert.False(valid.Accepted);
+
+        var invalid = this.Compile(condition + "func f() -> i32 => (1 +)\n").Records;
+        Assert.Equal([nameof(DiagnosticCode.NestingLimit_Kd), nameof(DiagnosticCode.ExpectedSyntax_Kd)], invalid.Select(static x => x.Code));
+        Assert.Equal(4, invalid[0].Span.Start);
+    }
+
+    // The depth of a tree as SyntaxNesting counts it (IMPL A.4; G144-25), its root at 0, also KimiLibraryShapeTest's: a directive's
+    // marker and the generated function with its Body count no level, and a marker's Source is walked. By an explicit stack: the test
+    // thread has the default stack.
     internal static int Depth(Koto root)
     {
+        var generated = root.Kotonoha.GeneratedFunction;
         var deepest = 0;
         var stack = new Stack<(Koto Node, int Depth)>([(root, 0)]);
         while (stack.TryPop(out var top))
         {
             deepest = Math.Max(deepest, top.Depth);
-            foreach (var child in top.Node.Children())
+            var node = top.Node;
+            var level = node is CompileTimeSwitchKoto || (generated is not null && (ReferenceEquals(node, generated) || ReferenceEquals(node, generated.Body))) ? 0 : 1;
+            foreach (var child in node.ChildrenWithSource())
             {
-                stack.Push((child, top.Depth + 1));
+                stack.Push((child, top.Depth + level));
             }
         }
 
@@ -191,6 +236,14 @@ public class SyntaxNestingTest(ITestOutputHelper output)
 
         return source.Append(' ', 4 * levels).Append("let v: i32 = 1\n").ToString();
     }
+
+    // source as a directive's block: each line indented under it.
+    private static string Under(string directive, string source)
+        => $"{directive}\n{string.Concat(source.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => $"    {x}\n"))}";
+
+    // The text a span covers.
+    private static string Text(string source, SourceSpan span)
+        => source.Substring(span.Start, span.Length);
 
     // A left-deep chain of `levels` additions, which the parser builds in a loop.
     private static string Plus(int levels)

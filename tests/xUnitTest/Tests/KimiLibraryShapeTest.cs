@@ -173,7 +173,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
-    // run time: each lies within IMPL A.4's syntax depth L, measured as SyntaxNesting measures it (a node's distance from its root).
+    // run time: each lies within IMPL A.4's syntax depth L, measured as SyntaxNesting measures it (a node's distance from its root; a
+    // directive's marker and the generated function with its Body count no level, G144-25).
     [Fact]
     public void TheLibraryLiesWithinTheSyntaxNestingLimit()
         => WithinTheSyntaxNestingLimit(Compilation.CreateForTest().Library.Kotonoha.RootKoto);
