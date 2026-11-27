@@ -115,7 +115,7 @@ public sealed partial class Binding
         }
 
         var structural = this.ResultStructure();
-        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess, static (ref NodeColumns columns) => ref columns.GuessedCompletions);
+        var guessed = this.guessedCompletion ??= new(this, this.RecordGuess, static (ref NodeColumns columns) => ref columns.GuessedCompletions);
         var nodes = this.guessNodes ??= new();
         guessed.Clear();
         nodes.Clear();
@@ -630,7 +630,7 @@ public sealed partial class Binding
     {
         // Binding's structural completion with its Never evidence, cleared once per walk: the descents of discarded tails and the
         // end arrivals compose each node's completion once.
-        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.LintCompletions);
+        private readonly StructuralCompletion completion = new(binding, null, static (ref NodeColumns columns) => ref columns.LintCompletions);
 
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;

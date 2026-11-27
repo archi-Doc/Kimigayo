@@ -252,7 +252,7 @@ public sealed partial class Binding
     // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
     private StructuralCompletion ResultStructure()
     {
-        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.ResultCompletions);
+        var structural = this.resultStructure ??= new(this, null, static (ref NodeColumns columns) => ref columns.ResultCompletions);
         structural.Clear();
         return structural;
     }
