@@ -254,13 +254,14 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     }
 
     // IMPL 20.6.1 (the Tatara plan's B7b8): the test unit's target is the first product target with a row in the target table, so a
-    // linux-x64 project's test unit is checked, and a target without a row leaves none (TestTargetUnavailable_Kd). A staged row
-    // (none-x64) is a row, whose test preparation is the location-only Unsupported_Kd, as the CLI's Test-mode check records.
-    // Fail-before: the linux-x64 row is TestTargetUnavailable_Kd too (the Windows x64 comparison).
+    // linux-x64 or x86_64-unknown-none project's test unit is checked, and a target without a row leaves none
+    // (TestTargetUnavailable_Kd). Fail-before: the linux-x64 row is TestTargetUnavailable_Kd too (the Windows x64 comparison); the
+    // x86_64-unknown-none row (the Tatara plan's B9g; B9b's membership line, removed with TargetProfile.Staged as planned) recorded the
+    // location-only Unsupported_Kd at the project.
     [Theory]
     [InlineData("x86_64-unknown-linux-musl", null)]
     [InlineData("x86_64-unknown-linux-gnu", "TestTargetUnavailable_Kd")]
-    [InlineData("x86_64-unknown-none", "Unsupported_Kd")]
+    [InlineData("x86_64-unknown-none", null)]
     public async Task ATestUnitTakesATargetWithARow(string target, string? code)
     {
         var source = Valid + "#Test\nfunc check()\n    $expect(true)\n";
