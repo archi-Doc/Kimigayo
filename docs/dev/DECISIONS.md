@@ -36830,3 +36830,40 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     page size as a line flag (F7); a fallback to the linker's layout when the row's script is missing (a broken contract, the
     initializer's error); dropping `--orphan-handling=error` (ruling 152 (b)); placing the three tables by an exception list instead of the
     script (they are the script's complete layout).
+- **T-M61 A platform member's allocation halts: the layer's allocation calls** (Tatara, 2026-11-27; PLAN G1455, the plan's unit
+  B9d3, Q-834, D-1349; Major; SPEC 22.4.5 ¶3, IMPL 21.4.3, 21.6.3; D-1325's review B3; O-538 (a), K's OWNER line 11-27 08:55):
+  - **The rule** (O-538 (a): SPEC 22.4.5 ¶3, IMPL 21.6.3 and the Tatara plan's decision 30 hold as written): every run of a
+    platform member, the program's own calls included, ends the program at an allocation, a `Console` write, a clock read or an
+    Abort, without a report.
+  - **The cause:** on x86_64-unknown-none only the layer's six routines tested the busy flag (T-M56), and the allocator takes most
+    blocks without the layer (a class list's pop, the current region's bump, `__kimi_heap_take_run`'s spare), so an allocation inside
+    a platform member succeeded where SPEC 22.4.5 ¶3 ends the program.
+  - **The test:** `__kimi_platform_idle` (`RuntimeAbi.PlatformIdle`, `void ()`), the none layer's own routine (its definition list,
+    outside `PlatformRoutines`): T-M56's flag test (set: `__kimi_halt`), no set and no clear, then `ret void`.
+  - **The layer's allocation calls:** `RuntimeLayer.AllocationCalls`, the layer's routines the allocator calls when it takes a block,
+    before it reads its state, each a Unit routine without parameters, as `StartCalls` is the start's (T-M30): Windows and Linux
+    `[]`, None `[PlatformIdle]`. `RowConstants` writes them at `{{allocation_calls}}`, at the head of `__kimi_heap_allocate`'s first
+    line, so a hosted row's runtime text and code are unchanged. Every heap block passes through `__kimi_heap_allocate` (`__kimi_alloc`,
+    and `__kimi_raw_allocate` through it; `__kimi_try_allocate`; the test runtime's), so every allocation while the flag is set
+    halts; a zero-byte `Raw.allocate` takes no block (IMPL 21.4.3) and no test.
+    A release has none: SPEC 22.4.5 ¶3 ends the program at an allocation, not at a release. A run the runtime makes holds no block to
+    release (no static storage, the Tatara plan's decision 45; `start` runs under the flag, so the platform value holds none). A run
+    the program makes can release a block it took earlier; B9d4's entry says how its run reaches the layer.
+  - **Every run of a member:** the flag is set today by the layer's routines alone, the runtime's calls of a member. The Tatara unit
+    B9d4 (T's ruling 164) makes each member's own body set it on entry and restore it on return (x86_64-unknown-none only), so a
+    program's own call of a member halts at the same test, which it leaves unchanged (PLAN G1455).
+  - **One writer of a layer's call lines:** `RuntimeAbi.Calls`, one `  call void @name()` line per routine of a list, the empty
+    string for none. `RowConstants` writes the allocation calls' marker text through it, and the row's frame
+    (`LlvmModuleText.ModuleFrame.StartCalls`) the start's calls once per row, which `ModuleCodegen.WriteStart` writes in place of its
+    own loop (T's ruling 149 N1; the unit's first commit, behaviour unchanged).
+  - **Cost:** hosted rows none. The none row: at O2 the inlined test (the flag's byte compare and a branch to a cold `__kimi_halt`
+    call) on every allocation path; at O0 one call.
+  - **Rejected:** one more `PlatformRoutines` routine that every layer defines, empty on the hosted rows (two routines without work,
+    every hosted module's text and O0 code changed; T-M30 lists a routine some layers lack in a call column, as Windows lacks
+    `__kimi_platform_start`); leaving the allocator alone (only a block needing new pages halts, so the end depends on the heap's
+    state, not SPEC 22.4.5 ¶3); the six routines emptying the allocator's lists, region and spare while a member runs (the layer
+    reading the allocator's representation; state saved and restored on every platform call); the test in `__kimi_alloc` and
+    `__kimi_try_allocate` (two copies; the test runtime's allocation untested); the busy flag in the common runtime (hosted text; the
+    halt is the layer's); `WriteStart`'s loop kept beside the marker's text (two writers of one line form); `llvm.expect` on the test
+    (a `noreturn` call's block is cold).
+  - **For OSF3b:** `__kimi_platform_idle` takes no masking: it sets nothing, and B10 §6.5 rule 1 keeps allocation out of handlers.
