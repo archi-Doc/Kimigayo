@@ -23,7 +23,7 @@
 // with a package identity (PackageIdentities) states that identity and the pinned LLVM version, and a row has a package exactly when
 // it reserves the backend supply, whose material is one file; a row's script is its catalog's linkerScript (every catalog's, placed
 // Script by that member), named as its LinkerScript column, and a row has one exactly when that column is not null; the supplies are
-// every row's reserved supplies (AllRows) in the rows' order, each row's in its order, else the type initializer throws
+// every row's reserved supplies (Rows) in the rows' order, each row's in its order, else the type initializer throws
 // InvalidDataException; each resource's SHA-256 is its file's (NativeToolchainTest's catalog row; not checked at a start, stated by
 // toolchain verify); a file's facts' first line is its bytes' SHA-256 and their body Tatara's inspection of them (NativeToolchainTest's
 // facts row; not checked at a start).
@@ -112,7 +112,7 @@ public static class ToolchainIdentity
             .. catalogs.Select(static x => (x.Row, x.Supply.Name, new[] { ("resolution", "toolchain") }, x.Files)),
         ];
         var supplies = new List<CompilerSupply>();
-        foreach (var row in TargetProfile.AllRows)
+        foreach (var row in TargetProfile.Rows)
         {
             supplies.AddRange(material.Where(x => x.Row == row).Select(static x => new CompilerSupply(x.Row, x.Row.Supply(x.Name)!, x.Entry, x.Files)));
             if (!supplies.Where(x => x.Row == row).Select(static x => x.Supply).SequenceEqual(row.Supplies))
@@ -123,7 +123,7 @@ public static class ToolchainIdentity
 
         Supplies = [.. supplies];
         Scripts = [.. catalogs.Where(static x => x.Script is not null).Select(static x => (x.Row, x.Script!))];
-        foreach (var row in TargetProfile.AllRows)
+        foreach (var row in TargetProfile.Rows)
         {
             if (Array.Exists(PackageIdentities, x => x.Row == row) != (row.Supply(Backend.Name) is not null) ||
                 Of(row, Backend.Name) is { Files.Length: not 1 } || row.LinkerScript != Script(row)?.Name)

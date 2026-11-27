@@ -2,10 +2,9 @@
 
 // Origin inference of a call's or a contract comparison's per-call Origins (SPEC 15.3.6, 10.5; DECISIONS BU-221).
 // - Responsibility: the solve's bounds and variables (OriginInference: CollectOriginInference, a declaration's relations), their
-//   candidates in a fixpoint by the solve's reading of SPEC 15.3.6's table (RowCandidate, with its two departures until PLAN G1208;
-//   SolveLocalBounds reads it too) with the strongest lower bound (StrongestLowerBound, which a local region's candidate shares), the
-//   representatives of variables without a principal solution, J2's waited variables, and, outside a selection, the judgment of each
-//   bound.
+//   candidates in a fixpoint by the solve's reading of SPEC 15.3.6's table (RowCandidate, with its two departures until PLAN G1208)
+//   with the strongest lower bound (StrongestLowerBound, which a local region's candidate shares), the representatives of variables
+//   without a principal solution, J2's waited variables, and, outside a selection, the judgment of each bound.
 // - Inputs: the callee's or the required signature, the actual Types, the use's premises (ProvesOriginOutlives at the use).
 // - Outputs: the solution (`origins`, `inputs`) and the solve's failure (OriginInference.Failure).
 // - Invariants: a candidate depends neither on the order of the bounds nor on that of the variables; a selection judges no bound; a
@@ -657,10 +656,10 @@ public sealed partial class Binding
         }
     }
 
-    // The call solve's reading of SPEC 15.3.6's table (DECISIONS BU-221; R7-O2 A1), read by the solve's fixpoint, the representative and a
-    // local's clauses (SolveLocalBounds): a variable's candidate by its row from the meet of its upper bounds (`upper`) and its strongest
-    // lower bound (`lower`, StrongestLowerBound); contravariant the lower bound and a variable at no position the meet, else the lower
-    // bound, as SPEC states them. It departs from the table twice: a covariant variable without an upper bound takes the lower bound (the
+    // The call solve's reading of SPEC 15.3.6's table (DECISIONS BU-221; R7-O2 A1), read by the solve's fixpoint and the representative:
+    // a variable's candidate by its row from the meet of its upper bounds (`upper`) and its strongest lower bound (`lower`,
+    // StrongestLowerBound); contravariant the lower bound and a variable at no position the meet, else the lower bound, as SPEC states
+    // them. It departs from the table twice: a covariant variable without an upper bound takes the lower bound (the
     // table: none), and an invariant one gives none unless its meet and its lower bound are proven equal (the table: otherwise the
     // covariant, else the contravariant candidate), which the representative then takes. Removed when the solve reads the table itself
     // (PLAN G1208: one owner moves the solve's records); a local region's candidate is the table's (Binding.LocalRegions'

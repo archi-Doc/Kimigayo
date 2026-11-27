@@ -424,24 +424,6 @@ public sealed class FunctionKoto : DeclarationKoto
     // signature's Binder: an accessor view's BoundAccessor.Binder, else the function.
     internal Koto OriginBinder => (Koto?)this.Accessor?.Binder ?? this;
 
-    internal bool IsPropertyWitness { get; private set; }
-
-    internal void SetPropertyWitnessBody(Koto expression, BoundType result)
-    {
-        if (!this.IsPropertyWitness)
-        {
-            this.ReturnType = new IdentifierNameKoto(expression, "result") { Parent = this };
-        }
-
-        this.IsPropertyWitness = true;
-        this.IsRequirement = false;
-        this.Body = null;
-        this.ExpressionBody = expression;
-        expression.Parent = this;
-        this.ReturnType!.BoundType = result;
-        this.ReturnType.BindingState = BindingState.Resolved;
-    }
-
     // An execution view of a static initializer, retaining its original syntax and source location.
     internal FunctionKoto(BoundProperty property)
         : base(property.Declaration.CodeContext, property.Declaration.Span)
@@ -517,10 +499,7 @@ public sealed class FunctionKoto : DeclarationKoto
         var accessor = this.Accessor!;
         this.Body = accessor.Declaration!.Body as CodeBlockKoto;
         this.ExpressionBody = this.Body is null ? accessor.Declaration.Body : null;
-        if (!this.IsPropertyWitness)
-        {
-            this.ReturnType = accessor.Declaration.ReturnType;
-        }
+        this.ReturnType = accessor.Declaration.ReturnType;
 
         for (var i = 0; i < this.Parameters.Count; i++)
         {
