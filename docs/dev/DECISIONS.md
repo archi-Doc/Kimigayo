@@ -10838,7 +10838,7 @@ resumed by R4-M86 (2026-10-20).
     states Unstated; AdtDef's view stays the kept part WithoutRawOrigins. Its readers: `StoredType(syntax, owner)` (a Case payload's
     construction and pattern read, inline layout, C layout, zero stride, Copy's derivation, borrow retention, destruction, the old enum
     analysis, ObjectGenerationPlan), a member access's Type (Binding.Expressions), a synthesized stored-Field read and a stored
-    witness's Field (Binding.PropertyWitnesses, Binding.PropertyMatching), a base part under an instance for member lookup
+    witness's Field (Binding.PropertyWitnesses (R7-M127: deleted), Binding.PropertyMatching), a base part under an instance for member lookup
     (Binding.MemberLookup) and keepers' referents; so a lookup through a base clause naming no Type pends, a dependent of Binding's
     rejection (SPEC 23.1.2): `struct DerC : BaseF<A.Item>` with A's binding rejected adds UnresolvedBinding_Kd at `d.g` beside
     Binding's records. `StoredType(BoundType, owner)`, the plain substitution, remains for Types that are no stored part: Contract
@@ -20624,6 +20624,10 @@ structure is recorded here by the unit that first implements it.
   writes (the same cause); the refusal left in the materializer (F5b resolves without a CallPlan); extracting `InstanceReference`'s
   matching half before F5b, its second caller.
   - Superseded in part by R8-M4: `RequirementWitnessKind.LibraryWitness` replaces `FixedArrayEntry` and `IntegerPosition`; the one-rule shape stands.
+  - Superseded in part by R7-M127 (R7-P5b): the CallPlan materializer `InstantiateRequirementCall` and its materialization (Origin
+    translation, receiver projection, the standard bridge, CallPlan storage) are deleted. Binding keeps the requirement call, and a
+    selected call's receiver is projected by `ProjectReceiver` from the core's base path. The core's callers are `ProjectReceiver`
+    (the call's `ConstraintScope`) and `TyCtxt.Witness`.
 - **R5-M23 The R6-check prerequisite package Q8** (owner, 2026-10-18: 「Q8を承認」, answering the request to approve the package
   with Q8-6 and Q8-7 as proposed; OQ10, R5-M1) `draft/Sketches/R5 Step 0/Q8-package.md` with `Q8-decisions.md` (Q8-1a–Q8-8) is
   the owner-approved design of DEC Q6 form 1 for Q7, Q16, Q17, Q21 and H1a, and of form 2 for the lint group G:L (Q9–Q12); H1
@@ -20916,6 +20920,8 @@ structure is recorded here by the unit that first implements it.
     modulo Origins (D1's Design B).
   - Amended by R5-M162 (G7): `Binding.ClosureCall` and its memo are deleted with their readers, `ResetCallContexts` is inlined, and
     `TyCtxt.StorageSubst`'s Emission readers are gone (its old-analysis and Binding readers stay until R6-check and R7).
+  - Amended by R7-M127 (R7-P5b): Binding's last reader, requirement instantiation, went with the materializer. Only tests read
+    `TyCtxt.StorageSubst`, and R7-P6 re-points them to `SubstOf` (its Transitional reason).
 - **R5-M37 `Layout` per compilation: memo, bounds and outcomes** (2026-10-18; plan P7c, full process; supersedes R5-M19's static
   `Layout.Of`, and R5-M29's rejected per-compilation instance, its records "shared by every Type, compilation and thread" and its
   Limit "neither"; its outcome list and precedence superseded by R5-M52)
@@ -21342,6 +21348,9 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the definition is `RequirementTarget(Kind, Target, Subst,
     Access, Cause)`, `Cause` a `TyCtxt.Formation` (default `Formed`; `HeightLimit` where the resolution refused a Type past IMPL A.4's
     height in the collector's answer frame); its `Limit` kind is deleted.
+  - Superseded in part by R7-M127 (R7-P5b): the definition is `RequirementTarget(Kind, Target, Subst, Access, Cause, BasePath)`.
+    `BasePath` is a Conformance Body's inherited base path, which `TyCtxt.Signature`'s receiver slot reads. An abstract Self has
+    None because Binding keeps every requirement call (SPEC 8.15); the materializer is gone.
 - **R5-M64 The generation entry** (2026-10-19; plan C0a, PD12's gate step 1; under R5-M18 and R5-M35; amended by R5-M160, R5-M161,
   R5-M165 and R5-M169) A permanent Core component, the generation entry (`Core/Compilation.Generation.cs`, contract entry), owns the
   one way the latest analysis becomes module text: `Compilation.Generate(TextWriter)` passes the gate, runs the compilation's code
@@ -21706,6 +21715,13 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R7-M54's c4 part (R7-T1 c4, Q-641, 2026-11-22): the Builtin leaves' "no tree (Limit) the storage-nesting
     gap, at the item's site" and `Parts`' null row: `TyCtxt.Comparison` is total (no null node), and a Composite part's resolution
     past the height is `TypeHeightLimit_Kd` at the item's site.
+  - Superseded in part by R7-M127 (R7-P5b): Rows 5, 12 and 13's "`SubstOfItem` is unchanged (Binding's Item context: the
+    witness's call for a closed Self ...), and the witness's Body substitution equals it". A requirement Item's context is now the
+    requirement's call on the Item's Self, so `SubstOfItem`'s Target is the requirement. What it runs is `TyCtxt.Witness(item)`,
+    which A4 reads through `Require` (InstanceCollectorTest's K 4.5 adapter row). So the reason R5-M70 gave for rejecting a call-form
+    `SubstOfItem` no longer holds: A4 no longer reads a closed requirement Item's substitution as the witness it runs, but reads the
+    witness through `Require` (`MirEffects.Process`'s Item arm). The Item context keeps its input Origins: `RequirementItemContext`
+    builds it with the requirement's own input Origin atoms and returns it unchanged, with no instantiation that replaces them.
 - **R5-M71 A staticEnsure's operand is its static's slot** (2026-10-19; F10's follow-up, R4's step-2 plan AR-8; its initializer
   clause superseded by R4-M121; its wording of the rule partly superseded by R5-M123) Rule (`MirValidator`,
   `MirViolation.StaticSlot`): the builder
@@ -31093,6 +31109,52 @@ Closure row of `MirCases.Branch`).
     class with `Verdict`'s Limit arm and M5's and M6's Limit outcomes; Z7 keeps M4 and M7 (A5's `MirOutcome.Limit`, P42).
   - Reason: one witness rule and one comparison composition serve A4, the collector and codegen; the leaf's reading follows its
     entry because SPEC 8.11.3 and 4.9.6 part them.
+- **R7-M127 A Requirement callee on a closed Self makes its witness's call; the CallPlan materializer and the Property witness
+  bridges go** (2026-11-28, Middle; R7-P5b, PLAN G157 (5); under R5-M22, R5-M61 and R7-M126).
+  - Adopted (ruling 1): a Requirement callee on a Self with no abstract part makes its witness's call, with the base-path
+    substitutions applied (SPEC 8.6.2, 9.6.1). Binding keeps every requirement call (SPEC 8.15): a selected call, a requirement
+    Item's context (`Binding.RequirementItems`: the requirement's call on the Item's Self) and a default copy's callee. What the call
+    runs is `TyCtxt.Witness`'s one answer, and every reader reads it. A4's `Process` runs a requirement Item on a Self that is not
+    abstract as its call (`Require`, in the view of `SubstOfItem`). `TyCtxt.Retains` retains what Witness's Body target retains
+    under its own instance, and any other answer keeps the requirement's contract (SPEC 8.15, 15.6.4). `TyCtxt.Signature`'s receiver
+    slot, the instance collector and code generation also read it.
+  - One rule with two producers (ruling 7): `TyCtxt.Witness`'s base path alone decides whether a closed-Self Requirement call's
+    receiver is projected, and along which path. Each producer forms the projected receiver in its own phase's form from that
+    answer:
+    - Binding's selected call through `ProjectReceiver`, a BaseBorrow operation, which HIR, RawOrigins and MirBuilder consume;
+    - `MirBuilder.Inline`'s default copy through `Ref` (the one `Lent` path), which rewrites the folded receiver to
+      `TyCtxt.ProjectedReceiver`'s Type, for a Requirement callee whose template Self has an abstract part.
+    Neither computes a path, and no flag or mode steers either. Inline's file comment names this its third re-decided form; a fourth
+    is an open family. Code generation projects nothing, since a base subobject is a layout prefix (X1). The default copy's
+    projected receiver is one pointer temp (`MirBuilder.Defaults.Copies.cs`), so the unoptimized IR gains an alloca, a store and a
+    load per base-path default copy; mem2reg removes them, and the O2 IR is unchanged (the Back's .ll diff, 2026-11-28).
+  - `RequirementTarget.BasePath`: the core witness's `Function.BasePath`, published by TyCtxt's Witness answer for a Conformance
+    Body only. `TyCtxt.ProjectedReceiver` reads it (Signature's receiver slot, MirBuilder.Inline's copies). Binding's
+    ProjectReceiver reads the core answer itself. No consumer re-derives the path.
+  - `TyCtxt.RequirementImplementation(callee, subst)` (TyCtxt.Dispatch.cs) owns the rule's guard and its Witness call: Witness's
+    answer for a Requirement callee on a Self with no abstract part, at the Contract its substitution's declaring instance names, read
+    alike in every definition; null otherwise. `ProjectedReceiver` and `Retains` read it, and neither repeats the guard.
+  - Kept: an inherited accessor-call Property witness carries no `BasePath`, so its receiver is unchanged (ruling 8 (c)). Phase 2's
+    T7 probes test it.
+  - Memo (G157 (5); R5-M61): `TyCtxt.Witness`'s key holds the premise scope only for a Self with an abstract part
+    (`TyCtxtTest.AWitnessKeyHoldsThePremiseScopeOnlyForAnAbstractPart`, which shows that the answers agree). `ResetViews` discards it
+    by construction (`TyCtxt.ResetDispatch`'s `this.witnesses.Clear()`, TyCtxt.Dispatch.cs). No public test shows that an edit
+    clears it (PLAN G1501).
+  - Removed: the CallPlan materializer (`InstantiateRequirementCall`, `InstantiateConformanceCall`, `ProjectWitnessCall`,
+    `InstantiateLibraryWitness`, `RequirementCalleeKoto.ImplementationStorage`) with the selected call's `Unsupported_Kd` where it
+    returned null. Also the standard Property witness bridges (`Binding.PropertyWitnesses.cs`, `PropertyBridges`,
+    `FunctionKoto.IsPropertyWitness` and `SetPropertyWitnessBody`, the bridge clause of `Binding.Constraints`). So a witness instance
+    is assembled once, in `TyCtxt.Dispatch`. `TyCtxt.StorageSubst` has no src reader (R5-M36).
+  - Rejected:
+    - ruling 1's (b): SPEC 9.6.1 makes T1-V valid, and (b) newly rejects it;
+    - ruling 1's (c): one materializer arm for one form, and G157 (5) half done;
+    - ruling 7's (1): the validator would accept two receiver forms for one callee, deciding by Witness what Signature should
+      publish, and copies would keep a whole-Leaf Loan;
+    - ruling 7's (2): Binding's projection moved into MIR changes the receiver facts Binding's own readers take (RawOrigins, HIR,
+      Hover);
+    - ruling 7's (4): T1-V newly rejected.
+  - Reason: one witness rule and one assembly serve Binding, A4, A5, the validator, the collector and code generation. The receiver
+    a closed-Self call borrows is its witness's, as SPEC 8.6.2 and 9.6.1 state.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
