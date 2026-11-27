@@ -14,8 +14,7 @@ namespace Kimi.Compiler;
 // - Inputs: a Type and a Contract's identity; the group's member scope; the generic parameters of the group's functions; a Contract's built
 //   requirements (ContractWitness), which PrepareContracts fills.
 // - Outputs: a row (LibraryWitnessGroup); the witness, the group's one function named as the requirement, explicit specializations aside;
-//   the receiver a group's functions state (WitnessReceiver); the requirement call at the witness (InstantiateLibraryWitness); the
-//   arguments TyCtxt.LibraryInstance interns.
+//   the receiver a group's functions state (WitnessReceiver); the arguments TyCtxt.LibraryInstance interns.
 // - Invariants: a row's Contract declares one function requirement of its own, which the group names. A row is a Library built-in row
 //   (ImplTable.Builtin, R7-V2c), which proves its conformance (ResolveConformance) and selects its requirements
 //   (ResolveRequirementWitness) whatever the group holds; a missing witness is None.
@@ -88,8 +87,8 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // Rents a group function's generic arguments at the Self, at their slots and null elsewhere (the materializer, TyCtxt.LibraryInstance
-    // and FixedArrayIteratorType).
+    // Rents a group function's generic arguments at the Self, at their slots and null elsewhere (TyCtxt.LibraryInstance and
+    // FixedArrayIteratorType).
     internal bool RentWitnessArguments(
         in LibraryWitnessGroup group, BindingSymbol witness, BoundType self, out BoundType?[] types, out BoundLength?[] lengths, out int count)
     {
@@ -200,26 +199,5 @@ public sealed partial class Binding
         }
 
         return (group.TypeParameter is null || type >= 0) && (group.LengthParameter is null || (length >= 0 && length != type));
-    }
-
-    // SPEC 21.3.1: a requirement call on a Type of the table instantiates the group's witness at the Type's arguments.
-    private CallPlan? InstantiateLibraryWitness(CallPlan call, BoundType self, in RequirementWitness witness, CallPlan? destination)
-    {
-        var target = witness.Target!;
-        if (!this.RentWitnessArguments(witness.Group, target, self, out var types, out var lengths, out var count))
-        {
-            return null;
-        }
-
-        try
-        {
-            var resolved = destination ?? new CallPlan();
-            resolved.Set(this, target, call.ReturnType, call.Receiver, call.ArgumentToParameter, types.AsSpan(0, count), origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, defaults: call.DefaultArguments, lengthArguments: lengths.AsSpan(0, count));
-            return resolved;
-        }
-        finally
-        {
-            this.ReturnWitnessArguments(types, lengths);
-        }
     }
 }

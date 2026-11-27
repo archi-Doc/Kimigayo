@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // A selected operator shares call acquisition, Origin solving and witness instantiation without rewriting parents.
+    // A selected operator shares call acquisition and Origin solving without rewriting parents; its call is the requirement's.
     private InvocationKoto BindSelectedRequirement(Koto root, InvocationKoto? call, ReadOnlySpan<Koto> arguments, BoundType self, BindingSymbol contract, BindingSymbol requirement, BindingScope scope, bool tupleOperator = false)
     {
         if (call is null || !call.Span.Equals(root.Span) || call.ArgumentNodes.Count != arguments.Length)
@@ -36,18 +36,9 @@ public sealed partial class Binding
 
         callee.RequirementStorage = selected;
         selected.TupleOperator = tupleOperator;
-        // Fixed source Origins affect fitting and Loans, but do not require a generic Type instance.
-        if (!this.DependentType(self, includeOrigins: false))
+        if (!self.HasAbstractPart)
         {
-            var resolved = this.InstantiateRequirementCall(selected, selected, root, callee.ImplementationStorage);
-            if (resolved is null)
-            {
-                this.Fail(call, BindingFailure.Unsupported, true);
-                return call;
-            }
-
-            call.CallStorage = resolved;
-            callee.ImplementationStorage = resolved;
+            this.ProjectReceiver(selected, self, root); // SPEC 8.15: the call stays the requirement's; its witness's receiver is the base's.
         }
 
         return call;

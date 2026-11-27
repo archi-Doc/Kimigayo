@@ -37,9 +37,16 @@ internal sealed partial class TyCtxt
     // Intrinsic one's library declaration; its default templates are A5's), called in `definition`, in the Semantics case `cases` (SPEC
     // 8.15; none for a case-free reading): every Type the instance hands its contract is read in the case after the call's substitution,
     // never through a cased substitution (InstanceRetention; DECISIONS R4-M246), so its key holds the substitution's case key (CaseSubst).
+    // A requirement on a Self with no abstract part retains what its witness's instantiated contract retains (SPEC 8.15, 15.6.4): the Body
+    // RequirementImplementation answers, read under its own instance; any other answer keeps the requirement's contract (a shim's
+    // declaration is the requirement, a Storage witness's operation has its signature, a failure is the failed input).
     internal CallRetention Retains(BindingSymbol callee, Subst? subst, BindingSymbol? definition, ReadOnlySpan<PairCase> cases)
     {
         Debug.Assert(subst is null || ReferenceEquals(subst.Target, callee));
+        if (subst is not null && this.RequirementImplementation(callee, subst) is { Kind: RequirementTargetKind.Body } runs)
+        {
+            return this.Retains(runs.Target!, runs.Subst, definition, cases);
+        }
 
         // Steps 1-2: the Types the call instantiates; the callee's own Origins stay its fresh regions. An instance with an abstract part is
         // read as the calling definition's premises make it (a requirement on an abstract Self: `I.Item`, not `I.LentItem(step)`, under
