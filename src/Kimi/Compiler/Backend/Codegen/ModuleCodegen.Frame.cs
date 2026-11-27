@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Mir;
 
@@ -9,12 +10,13 @@ namespace Kimi.Compiler.Backend;
 // through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
 // zero-sized symbol, the overflow declarations (the 128-bit ones after them), the memory declarations, the erased writer's kept runtime,
 // the float formatting part, the 128-bit integer formatting part (R8-S2b2) and the Dictionary helpers, the storage byte primitives, the
-// buffered definitions, the entry, the object runtime and the footer. The external declarations, the imports a definition calls (Import,
-// DECISIONS R5-M89), the zero-sized symbol, the 128-bit overflow declarations (DECISIONS R5-M143), the memory declarations, the erased
-// writer's kept runtime (R8-W1b), the float formatting part (R8-S2c), the 128-bit integer formatting part (R8-S2b2), the storage byte
-// primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92, R5-M145) and the object runtime (DECISIONS R5-M110) are written
-// only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Dictionary helpers
-// (ModuleCodegen.Dictionaries) before every definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an
+// machine instruction routines (InstructionRows), the buffered definitions, the entry, the object runtime and the footer. The external
+// declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol, the 128-bit overflow declarations
+// (DECISIONS R5-M143), the memory declarations, the erased writer's kept runtime (R8-W1b), the float formatting part (R8-S2c), the
+// 128-bit integer formatting part (R8-S2b2), the storage byte primitives (the nullable Alloc and the byte copy; DECISIONS R5-M92,
+// R5-M145), each machine instruction routine (Instruction) and the object runtime (DECISIONS R5-M110) are written only when a definition
+// requested them (Request; package C 3.2's requests, DECISIONS R5-M87), the Dictionary helpers (ModuleCodegen.Dictionaries) before every
+// definition (PD8). The entry calls its root through FunctionCodegen's one call writer (PD3): an
 // Application's its startup root, a test build's each test root in catalog order inside the test runtime's entry (TestRuntime.WriteEntry;
 // DECISIONS R5-M136), whose runtime is the template's test variant followed by the test runtime's routines (TestRuntime.Text, with the
 // memory declarations it calls).
@@ -31,6 +33,7 @@ internal sealed partial class ModuleCodegen
     // entry, whose signature, void () without parameters, is RuntimeAbi.Start's).
     private readonly StringWriter helperText = new(System.Globalization.CultureInfo.InvariantCulture); // The helpers of the latest Write.
     private Needs needs; // The module parts the definitions of the latest Write requested.
+    private ulong instructions; // The InstructionRows rows the definitions of the latest Write requested, one bit per row.
 
     /// <summary>The module parts a definition requests, which the frame writes only when requested.</summary>
     [Flags]
@@ -77,6 +80,21 @@ internal sealed partial class ModuleCodegen
     /// <summary>Requests a module part for the module being written.</summary>
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
+
+    /// <summary>Requests a member's machine instruction routine for the module being written (InstructionRows).</summary>
+    /// <param name="member">The member a declaration's disposition names, if any.</param>
+    /// <returns>The row's routine, or null when the member names no row.</returns>
+    internal FunctionAbi? Instruction(string? member)
+    {
+        var index = InstructionRows.Find(member);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        this.instructions |= 1UL << index;
+        return InstructionRows.Row(index).Routine;
+    }
 
     // The complete module around the buffered definitions, in the row's frame, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
@@ -125,12 +143,13 @@ internal sealed partial class ModuleCodegen
             output.Write(LlvmModuleText.TransferBytes);
         }
 
+        this.WriteInstructions(output);
         output.Write(this.functions.GetStringBuilder());
         output.Write(this.platformText.GetStringBuilder()); // The platform part (ModuleCodegen.Platform), empty on a hosted row.
         this.Entry = null;
         if (start is not null)
         {
-            this.Entry = this.WriteStart(output, frame.Layer, start);
+            this.Entry = this.WriteStart(output, frame, start);
         }
         else if (this.IsTestBuild)
         {
@@ -146,32 +165,60 @@ internal sealed partial class ModuleCodegen
         output.Write(frame.Footer);
     }
 
+    // The requested machine instruction routines (InstructionRows), each once in row order: its routine's definition (`alwaysinline`,
+    // Abi.Flags.Inline), whose entry block calls its template under its constraints and the one suffix (InstructionRows.Clobbers) over its
+    // parameters.
+    private void WriteInstructions(TextWriter output)
+    {
+        for (var set = this.instructions; set != 0; set &= set - 1)
+        {
+            var row = InstructionRows.Row(BitOperations.TrailingZeroCount(set));
+            var routine = row.Routine;
+            var value = routine.Result != "void";
+            output.Write(routine.GetDefinition(exported: false));
+            output.Write("entry:\n");
+            output.Write(value ? "  %r = call " : "  call ");
+            output.Write(routine.Result);
+            output.Write(" asm sideeffect \"");
+            output.Write(row.Template);
+            output.Write("\", \"");
+            output.Write(row.Constraints);
+            output.Write(row.Constraints.Length == 0 ? string.Empty : ",");
+            output.Write(InstructionRows.Clobbers);
+            output.Write("\"(");
+            for (var i = 0; i < routine.Parameters.Length; i++)
+            {
+                output.Write(i == 0 ? string.Empty : ", ");
+                output.Write(routine.Parameters[i].Type);
+                output.Write(" %");
+                output.Write(routine.Parameters[i].Name);
+            }
+
+            output.Write(")\n  ret ");
+            output.Write(routine.Result);
+            output.Write(value ? " %r\n}\n" : "\n}\n");
+        }
+    }
+
     // The start (IMPL 21.4.2, 21.5.2): on the C path, a module whose Libraries hold its row's C runtime (Require), main, which the C
     // runtime's startup calls after initializing the C library and whose 0 its exit returns, running the C library's exit handlers;
     // otherwise the row's layer's start form, its module asm defining the entry, if any, then its start routine (the entry itself,
-    // exported, or the body the asm calls, internal), which exits with 0. Either calls the layer's routines before the startup body, then
-    // the startup body, which takes no parameter (Binding's startup check). Returns the entry the start defines (Entry).
-    private string WriteStart(TextWriter output, RuntimeLayer layer, FunctionAbi startup)
+    // exported, or the body the asm calls, internal), which exits with 0. Either calls the layer's routines before the startup body (the
+    // frame's StartCalls), then the startup body, which takes no parameter (Binding's startup check). Returns the entry the start defines
+    // (Entry).
+    private string WriteStart(TextWriter output, LlvmModuleText.ModuleFrame frame, FunctionAbi startup)
     {
         var main = this.row.CRuntime is { } runtime && this.Requires(runtime);
-        var routine = main ? RuntimeAbi.Main : layer.Start;
+        var routine = main ? RuntimeAbi.Main : frame.Layer.Start;
         if (!main)
         {
-            output.Write(layer.StartAssembly);
+            output.Write(frame.Layer.StartAssembly);
         }
 
-        output.Write(routine.GetDefinition(exported: main || layer.Start.Name == this.row.EntrySymbol));
+        output.Write(routine.GetDefinition(exported: main || frame.Layer.Start.Name == this.row.EntrySymbol));
 
         output.Write("entry:\n");
-        foreach (var call in layer.StartCalls)
-        {
-            output.Write("  call ");
-            output.Write(call.Result);
-            output.Write(" @");
-            output.Write(call.Name);
-            output.Write("()\n");
-        }
-
+        output.Write(frame.StartCalls);
         this.bodies.BeginFrameFunction(output, routine);
         _ = this.bodies.WriteEntryCall(startup, default);
         if (main)
@@ -223,16 +270,15 @@ internal sealed partial class ModuleCodegen
             return true;
         }
 
-        // On a row whose program supplies its platform, roots 1 to 6 are the witnesses' items in PlatformRows' order (OutputRoots, whose
-        // PlatformRoots checks their count); an Application there without a platform (Binding's startup check refuses it) is a broken
-        // contract without a subject.
+        // On a row whose program supplies its platform, the adapters call the witnesses' items (Witnesses: roots 1 to 6, in PlatformRows'
+        // order); an Application there without a platform (Binding's startup check refuses it) is a broken contract without a subject.
         if (this.row.ProgramPlatform && startup.Platform is null)
         {
             return false;
         }
 
         entry = roots[0] < this.signatures.Length ? this.signatures[roots[0]] : null;
-        this.PlatformAdapters(roots[1..]);
+        this.PlatformAdapters();
         return entry is not null || this.Records.Count != 0;
     }
 }

@@ -1694,7 +1694,7 @@ public sealed partial class TyCtxtTest
 
         var call = new CallPlan();
         call.Set(c.Binding, inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
-        Assert.Equal(default, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!));
+        Assert.Equal(default, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!, null));
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
         // Option^40<i32> (storage height 80) is past the bound whatever Witness prepared before it (Wrap^80, whose Type argument no Field
@@ -1815,7 +1815,7 @@ public sealed partial class TyCtxtTest
         var zero = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single().SymbolOf()!;
         var bad = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Bad").SymbolOf()!.Type!;
         var requirement = zero.Contract!.OwnRequirement()!;
-        Assert.Equal(expected, c.Types.Witness(requirement, zero, c.Types.Synthesized(requirement, bad, zero.Type!)).Kind.ToString());
+        Assert.Equal(expected, c.Types.Witness(requirement, zero, c.Types.Synthesized(requirement, bad, zero.Type!), null).Kind.ToString());
     }
 
     // DECISIONS R7-M54 (PLAN G396 (3)): Compose forms a substitution by the substitution alone, whatever its parts' storage in the outer
@@ -1848,7 +1848,7 @@ public sealed partial class TyCtxtTest
         {
             var contract = c.Library.GetSymbol(id)!;
             var requirement = contract.Contract!.OwnRequirement()!;
-            var target = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, BoundType.I32, contract.Type!));
+            var target = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, BoundType.I32, contract.Type!), null);
             Assert.Equal(RequirementTargetKind.Builtin, target.Kind);
             Assert.NotSame(requirement, target.Target);
             Assert.Same(contract, TyCtxt.Contract(requirement));
@@ -1857,9 +1857,10 @@ public sealed partial class TyCtxtTest
     }
 
     // SPEC 8.11.3, 8.13.3, 22.1 (PLAN G589, G663): a requirement on a Type of the library witness table runs the group's function at the
-    // Self's arguments, the instance A4 is given (Witnesses), and that closed instance selects the specialization its key names, the
-    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target);
-    // each one's Original is the target, whose call contract and ABI it keeps (R8-S2b2; fail-before: no Original).
+    // Self's arguments, the instance A4 is given (Witness's Body without its Origins, MirEffects' Require), and that closed instance
+    // selects the specialization its key names, the original elsewhere: IntegerPosition's tryResolve at i32 and isize its
+    // specializations, at u8 its original (fail-before: no target); each one's Original is the target, whose call contract and ABI it
+    // keeps (R8-S2b2; fail-before: no Original).
     [Theory]
     [InlineData("i32", true)]
     [InlineData("isize", true)]
@@ -1869,10 +1870,11 @@ public sealed partial class TyCtxtTest
         var c = MinimalEmissionTest.Analyze("let x = 1\n");
         var self = BoundType.Primitives[name];
         var contract = c.Library.GetSymbol(KimiDeclarationId.Position)!;
-        var targets = new List<(BindingSymbol Target, Subst Instance)>();
         var requirement = contract.Contract!.OwnRequirement()!;
-        Assert.True(c.Types.Witnesses(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!), null, targets));
-        var (target, instance) = Assert.Single(targets);
+        var runs = c.Types.Witness(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!), null);
+        Assert.Equal(RequirementTargetKind.Body, runs.Kind);
+        var target = runs.Target!;
+        var instance = c.Types.Synthesized(target, runs.Subst!.Declaring, runs.Subst.Types, runs.Subst.Lengths);
         Assert.Equal([self], instance.Types);
         var selected = c.Types.Implementation(target, instance, 0)!;
         Assert.Equal(specialized, selected.Declaration is FunctionKoto { IsSpecialization: true });
@@ -1881,11 +1883,12 @@ public sealed partial class TyCtxtTest
         Assert.Null(c.Types.Implementation(target, instance, 1));
     }
 
-    // SPEC 8.6.3 (PLAN G663): the instance A4 is given for a conformance witness (Witnesses) under a requirement call's substitution is the
-    // witness under its declaring instance at the call's own Types and lengths by position, a renamed or reordered slot and a length slot
-    // included, as Witness's Conformance binds them: the two agree but for the Origins, which the analyses relate; a requirement no call
-    // names (Synthesized on the Self) leaves the witness's own slots unbound (fail-before: the instance bound none for any call). A call in
-    // a view (InView) is the call itself where its Self and reference are the view's, else the call at them with its own Types and lengths.
+    // SPEC 8.6.3 (PLAN G663): the instance A4 is given for a conformance witness (Witness's Body without its Origins, MirEffects' Require)
+    // under a requirement call's substitution is the witness under its declaring instance at the call's own Types and lengths by
+    // position, a renamed or reordered slot and a length slot included, as Witness's Conformance binds them; a requirement no call names
+    // (Synthesized on the Self) leaves the witness's own slots unbound (fail-before: the instance bound none for any call). A call in a
+    // view (InView) is the call at the view's Self and reference with its own Types and lengths and no Origins, which A4 never reads, so
+    // the same Subst whatever Origins the call has.
     [Theory]
     [InlineData("f<T, U>(self: ref/Self, x: T, y: U)", "f<U, T>(self: ref/Self, x: U, y: T)", "1, true")]
     [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[1, 2]")]
@@ -1899,18 +1902,16 @@ public sealed partial class TyCtxtTest
         var body = Witness(c, call);
         Assert.Equal(RequirementTargetKind.Body, body.Kind);
         Assert.Equal(2, subst.Types.Length);
-        var targets = new List<(BindingSymbol Target, Subst Instance)>();
-        var (requires, contract) = (call.Inner.Target, call.Inner.RequirementContract);
-        Assert.True(c.Types.Witnesses(requires, contract, subst, null, targets));
-        Assert.True(c.Types.Witnesses(requires, contract, c.Types.Synthesized(requires, subst.Self!, TyCtxt.Contract(requires).Type!), null, targets));
-        Assert.Equal(2, targets.Count);
-        Assert.All(targets, x => Assert.Same(body.Target, x.Target));
-        Assert.All(targets, x => Assert.Same(body.Subst!.Declaring, x.Instance.Declaring));
-        var instance = targets[0].Instance;
-        Assert.True(instance.Types.SequenceEqual(body.Subst!.Types) && instance.Lengths.SequenceEqual(body.Subst.Lengths));
-        Assert.True(instance.Types.SequenceEqual(subst.Types) && instance.Lengths.SequenceEqual(subst.Lengths));
-        Assert.Equal(0, targets[1].Instance.Types.Length);
-        Assert.Same(subst, c.Types.InView(subst, subst.Self!, subst.Declaring));
+        Assert.True(body.Subst!.Types.SequenceEqual(subst.Types) && body.Subst.Lengths.SequenceEqual(subst.Lengths));
+        var requires = call.Inner.Target;
+        var unnamed = c.Types.Witness(requires, call.Inner.RequirementContract, c.Types.Synthesized(requires, subst.Self!, TyCtxt.Contract(requires).Type!), null);
+        Assert.Equal(RequirementTargetKind.Body, unnamed.Kind);
+        Assert.Same(body.Target, unnamed.Target);
+        Assert.Same(body.Subst.Declaring, unnamed.Subst!.Declaring);
+        Assert.Equal(0, unnamed.Subst.Types.Length);
+        var view = c.Types.InView(subst, subst.Self!, subst.Declaring);
+        Assert.True(ReferenceEquals(view.Self, subst.Self) && view.Types.SequenceEqual(subst.Types) && view.Origins.IsEmpty && view.Inputs.IsEmpty);
+        Assert.Same(view, c.Types.InView(view, subst.Self!, subst.Declaring));
         var moved = c.Types.InView(subst, BoundType.I32, null);
         Assert.True(ReferenceEquals(moved.Self, BoundType.I32) && moved.Types.SequenceEqual(subst.Types) && moved.Lengths.SequenceEqual(subst.Lengths));
     }
@@ -2355,7 +2356,7 @@ public sealed partial class TyCtxtTest
         => c.Types.Compose(c.Types.SubstOf(call.Inner)!, c.Types.SubstOf(call.Outer)!).Subst;
 
     private static RequirementTarget Witness(Compilation c, (CallPlan Inner, CallPlan Outer) call)
-        => c.Types.Witness(call.Inner.Target, call.Inner.RequirementContract, Composed(c, call)!);
+        => c.Types.Witness(call.Inner.Target, call.Inner.RequirementContract, Composed(c, call)!, null);
 
     // Counts each Witness of RequirementCalls by kind, which the caller pins (Refused and None occur for no closed Self of an accepted
     // program), and the bound Contract references, each the substitution's declaring Type. The views leave Binding's records and

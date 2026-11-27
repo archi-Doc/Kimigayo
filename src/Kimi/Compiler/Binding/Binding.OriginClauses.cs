@@ -64,12 +64,14 @@ public sealed partial class Binding
         return null;
     }
 
-    // A root of the declaration judge's walk, a written Type formed in a declaration frame (SPEC 15.3.3): a Function Type's written
-    // result, of any owner (R4-M162), or an outermost Type (its parent no Type) outside a signature, whose Types are premises; the root's
-    // walk forms the Types below it (AddTypeClauseObligations), so each written Type is one root's.
-    private static bool DeclarationTypeRoot(Koto node)
+    // A root of the declaration judge's walk, a written Type formed in a declaration frame (SPEC 15.3.3, 15.6.1): a Function Type's written
+    // result, of any owner (R4-M162), or an outermost Type (its parent no Type) at no signature position (TypeContext: a parameter's or
+    // receiver's, a result's, a specialization's argument; SPEC 15.4.2), whose Types are premises; a Constraint clause's Type is one. The
+    // root's walk forms the Types below it (AddTypeClauseObligations), so each written Type is one root's.
+    private bool DeclarationTypeRoot(Koto node)
         => FormedTypeRows.Frame(node) == FormationFrame.Declaration && (node.Parent is FunctionTypeKoto function ? ReferenceEquals(function.ReturnType, node) :
-            node.Parent is not TypeKoto && (node.Parent is null || !FormedTypeRows.Contains(node.Parent)) && OriginOwner(node) is not (FunctionKoto or PropertyAccessorKoto));
+            node.Parent is not TypeKoto && (node.Parent is null || !FormedTypeRows.Contains(node.Parent)) &&
+            this.TypeContext(node, this.ConstraintScope(node)).Position is not (TypePosition.Parameter or TypePosition.Result));
 
     // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
     // their owner's part: a local's (a FieldKoto, the parser's local declaration) by the local part, JudgeLocalClause, and any other
@@ -103,7 +105,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < this.nodes.Count; i++)
             {
-                if (this.nodes[i] is { BoundType: { } type } node && DeclarationTypeRoot(node))
+                if (this.nodes[i] is { BoundType: { } type } node && this.DeclarationTypeRoot(node))
                 {
                     this.AddTypeClauseObligations(type, node);
                 }

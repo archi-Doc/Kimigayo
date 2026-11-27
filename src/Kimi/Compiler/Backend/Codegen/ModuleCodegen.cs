@@ -3,8 +3,9 @@
 // ModuleCodegen (R5 plan C0b1, K11, C3a, C5b, C9b, package C 3.3 and 3.9, design 2 2.3 and 2.12; DECISIONS R5-M65, R5-M77, R5-M89, R5-M104),
 // one per Compilation.
 // Responsibility: one module of a program version from its checked set: every Generated item in admission order, a body item written by
-// FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body to
-// its definition and every call (Signature), a called #LibraryImport function's C signature under the row's C convention and its
+// FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body,
+// and for a platform witness its mark (Abi.Flags.PlatformMember, from the Write's witnesses), to its definition and every call
+// (Signature), a called #LibraryImport function's C signature under the row's C convention and its
 // declaration (Import), the native libraries the module requires, the library and Kind of every validated #LibraryImport, called or not,
 // one per library, then the row's C runtime when any is required (Libraries; SPEC 22.6: resolved when the program is built; moved here
 // from the toolchain's publication, R9-B1; IMPL 21.5.2), the output form around the output roots (IMPL 21.4.2, 21.5.2: an Application's
@@ -13,7 +14,8 @@
 // on a row whose program supplies its platform, IMPL 21.6, the platform storage and one adapter per Platform requirement over its
 // witness, the roots after the startup body, or the adapters' declarations without a platform) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
-// declarations, overflow declarations, functions, entry, footer); a row per item kind and output form: DropGlue
+// declarations, overflow declarations, the requested machine instruction routines (InstructionRows), functions, entry, footer); a row
+// per item kind and output form: DropGlue
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
 // array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104), an owning handle's (R5-M112), an Array's (R5-M121), a
 // Dictionary's (R5-M124)),
@@ -52,7 +54,7 @@
 // the common Function values' entries (ModuleCodegen.Erasures.cs), the object descriptors
 // with their virtual tables (ModuleCodegen.Objects.cs), and the Dictionary rows' routines and helpers
 // (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs), and its platform part: the storage, the
-// adapters and their declarations (ModuleCodegen.Platform.cs).
+// adapters and their declarations and the witnesses (ModuleCodegen.Platform.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -126,6 +128,7 @@ internal sealed partial class ModuleCodegen
         this.Records.Clear();
         this.reported.Clear();
         this.needs = Needs.None;
+        this.instructions = 0;
         this.constants.Clear();
         this.functions.GetStringBuilder().Clear();
         this.helperText.GetStringBuilder().Clear();
@@ -133,6 +136,7 @@ internal sealed partial class ModuleCodegen
         (this.set, this.program, this.collector, this.writes) = (collector.Set, program, collector, this.writes + 1);
         this.Prune();
         this.IsTestBuild = startup.Kind == StartupKind.Test;
+        this.Witnesses(startup, roots);
         this.Number();
         for (var item = 0; item < this.set.Items.Length; item++)
         {

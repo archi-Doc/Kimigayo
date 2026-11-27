@@ -423,13 +423,12 @@ public class ComparisonCompositionTest
         ScalarEmissionTest.EmitFixture("ComparisonDagLeaves", source, expected);
     }
 
-    // DECISIONS R5-M68 (F package 4.6, 4.7): every comparison of the library, the milestones and this class's programs has, under its
-    // Contract and Self, for a closed Self under the Contract's mapping the leaves A4 reads (Binding.Witnesses: the legacy plan's, each
-    // with a plan: an inherited witness, which the plan refuses, implements no comparison requirement, whose `other` is `ref/Self`); for a
-    // tuple operator, whose view A4 reads (R5-M166), and for a Self with an abstract part, which has no plan, the view's leaves answer: the
-    // requirement on each leaf with an abstract part. The views leave Binding's records and the HIR version unchanged.
+    // DECISIONS R5-M68 (F package 4.6, 4.7), R7-P5a: every comparison of the library, the milestones and this class's programs has a view,
+    // under its Contract, Self and mode, whose every leaf answers: a closed one by its witness, which A4 reads as a comparison shim's leaves
+    // (MirEffects' Require) and a tuple operator's (R5-M166), and one with an abstract part by the requirement on it. The views leave
+    // Binding's records and the HIR version unchanged.
     [Fact]
-    public void TheViewHasTheLegacyPlansLeaves()
+    public void EveryComparisonViewAnswersAtEachLeaf()
     {
         var problems = new List<string>();
         var corpus = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -556,9 +555,7 @@ public class ComparisonCompositionTest
         _ => "none",
     };
 
-    // Each comparison's view against A4's live resolver: for a closed Self under the Contract's mapping the leaves Witnesses gives for the
-    // comparison's own requirement; for a tuple operator or a Self with an abstract part the Contract's requirement at each leaf with one.
-    // Counts the nodes by kind.
+    // Each comparison's view, whose every leaf answers (Answers). Counts the nodes by kind.
     private static void Twin(Compilation c, Kotonoha module, string label, IDictionary<string, int> kinds, List<string> problems)
     {
         var version = HirTables.Publish(c);
@@ -573,7 +570,7 @@ public class ComparisonCompositionTest
         {
             var self = call.ConformingType!;
             var where = $"{label} {TyCtxt.Name(self)} {call.Target.Name} {call.TupleOperator}: {(node is null ? "null" : Show(node))}";
-            if (node is null || !(self.HasAbstractPart || call.TupleOperator ? Answers(node) : Same(c, call, node)))
+            if (node is null || !Answers(node))
             {
                 problems.Add(where);
                 continue;
@@ -588,37 +585,6 @@ public class ComparisonCompositionTest
             foreach (var part in node.Parts)
             {
                 Count(part);
-            }
-        }
-
-        // Witnesses resolves the comparison's own requirement on Self (DECISIONS R5-M68: Binding.Witnesses, TyCtxt.Effects, MirEffects),
-        // and its targets are the view's witness leaves, each at the same instance, in walk order.
-        static bool Same(Compilation c, CallPlan call, ComparisonNode node)
-        {
-            var contract = TyCtxt.Contract(call.Target);
-            var expected = new List<(BindingSymbol Target, Subst Instance)>();
-            var leaves = new List<(BindingSymbol Target, Subst Instance)>();
-            var requirement = contract.Contract!.OwnRequirement()!;
-            var on = c.Types.Synthesized(requirement, call.ConformingType!, contract.Type!);
-            return c.Types.Witnesses(requirement, contract, on, null, expected) && Leaves(node, leaves) &&
-                expected.Count == leaves.Count && expected.Zip(leaves).All(static x => ReferenceEquals(x.First.Target, x.Second.Target) &&
-                    ReferenceEquals(x.First.Instance, x.Second.Instance));
-        }
-
-        // A closed view's witness leaves in walk order; false at a node a closed Self has not.
-        static bool Leaves(ComparisonNode node, List<(BindingSymbol Target, Subst Instance)> into)
-        {
-            switch (node.Kind)
-            {
-                case ComparisonKind.Composite:
-                    return node.Parts.All(x => Leaves(x, into));
-                case ComparisonKind.Builtin:
-                    return true;
-                case ComparisonKind.Witness:
-                    into.Add((node.Target!, node.Subst!));
-                    return true;
-                default:
-                    return false;
             }
         }
 

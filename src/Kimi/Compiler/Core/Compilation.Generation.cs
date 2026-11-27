@@ -183,7 +183,7 @@ public partial class Compilation
     }
 
     // IMPL 21.6: an Application's platform roots, after its startup body, each witness's Body item in PlatformRows' order (Binding's
-    // PlatformWitnesses, positional), which ModuleCodegen.Start reads as roots 1 to 6 and its adapters trust. Witness i is paired with
+    // PlatformWitnesses, positional), which ModuleCodegen reads as roots 1 to 6 and its adapters trust. Witness i is paired with
     // row i here, the one place the count is checked. Every witness is a body: an import has no receiver and takes and returns no struct
     // by value (SPEC 22.6), while `start` takes and returns structs by value and the other requirements take a receiver, so no checked
     // program selects a platform with an import witness. A witness count other than PlatformRows' (before any root is added) or a

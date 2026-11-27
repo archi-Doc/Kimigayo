@@ -183,7 +183,7 @@ internal sealed partial class InstanceCollector
 
         if (callee.Kind == MirCalleeKind.Requirement)
         {
-            var target = this.types.Witness(callee.Symbol!, callee.Contract, subst!);
+            var target = this.types.Witness(callee.Symbol!, callee.Contract, subst!, null);
             if (!this.Formed(target.Cause, item, body.Subject(call.Source), subject))
             {
                 return -1;

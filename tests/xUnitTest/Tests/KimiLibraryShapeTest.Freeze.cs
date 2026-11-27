@@ -37,8 +37,6 @@ public partial class KimiLibraryShapeTest
         ["BoundContract.State"] = "n5: a completion state, not a counter copy (complete in the layer's part: e3)",
         ["BoundContract.EffectState"] = "n5: the effect bounds' completion state (complete in the layer's part: k4)",
         ["ComponentSummary.Epoch"] = "n6: a per-epoch memo of Binding's, the program's, not a library object",
-        ["Binding.comparisonPlans"] = "n7: Binding's per-pass memo keyed by library symbols, refilled by a program pass",
-        ["Binding.requirementCalls"] = "n7: Binding's per-pass memo keyed by library symbols, refilled by a program pass",
         ["Binding.hirVersion"] = "n8: a per-compilation counter of Binding's, on no library object",
         ["Binding.originRowsVersion"] = "n8",
         ["Binding.recursiveVersion"] = "n8",

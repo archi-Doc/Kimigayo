@@ -147,10 +147,11 @@ public partial class EffectBoundImplementationTest
     // intrinsic, and of those Console output and the test temporary directory alone are environment effects (the Storage and Raw
     // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator), with, in the Linux row's
     // library, the platform layer's clock (Time.monotonicNanoseconds, the Tatara plan's B7b6; windows-x64's library, the selection of
-    // the one without a target, declares none); a library body is no bodyless category.
+    // the one without a target, declares none), and on every x86-64 row Kimi.X86's pause and readTimestamp, machine instructions (IMPL
+    // 21.6; OSF1a, design C3); a library body is no bodyless category.
     [Theory]
-    [InlineData("", "WriteStdout,TestTempDirectory")]
-    [InlineData("x86_64-unknown-linux-musl", "WriteStdout,TestTempDirectory,MonotonicClock")]
+    [InlineData("", "WriteStdout,TestTempDirectory,Instruction,Instruction")]
+    [InlineData("x86_64-unknown-linux-musl", "WriteStdout,TestTempDirectory,MonotonicClock,Instruction,Instruction")]
     public void EveryCompilerFunctionHasOneEffectClass(string target, string intrinsics)
     {
         var compilation = Compilation.CreateForTest();
@@ -291,6 +292,21 @@ public partial class EffectBoundImplementationTest
         const string Declarations = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\ncontract StableSource: Source\n    effect Source.take confined\n";
         var c = MinimalEmissionTest.Analyze(Declarations + $"struct Noisy\n    Self is {contract}\n    associate Source.Item is i32\n    public func take(self: uniq/Self) -> Option<i32>\n        Console.writeLine(\"take\")\n        return .None\n" + Main);
         AssertBound(c, valid, "Self is " + contract);
+    }
+
+    // IMPL 21.6, SPEC 8.11.2 (OSF's row 26; design C3): a machine instruction is an environment effect, so a `confined` implementation
+    // that executes one fails its bound on a hosted row and on the freestanding one; reading the register through its input is no such
+    // effect (RawStorageTest.RawOperationsAreNoEnvironmentEffects, the twin).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "X86.pause()\n        unsafe => return Raw.readVolatile(self.p)")]
+    [InlineData("x86_64-pc-windows-msvc", "return X86.readTimestamp()@u32")]
+    [InlineData("x86_64-unknown-none", "X86.pause()\n        unsafe => return Raw.readVolatile(self.p)")]
+    [InlineData("x86_64-unknown-none", "return X86.readTimestamp()@u32")]
+    public void AnInstructionIsAnEnvironmentEffect(string triple, string body)
+    {
+        const string Probe = "contract Probe\n    func read(self: uniq/Self) -> u32\n        effect confined\n" +
+            "struct Register\n    Self is Probe\n    internal let p: raw/u32\n    public init(p: raw/u32) => self.p = p\n    public func read(self: uniq/Self) -> u32\n        ";
+        AssertBound(MinimalEmissionTest.Analyze(TargetProfile.Find(triple)!, Probe + body + "\n", "Hello.kimi", OutputKind.Library), false, "Self is Probe");
     }
 
     // Warm rebinding of user-declared bounds and their witness summaries allocates nothing.
