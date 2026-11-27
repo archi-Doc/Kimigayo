@@ -65,7 +65,8 @@
             #Intrinsic("Instruction", "outl")
             public unsafe func writePort32(port: u16, value: u32)
 
-        /// What the processor pushes on an interrupt in 64-bit mode; the Field names are the processor's register names.
+        /// What the processor pushes on an interrupt in 64-bit mode, as it lies in memory from its lowest address; each Field holds
+        /// the register its doc names.
         #Layout("C")
         public struct InterruptFrame
             Self is Copy
@@ -81,10 +82,10 @@
             /// The interrupted code's stack segment selector (`ss`).
             public let ss: u64
 
-        /// A Type whose `handle` runs as an interrupt handler for a vector without an error code.
+        /// The Contract of a handler for a vector without an error code.
         public contract InterruptHandler
             func handle(frame: ref/InterruptFrame)
 
-        /// A Type whose `handle` runs as an interrupt handler for a vector that pushes an error code.
+        /// The Contract of a handler for a vector that pushes an error code, which `code` receives.
         public contract ErrorCodeHandler
             func handle(frame: ref/InterruptFrame, code: u64)
