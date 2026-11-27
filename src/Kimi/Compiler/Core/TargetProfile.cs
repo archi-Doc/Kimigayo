@@ -16,8 +16,8 @@
 // library starts through (CRuntime, null for none; the Tatara plan's B7b2b), the convention by which the row's imports extend their
 // arguments (ArgumentExtension, IMPL 21.2's name, null for none), the extension of a program library's input (InputExtension, IMPL
 // 20.4), the executable format, whose link writer the native build selects (Format, IMPL 20.3.2: "COFF" or "ELF"; the Tatara plan's
-// B7b7), the catalog name of the row's linker script, which the native build stages and passes to the ELF link (LinkerScript, null:
-// the linker's own layout; the Tatara plan's B9f), the host that runs the row's executables (ExecutionHost, as HostName spells one, null for none; B7b8), whether the program
+// B7b7), the catalog name of the row's linker script, which the native build stages and passes to the ELF link (LinkerScript, an ELF
+// row's fact, null on a COFF row; null: the linker's own layout; the Tatara plan's B9f), the host that runs the row's executables (ExecutionHost, as HostName spells one, null for none; B7b8), whether the program
 // supplies the platform layer's routines (ProgramPlatform, SPEC 22.4.5; the Tatara plan's B9), the runtime's import declarations,
 // and the bound below which the system maps no address; table-wide, the C memory functions every runtime defines (MemorySymbols), the
 // C entry's symbol (MainSymbol), the reserved external names of every target (ReservedSymbols, IMPL 21.2) and the reads over every

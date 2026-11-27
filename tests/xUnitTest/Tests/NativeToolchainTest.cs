@@ -80,8 +80,8 @@ public sealed class NativeToolchainTest : IDisposable
     // checks in the extracted tarball. The staged none-x64 row's kimi_backend (the Tatara plan's B9e, IMPL 21.6.7): compiler-rt's
     // soft-float archive, one file at the library place, its catalog's providedSymbols the supply's symbols, and compiler-rt's licence,
     // carried as Kimi.None.LICENSE-compiler-rt.txt, the tarball's LICENSE.TXT (the catalog's licenseSha256, build-compiler-rt.ps1's
-    // check). Each catalog's linkerScript, placed script, is its row's script (Scripts takes every catalog's; none-x64's kernel.ld, its
-    // embedded bytes the committed file; the Tatara plan's B9f, T's ruling 160). Fail-before (B9e): no none record.
+    // check). Each catalog's linkerScript is its row's script (Scripts takes every catalog's; none-x64's kernel.ld, its embedded bytes
+    // the committed file; the Tatara plan's B9f, T's ruling 167). Fail-before (B9e): no none record.
     [Fact]
     public void EachCompilerSupplyIsTheCatalogsCommittedFile()
     {
@@ -101,7 +101,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(["kimi_backend_none_x64_v1.a Library"], Assert.Single(ToolchainIdentity.Supplies, static x => x.Row == TargetProfile.None).Files.Select(static x => $"{x.Name} {x.Place}"));
         Assert.Equal(
             [.. CatalogScript(TargetProfile.Linux, musl), .. CatalogScript(TargetProfile.None, none)],
-            ToolchainIdentity.Scripts.Select(static x => $"{x.Row.Name} {x.File.Name} {x.File.Place.ToString().ToLowerInvariant()} {x.File.Sha256}"));
+            ToolchainIdentity.Scripts.Select(static x => $"{x.Row.Name} {x.File.Name} {x.File.Sha256}"));
         AssertCommitted(ToolchainIdentity.Script(TargetProfile.None)!.Open(), ToolchainIdentity.Script(TargetProfile.None)!.Sha256, Path.Combine(CatalogFolder(TargetProfile.None), "kernel.ld"));
         Assert.Equal(TargetProfile.None.Supply("kimi_backend")?.Symbols ?? [], none.RootElement.GetProperty("providedSymbols").EnumerateArray().Select(static x => x.GetString()));
         foreach (var supply in ToolchainIdentity.Supplies)
@@ -135,7 +135,7 @@ public sealed class NativeToolchainTest : IDisposable
 
         // A catalog's linkerScript, if it names one, in Scripts' form.
         static string[] CatalogScript(TargetProfile row, JsonDocument catalog) => catalog.RootElement.TryGetProperty("linkerScript", out var script) ?
-            [$"{row.Name} {script.GetProperty("name").GetString()} {script.GetProperty("place").GetString()} {script.GetProperty("sha256").GetString()}"] : [];
+            [$"{row.Name} {script.GetProperty("name").GetString()} {script.GetProperty("sha256").GetString()}"] : [];
     }
 
     // SupplyFacts (PLAN G1374; design §2, §3, §7 T1): each compiler supply file carries Tatara's inspection of its bytes, read at
@@ -237,22 +237,22 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.True(NativeToolchain.IsToolchainFailure(error));
     }
 
-    // T's ruling 79 (a): the Linux record's reader places each file Start, Library or End, and a row's script Script (ruling 160), its
-    // one read of a place; a missing or other place is the toolchain's InvalidDataException naming the file. Fail-before: an unknown
-    // place read (on 0e7a59618 any string did, and the ELF writer left such a file off its line).
+    // T's ruling 79 (a): the Linux record's reader places each file Start, Library or End, its one read of a place; a missing or other
+    // place is the toolchain's InvalidDataException naming the file, script among them (a linkerScript's place is its member's, T's
+    // ruling 167). Fail-before: an unknown place read (on 0e7a59618 any string did, and the ELF writer left such a file off its line);
+    // on c012d62c54 a file placed script read as the script's place.
     [Theory]
     [InlineData("\"begin\"")]
     [InlineData("\"Start\"")]
+    [InlineData("\"script\"")]
     [InlineData(null)]
     public void ACatalogFileOutsideThePlacesIsRefused(string? place)
     {
         using var valid = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\", \"place\": \"start\"}");
         Assert.Equal(SupplyPlace.Start, ToolchainIdentity.ReadFile(valid.RootElement, "Linux").Place);
-        using var script = JsonDocument.Parse("{\"name\": \"kernel.ld\", \"sha256\": \"0\", \"place\": \"script\"}");
-        Assert.Equal(SupplyPlace.Script, ToolchainIdentity.ReadFile(script.RootElement, "None").Place);
         using var file = JsonDocument.Parse("{\"name\": \"crt1.o\", \"sha256\": \"0\"" + (place is null ? string.Empty : ", \"place\": " + place) + "}");
         Assert.Equal(
-            "The embedded native supply catalog's file 'crt1.o' has no place on an ELF link line (start, library, end or script).",
+            "The embedded native supply catalog's file 'crt1.o' has no place on an ELF link line (start, library or end).",
             Assert.Throws<InvalidDataException>(() => ToolchainIdentity.ReadFile(file.RootElement, "Linux")).Message);
     }
 
@@ -406,7 +406,8 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // A supply whose embedded bytes are not its row's SHA-256 (only a defective build of Kimi carries one) is the toolchain's failure,
-    // its statement kept in the report's supplies, with its facts unchecked (factsMatched false; SupplyFacts, design §7).
+    // its statement kept in the report's supplies, with its facts unchecked (factsMatched false; SupplyFacts, design §7); so is a row's
+    // linker script, through the same compare (T's ruling 167).
     [Fact]
     public void VerificationRejectsASupplyThatIsNotItsCatalogsBytes()
     {
@@ -424,6 +425,9 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(
             $"c linux-x64-v1 libc.a {c.Files[2].Sha256} false false",
             $"{supplies[1]!["name"]} {supplies[1]!["row"]} {supplies[1]!["file"]} {supplies[1]!["sha256"]} {supplies[1]!["hashMatched"]} {supplies[1]!["factsMatched"]}");
+        error = Assert.Throws<InvalidDataException>(() => NativeToolchain.VerifyScript(TargetProfile.None, ToolchainIdentity.Script(TargetProfile.None)! with { Sha256 = new string('0', 64) }));
+        Assert.Equal("The compiler's none-x64-v1 linker script kernel.ld does not match its catalog SHA-256.", error.Message);
+        Assert.True(NativeToolchain.IsToolchainFailure(error));
     }
 
     [Fact]

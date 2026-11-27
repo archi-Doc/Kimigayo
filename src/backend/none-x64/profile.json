@@ -91,5 +91,5 @@
   "files": [
     { "name": "kimi_backend_none_x64_v1.a", "sha256": "676aa31f74870b69b6d3695304449d2f4eb19194a9c36d70ec959f6db1b26b5c", "place": "library" }
   ],
-  "linkerScript": { "name": "kernel.ld", "sha256": "105ab1a78cc55352e9a408b3186aaf4bb3280600480bd41d1780d25f061f8be3", "place": "script" }
+  "linkerScript": { "name": "kernel.ld", "sha256": "105ab1a78cc55352e9a408b3186aaf4bb3280600480bd41d1780d25f061f8be3" }
 }
