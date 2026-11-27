@@ -143,7 +143,7 @@ public sealed partial class Binding
         // SPEC 15.4.4: the annotation's rows are formed at its declaration, over the Type it resolved, before it fixes its regions.
         if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is { } occurrence)
         {
-            this.RetainLocalWellFormedness(occurrence); // SPEC 15.6.1: its layers' well-formedness, each layer that formed.
+            this.RetainLocalWellFormedness(variable); // SPEC 15.6.1: its layers' well-formedness, at each site its annotation's layers published.
             if (declared is not null)
             {
                 this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.

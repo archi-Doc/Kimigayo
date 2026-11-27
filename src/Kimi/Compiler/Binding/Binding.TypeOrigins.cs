@@ -8,6 +8,14 @@ public sealed partial class Binding
 {
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
 
+    // The layer sites of local annotations whose declarations have not formed their rows yet (SPEC 15.6.1, 15.4.4; R7-O2 A4-L).
+    // - Contract: CompleteOrigins, the one owner of a layer's site rule, appends each site it decides inside a local's annotation, with
+    //   the local, in place of forming the row; that local's declaration (RetainLocalWellFormedness) forms the rows at its own sites, its
+    //   only input, and removes them. A declaration nested in an initializer forms and removes its own first.
+    // - Invariants: a site appears once per completion of its node; no reader but the declaration's step; ResetPass clears it, so an
+    //   entry a demand completed for a declaration that did not bind outlives no pass.
+    private readonly List<(VariableKoto Local, Koto Site)> localLayerSites = new();
+
     internal BoundType SelfType(BindingSymbol symbol)
     {
         // A Self symbol carries its Type (SPEC 9.1: `S<Slot(0), ...>` or the Contract's Self parameter); no Type is headed by it.
@@ -182,9 +190,11 @@ public sealed partial class Binding
             // anonymous function's or a Function Type's parameter) forms none: its well-formedness is a premise of that signature (R2) and
             // an obligation of each call (RequireInputPremises), never a relation of the body it is written in (SPEC 15.3.4, 15.6.1).
             // A transparent wrapper returns its inner node's Type, whose well-formedness that node formed: it forms the relation only
-            // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record). A layer of a local's annotation forms
-            // none here: its declaration forms it over the Type it resolves (RetainLocalWellFormedness; R7-O2 A4-L).
-            if ((supplied || TransparentInner(use) is null) && !(context is { Position: TypePosition.Local, Owner: VariableKoto { TypeKoto: { } local } } && IsWithin(use, local)) &&
+            // when it supplies the outer Origin itself (SPEC 23.1.2: one requirement, one record), and a layer whose wrapper supplies its
+            // outer Origin (none written, SuppressOuter) has none to relate. This is the one site rule of a layer's rows (PLAN G412). A
+            // site inside a local's annotation is published to its declaration, which forms the row over the Type it resolves
+            // (localLayerSites, RetainLocalWellFormedness; R7-O2 A4-L): the declaration moves the time of formation, never its site.
+            if (origin is not null && (supplied || TransparentInner(use) is null) &&
                 context is not { Position: TypePosition.Parameter, Owner: FunctionKoto { IsAnonymous: true } or FunctionTypeKoto })
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
@@ -195,7 +205,14 @@ public sealed partial class Binding
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
                     (AdtDef.IsStruct(type.SafeReferent) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows
                     : context.Position == TypePosition.Result && AssumesResult(context.Owner) ? OriginDischarge.AssumedResult : OriginDischarge.Judgment;
-                this.RetainLayerOutlives(type, use, discharge);
+                if (context is { Position: TypePosition.Local, Owner: VariableKoto { TypeKoto: { } local } variable } && IsWithin(use, local))
+                {
+                    this.localLayerSites.Add((variable, use)); // A Local layer's rows are Judgment rows (RetainLocalWellFormedness).
+                }
+                else
+                {
+                    this.RetainLayerOutlives(type, use, discharge);
+                }
             }
         }
         else if (type is { IsPointer: true })
@@ -304,28 +321,28 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.1, 15.4.4 (R7-O2 A4-L): a local's annotation's layer rows, formed by its declaration (BindVariableCore, after
-    // InferLocalOrigins and before FixDeclaredRegions, which reads them as bounds of its region slots), each at a layer node its binding
-    // formed (FormedTypeRows) over that node's Type as the declaration left it (`node.BoundType`, an omitted slot the local's region
-    // slot), Judgment rows as every Local layer's; a transparent wrapper's are its inner node's. A layer that formed keeps its rows when
-    // the annotation as a whole fails (SPEC 23.1.2). A Function Type's layers are its signature's, formed at their own positions
-    // (CompleteOrigins), so the walk does not enter it.
-    private void RetainLocalWellFormedness(Koto node)
+    // SPEC 15.6.1, 15.4.4 (R7-O2 A4-L): `local`'s annotation's layer rows, formed by its declaration (BindVariableCore, after
+    // InferLocalOrigins and before FixDeclaredRegions, which reads them as bounds of its region slots) at each site CompleteOrigins
+    // published for it (localLayerSites, its only input, which it removes), over that node's Type as the declaration left it
+    // (`node.BoundType`, an omitted slot the local's region slot), Judgment rows as every Local layer's. A layer that formed keeps its
+    // rows when the annotation as a whole fails (SPEC 23.1.2); a Function Type's layers are its signature's, at their own positions.
+    private void RetainLocalWellFormedness(VariableKoto local)
     {
-        if (node is FunctionTypeKoto)
+        var kept = 0;
+        for (var i = 0; i < this.localLayerSites.Count; i++)
         {
-            return;
+            var (owner, site) = this.localLayerSites[i];
+            if (!ReferenceEquals(owner, local))
+            {
+                this.localLayerSites[kept++] = (owner, site);
+            }
+            else if (site.BoundType is { } type)
+            {
+                this.RetainLayerOutlives(type, site, OriginDischarge.Judgment);
+            }
         }
 
-        if (FormedTypeRows.Contains(node) && TransparentInner(node) is null && node.BoundType is { } type)
-        {
-            this.RetainLayerOutlives(type, node, OriginDischarge.Judgment);
-        }
-
-        for (var i = 0; i < node.TypeComponentCount; i++)
-        {
-            this.RetainLocalWellFormedness(node.TypeComponent(i));
-        }
+        this.localLayerSites.RemoveRange(kept, this.localLayerSites.Count - kept);
     }
 
     // The one binding of a written Origin atom: its expression, or the name it was written as. Null when the atom failed (its own record).
