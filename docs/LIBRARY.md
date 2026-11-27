@@ -626,7 +626,7 @@ Only the structured operations above request cancellation, for the children they
 
 [Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations); the implementation's table is IMPL §21.6.8 ([machine instructions](impl/21-layout-runtime-and-code-generation.md#2168-machine-instructions)).
 
-`X86` groups x86-64 processor instructions and is declared where the Condition `arch == "x86_64"` holds; its privileged members only where `os == "none"` also holds. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other member's call (a compiler barrier, not a processor fence). Every member is an environment effect, so a `confined` implementation calls none.
+`X86` groups x86-64 processor instructions and is declared where the Condition `arch == "x86_64"` holds; its privileged functions only where `os == "none"` also holds. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other function's call (a compiler barrier, not a processor fence). Every function is an environment effect, so a `confined` implementation calls none.
 
 | Function | Guarantee |
 | --- | --- |
@@ -636,6 +636,18 @@ Only the structured operations above request cancellation, for the children they
 | `X86.disableInterrupts() -> ()`, `X86.enableInterrupts() -> ()` | Safe, `os == "none"`. Clears or sets the interrupt flag (`cli`, `sti`). |
 | `unsafe X86.readPort8(port: u16) -> u8`, `readPort16(port: u16) -> u16`, `readPort32(port: u16) -> u32` | `os == "none"`. Reads one, two or four bytes from an I/O port (`in`). The device at `port` may change any storage it can reach; the caller keeps that storage within the program's platform contract. |
 | `unsafe X86.writePort8(port: u16, value: u8) -> ()`, `writePort16(port: u16, value: u16) -> ()`, `writePort32(port: u16, value: u32) -> ()` | `os == "none"`. Writes one, two or four bytes to an I/O port (`out`), under the same obligation. |
+
+`X86.InterruptFrame` is what the processor pushes on an interrupt in 64-bit mode, as it lies in memory from its lowest address: a C-layout Copy struct that a program never constructs (it declares no constructor and has no implicit one), whose Fields hold the interrupted code's registers; an interrupt entry passes it to the handler's `handle` (the entries are not yet available). `X86.InterruptHandler` and `X86.ErrorCodeHandler` are the Contracts of interrupt handler Types. All three are declared on every x86-64 target and execute nothing.
+
+| Declaration | Guarantee |
+| --- | --- |
+| `X86.InterruptFrame.ip: u64` | The address at which the interrupted code resumes (`rip`). |
+| `X86.InterruptFrame.cs: u64` | The interrupted code's code segment selector (`cs`). |
+| `X86.InterruptFrame.flags: u64` | The interrupted code's flags (`rflags`). |
+| `X86.InterruptFrame.sp: u64` | The interrupted code's stack pointer (`rsp`). |
+| `X86.InterruptFrame.ss: u64` | The interrupted code's stack segment selector (`ss`). |
+| `X86.InterruptHandler.handle(frame: ref/InterruptFrame) -> ()` | The Contract of a handler for a vector without an error code. |
+| `X86.ErrorCodeHandler.handle(frame: ref/InterruptFrame, code: u64) -> ()` | The Contract of a handler for a vector that pushes an error code, which `code` receives. |
 
 ## 11. Current Source Differences
 

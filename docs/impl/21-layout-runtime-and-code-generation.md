@@ -324,7 +324,7 @@ The runtime imports no function and the profile has no C library: the runtime's 
 
 ### 21.6.8. Machine instructions
 
-The group `Kimi.X86` declares x86-64 processor instructions as functions ([§22.1](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). It is declared where the Condition `arch == "x86_64"` holds ([§19.2.1](../spec/19-compile-time-directives.md#1921-built-in-conditions)): `pause` and `readTimestamp` wherever `X86` is declared, since they also run in user mode; the other members, privileged, only where `os == "none"` also holds, since each faults in user mode. Elsewhere `X86` declares no such member. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other member's call (a compiler barrier, not a processor fence).
+The group `Kimi.X86` declares x86-64 processor instructions as functions ([§22.1](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)). It is declared where the Condition `arch == "x86_64"` holds ([§19.2.1](../spec/19-compile-time-directives.md#1921-built-in-conditions)): `pause` and `readTimestamp` wherever `X86` is declared, since they also run in user mode; the other functions, privileged, only where `os == "none"` also holds, since each faults in user mode. Elsewhere `X86` declares no such function. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other function's call (a compiler barrier, not a processor fence).
 
 | Member | Instruction | Safety |
 | --- | --- | --- |
@@ -336,4 +336,16 @@ The group `Kimi.X86` declares x86-64 processor instructions as functions ([§22.
 | `readPort8(port: u16) -> u8`, `readPort16(port: u16) -> u16`, `readPort32(port: u16) -> u32` | `in` of one, two or four bytes | `unsafe` |
 | `writePort8(port: u16, value: u8)`, `writePort16(port: u16, value: u16)`, `writePort32(port: u16, value: u32)` | `out` of one, two or four bytes | `unsafe` |
 
-A member is `unsafe` exactly when it accesses a device or changes the processor's address translation, descriptor tables or model-specific state; the others change no storage. A port member's `- safety:` item is its caller's obligation: the device at `port` may change any storage it can reach, and the caller keeps that storage within the program's platform contract ([§21.6.6](#2166-integer-addresses)). Calling an `X86` member is an environment effect ([§8.11.2](../spec/08-generics-constraints-and-contracts.md#8112-confined)): it accesses processor state outside the program. A `confined` implementation calls none of them, `pause` and `readTimestamp` included.
+A function is `unsafe` exactly when it accesses a device or changes the processor's address translation, descriptor tables or model-specific state; the others change no storage. A port member's `- safety:` item is its caller's obligation: the device at `port` may change any storage it can reach, and the caller keeps that storage within the program's platform contract ([§21.6.6](#2166-integer-addresses)). Calling an `X86` function is an environment effect ([§8.11.2](../spec/08-generics-constraints-and-contracts.md#8112-confined)): it accesses processor state outside the program. A `confined` implementation calls none of them, `pause` and `readTimestamp` included.
+
+### 21.6.9. Interrupt entries
+
+`Kimi.X86` declares, wherever it is declared ([§21.6.8](#2168-machine-instructions)), the frame the processor pushes on an interrupt in 64-bit mode and the two Contracts of interrupt handler Types. They execute nothing, so they are not under `os == "none"`.
+
+| Declaration | Meaning |
+| --- | --- |
+| `#Layout("C") public struct InterruptFrame`, `Self is Copy`, with `public let` `ip`, `cs`, `flags`, `sp`, `ss: u64` | The frame as it lies in memory from its lowest address: 40 bytes, alignment 8, the Fields at offsets 0, 8, 16, 24 and 32 ([§21.1.2](#2112-layout-modes)). The Fields hold the interrupted code's `rip`, `cs`, `rflags`, `rsp` and `ss`. It declares no constructor and has no implicit one ([§6.3.6](../spec/06-declarations-and-containers.md#636-implicit-constructor)), so a program never constructs one. |
+| `public contract InterruptHandler` with `func handle(frame: ref/InterruptFrame)` | The Contract of a handler for a vector without an error code. |
+| `public contract ErrorCodeHandler` with `func handle(frame: ref/InterruptFrame, code: u64)` | The Contract of a handler for a vector that pushes an error code, which `code` receives. |
+
+A handler Type conforms to them by the ordinary rules ([§8.6.3](../spec/08-generics-constraints-and-contracts.md#863-implementation-matching)). The interrupt entries, which call a handler's `handle` with the frame, and the rules `handle` must meet are not yet implemented.
