@@ -626,7 +626,7 @@ Only the structured operations above request cancellation, for the children they
 
 [Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations); the implementation's table is IMPL §21.6.8 ([machine instructions](impl/21-layout-runtime-and-code-generation.md#2168-machine-instructions)).
 
-`X86` groups x86-64 processor instructions and is declared where the Condition `arch == "x86_64"` holds; its privileged members only where `os == "none"` also holds. Each call executes its instruction once, in program order with every memory access and every other member. Every member is an environment effect, so a `confined` implementation calls none.
+`X86` groups x86-64 processor instructions and is declared where the Condition `arch == "x86_64"` holds; its privileged members only where `os == "none"` also holds. Each call executes its instruction once, and the compiler keeps it in program order with every memory access and every other member's call (a compiler barrier, not a processor fence). Every member is an environment effect, so a `confined` implementation calls none.
 
 | Function | Guarantee |
 | --- | --- |

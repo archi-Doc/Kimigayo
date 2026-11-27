@@ -62,8 +62,8 @@ Each line names a feature outside this revision ([§1.3](../01-overview.md#13-no
 - C aggregate passing, export, callbacks and varargs. [§22.6](../22-core-execution-and-foreign-functions.md#226-foreign-function-imports)
 - Structure layout modes beyond Kimigayo and C. [§6.7.1](../06-declarations-and-containers.md#671-layout), [§21.1.2](../../impl/21-layout-runtime-and-code-generation.md#2112-layout-modes)
 - Over-aligned allocation, arbitrary exit codes, floating-point environment control. [§22.5](../22-core-execution-and-foreign-functions.md#225-abort-locations-and-codes)
-- General inline assembly; machine instructions other than the implementation's `Kimi.X86` members. [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)
-- Sections, eager statics and project linker scripts. [§22.4](../22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage)
+- General inline assembly. [§22.1](../22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)
+- Object-file sections, static storage initialized before the startup body, and project linker scripts. [§22.4](../22-core-execution-and-foreign-functions.md#224-program-startup-and-static-storage), [§21.6.1](../../impl/21-layout-runtime-and-code-generation.md#2161-target)
 
 ## D.7. Packages, Mods and tests
 
