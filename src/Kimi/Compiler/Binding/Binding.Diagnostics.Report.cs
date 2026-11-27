@@ -133,8 +133,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // Publishes one direct failure with the facts its check recorded: a problem's own facts first (ReportProblem), then a fact table's,
-    // which holds the explanation of its node's one failure only (FailExplained), so at most one table answers for a node.
+    // Publishes one direct failure with the facts its check recorded (ReportProblem).
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
@@ -186,15 +185,6 @@ public sealed partial class Binding
             // The subject stays the failed node; the location is the syntax that shows the two Types.
             var mismatch = this.Mismatch(issue.Problem);
             issue.Node.ReportIn(store, requirement, issue.Code, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)], condition: this.ConditionOf(issue.Problem));
-        }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
-        {
-            this.ReportOwnedConversion(issue.Node, store, owned, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints.TryGetValue(issue.Node, out var callable))
-        {
-            // SPEC 8.3, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
-            ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
         }
         else if (issue.Failure == BindingFailure.InvalidConstraint)
         {

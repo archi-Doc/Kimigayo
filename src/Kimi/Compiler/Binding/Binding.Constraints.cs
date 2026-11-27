@@ -319,7 +319,7 @@ public sealed partial class Binding
                     ? ConstraintProof.Refuted : ConstraintProof.Unknown;
             }
 
-            this.ScopeReads.Unknown ??= new(subject, proposition.RequiredType!, failure) { Epoch = this.frameEpoch };
+            this.ScopeReads.Unknown ??= new(proposition, failure) { Epoch = this.frameEpoch };
             return ConstraintProof.Unknown;
         }
 
