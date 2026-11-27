@@ -101,6 +101,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private const string DeepSame = "    public func deep<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        let x = ((a, a), (a, a))\n" +
         "        let y = ((b, b), (b, b))\n        return (x, x) == (y, y)\n";
 
+    // AnOpenSelfRunsItsWitness's uses of Box<T>: a row's requirement on Box<K> (a Dictionary's key), a default's copy and a tuple
+    // operator on (Box<A>, i32) in a generic body (R7-P5a's B1V, B1I and B1T), each reached from S's confined put at i32.
+    private const string OpenFind = "group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        _ = table.tryGet(key)\n" +
+        "struct S\n    Self is Sink\n    var loud: Loud = Loud.init()\n    var boxes: Dictionary<Box<i32>, i32> = [:]\n" + Put +
+        "        H.find(self.boxes@ref, Box<i32>.init())\n";
+
+    private const string OpenCopy = "group H\n    public func same<T>(a: ref/T, b: ref/T, marker: bool = a == b) -> bool\n        T is Equatable\n" +
+        "        return marker\n    public func peek<A>() -> bool\n        let x = (Box<A>.init(), 1)\n        let y = (Box<A>.init(), 1)\n" +
+        "        return H.same(x, y)\n" + Witness + "        _ = H.peek<i32>()\n";
+
+    private const string OpenOperator = "group H\n    public func peek<A>() -> bool\n        return (Box<A>.init(), 1) == (Box<A>.init(), 1)\n" + Witness +
+        "        _ = H.peek<i32>()\n";
+
     // SPEC 8.11.2: an access to a mutable static, a raw pointer read from an immutable static, an integer made a pointer and a foreign
     // call obtain authority from the environment; reading an immutable static (its initializer enters the summary), writing through a raw
     // input and a foreign call where nothing owes confined do not. A part a rejected form reads is read at its own node (DECISIONS Z17,
@@ -1026,17 +1039,21 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 DeepSame.Replace("Fixed", "Equatable", StringComparison.Ordinal).Replace("deep", "deepLoose", StringComparison.Ordinal) + DeepSame +
                 Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.11.3: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
-    // instance (fail-before: the first, judged by the premises).
+    // SPEC 8.11.3, 8.6.1: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through
+    // the instance, also as a comparison's leaf at a call the body writes, a default's copy (SPEC 7.2.3) or a tuple operator (13.4.1):
+    // Box<A>'s callee is known (fail-before: the first, judged by the premises; R7-P5a's B1V and B1T, the call's leaf judged by the
+    // premises' bound, B1T since R5-M166).
     [Theory]
-    [InlineData(" => true\n", "")]
-    [InlineData("\n        Console.writeLine(\"eq\")\n        return true\n", Failed)]
-    public void AnOpenSelfRunsItsWitness(string equals, string expected)
+    [InlineData(" => true\n", OpenFind, "")]
+    [InlineData("\n        Console.writeLine(\"eq\")\n        return true\n", OpenFind, Failed)]
+    [InlineData(" => true\n", OpenCopy, "")]
+    [InlineData("\n        Console.writeLine(\"eq\")\n        return true\n", OpenCopy, Failed)]
+    [InlineData(" => true\n", OpenOperator, "")]
+    public void AnOpenSelfRunsItsWitness(string equals, string use, string expected)
         => Assert.Equal(
             Expected(expected),
             Problems(Sink + Loud + $"struct Box<T>\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool{equals}" +
-                "group H\n    public func find<K>(table: ref/Dictionary<Box<K>, i32>, key: ref/Box<K>)\n        _ = table.tryGet(key)\n" +
-                WithField("boxes: Dictionary<Box<i32>, i32> = [:]") + "        H.find(self.boxes@ref, Box<i32>.init())\n        return .Ok(())\n"));
+                use + "        return .Ok(())\n"));
 
     // SPEC 8.11.3: a requirement on a Type whose conformance maps it to a base's function runs that inherited witness, entered through
     // the base's instance (the base path ConformanceWitness resolves; fail-before: each, a limit of the formatting function).
@@ -1310,6 +1327,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [Trait("Purpose", "Allocation")]
     public class AllocationTests(ITestOutputHelper output)
     {
+        private const string Last = "    public func last() => Console.writeLine(\"x\")\n";
+
+        private const string Start = "        H.step0()\n";
+
+        private const string GenericStep = "    public func step{0}<K>(t: uniq/Dictionary<(Box<K>, i32), i32>, k: ref/(Box<K>, i32))\n        _ = t.remove(k)\n" +
+            "        _ = H.same(k, k)\n        H.{1}<K>(t, k)\n";
+
+        private const string GenericLast = "    public func last<K>(t: uniq/Dictionary<(Box<K>, i32), i32>, k: ref/(Box<K>, i32)) => Console.writeLine(\"x\")\n" +
+            "    public func same<T>(a: ref/T, b: ref/T) -> bool\n        T is Equatable\n        return a == b\n" +
+            "struct Box<T>\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n";
+
+        private const string GenericStart = "        var t: Dictionary<(Box<i32>, i32), i32> = [:]\n        let k = (Box<i32>.init(), 1)\n        H.step0<i32>(t@uniq, k)\n";
+
         // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
         // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
         // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
@@ -1318,11 +1348,14 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         // 512/1024/2048, the smallest doubling sizes at which each interval spans one doubling, so the two differences stand 2:1 (119,552 and
         // 238,912 bytes for the chain, R8-K1b-1's base and head alike). At 256 the library's own bodies decide whether a doubling falls in the
         // first interval: R8-K1b-1's two more moved it from 256-512 to before 256 (+21,704 bytes at 256, 3.13:1; 16/32/64 stepped the same way:
-        // +336, then +9,504). A larger library may need the next sizes; the two rows take about 7 s.
+        // +336, then +9,504). A larger library may need the next sizes. The third row (R7-P5a's C3) is a generic chain over (Box<K>, i32):
+        // each step runs Dictionary's row on it (a comparison Shim at the row entry), a call to same on it (a Shim at the call entry) and
+        // so Box<K>'s witness under the premises (Require's Body arm for a Self with an abstract part).
         [Theory]
-        [InlineData("    public func step{0}() => H.{1}()\n")]
-        [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n")]
-        public void SummariesScaleLinearly(string member)
+        [InlineData("    public func step{0}() => H.{1}()\n", Last, Start)]
+        [InlineData("    public func step{0}()\n        if G.flag => H.step{2}()\n        H.{1}()\n", Last, Start)]
+        [InlineData(GenericStep, GenericLast, GenericStart)]
+        public void SummariesScaleLinearly(string member, string last, string start)
         {
             var (sizes, evaluations) = (new[] { 512, 1024, 2048 }, new long[3]);
             var analyses = new (MirEffects Effects, MirDataflow Flow, MirCases Cases, MirProgram Program, MirReport Report)[3];
@@ -1335,8 +1368,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                     text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, member, n, next, n == 0 ? sizes[i] - 1 : n - 1);
                 }
 
-                var source = text.Append("    public func last() => Console.writeLine(\"x\")\n")
-                    .Append(Witness.Replace("    var loud: Loud = Loud.init()\n", string.Empty, StringComparison.Ordinal)).Append("        H.step0()\n        return .Ok(())\n").ToString();
+                var source = text.Append(last)
+                    .Append(Witness.Replace("    var loud: Loud = Loud.init()\n", string.Empty, StringComparison.Ordinal)).Append(start).Append("        return .Ok(())\n").ToString();
                 var c = MirBuildTest.Compile(source);
                 var program = c.BuildMir();
                 Assert.Equal([Failed], Problems(c, program));

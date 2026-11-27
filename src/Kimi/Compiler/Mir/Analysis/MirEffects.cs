@@ -377,9 +377,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs its Self's comparison under source operators (the validator
-    // checked it composes; the builder's root) at the call's entry (Leaves): a Witness leaf its witness (Function) and a None leaf, no
-    // answer, a broken contract at the call (Broken; the collector records it as InternalInvariant_Kd at the item), never a silent empty
-    // summary.
+    // checked it composes; the builder's root) at the call's entry (Leaves): a Witness leaf its witness (Function), a Requirement leaf on
+    // a part that is not abstract the requirement on it (a local input, Require, as the Terminator's closed Self makes one) and a None
+    // leaf, no answer, a broken contract at the call (Broken; the collector records it as InternalInvariant_Kd at the item), never a
+    // silent empty summary.
     private void Compared(MirProgram program, MirBody body, BindingSymbol contract, Subst call)
     {
         var start = this.Leaves(types.Comparison(contract, call.Self!, operators: true), contract, body.Key.Decl, call);
@@ -390,6 +391,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             {
                 this.found |= this.Broken();
             }
+            else if (leaf.Kind == ComparisonKind.Requirement)
+            {
+                this.Item(leaf.Type, Requires, leaf.Target, contract);
+            }
             else
             {
                 this.Function(program, new(MirCalleeKind.Fn, leaf.Target, leaf.Subst));
@@ -399,15 +404,16 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.leaves.RemoveRange(start, this.leaves.Count - start);
     }
 
-    // SPEC 13.4, 8.11.3, 4.9.6 (DECISIONS R5-M166, R7-P5a): the one per-leaf rule of a comparison's run, a tuple operator's call's
+    // SPEC 13.4, 8.11.3, 4.9.6, 8.6.1 (DECISIONS R5-M166, R7-P5a): the one per-leaf rule of a comparison's run, a tuple operator's call's
     // (Compared) and a comparison shim's requirement's (Shim), once per distinct node of the composition: a Builtin leaf and a Composite's
     // own node run nothing; a Requirement leaf (a part with an abstract part) runs the requirement on that part at the whole comparison's
-    // entry, for a call the body writes (`call` given) the bound the premises of `definition` declare, else Unknown (X2; its operands are
-    // shared borrows, so it destroys nothing), decided here. The others are pushed on `leaves` from the returned start for the caller to
-    // run in its place's form: a Witness leaf its witness at its instance, a None leaf, no answer, a broken contract (Broken at Local's
-    // call, Unsited in the solve), and a Requirement leaf no call names (a row's or an atom's) that requirement, an atom for the callers
-    // where the part is abstract (Require). The nodes are collected before any is run, since a part's requirement may compose another
-    // shim's.
+    // entry: on an abstract part, for a call the body writes (`call` given), the bound the premises of `definition` declare, else Unknown
+    // (X2: no known concrete callee; its operands are shared borrows, so it destroys nothing), decided here. The others are pushed on
+    // `leaves` from the returned start for the caller to run in its place's form: a Witness leaf its witness at its instance, a None leaf,
+    // no answer, a broken contract (Broken at Local's call, Unsited in the solve), and any other Requirement leaf that requirement (Require:
+    // a part that is not abstract, `Box<A>`, runs what its witness runs under the premises, 8.6.1, as a Self with an abstract part does; an
+    // abstract part of a row's or an atom's an atom for the callers). The nodes are collected before any is run, since a part's requirement
+    // may compose another shim's.
     private int Leaves(ComparisonNode root, BindingSymbol contract, BindingSymbol? definition, Subst? call)
     {
         var start = this.leaves.Count;
@@ -429,7 +435,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         for (var i = start; i < this.leaves.Count; i++)
         {
             var leaf = this.leaves[i];
-            if (leaf.Kind is ComparisonKind.Requirement && call is not null)
+            if (leaf is { Kind: ComparisonKind.Requirement, Type.IsAbstract: true } && call is not null)
             {
                 this.found |= Discharged(types.DispatchBounds(definition, leaf.Target!, leaf.Type, contract) == true, leaf.Target);
             }

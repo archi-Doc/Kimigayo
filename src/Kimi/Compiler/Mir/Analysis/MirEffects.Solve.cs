@@ -428,10 +428,12 @@ internal sealed partial class MirEffects
     // declaration's summary, specializations included: SPEC 15.6.4); a comparison shim's leaves (Shim); another compiler function; a
     // standard Property witness's Field operation (SPEC 11.9.2: a Set destroys the replaced value, 16.3; a Copy or a shared borrow adds
     // nothing); Refused is Binding's OCC-X record's dependent (Derived, SPEC 9.6.1); a resolution that formed a Type past IMPL A.4's height
-    // is the failed input A4 reads, its record the collector's TypeHeightLimit_Kd at the requesting site (Derived, SPEC 23.1.2;
-    // InstanceCollector.Formed), and no answer for a closed accepted Self a broken contract (Unsited). The call is the item's, in its view
-    // (Terminator); a requirement no call names (a summary's atom, a published row's) is the requirement on the Type under its own
-    // Contract, which binds no own slot.
+    // is the failed input A4 reads (Derived, SPEC 23.1.2), whose TypeHeightLimit_Kd is recorded at the requesting site by the collector
+    // (InstanceCollector.Formed) or by Binding's site record, which Witness's AnswerSite marks in A4's body site (one per declaration,
+    // R5-M171); no program is known to reach this arm (R7-P5a's H1 rests at Binding's site proof, H2' is the collector's). No answer for a
+    // Self with an abstract part is a conformance only a premise states, with no known concrete callee: the premises' bound (SPEC 8.11.3,
+    // 8.2.3); for a closed accepted Self a broken contract (Unsited). The call is the item's, in its view (Terminator); a requirement no
+    // call names (a summary's atom, a published row's) is the requirement on the Type under its own Contract, which binds no own slot.
     private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, Subst? call)
     {
         if (type.IsAbstract)
@@ -460,7 +462,9 @@ internal sealed partial class MirEffects
                 this.Shim(type, TyCtxt.Contract(runs.Target!), call);
                 break;
             case RequirementTargetKind.Builtin:
-                this.targets.Add((runs.Target!, types.Synthesized(runs.Target!, null, [], []))); // A compiler function binds no slot.
+                // A compiler function binds no slot; every built-in target is a Shim (Binding.PrepareBuiltinTargets) without a MIR body,
+                // so no instance of it is read.
+                this.targets.Add((runs.Target!, types.Synthesized(runs.Target!, null, [], [])));
                 break;
             case RequirementTargetKind.Storage when runs.Access != PropertyWitnessKind.StorageSet:
                 break;
@@ -477,6 +481,9 @@ internal sealed partial class MirEffects
                 break;
             case RequirementTargetKind.Refused:
                 this.found |= Derived;
+                break;
+            case RequirementTargetKind.None when runs.Cause == TyCtxt.Formation.Formed && type.HasAbstractPart:
+                this.found |= Discharged(types.DispatchBounds(this.definition, requirement, type, contract) == true, requirement);
                 break;
             default:
                 this.found |= runs.Cause == TyCtxt.Formation.HeightLimit ? Derived
@@ -502,7 +509,8 @@ internal sealed partial class MirEffects
 
     // SPEC 13.4, 4.9.6 (R7-P5a): a comparison shim's requirement on a Type runs its composition under the Contract's mapping
     // (TyCtxt.Comparison) at the requirement's entry (Leaves): a Witness leaf its witness at its instance (a target of the requirement,
-    // Require), a Requirement leaf of a row's or an atom's the requirement on that part, and a None leaf a broken contract (Unsited).
+    // Require), a Requirement leaf Leaves leaves (a part that is not abstract, or a row's or an atom's abstract one) the requirement on that
+    // part, and a None leaf a broken contract (Unsited).
     private void Shim(BoundType type, BindingSymbol contract, Subst? call)
     {
         var start = this.Leaves(types.Comparison(contract, type, operators: false), contract, this.definition, call);
