@@ -131,6 +131,25 @@ public class ContractBindingTest
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
+    // SPEC 8.6.3, 19.2.1, 22.1 with IMPL 21.6 (OSF's rows 11 and 23): Kimi.X86's interrupt frame and Contracts lie outside its
+    // `os == "none"` block, so a handler Type conforms on every x86-64 row, the hosted ones included, as to any Contract; a missing
+    // `handle`, or one whose frame's Semantics differ from the requirement's, is zero candidates, the conformance's missing implementation.
+    // A member is private by default (SPEC 9.4.1), so each `handle` is public: a private one misses the conformance's domain (9.4.6).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "X86.InterruptHandler", "\n    public func handle(frame:ref/X86.InterruptFrame) => ()", "")]
+    [InlineData("x86_64-unknown-linux-musl", "X86.InterruptHandler", "\n    public func handle(frame:ref/X86.InterruptFrame) => ()", "")]
+    [InlineData("x86_64-unknown-none", "X86.InterruptHandler", "\n    public func handle(frame:ref/X86.InterruptFrame) => ()", "")]
+    [InlineData("x86_64-unknown-none", "X86.ErrorCodeHandler", "\n    public func handle(frame:ref/X86.InterruptFrame, code: u64) => ()", "")]
+    [InlineData("x86_64-unknown-none", "X86.InterruptHandler", "", "MissingContractImplementation_Kd: Self is X86.InterruptHandler")]
+    [InlineData("x86_64-unknown-none", "X86.InterruptHandler", "\n    public func handle(frame:uniq/X86.InterruptFrame) => ()", "MissingContractImplementation_Kd: Self is X86.InterruptHandler")]
+    public void AnInterruptHandlerConformsOnEveryX86Row(string triple, string contract, string handle, string records)
+    {
+        var source = $"struct TimerTick\n    Self is {contract}{handle}\n";
+        var c = MinimalEmissionTest.Analyze(TargetProfile.Find(triple)!, source, "Hello.kimi", OutputKind.Library);
+        var actual = string.Join(" | ", CompilationTestHelper.PublishedErrors(c).Select(x => $"{x.Code}: {source.Substring(x.Span.Start, x.Span.Length)}").Order(StringComparer.Ordinal));
+        Assert.True(records == actual, $"{triple}{handle}: {actual}");
+    }
+
     [Theory]
     [InlineData("", true)]
     [InlineData("    U is Copy\n", true)]

@@ -653,6 +653,15 @@ public partial class KimiLibraryShapeTest
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
+    // IMPL 21.6 (OSF3a): Kimi.X86's interrupt frame and Contracts lie outside its `os == "none"` block, so every row's library (each row is
+    // x86-64) declares them; by library path until OSF3b's `#Lang` rows move the Contracts to ContractShapesAreFixed's rows by id.
+    [Theory]
+    [InlineData("X86.InterruptFrame", "public struct InterruptFrame\nSelf is Copy\npublic let ip: u64\npublic let cs: u64\npublic let flags: u64\npublic let sp: u64\npublic let ss: u64")]
+    [InlineData("X86.InterruptHandler", "public contract InterruptHandler\nfunc handle(frame: ref/InterruptFrame)")]
+    [InlineData("X86.ErrorCodeHandler", "public contract ErrorCodeHandler\nfunc handle(frame: ref/InterruptFrame, code: u64)")]
+    public void InterruptDeclarationShapesAreFixed(string path, string shape)
+        => Assert.All(Libraries.Keys, target => Assert.Equal(shape, Shape(LibrarySource.Declaration(LibraryOf(target).Library, path))));
+
     // IMPL 21.6: PlatformRows' rows are Platform's requirements in declaration order, each row's receiver whether its requirement takes
     // `self`, and each adapter's record is named by its requirement.
     [Fact]
