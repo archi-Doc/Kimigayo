@@ -51,9 +51,9 @@ internal sealed partial class MirEffects
     /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3, a round) and judges each obligation whose
     /// subject is in the root range (the library's are the library check's, PLAN G951 E3): per view of its target an effect that fails its
     /// rule (a <c>confined</c> bound's environment or unknown effect, a platform member's static access or unknown effect) is its code at
-    /// its subject, else a limit <c>Unsupported_Kd</c>; a failure the premises decide covers every view. A round that read a body A2's
-    /// table does not hold missed and adds no problem; the driver steps the bodies built since its last step and runs the next
-    /// round.</summary>
+    /// its subject, else the depth limit <c>OwnershipDepthLimit_Kd</c> where it is Deep; a failure the premises decide covers every view.
+    /// A round that read a body A2's table does not hold missed and adds no problem; the driver steps the bodies built since its last step
+    /// and runs the next round.</summary>
     /// <param name="program">The program whose bodies were recorded.</param>
     /// <param name="report">The problems of the program version.</param>
     /// <param name="rootModules">The root range: the obligations whose subject's module is below it are judged (DECISIONS R5-M168).</param>
@@ -136,19 +136,13 @@ internal sealed partial class MirEffects
     }
 
     // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer under its rule (Outcome):
-    // decided (a class that fails the rule) fails it; for every rule a Limit is the located Unsupported_Kd and Deep the depth limit
-    // (R4-M153).
+    // decided (a class that fails the rule) fails it; for every rule Deep is the depth limit (R4-M153).
     private void Verdict(in EffectObligation row, byte found)
     {
         var outcome = Outcome(found, row.Rule);
         if (outcome.IsDecided)
         {
             this.report.Add(MirProblem.WithoutBody(row.Code, row.Requirement, row.Subject));
-        }
-        else if (outcome.IsLimit)
-        {
-            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-            this.report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, requirement, row.Subject));
         }
         else if (outcome.IsDeep)
         {
@@ -428,14 +422,18 @@ internal sealed partial class MirEffects
     // implementation: the requirement is the bound's class where the definition's premises declare it confined (Discharged), else the
     // summary's atom, composed at the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a
     // conformance only of a closed Self; a built-in target's requirement, the one a Terminator records on an abstract Self, resolves
-    // without it). Any other Type runs each
-    // target Binding resolves under that reference and those premises, at the instance Binding gives it for the call (a conformance witness
-    // at the call's own Types and lengths, SPEC 8.6.3; TyCtxt.Witnesses: a compiler function, a composite comparison's leaf witnesses, a
-    // witness body, a library witness at the Self's arguments among them, or an accessor as a dynamic edge, a virtual witness by its slot's
-    // bound, DispatchBounds: a built-in target keeps its requirement's declaration), each entered at that instance as a call enters it (its
-    // declaration's summary, specializations included: SPEC 15.6.4), and none resolving (a composite with an abstract part, a standard
-    // Property witness) is a limit. The call is the item's, in its view (Terminator); a requirement no call names (a summary's atom, a
-    // published row's) is the requirement on the Type under its own Contract, which binds no own slot.
+    // without it). Any other Type runs what TyCtxt.Witness resolves under that reference and the definition's premises (A-12): a witness
+    // body (a conformance witness at the call's own Types and lengths, SPEC 8.6.3; an accessor; a library witness at the Self's arguments)
+    // entered at its instance without Origins (N8), a virtual one by its slot's bound (DispatchBounds), as a call enters it (its
+    // declaration's summary, specializations included: SPEC 15.6.4); a comparison shim's leaves (Shim); another compiler function; a
+    // standard Property witness's Field operation (SPEC 11.9.2: a Set destroys the replaced value, 16.3; a Copy or a shared borrow adds
+    // nothing); Refused is Binding's OCC-X record's dependent (Derived, SPEC 9.6.1); a resolution that formed a Type past IMPL A.4's height
+    // is the failed input A4 reads (Derived, SPEC 23.1.2), whose TypeHeightLimit_Kd is recorded at the requesting site by the collector
+    // (InstanceCollector.Formed) or by Binding's site record, which Witness's AnswerSite marks in A4's body site (one per declaration,
+    // R5-M171); no program is known to reach this arm (R7-P5a's H1 rests at Binding's site proof, H2' is the collector's). No answer for a
+    // Self with an abstract part is a conformance only a premise states, with no known concrete callee: the premises' bound (SPEC 8.11.3,
+    // 8.2.3); for a closed accepted Self a broken contract (Unsited). The call is the item's, in its view (Terminator); a requirement no
+    // call names (a summary's atom, a published row's) is the requirement on the Type under its own Contract, which binds no own slot.
     private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, Subst? call)
     {
         if (type.IsAbstract)
@@ -453,8 +451,46 @@ internal sealed partial class MirEffects
         }
 
         var start = this.targets.Count;
-        call ??= types.Synthesized(requirement, type, TyCtxt.Contract(requirement).Type!);
-        this.found |= types.Witnesses(requirement, contract, call, this.definition, this.targets) ? (byte)0 : Limit;
+        var runs = types.Witness(requirement, contract, call ?? types.Synthesized(requirement, type, TyCtxt.Contract(requirement).Type!), this.definition);
+        switch (runs.Kind)
+        {
+            case RequirementTargetKind.Body:
+                var at = runs.Subst!;
+                this.targets.Add((runs.Target!, types.Synthesized(runs.Target!, at.Declaring, at.Types, at.Lengths)));
+                break;
+            case RequirementTargetKind.Builtin when TyCtxt.ShimContract(runs.Target!) is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable:
+                this.Shim(type, TyCtxt.Contract(runs.Target!), call);
+                break;
+            case RequirementTargetKind.Builtin:
+                // A compiler function binds no slot; every built-in target is a Shim (Binding.PrepareBuiltinTargets) without a MIR body,
+                // so no instance of it is read.
+                this.targets.Add((runs.Target!, types.Synthesized(runs.Target!, null, [], [])));
+                break;
+            case RequirementTargetKind.Storage when runs.Access != PropertyWitnessKind.StorageSet:
+                break;
+            case RequirementTargetKind.Storage:
+                if (AdtDef.FindField(types, type, runs.Target, out var field, out _))
+                {
+                    this.Process(field, Drop);
+                }
+                else
+                {
+                    this.found |= this.Unsited($"`{TyCtxt.Name(type)}` stores no Field its standard Property witness sets");
+                }
+
+                break;
+            case RequirementTargetKind.Refused:
+                this.found |= Derived;
+                break;
+            case RequirementTargetKind.None when runs.Cause == TyCtxt.Formation.Formed && type.HasAbstractPart:
+                this.found |= Discharged(types.DispatchBounds(this.definition, requirement, type, contract) == true, requirement);
+                break;
+            default:
+                this.found |= runs.Cause == TyCtxt.Formation.HeightLimit ? Derived
+                    : this.Unsited($"`{requirement}` on `{TyCtxt.Name(type)}` resolves to no target: an accepted closed Self has one");
+                break;
+        }
+
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, instance) = this.targets[i];
@@ -469,6 +505,33 @@ internal sealed partial class MirEffects
         }
 
         this.targets.RemoveRange(start, this.targets.Count - start);
+    }
+
+    // SPEC 13.4, 4.9.6 (R7-P5a): a comparison shim's requirement on a Type runs its composition under the Contract's mapping
+    // (TyCtxt.Comparison) at the requirement's entry (Leaves): a Witness leaf its witness at its instance (a target of the requirement,
+    // Require), a Requirement leaf Leaves leaves (a part that is not abstract, or a row's or an atom's abstract one) the requirement on that
+    // part, and a None leaf a broken contract (Unsited).
+    private void Shim(BoundType type, BindingSymbol contract, Subst? call)
+    {
+        var start = this.Leaves(types.Comparison(contract, type, operators: false), contract, this.definition, call);
+        for (var i = start; i < this.leaves.Count; i++)
+        {
+            var leaf = this.leaves[i];
+            if (leaf.Kind == ComparisonKind.Witness)
+            {
+                this.targets.Add((leaf.Target!, leaf.Subst!));
+            }
+            else if (leaf.Kind == ComparisonKind.Requirement)
+            {
+                this.Require(leaf.Type, leaf.Target!, contract, null);
+            }
+            else
+            {
+                this.found |= this.Unsited($"A comparison of `{TyCtxt.Name(type)}` has a leaf with no answer: an accepted Type's leaves have one");
+            }
+        }
+
+        this.leaves.RemoveRange(start, this.leaves.Count - start);
     }
 
     // SPEC 16.3, 8.11.3 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's

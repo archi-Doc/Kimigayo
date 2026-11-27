@@ -341,8 +341,7 @@ public sealed partial class MirEffectsTest
 
                 var site = terminator.Kind == MirTerminatorKind.Drop ? "drop" : terminator.Callee.Symbol?.Name ?? "value";
                 sites.Add($"{site}:{string.Join(",", keys)}{((classes & MirEffects.Unknown) != 0 ? " unknown" : string.Empty)}" +
-                    $"{((classes & MirEffects.Limit) != 0 ? " limit" : string.Empty)}{((classes & MirEffects.Deep) != 0 ? " deep" : string.Empty)}" +
-                    $"{((classes & MirEffects.Derived) != 0 ? " derived" : string.Empty)}");
+                    $"{((classes & MirEffects.Deep) != 0 ? " deep" : string.Empty)}{((classes & MirEffects.Derived) != 0 ? " derived" : string.Empty)}");
             }
         }
 
