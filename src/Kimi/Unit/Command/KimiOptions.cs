@@ -5,7 +5,7 @@ using SimpleCommandLine;
 namespace Kimi.Command;
 
 // The command line's options (IMPL 20.3, 20.3.2, 20.5, 20.6.2; PLAN G1236, G1237): one table, a row per option, and one reader for every
-// command but lsp. Inputs: a command's name (its class's Name) and its arguments as the parser split them. Outputs: the values by row
+// command, after lsp's debugger option has been read. Inputs: a command's name (its class's Name) and its arguments as the parser split them. Outputs: the values by row
 // name, a Boolean or a listed value in the table's spelling; the inputs, in order; the invalid options, in order, each one text, which
 // CommandExecution prints each of (exit 1) and TestOptions raises the first of (exit 2). The rule (the owner's O-525 and O-526): an
 // option word (SimpleParserHelper.IsOptionName) names the row whose name equals it after their leading dashes, ignoring case; a word of
@@ -82,6 +82,7 @@ public class KimiOptions
     internal static Dictionary<string, string> Read(string command, string[] args, out List<string> inputs, out List<string> errors)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        var seen = new bool[Table.Length];
         inputs = [];
         errors = [];
         for (var i = 0; i < args.Length; i++)
@@ -109,6 +110,12 @@ public class KimiOptions
                 continue;
             }
 
+            if (seen[row])
+            {
+                errors.Add("Repeated option: " + option);
+            }
+
+            seen[row] = true;
             var next = i + 1 < args.Length && !args[i + 1].AsSpan().IsOptionName() ? args[i + 1] : null;
             var value = "true";
             if (kind is Kind.Value or Kind.Boolean || (kind == Kind.BareBoolean && bool.TryParse(next, out _)))
@@ -131,9 +138,9 @@ public class KimiOptions
             {
                 errors.Add($"Invalid value: {option} {value}");
             }
-            else if (!values.TryAdd(option, read))
+            else
             {
-                errors.Add("Repeated option: " + option);
+                values.TryAdd(option, read);
             }
         }
 

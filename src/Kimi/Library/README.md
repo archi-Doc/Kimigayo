@@ -48,7 +48,7 @@ embedded and implemented.
 - A declaration the compiler implements is written in its container without a Body and carries `#Intrinsic` (or
   `#Unsupported`; a linked constructor carries `#Lang`, as does `Storage.viewStart`, a function whose calls the compiler
   writes as a form, never as a call): `Console.writeStdout` in `Formatting.kimi`, the object
-  factories and `clone` in `Intrinsics.kimi` (with the four `#Unsupported` Weak operations), Array's two constructors in
+  factories and strong `clone` in `Intrinsics.kimi` (with the five `#Unsupported` Weak operations), Array's two constructors in
   `Array.kimi`, the storage operations in `Storage.kimi`, the raw operations in `Raw.kimi` and `Test.tempDirectory` in
   `Test.kimi`.
   A catalog link may instead name an internal source function of the same

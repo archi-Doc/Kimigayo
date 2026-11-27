@@ -594,8 +594,13 @@ public class LibraryImportTargetBindingTest
     // supply of the name and the reserved external names are the table's, so an import of a symbol no row's supply of that name provides is
     // unavailable, and one of a reserved name (a memory function, main) invalid, on every target; the selected row decides only the located
     // Unsupported_Kd at the import, for another row's supply or symbol (the Windows import of c's write, the Linux one of kernel32's
-    // GetLastError, which joins Windows' runtime declaration with no conflict; both on the staged none-x64 row, which has no supply); a
-    // target without a row (x86_64-unknown-linux-gnu) reports none (G2). Each expected code is a record at the import, in every pass.
+    // GetLastError, which joins Windows' runtime declaration with no conflict; both on the staged none-x64 row, whose one supply is its
+    // kimi_backend); a target without a row (x86_64-unknown-linux-gnu) reports none (G2). The Tatara plan's B9e (IMPL 21.2, 20.4; design
+    // §5 rows 15 and 16, change N1): the none row's kimi_backend symbols, compiler-rt's soft-float routines and its fp_mode.c's, are
+    // reserved external names on every target, so a program library's import of one is invalid on each, as is the none row's own
+    // kimi_backend import of one (the name checked before the supply); a name outside the catalog stays a program library's.
+    // Fail-before (B9e): the windows-x64 import of __divdf3 was accepted, the none row's kimi_backend one UnavailableReservedImport_Kd.
+    // Each expected code is a record at the import, in every pass.
     [Theory]
     [InlineData("c", "write", null, "x86_64-unknown-linux-musl", "")]
     [InlineData("c", "write", null, "x86_64-unknown-linux-gnu", "")]
@@ -613,6 +618,12 @@ public class LibraryImportTargetBindingTest
     [InlineData("codec", "memset", "codec", "x86_64-unknown-linux-musl", "InvalidLibraryImport_Kd")]
     [InlineData("codec", "main", "codec", "x86_64-pc-windows-msvc", "InvalidLibraryImport_Kd")]
     [InlineData("codec", "main", "codec", "x86_64-unknown-linux-musl", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "__divdf3", "codec", "x86_64-pc-windows-msvc", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "__divdf3", "codec", "x86_64-unknown-linux-musl", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "__divdf3", "codec", "x86_64-unknown-none", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "__fe_getround", "codec", "x86_64-pc-windows-msvc", "InvalidLibraryImport_Kd")]
+    [InlineData("codec", "codec_divide", "codec", "x86_64-pc-windows-msvc", "")]
+    [InlineData("kimi_backend", "__divdf3", null, "x86_64-unknown-none", "InvalidLibraryImport_Kd")]
     public void ReservedSuppliesAndNamesAreTheTablesOnEveryTarget(string library, string symbol, string? requirement, string target, string code)
     {
         var import = "#LibraryImport(\"" + library + "\", \"" + symbol + "\")";

@@ -74,6 +74,11 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 15.1.6, 23.1: the Subject whose in-place Borrow is a Subject Place's region (AcquireSubject, a match's or a loop's), else null;
+    // the region is shown by the Subject's text and related at it.
+    private static Koto? SubjectOf(BoundOrigin origin) => origin is { Kind: OriginKind.Inference, Binder: MatchKoto match } ? KotoHelper.UnwrapParentheses(match.Expression)
+        : origin is { Kind: OriginKind.Inference, Binder: ForKoto loop } ? KotoHelper.UnwrapParentheses(loop.Iterable) : null;
+
     // SPEC 23.1: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot (a
     // parameter's projection, SlotProjection) or a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin;
     // the Type occurrence of an omitted slot.
@@ -105,6 +110,8 @@ public sealed partial class Binding
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
             case OriginKind.ConstraintSet:
                 return new("expression", SetSlotName(origin)); // SPEC 15.3.4: the set's slot as written, `m.at`.
+            case OriginKind.Inference when SubjectOf(origin) is { } subject:
+                return new("borrow", subject.ToString()); // SPEC 15.1.6: a Subject Place's region by the Borrow of its Subject.
             case OriginKind.Inference when origin.Binder is { } local && IsRegionOwner(local):
                 // A local's region (LocalRegionSlot) by the local's name, as a Closure body names it. A VariableKoto's name is its
                 // NameKoto's: its symbol, keyed by the declaration, keeps its first name when an edit replaces the NameKoto (Indexing
@@ -458,8 +465,6 @@ public sealed partial class Binding
         {
             builder.Dispose();
         }
-
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
     // SPEC 15.3.6, 10.8: a selected call whose slot only the argument's own per-call Origin would satisfy, at the call (FailPerCallOrigin's
