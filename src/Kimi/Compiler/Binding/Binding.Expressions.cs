@@ -157,7 +157,11 @@ public sealed partial class Binding
     // The state Complete gives: an invalid node stays invalid, any other is resolved with a Type and unresolved without one; the
     // recorder gives it to a dependent of a module the pass does not bind in its entry (CompleteDependent).
     private static BindingState CompletedState(BindingState state, BoundType? type)
-        => state == BindingState.Invalid ? state : type is null ? BindingState.Unresolved : BindingState.Resolved;
+        => type is null && state != BindingState.Invalid ? BindingState.Unresolved : ResolvedState(state);
+
+    // The state a resolution gives (Complete with a Type; a callee its call resolves, its Generics and parentheses included): a node
+    // failed in its own binding stays invalid, so its failure stands (G1406-54: a refusal its lookup settles is never overwritten).
+    private static BindingState ResolvedState(BindingState state) => state == BindingState.Invalid ? state : BindingState.Resolved;
 
     // DECISIONS BU-240 (temporary with BoundTypeKind.Open; rule W): an unbound part other than an anonymous function at a position a split
     // binding decides as a whole: every check of it reads the position, so it rests, unbound, as a part awaiting its position does,

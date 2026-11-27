@@ -226,7 +226,7 @@ public sealed partial class Binding
         }
 
         callee.BoundSymbol = group;
-        callee.BindingState = BindingState.Resolved;
+        callee.BindingState = ResolvedState(callee.BindingState);
         if (this.GatheredGroupFails(callee, candidates))
         {
             this.candidateScratch.Return(evaluated, clearArray: true); // NamedCandidates' rows; RentEvaluation rented nothing yet
@@ -485,7 +485,7 @@ public sealed partial class Binding
 
             this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
             callee.BoundSymbol = winner;
-            callee.BindingState = BindingState.Resolved;
+            callee.BindingState = ResolvedState(callee.BindingState);
             if (callee is MemberAccessKoto selectedMember)
             {
                 selectedMember.Right.BoundSymbol = winner;
@@ -494,13 +494,13 @@ public sealed partial class Binding
             if (generic is not null)
             {
                 generic.BoundSymbol = winner;
-                generic.BindingState = BindingState.Resolved;
+                generic.BindingState = ResolvedState(generic.BindingState);
             }
 
             for (var wrapper = call.Method; wrapper is ParenthesizedKoto parentheses; wrapper = parentheses.Operand)
             {
                 wrapper.BoundSymbol = winner;
-                wrapper.BindingState = BindingState.Resolved;
+                wrapper.BindingState = ResolvedState(wrapper.BindingState);
             }
 
             call.BoundSymbol = winner;
