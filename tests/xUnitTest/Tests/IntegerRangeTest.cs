@@ -142,7 +142,8 @@ public class IntegerRangeTest
     // from SPEC 15.1.6 and 15.6): a3x, an explicit `r@uniq` Subject while a shared Loan of `r` is live, reports as its Range twin does, at
     // the `for` (on the counted loop: ComparisonLoanConflict_Kd at the `@uniq`); b2x, b5x and b6x, a Subject storing uniq/ResolvedRange
     // (Exclusive: its entry acquires the referent) while a shared Reborrow of the referent stays live across the loop, which the counted
-    // loop's referent read accepted.
+    // loop's referent read accepted. Since G922 tws the Subject Place is formed before the entry, as a match's is (SPEC 15.1.6), so A5
+    // also records the conflict at the Subject, as a match's ComparisonLoanConflict_Kd (DECISIONS Q13: a dependent record added).
     public static TheoryData<string, string, string> RejectedCoverageRows => new()
     {
         { "v3x", "let r = (0..3).resolve(3)\nfor i in r@uniq => ()\n", "InvalidAssignment_Kd 2:10" }, // invalid 15.1.5 @uniq of a let Subject
@@ -157,12 +158,12 @@ public class IntegerRangeTest
         { "rx13r", "var q: Range<isize, isize> = 0..3\nlet u = q@uniq\nfor i in u@uniq => ()\n", "InvalidAssignment_Kd 3:10" }, // invalid Range twin of rx13
         { "a3x", "var r = (0..3).resolve(3)\nlet h = r@ref\nvar a: isize = 0\nfor i in r@uniq => a += i\nConsole.writeLine(\"\\(a) \\(h.end)\")\n", "CallActivationConflict_Kd 4:1" }, // invalid 15.6 r@uniq while h's shared Loan is live
         { "a3xr", "var r: Range<isize, isize> = 0..3\nlet h = r@ref\nvar a: isize = 0\nfor i in r@uniq => a += i\nConsole.writeLine(\"\\(a) \\(h.end)\")\n", "CallActivationConflict_Kd 4:1" }, // invalid Range twin of a3x
-        { "b2x", "func f(u: uniq/ResolvedRange) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r = (0..3).resolve(3)\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5" }, // invalid 15.1.6/15.6 a uniq/ResolvedRange parameter iterated while s, a shared Reborrow of its referent, is live
-        { "b2xr", "func f(u: uniq/Range<isize, isize>) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r: Range<isize, isize> = 0..3\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5" }, // invalid Range twin of b2x
-        { "b5x", "var r = (0..3).resolve(3)\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1" }, // invalid 15.1.6/15.6 b2x at top level: a let slot storing uniq/ResolvedRange
-        { "b5xr", "var r: Range<isize, isize> = 0..3\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1" }, // invalid Range twin of b5x
-        { "b6x", "var r = (0..3).resolve(3)\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5" }, // invalid 15.1.6/15.6 b2x in a var Closure capturing the uniq/ResolvedRange (7.7.3)
-        { "b6xr", "var r: Range<isize, isize> = 0..3\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5" }, // invalid Range twin of b6x
+        { "b2x", "func f(u: uniq/ResolvedRange) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r = (0..3).resolve(3)\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5; ComparisonLoanConflict_Kd 4:14" }, // invalid 15.1.6/15.6 a uniq/ResolvedRange parameter iterated while s, a shared Reborrow of its referent, is live
+        { "b2xr", "func f(u: uniq/Range<isize, isize>) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r: Range<isize, isize> = 0..3\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5; ComparisonLoanConflict_Kd 4:14" }, // invalid Range twin of b2x
+        { "b5x", "var r = (0..3).resolve(3)\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1; ComparisonLoanConflict_Kd 5:10" }, // invalid 15.1.6/15.6 b2x at top level: a let slot storing uniq/ResolvedRange
+        { "b5xr", "var r: Range<isize, isize> = 0..3\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1; ComparisonLoanConflict_Kd 5:10" }, // invalid Range twin of b5x
+        { "b6x", "var r = (0..3).resolve(3)\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5; ComparisonLoanConflict_Kd 6:14" }, // invalid 15.1.6/15.6 b2x in a var Closure capturing the uniq/ResolvedRange (7.7.3)
+        { "b6xr", "var r: Range<isize, isize> = 0..3\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5; ComparisonLoanConflict_Kd 6:14" }, // invalid Range twin of b6x
     };
 
     [Theory]

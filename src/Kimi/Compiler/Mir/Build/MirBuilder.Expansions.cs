@@ -45,12 +45,19 @@ internal sealed partial class MirBuilder
 
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
     // match: Some binds the item for the body, None completes the loop with Unit. The body end and a continue clean the iteration up and call
-    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject.
+    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject. A Subject borrowed in place is first held
+    // in its Subject Place as a match's is (SPEC 15.1.6), the entry's input (its receiver, or a requirement call's first argument).
     private void For(MirPlace destination, ForKoto loop)
     {
         var plan = BoundMatch.Of(compilation.Binding, loop)!;
         var entry = CallPlan.Of(compilation.Binding, loop)!;
         var step = CallPlan.Of(compilation.Binding, loop, 1)!;
+        var input = entry.Receiver ?? entry.ArgumentOperations[0].Source;
+        if (ReferenceEquals(input, loop.Iteration!.Subject))
+        {
+            this.locals[HirTables.Symbol(input)!] = this.HoldSubject(plan, loop.Iterable).Root;
+        }
+
         var iterator = this.Hold(entry.ReturnType, loop);
         this.Call(iterator, entry, loop, first: null);
         this.locals[HirTables.Symbol(step.Receiver!)!] = this.Made(iterator).Root;

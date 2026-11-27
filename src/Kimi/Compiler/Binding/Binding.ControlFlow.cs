@@ -94,11 +94,13 @@ public sealed partial class Binding
     }
 
     /// <summary>Gets whether Binding inferred Unit for a result target that no declaration, construct rule or expected Type
-    /// fixed (SPEC 17.5.2).</summary>
-    /// <param name="target">A do or a selection.</param>
-    /// <returns>Whether the target's final result is that inferred Unit.</returns>
-    internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
-        target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
+    /// fixed (SPEC 17.5.2): its result context's Inferred, for every target (DECISIONS BU-275). A Closure has one only where its latest
+    /// binding bound its body with no fixed result (BindClosureBody; BindClosure removes a previous binding's).</summary>
+    /// <param name="target">A function, do or selection.</param>
+    /// <returns>Whether the target's final result is that inferred Unit: a function's is its signature's result, not its value.</returns>
+    internal bool InfersUnit(Koto target)
+        => this.resultContexts.TryGetValue(target, out var context) && context.Inferred && target.BindingState == BindingState.Resolved &&
+            ReferenceEquals(target is FunctionKoto function ? function.BoundSymbol?.Type : target.BoundType, BoundType.Unit);
 
     // SPEC 14.5.2, 14.9.1 (DECISIONS BU-101): the construct a transfer goes to (TransferTarget), which the jump binding writes
     // to the jump's target row. A null row is a jump the HIR lints record as invalid (rows 9-10): it supplies no result source and its
@@ -251,7 +253,7 @@ public sealed partial class Binding
     // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
     private StructuralCompletion ResultStructure()
     {
-        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.ResultCompletions);
+        var structural = this.resultStructure ??= new(this, null, static (ref NodeColumns columns) => ref columns.ResultCompletions);
         structural.Clear();
         return structural;
     }
@@ -407,7 +409,8 @@ public sealed partial class Binding
     /// <summary>The `resultContexts` family's one accessor (DECISIONS BU-220): a working-state family, the context a result target's
     /// binding rents for it (BeginResult) and every reader takes inside the same pass, kept in the target's module's NodeColumns at its
     /// SyntaxId (null for none); the library's rows are released at its freeze (NodeColumns.Freeze), so a library node reads none after
-    /// the library pass, as each later pass's reset left it. Its members keep the names its readers use.</summary>
+    /// the library pass, as each later pass's reset left it; a Closure's is its latest binding's (Remove). Its members keep the names its
+    /// readers use.</summary>
     private readonly struct ResultContextRows(Binding binding)
     {
         internal ResultContext this[Koto target]
@@ -417,6 +420,15 @@ public sealed partial class Binding
         }
 
         internal bool ContainsKey(Koto target) => this.TryGetValue(target, out _);
+
+        // A Closure's rebinding drops its previous binding's context (BindClosure), so a reader takes the latest binding's or none.
+        internal void Remove(Koto target)
+        {
+            if (this.ContainsKey(target))
+            {
+                HirTables.Of(target).Families.ResultContexts.Ref(target.SyntaxId, binding) = null;
+            }
+        }
 
         internal bool TryGetValue(Koto target, [NotNullWhen(true)] out ResultContext? context)
             => (context = target.SyntaxOwner is { } table ? table.Hir.Families.ResultContexts.Get(target.SyntaxId, binding) : null) is not null;
