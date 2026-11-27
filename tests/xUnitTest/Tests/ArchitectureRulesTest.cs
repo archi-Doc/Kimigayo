@@ -255,7 +255,7 @@ public class ArchitectureRulesTest
         "Binding.ContractSolver.Rows.cs:DropClassKeys=1 key",
         "Binding.ContractSolver.Rows.cs:EnumerateClosed=1 key",
         "Binding.ContractSolver.Rows.cs:FirstRows=1 key",
-        "Binding.ContractSolver.Rows.cs:IndexWritten=1 key",
+        "Binding.ContractSolver.Rows.cs:IndexClassKeys=1 key",
         "Binding.ContractSolver.Rows.cs:PremiseRefines=1 key",
         "Binding.ContractSolver.cs:EnumerateMates=2 key",
         "Binding.ContractSolver.cs:SameClass=1 key",

@@ -302,6 +302,14 @@ public sealed partial class RecursiveContractTest
     // R7-C2c2 c2-5c (F's CC-35): IndexNormalized files the reading of a Contract fact over a projection in a view with no identity
     // premise too (the per-fact domain; plan section 2's cost), so the view's entries index those readings beside AT2's facts: 24 more
     // pairs in each program, (44, 94, 104) -> (68, 118, 128).
+    // R7-C2e2 e2-7 (G1406-49 (4), G1406-50; SPEC 8.2.3): the view's identity closure closes the probe's parts at its declaration, so
+    // the three programs index alike, each term over Orders' own: the requests' pairs are the Tree request's, dev's 68, and the Copy
+    // and the last request index nothing (dev's 50 and 10); one T(G) entry per view per serial (GroundsEntry), 8 more formations, 68
+    // pairs and no reading; and each later round's re-filing of `own` under its table's keys alone (ExtendRound's FileByTable), 4 more
+    // rounds filing 0, 1, 1 and 1 class-key pairs, 3: (68, 118, 128) -> (139, 139, 139). N3's observable becomes: no request extends
+    // into the view's Kept entry (each extension is the closure's, in its own entry), so the Copy and the last request add nothing to
+    // the Tree request's count. While FileByTable filed the view's facts again under their subjects (a second filing under one key),
+    // those rounds filed 40, and the programs 176.
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
@@ -311,7 +319,7 @@ public sealed partial class RecursiveContractTest
         probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
         var copy = Work(Orders + probe) - orders;
         probe += "    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal((68, 118, 128), (tree, copy, Work(Orders + probe) - orders));
+        Assert.Equal((139, 139, 139), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }

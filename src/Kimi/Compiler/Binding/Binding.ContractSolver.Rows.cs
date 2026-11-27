@@ -341,12 +341,13 @@ public sealed partial class Binding
 
     // An entry re-filed by the open request's table (enumerateClasses): OwnEntry's, and a closure's later round's copy of its T(G)
     // entry (ExtendRound, never the view's entry, so not registered as owned): not Kept, the class-key pairs an earlier table filed
-    // there dropped and the view's facts filed under the table's keys, so its walk reads its own table alone.
+    // there dropped and the view's facts filed under the table's keys (IndexClassKeys), so its walk reads its own table alone. The
+    // facts as written and their readings stay as filed (DropClassKeys), so each is under its subject once (G1406-49 (4)).
     private void FileByTable(ViewIndex index, EvidenceView view)
     {
         index.Kept = false;
         index.DropClassKeys();
-        this.IndexWritten(index, view);
+        this.IndexClassKeys(index, view);
     }
 
     // e2-7 (i) (G1406-42 (2)): the view's T(G) entry, its closures' first round (CloseRoot's preparation, before its walk starts: a
@@ -758,8 +759,7 @@ public sealed partial class Binding
     }
 
     // The view's facts as written into its entry, each row's under its subject and a fact with a row atom (RowAtom) under its atom's
-    // subject and also its class key in the request's view. An extension's re-filing repeats the other rows' pairs in an entry no
-    // validator reads (the request's, dropped when it returns).
+    // subject, then under the open table's keys (IndexClassKeys). A bucket's order is Add's, whatever the filing order of the two.
     private void IndexWritten(ViewIndex index, EvidenceView view)
     {
         for (var scope = view.Premises; scope is not null; scope = scope.Parent)
@@ -775,19 +775,41 @@ public sealed partial class Binding
                 {
                     index.Add(scope, fact, fact, subject);
                     this.ClosureIndexWork++;
-
-                    // R7-C2c2 c2-1 meets R7-C2e2-2 here: the class-key copy is the row kinds' alone (c2-3b: a leaf kind's fact too). The
-                    // other rows keep written subjects, so the validators, which pair facts by bucket, never meet a fact of another
-                    // written subject.
-                    if (this.enumerateClasses is { } classes && this.ClassKey(subject, classes) is var at && !ReferenceEquals(at, subject))
-                    {
-                        index.Add(scope, fact, fact, at); // also under its class key in the request's view
-                        this.ClosureIndexWork++;
-                    }
                 }
                 else if (fact is { Kind: ConstraintKind.TypeIdentity or ConstraintKind.Semantics, Subject: not null })
                 {
                     index.Add(scope, fact, fact, fact.Subject);
+                    this.ClosureIndexWork++;
+                }
+            }
+        }
+
+        this.IndexClassKeys(index, view);
+    }
+
+    // The view's facts with a row atom (RowAtom) whose subject's class key in the open table (enumerateClasses) is another Type, filed
+    // also under that key. R7-C2c2 c2-1 meets R7-C2e2-2 here: the class-key copy is the row kinds' alone (c2-3b: a leaf kind's fact
+    // too). The other rows keep written subjects, so the validators, which pair facts by bucket, never meet a fact of another written
+    // subject.
+    private void IndexClassKeys(ViewIndex index, EvidenceView view)
+    {
+        if (this.enumerateClasses is not { } classes)
+        {
+            return;
+        }
+
+        for (var scope = view.Premises; scope is not null; scope = scope.Parent)
+        {
+            if (scope.Constraints is not { } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (RowAtom(fact) is { Subject: { } subject } && this.ClassKey(subject, classes) is var at && !ReferenceEquals(at, subject))
+                {
+                    index.Add(scope, fact, fact, at);
                     this.ClosureIndexWork++;
                 }
             }
