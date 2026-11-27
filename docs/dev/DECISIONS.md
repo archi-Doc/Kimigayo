@@ -8602,6 +8602,42 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Middle accepts it for the class 1 fix (RQ8), and G768 is its removal row.
   - Limit: Mixing's `mixed` is flow-insensitive, so a Move through a reference of a local the body mixes elsewhere reads the
     target whole: vLaterMixed and vEarlierMixed (valid) are rejected at `a = 2`, as dev rejects the direct form vLaterMixedDirect.
+- **R4-M251 A5's storing rule and the drop rule read a body's Types as its identity premises make them (G986, MIR half)**
+  (2026-11-28; Middle, A5 and the builder; Major, an acceptance mover) SPEC 8.2.3 (an identity premise makes the parameter the
+  stated Type in its scope), 5.2.1 and 15.6.4 rule A. The Binding half is BU-276.
+  - Rule: MIR Types keep the premised parameter (BU-72), so these readers read a Type through `MirTypes.Premised`, R8-M9's one
+    premising, as PLAN G355's interim (R5-M38's G704 amendment made `IsNever` one, O-147 (c)). `Premised` premises only an abstract
+    part, as premises change only abstract parts (BU-276's distinction): a Type without one is its own and costs nothing. The list
+    is closed:
+    - A5's storing rule (`MirBorrows.Storing`): the gate (`ReadsRaw`), the pointer test (`PointerType`), the operand Type
+      (`MustOperand`) and the storage key (`Storing`), each the case Type of the premised Type, in one order, premise then the case
+      view (`MirCases.PremisedKnownType`, `MirCases.PremisedTypeOf`);
+    - the builder's one `MayNeedDrop` member (`MirBuilder.Drops`), read by every Drop site (Created, FieldCleanup, Overwrite, a
+      discard in place, a secured value, a default copy), so no Drop is built of a value only the premised parameter's row would
+      destroy;
+    - A2's verdict root (`MirDrops.Tree`, `MirCases.PremisedTypeOf`), the Type the builder's drop rule reads.
+    PointerCast's source needs none: castIdBad is rejected on dev.
+  - A5's Redirects reads A2's per-view verdict at a Drop (`MirDrops.Elides`, the fact the access rule reads): a Drop A2 elides in
+    the view takes no value and is no redirect (PLAN G1506, class 1; its own commit).
+  - Removal: when MIR Place and local Types are the identical Types (R7-Y5), each `MirTypes.Premised` call at these readers is
+    deleted, with `IsNever`'s.
+  - Moves: UnretainedRawStore_Kd on the I rows (G986: id, idLocal, idTwoRaw, idThreeLayers, idProjection, idDropGone, idDropKept,
+    idRawPart, idRefBeside; G1506: pair, idPair, pairReturned, ownReturned); fewer Drops in generic MIR under premises; no V row moves.
+    Limit: an owned `U`'s Drop (ownDropped, I) stays a redirect, as its destruction may run code and A2 keeps it.
+    Limit: a body no view decides is checked once, in view 0 (`MirBorrows.Run`), so the Drop row reads view 0's verdict for every
+    view: an owned `s/U`'s Drop A2 keeps under `owner` stays a redirect in every view (oneViewDropBad, I, accepted), and a Drop elided
+    in view 0 is no redirect where a later view keeps it (refObjBad, I, rejected; no V form found); the access rule's `Dropping` reads
+    the same (PLAN G1507).
+  - Rejected: premising the MirCases tier (it moves A1, A2, A4, A5, Origins and their cost, a second path beside Y5's Places);
+    premising inside `MirTypes.Destruction`'s abstract row (it moves A4's destruction composition, Observation and the Back's
+    readers, which read closed instance Types); a located `Unsupported_Kd` (it rejects the valid V rows); waiting for Y5 (it waits
+    on C3e while I programs are accepted).
+  - Remaining until Y5: PunKeys' destination fact; `MirBorrows.Destructions` and `MirEffects.Solve`'s destruction composition;
+    Keeps' raw-displacement operand (`MirBorrows.Values`, G355 r7).
+  - Rows (`MirBorrowsTest.ABodyStoresAnInputsOwnPartOnlyWhereItsContractRetainsIt`, `MirBuildTest.APremisedParameterIsDroppedAsItsPremiseMakesIt`,
+    `MirDropTest.APremisedPartIsJudgedAsItsPremiseMakesIt`). The storage key has no distinguishing row (its mutant passes
+    every test): it reads the premise so the check has one order with the gate's Type. Cost: `check` medians, dev 6d926fec09 / head,
+    Milestone25 1.948 / 1.888 s, Milestone37 1.894 / 1.925 s (five runs each, alternating); the O2 IR of a called V row is identical.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
